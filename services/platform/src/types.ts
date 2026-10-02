@@ -624,6 +624,17 @@ export interface Env {
    */
   NIKATRU_ANTHROPIC_API_KEY?: string;
   /**
+   * T17 · THE AI KILL SWITCH (src/lib/ai/meter.ts `aiEnabled`). Exactly "true"
+   * lets paid AI calls through the meter; anything else — absent included — stops
+   * every one (fail closed). CONFIG_KV `ai:kill` stops them too, without a deploy.
+   */
+  AI_ENABLED?: string;
+  /**
+   * T17 · THE GLOBAL DAILY SPEND CIRCUIT-BREAKER, in USD (src/lib/ai/meter.ts
+   * `dailyUsdCap`). Absent, empty, zero or unparseable refuses every call.
+   */
+  AI_DAILY_USD_CAP?: string;
+  /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has
    * never changed, so it groups every error the factory will ever report into

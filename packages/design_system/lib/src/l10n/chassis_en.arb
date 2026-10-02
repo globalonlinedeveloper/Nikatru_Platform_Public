@@ -1091,5 +1091,43 @@
   "devicesRetry": "Tap to try again",
   "@devicesRetry": {
     "description": "SE-03 · Under 'Your devices could not be loaded.'; tapping the row reads the list again."
+  },
+  "aiDisclosureTitle": "This feature uses AI",
+  "@aiDisclosureTitle": {
+    "description": "T17 · EU AI Act Art. 50(1). Heading of the disclosure shown before the first AI call, on every target."
+  },
+  "aiDisclosureBody": "What you send is processed by {processor}, an AI provider, to suggest results. The results are AI-generated and can be wrong. Nothing is saved until you review it.",
+  "@aiDisclosureBody": {
+    "description": "T17 · EU AI Act Art. 50(1). Names the processor (Apple 5.1.2(i)), says the results are AI-generated and can be wrong, and that nothing is saved without review.",
+    "placeholders": {
+      "processor": {
+        "type": "String",
+        "example": "Anthropic"
+      }
+    }
+  },
+  "aiDisclosurePrivacy": "Read the privacy notice",
+  "@aiDisclosurePrivacy": {
+    "description": "T17 · EU AI Act Art. 50(1). Link from the AI disclosure to the privacy notice."
+  },
+  "aiDisclosureAccept": "I understand, continue",
+  "@aiDisclosureAccept": {
+    "description": "T17 · EU AI Act Art. 50(1). Acknowledges the AI disclosure; no AI call is possible before it."
+  },
+  "aiDisclosureDecline": "Not now",
+  "@aiDisclosureDecline": {
+    "description": "T17 · EU AI Act Art. 50(1). Closes the AI disclosure without opting in; nothing is sent."
+  },
+  "aiCandidateLabel": "Suggested by AI: check before saving",
+  "@aiCandidateLabel": {
+    "description": "T17 · EU AI Act Art. 50(1). Label on every AI-suggested row in a review list. Never colour-only."
+  },
+  "aiSuggestionLabel": "AI suggestion",
+  "@aiSuggestionLabel": {
+    "description": "T17 · EU AI Act Art. 50(1). Label on every AI advisory suggestion. Never colour-only."
+  },
+  "aiReportAction": "Report this AI result",
+  "@aiReportAction": {
+    "description": "T17 · Play AI-generated content policy. The report action on every AI output; opens the in-app report."
   }
 }

@@ -194,6 +194,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       .rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .map((r) => String(r.name));
     expect(tables).toEqual([
+      // ⏱ 2026-10-02 · migration 0025 — the AI meter (T17): credits and opt-in, and the call ledger.
+      'ai_accounts',
+      'ai_ledger',
       // 0012 — the Apple refresh token a deletion revoked with
       // (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE). Since 0016 it is only the source
       // of the copy into `provider_tokens`; ⏱ 2026-09-30 the provider-token

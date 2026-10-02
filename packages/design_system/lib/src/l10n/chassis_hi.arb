@@ -249,5 +249,13 @@
   "devicesSignOutFailed": "उस डिवाइस से साइन आउट नहीं हो सका। फिर से कोशिश करें।",
   "devicesLastActive": "पिछली बार सक्रिय: {date}",
   "devicesShow": "देखें कि आप कहाँ साइन इन हैं",
-  "devicesRetry": "फिर से कोशिश करने के लिए टैप करें"
+  "devicesRetry": "फिर से कोशिश करने के लिए टैप करें",
+  "aiDisclosureTitle": "यह सुविधा AI का उपयोग करती है",
+  "aiDisclosureBody": "आप जो भेजते हैं उसे {processor}, एक AI प्रदाता, परिणाम सुझाने के लिए प्रोसेस करता है। परिणाम AI द्वारा बनाए गए हैं और गलत हो सकते हैं। आपकी समीक्षा के बिना कुछ भी सहेजा नहीं जाता।",
+  "aiDisclosurePrivacy": "गोपनीयता सूचना पढ़ें",
+  "aiDisclosureAccept": "समझ गया, जारी रखें",
+  "aiDisclosureDecline": "अभी नहीं",
+  "aiCandidateLabel": "AI का सुझाव: सहेजने से पहले जाँचें",
+  "aiSuggestionLabel": "AI सुझाव",
+  "aiReportAction": "इस AI परिणाम की रिपोर्ट करें"
 }

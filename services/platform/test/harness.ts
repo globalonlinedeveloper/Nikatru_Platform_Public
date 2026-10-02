@@ -58,6 +58,7 @@ import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 import providerPaymentLinks0024 from '../migrations/0024_provider_payment_links.sql?raw';
+import aiMeter0025 from '../migrations/0025_ai_meter.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -127,6 +128,8 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
   // subscription, so a refund or dispute resolves by payment id.
   providerPaymentLinks0024,
+  // ⏱ 2026-10-02 · T17 — the AI meter: credits, allowance, opt-in and the call ledger.
+  aiMeter0025,
 ];
 
 /**
@@ -180,6 +183,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   nativeAttest0022,
   // 0024 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   providerPaymentLinks0024,
+  // 0025 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  aiMeter0025,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

@@ -70,6 +70,7 @@ import ext from './routes/ext';
 import events from './routes/events';
 import cancellation from './routes/cancellation';
 import report from './routes/report';
+import ai from './routes/ai';
 import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
@@ -313,6 +314,12 @@ app.route('/v1', cancellation);
 // and erased with the account. An exact path, so the bare form covers it.
 app.use('/v1/report', platformAuth);
 app.route('/v1', report);
+
+// AUTHENTICATED: paid AI — import and review (train-st-ai-customer-pays, T17).
+// The payer is the verified JWT subject; every call is metered BEFORE the wire
+// (src/lib/ai/meter.ts) and nothing is ever free (owner lock 2026-10-01).
+app.use('/v1/ai/*', platformAuth);
+app.route('/v1', ai);
 
 // AUTHENTICATED: the Paddle create-transaction half ([ADR 044] rung 2).
 //

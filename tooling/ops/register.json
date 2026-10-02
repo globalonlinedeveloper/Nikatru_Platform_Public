@@ -4679,6 +4679,50 @@
         "cloudflare"
       ],
       "source": "verified",
+      "id": "retention.d1.platform_db.ai_accounts",
+      "store": "d1:platform_db:ai_accounts",
+      "what": "A user's paid AI credits, monthly allowance used and AI opt-in (T17).",
+      "rule": "keep",
+      "keepWhy": "It is the balance the customer paid for and the record of their AI opt-in; a timer would delete credits that were bought. The row carries `user_id`, so it leaves with the account via the derived erasure sweep — a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0025_ai_meter.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.ai_ledger",
+      "store": "d1:platform_db:ai_ledger",
+      "what": "One row per paid AI call (tokens and USD) and per verified pack purchase (T17).",
+      "rule": "keep",
+      "keepWhy": "It explains a customer's credit balance and is what the global daily spend circuit-breaker sums; a pack grant row is the idempotency key that stops a replayed purchase webhook crediting twice, so expiring it would let a replay credit again. The row carries `user_id`, so it leaves with the account via the derived erasure sweep.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0025_ai_meter.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
       "id": "retention.d1.platform_db.provider_payment_links",
       "store": "d1:platform_db:provider_payment_links",
       "what": "The payment-to-subscription map: which subscription a Razorpay payment charged (PR #1149 ruling item 2).",

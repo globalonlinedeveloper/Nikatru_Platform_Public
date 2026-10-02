@@ -571,6 +571,12 @@ jobs:
       - name: The per-market duty matrix cannot silently rot
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-tripwires.mjs
+      # why: T17 (train-st-ai-customer-pays), the owner's customer-pays lock. Every call to a
+      # per-call paid API is customer-paid (BYOK, or our key behind the meter), gated in code,
+      # disclosed and marked (EU AI Act Art. 50); a new caller with no row fails.
+      - name: Every paid API call is customer-paid, metered or bring-your-own-key, disclosed and marked
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-paid-calls-metered.mjs
       - name: Every shipped asset has rights evidence, and every app shows it
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-licence-register.mjs

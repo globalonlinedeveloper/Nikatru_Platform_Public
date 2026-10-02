@@ -66,10 +66,15 @@
       "developer.android.com and partner.microsoft.com are here on the same footing as",
       "developer.apple.com and support.google.com: they are the store's own publication of its own rule,",
       "which is the enforcing body speaking. A store's requirement is not a law, and rows sourced to one",
-      "say so in their `duty` text rather than borrowing the authority of a statute."
+      "say so in their `duty` text rather than borrowing the authority of a statute.",
+      "",
+      "digital-strategy.ec.europa.eu is the European Commission's own site: the Commission is the body that",
+      "WROTE the AI Act's implementing guidance and whose AI Office enforces part of it, so its Article 50 FAQ",
+      "passes the same test as eur-lex (added 2026-10-02, T17, row eu-ai-act-art-50)."
     ],
     "allowed": [
       "eur-lex.europa.eu",
+      "digital-strategy.ec.europa.eu",
       "indiacode.nic.in",
       "meity.gov.in",
       "oag.ca.gov",
@@ -392,6 +397,25 @@
       "verification": "COULD-NOT-ESTABLISH",
       "wouldNeed": "The Regulation's own text on eur-lex.europa.eu, Article 50 and its transitional provisions, read directly. The GRACE PERIOD specifically could not be established, so no date is recorded.",
       "note": "What IS in force here regardless of the date: [ADR 019] requires the generator's own watermark to be kept intact and a PROVENANCE.json entry per asset. That is our own decision and does not depend on establishing the statutory date."
+    },
+    {
+      "id": "eu-ai-act-art-50",
+      "requirement": "K-13",
+      "markets": [
+        "eu"
+      ],
+      "duty": "EU AI Act Article 50: tell a person they are dealing with AI (50(1)), and mark AI-generated output in a machine-readable form (50(2)), for every paid AI feature (AI import, AI review). We are the PROVIDER of the resulting system, whoever pays for the model.",
+      "status": "partial",
+      "artefact": "tooling/ci/assert-paid-calls-metered.mjs",
+      "trigger": "Applies from 2026-08-02, and to OUR features from their launch: they are not on the market, so the 2 Dec 2026 grace for systems placed on the market before 2 Aug 2026 does not reach them. Paid AI is sold to EU buyers through Paddle and the stores, so it bites at the first sale.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act",
+        "fetched": "2026-10-02",
+        "quote": "Article 50 of the AI Act applies as from 2 August 2026. ... A limited grace period is envisaged only for AI systems placed on the market before 2 August 2026 and only as regards the marking and detection obligation for AI-generated content (Article 50(2) of the AI Act). Providers of such systems must comply with those obligations only as from 2 December 2026."
+      },
+      "verify": "curl -sL https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act | grep -o 'Article 50 of the AI Act applies as from 2 August 2026'",
+      "note": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays), the lead's reading (decided): we are the provider; we do NOT rely on the 'assistive / standard editing' carve-out for receipt parsing — labelling and marking every AI output costs almost nothing and removes the open question. BUILT in this tree: the disclosure before the first call (packages/chassis_screens/lib/ai/ai_disclosure.dart, AiDisclosureDialog; the opt-in is recorded by POST /v1/ai/consent and no call is possible without it), the label on every AI output (AiOutputLabel, with the report action), and the machine-readable marker on every server AI output (services/platform/src/routes/ai.ts: `provenance`, `source: ai_import`, `generated_by: ai`); assert-paid-calls-metered.mjs P3 fails an ai-inference row without a disclosure key or a marker field. NOT YET BUILT (hence partial): the marker in the app's own storage, export and backup of a row saved from an AI candidate — it lands with the app's AI import screen. The Commission's Code of Practice on Transparency of AI-generated content exists (the same FAQ, read 2026-10-02: 'a voluntary practical tool ... assessed as adequate'); aligning the marker format to it is owed with that screen. The older row eu-ai-act-marking-grace (generated ASSETS, ADR 019) stays as it is."
     },
     {
       "id": "play-ai-content-declaration",

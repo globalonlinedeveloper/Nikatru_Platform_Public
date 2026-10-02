@@ -1,0 +1,111 @@
+{
+  "_readme": [
+    "THE PAID-CALLS REGISTER — every call to a per-call PAID API, who pays for it, and what gates it.",
+    "",
+    "🔴 CUSTOMER PAYS (owner lock 2026-10-01: \"If using AI ... it should come from customer pocket\").",
+    "No AI and no per-call paid API on any path WE pay for without the customer paying: either the",
+    "user's own key (`mode: byok`, the call goes from the device to the provider and our server never",
+    "sees the key or the content) or OUR key behind a paid plan or paid credits, metered, hard-capped",
+    "(`mode: metered`). `payer` is therefore always `customer`, and the guard refuses anything else.",
+    "",
+    "Enforced by tooling/ci/assert-paid-calls-metered.mjs (train-st-ai-customer-pays, T17):",
+    "  · every row: a host, a kind, payer `customer`, a mode, callers that exist;",
+    "  · every `gate` anchor is a fragment its file still contains — the reservation and the plan check",
+    "    for a metered row, the device key read for a byok row; deleting one exits 1;",
+    "  · every `ai-inference` row names its feature's disclosure string keys (each must exist in the",
+    "    named ARB) and its output marker fields (each must appear in the named file) — EU AI Act",
+    "    Art. 50(1) and 50(2), for every future AI feature;",
+    "  · COVERAGE: every non-test source file under `scanRoots` that names a host's needle is a",
+    "    `caller` of a row for that host — a new paid call with no row exits 1;",
+    "  · COVERAGE LOST (exit 2): no rows, or the scan found no caller at all."
+  ],
+  "scanRoots": ["services", "packages", "apps", "extensions", "sites"],
+  "hosts": {
+    "api.anthropic.com": ["api.anthropic.com", "@anthropic-ai/sdk"],
+    "api.openai.com": ["api.openai.com"],
+    "generativelanguage.googleapis.com": ["generativelanguage.googleapis.com"]
+  },
+  "rows": [
+    {
+      "id": "anthropic-metered",
+      "host": "api.anthropic.com",
+      "kind": "ai-inference",
+      "payer": "customer",
+      "mode": "metered",
+      "why": "OUR key (NIKATRU_ANTHROPIC_API_KEY, server-only) for AI import and AI review. A call is made only after the meter reserved a PAID credit: a paid plan's monthly allowance (none in a trial) or a verified pack credit, under the per-user daily cap and the global daily spend circuit-breaker, with the kill switch off.",
+      "callers": ["services/platform/src/adapters/ai/anthropic.ts"],
+      "gate": [
+        { "file": "services/platform/src/adapters/ai/anthropic.ts", "anchor": "await reserveOrRefuse(CARRIER, deps.beforeCall, request, deps.limits)", "why": "the adapter asks the meter before the wire" },
+        { "file": "services/platform/src/lib/ai/meter.ts", "anchor": "const beforeCall: AiBeforeCall = async", "why": "the reservation: one paid credit, the caps, atomically" },
+        { "file": "services/platform/src/lib/ai/meter.ts", "anchor": "export async function planOf(", "why": "the plan check: a trial is not a payment" },
+        { "file": "services/platform/src/routes/ai.ts", "anchor": "aiRouteDeps.select(feature, env, { beforeCall: meter.beforeCall })", "why": "the route builds the provider WITH the meter" }
+      ],
+      "disclosure": {
+        "arb": "packages/design_system/lib/src/l10n/chassis_en.arb",
+        "keys": ["aiDisclosureBody", "aiCandidateLabel", "aiSuggestionLabel", "aiReportAction"]
+      },
+      "marker": [
+        { "file": "services/platform/src/routes/ai.ts", "field": "source: 'ai_import'" },
+        { "file": "services/platform/src/routes/ai.ts", "field": "generated_by: 'ai'" },
+        { "file": "services/platform/src/routes/ai.ts", "field": "generator: 'ai'" }
+      ]
+    },
+    {
+      "id": "anthropic-byok",
+      "host": "api.anthropic.com",
+      "kind": "ai-inference",
+      "payer": "customer",
+      "mode": "byok",
+      "why": "The user's own Anthropic key, read from the device's SecureStore per call and sent only to the provider. We pay nothing and see nothing.",
+      "callers": ["packages/api_client/lib/src/ai_byok/anthropic_byok.dart"],
+      "gate": [
+        { "file": "packages/api_client/lib/src/ai_byok/anthropic_byok.dart", "anchor": "byokKeyName(AiByokProvider.anthropic.name)", "why": "the key is the user's, from SecureStore" }
+      ],
+      "disclosure": {
+        "arb": "packages/design_system/lib/src/l10n/chassis_en.arb",
+        "keys": ["aiDisclosureBody", "aiCandidateLabel", "aiSuggestionLabel", "aiReportAction"]
+      },
+      "marker": [
+        { "file": "packages/chassis_screens/lib/ai/ai_disclosure.dart", "field": "AiOutputKind.candidate => l10n.aiCandidateLabel" }
+      ]
+    },
+    {
+      "id": "openai-byok",
+      "host": "api.openai.com",
+      "kind": "ai-inference",
+      "payer": "customer",
+      "mode": "byok",
+      "why": "The user's own OpenAI key, from SecureStore per call; the request goes from the device to the provider only.",
+      "callers": ["packages/api_client/lib/src/ai_byok/openai_byok.dart"],
+      "gate": [
+        { "file": "packages/api_client/lib/src/ai_byok/openai_byok.dart", "anchor": "byokKeyName(AiByokProvider.openai.name)", "why": "the key is the user's, from SecureStore" }
+      ],
+      "disclosure": {
+        "arb": "packages/design_system/lib/src/l10n/chassis_en.arb",
+        "keys": ["aiDisclosureBody", "aiCandidateLabel", "aiSuggestionLabel", "aiReportAction"]
+      },
+      "marker": [
+        { "file": "packages/chassis_screens/lib/ai/ai_disclosure.dart", "field": "AiOutputKind.candidate => l10n.aiCandidateLabel" }
+      ]
+    },
+    {
+      "id": "gemini-byok",
+      "host": "generativelanguage.googleapis.com",
+      "kind": "ai-inference",
+      "payer": "customer",
+      "mode": "byok",
+      "why": "The user's own Gemini key, from SecureStore per call; the request goes from the device to the provider only.",
+      "callers": ["packages/api_client/lib/src/ai_byok/gemini_byok.dart"],
+      "gate": [
+        { "file": "packages/api_client/lib/src/ai_byok/gemini_byok.dart", "anchor": "byokKeyName(AiByokProvider.gemini.name)", "why": "the key is the user's, from SecureStore" }
+      ],
+      "disclosure": {
+        "arb": "packages/design_system/lib/src/l10n/chassis_en.arb",
+        "keys": ["aiDisclosureBody", "aiCandidateLabel", "aiSuggestionLabel", "aiReportAction"]
+      },
+      "marker": [
+        { "file": "packages/chassis_screens/lib/ai/ai_disclosure.dart", "field": "AiOutputKind.candidate => l10n.aiCandidateLabel" }
+      ]
+    }
+  ]
+}
