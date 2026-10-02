@@ -106,7 +106,7 @@
   "optionsAutoDownloadDesc": "Запазва изображението веднага щом заснемането приключи.",
   "optionsAutoOpenEditor": "Отваряне на редактора след заснемане",
   "optionsAutoOpenEditorDesc": "Направо към редактирането (само при снимки от една част).",
-  "optionsSingleKeyShortcuts": "Команди с един клавиш в редактора",
+  "optionsSingleKeyShortcuts": "Единични бързи клавиши в редактора",
   "optionsSingleKeyShortcutsDesc": "Буквените клавиши избират инструмент, + и - мащабират, ? показва списъка с клавиши. Когато е изключено, те работят само докато изображението е на фокус.",
   "optionsTheme": "Тема",
   "optionsThemeDesc": "За изскачащия прозорец и всички страници на FullShot.",
