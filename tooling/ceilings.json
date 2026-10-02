@@ -543,7 +543,12 @@
       {
         "file": "services/subscriptiontracker-api/src/routes/budget.ts",
         "boundedBy": "MAX_CATEGORIES",
-        "note": "One DELETE plus one INSERT per category, deliberately in ONE batch so the replace is atomic. The bound is MAX_CATEGORIES + 1, and it currently exceeds the ceiling — see the `@ceiling-exceeds` declaration at the constant."
+        "note": "One DELETE plus one INSERT per category, deliberately in ONE batch so the replace is atomic, sent through `batchIdempotent` (services/_shared/src/d1.ts) since 2026-10-01 so a transient reset is retried. The bound is MAX_CATEGORIES + 1, and it currently exceeds the ceiling — see the `@ceiling-exceeds` declaration at the constant."
+      },
+      {
+        "file": "services/_shared/src/d1.ts",
+        "unboundedReason": "⏱ 2026-10-01 (services-027). `batchIdempotent` is a PASS-THROUGH: it sends the statement list its caller built, retrying a transient reset, and adds none of its own. Its size is the caller's, and every caller is a site of its own here — this scan counts a `batchIdempotent(` call as a batch (services/subscriptiontracker-api/src/routes/budget.ts, bounded by MAX_CATEGORIES). A caller added without an entry is red on that line.",
+        "note": "The one home of the transient retry, services/_shared/src/d1.ts."
       },
       {
         "file": "services/subscriptiontracker-api/src/routes/subscriptions.ts",

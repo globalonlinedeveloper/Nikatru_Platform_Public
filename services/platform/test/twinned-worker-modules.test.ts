@@ -59,6 +59,12 @@ import { describe, it, expect } from 'vitest';
 // which is also what keeps `services/platform`'s "no HS256 fallback" and
 // `services/subscriptiontracker-api`'s `erasureAuth` true, since collapsing those would be a
 // security change and not a refactor.
+// ⏱ 2026-10-01 · services-012: it moved whole, by the repair that keeps the
+// `workerd` build — services/_shared is a package that declares `jose`, installed
+// by each Worker's postinstall — into services/_shared/src/auth-middleware.ts,
+// with platform's no-fallback a declared option rather than a copy. This file
+// still reads `src/lib` only; services/_shared/test/carrier-parity.test.ts is the
+// limb that refuses a carrier re-declaring ANY kit export, middleware included.
 //
 // ── WHAT THIS FILE NOW HOLDS ────────────────────────────────────────────────
 // THE SUBJECT SET IS DERIVED, NOT LISTED. Every `services/*/src/lib/*.ts`

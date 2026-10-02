@@ -37,6 +37,11 @@
 // jose was lost once already (`vitest.config.ts`'s header records the 44 tests
 // that turned red). A shared home that silently changes which build of jose is
 // verified is worse than three copies of a predicate.
+// ⏱ 2026-10-01 · services-012: the plumbing moved here after all, by the repair
+// that keeps the build — services/_shared became a package declaring `jose`,
+// installed into services/_shared/node_modules by each Worker's postinstall, so
+// it resolves through its own `exports`. It lives in auth-middleware.ts; THIS
+// file still imports nothing (shared-home.test.ts holds the split).
 //
 // ── 🔴 A CARRIER'S SECRET EXPOSURE IS NOW A PROPERTY OF ITS IMPORTS ──────────
 // THIS FILE NAMES NO SECRET. `SUPABASE_JWT_SECRET` appears nowhere in it and

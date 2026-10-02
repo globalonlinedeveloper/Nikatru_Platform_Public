@@ -76,7 +76,7 @@ function tokenWithPayload(payload) {
 }
 
 /** The shape the live stacks are supposed to mint: `iss` = SUPABASE_URL +
- *  `/auth/v1`, byte for byte, which is what services/_shared/src/auth.ts:88
+ *  `/auth/v1`, byte for byte, which is what services/_shared/src/auth.ts:93
  *  hands `jwtVerify`. Set once the loopback port is known. */
 let goodToken;
 

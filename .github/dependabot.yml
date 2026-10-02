@@ -27,6 +27,7 @@ updates:
       - "/_playwright"
       - "/extensions/Extension/Full_Screen_Shot/test/e2e"
       - "/packages/tokens"
+      - "/services/_shared"
       - "/services/edge-shield"
       - "/services/platform"
       - "/services/subscriptiontracker-api"

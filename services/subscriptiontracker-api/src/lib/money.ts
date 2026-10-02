@@ -1,15 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// The money world this deploy lives in — [5]M-12, subscriptiontracker-api's copy.
+// The money world this deploy lives in — [5]M-12, subscriptiontracker-api's view.
 //
-// The CANONICAL contract is services/platform/src/lib/mor/contract.ts
-// (`MoneyEnvironment` / `isMoneyEnvironment`); this file restates its two-value
-// vocabulary rather than importing it because subscriptiontracker-api's SRC is the shape a
-// stamped per-app Worker ships in, and a stamped tree has no ../platform
-// sibling to resolve the import against. The seam is a rule about DEPLOYABLE
-// code only — test code reaches across the monorepo freely (the harness
-// already imports platform's migrations and its PLATFORM_MIGRATIONS list).
-// Two values, one meaning: a row written under 'sandbox' money must never
-// unlock anything read under 'live', and vice versa.
+// ⏱ 2026-10-01 · rv2 SYN-S2 (services-035).
+// A RE-EXPORT. `MoneyEnvironment` / `isMoneyEnvironment` are declared once, in
+// contracts/entitlement/contract.js, which services/platform's
+// src/lib/mor/contract.ts re-exports too. This file used to RESTATE the two-value
+// vocabulary on the ground that a stamped tree has no ../platform sibling to
+// import from; that held for platform, but `contracts/` sits at the repo root,
+// which every stamped tree has, and esbuild inlines the `.js` at bundle time
+// (`wrangler deploy --dry-run` proves the bundle resolves it). Two values, one
+// meaning: a row written under 'sandbox' money must never unlock anything read
+// under 'live', and vice versa.
 //
 // FAIL CLOSED ON AN ABSENT OR UNRECOGNISED VALUE — same rule, same reason as
 // services/platform/src/routes/money.ts: a default of 'live' would honour
@@ -17,9 +18,4 @@
 // real payments, and neither is a safe guess. Callers answer 503 and name the
 // variable instead.
 // ─────────────────────────────────────────────────────────────────────────────
-
-export type MoneyEnvironment = 'live' | 'sandbox';
-
-export function isMoneyEnvironment(v: unknown): v is MoneyEnvironment {
-  return v === 'live' || v === 'sandbox';
-}
+export { isMoneyEnvironment, type MoneyEnvironment } from '../../../../contracts/entitlement/contract.js';

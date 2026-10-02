@@ -179,6 +179,35 @@ export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
   }
 }
 
+/** Execute statements as ONE `db.batch()` — one round trip, one implicit
+ *  transaction — retrying a transient reset.
+ *
+ *  ⏱ 2026-10-01 · rv2 SYN-S2 (services-027).
+ *  `PUT /v1/budget` sent its replace as a bare `APP_DB.batch()`, so the one
+ *  reset `run` above exists for was still a 500 on the write a user makes when
+ *  they save their budget.
+ *
+ *  🔴 RETRYING A BATCH IS SAFE ONLY BECAUSE OF A PROPERTY OF THE CALLER, STATED
+ *  HERE AS `run`'s IS. A batch is one transaction, so a reset either rolled ALL of
+ *  it back or committed ALL of it. The retry is therefore correct only when
+ *  running the WHOLE batch twice leaves the same rows as running it once: every
+ *  statement is an upsert, a DELETE, an UPDATE to absolute values, or an INSERT of
+ *  a key the request generated before the batch ran — and an INSERT of such a key
+ *  is preceded, IN THE SAME BATCH, by the DELETE that clears it (the budget's
+ *  delete-then-insert replace), so the second run meets no row from the first. A
+ *  caller that appends, counts or lets the database mint a key breaks that
+ *  contract and must not use this helper.
+ *
+ *  ⚠️ NO UNIQUE-ON-RETRY ALLOWANCE, unlike `run`. A batch that meets its own
+ *  committed rows has broken the contract above, and surfacing that is the honest
+ *  answer: the conflict names a caller to fix, not a write that succeeded. */
+export async function batchIdempotent<T = unknown>(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<D1Result<T>[]> {
+  return withD1Retry(() => db.batch<T>(statements));
+}
+
 /** RFC 4122 v4 UUID (available on the Workers runtime). */
 export function uuid(): string {
   return crypto.randomUUID();

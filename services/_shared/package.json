@@ -1,0 +1,15 @@
+{
+  "name": "@nikatru/worker-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The one Worker kit: the modules every Cloudflare Worker here and every Worker stamped from the brick carry from one home. Each Worker depends on it as file:../_shared and installs its dependencies with `npm ci --prefix ../_shared` (its postinstall), because npm does not install a file: link's own dependencies.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts",
+    "./ports/*": "./src/ports/*.ts",
+    "./ports/fakes/*": "./src/ports/fakes/*.ts"
+  },
+  "dependencies": {
+    "jose": "^6.0.0"
+  }
+}
