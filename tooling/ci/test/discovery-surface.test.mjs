@@ -775,6 +775,10 @@ const p = (root, ...rel) => join(root, 'sites', 'nikatru', ...rel);
 // with `skip` reproduces the state the entry describes, so the audit is silent
 // for the right reason and the case that FLIPS it (rename to `skip-link`) is a
 // one-argument change away.
+//
+// ⏱ 2026-10-02 — THAT FLIP HAPPENED. The real page now spells `skip-link`, the entry
+// was deleted, and the default here follows the real page again: `skip-link`. The
+// `skip` spelling is now a failing input (see the exemption-maps cases below).
 const MIRROR_ROOT_REL = ['sites', 'rajasekarselvam'];
 const m = (root, ...rel) => join(root, ...MIRROR_ROOT_REL, ...rel);
 
@@ -785,7 +789,7 @@ const m = (root, ...rel) => join(root, ...MIRROR_ROOT_REL, ...rel);
  * do not.
  */
 const mirrored = ({
-  skipClass = 'skip',
+  skipClass = 'skip-link',
   main = true,
   focusVisible = true,
   lang = true,
@@ -794,6 +798,7 @@ const mirrored = ({
   ogH = '630',
   robots = null,
   body = '<h1>Fixture Person</h1>',
+  workLink = '<a href="https://nikatru.com/apps/subscriptiontracker">Work</a>',
 } = {}) =>
   `<!DOCTYPE html>\n<html${lang ? ' lang="en"' : ''}>\n<head>\n` +
   (robots === null ? '' : `<meta name="robots" content="${robots}">\n`) +
@@ -809,7 +814,10 @@ const mirrored = ({
   // `id="main"` STAYS on the element even when it is a <div>, so the no-<main>
   // case fails ONE condition and not two — a fixture that breaks two conditions
   // at once cannot say which limb reported it.
-  (main ? `<main id="main">${body}</main>` : `<div id="main">${body}</div>`) +
+  // The work list links every live app OUT to its storefront page (R12-05, decided
+  // 2026-10-02; tooling/sites/generate-personal-site.mjs writes it on the real page). A
+  // fixture mirror carries the link for the one live app every tree here has, `workLink`.
+  (main ? `<main id="main">${body}${workLink}</main>` : `<div id="main">${body}${workLink}</div>`) +
   '\n</body>\n</html>\n';
 
 /**
@@ -827,14 +835,11 @@ function withMirror(root, pages = { 'index.html': mirrored() }, opts = {}) {
   return root;
 }
 
-/** The mirror's own template — noindex, unlinked, and full of unfilled slots.
+/** The mirror's old CV template — noindex, unlinked, and full of unfilled slots.
  *
- *  🔴 EVERY MIRROR FIXTURE BELOW SHIPS ONE, and the one that does not is the
- *  case that proves why: PAGE_QUALITY_EXCLUDED names this file, and the audit
- *  fails when an exemption outlives its subject. So a mirror without cv.html is
- *  not a smaller fixture, it is the tree where the exemption has gone stale.
- *  The real file says so in its first line; this is the shape of it the guard
- *  classifies: excused BY NAME, and only while it stays noindex. */
+ *  ⏱ 2026-10-02 — the real file is GONE from the deploy root (/cv 301s home) and
+ *  PAGE_QUALITY_EXCLUDED no longer names it, so no fixture ships one by default.
+ *  This shape survives as a failing input: a page like it is graded, and fails. */
 const CV = ({ robots = 'noindex, nofollow' } = {}) =>
   mirrored({ robots, skipClass: null, main: false, focusVisible: false, og: false, body: '<h2>[Job title] — [Company]</h2>' });
 
@@ -2766,7 +2771,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     withMirror(root, {
       'index.html': mirrored(),
       '404.html': mirrored({ skipClass: 'skip-link' }),
-      'cv.html': CV(),
     });
     const r = guard(root);
     assert.equal(r.code, 0, r.out);
@@ -2792,7 +2796,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     withMirror(root, {
       'index.html': mirrored(),
       '404.html': mirrored({ skipClass: 'skip-link', main: false }),
-      'cv.html': CV(),
     });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
@@ -2813,7 +2816,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     withMirror(root, {
       'index.html': mirrored(),
       '404.html': mirrored({ skipClass: null, focusVisible: false }),
-      'cv.html': CV(),
     });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
@@ -2828,7 +2830,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     withMirror(root, {
       'index.html': mirrored(),
       '404.html': mirrored({ skipClass: 'skip-link', lang: false }),
-      'cv.html': CV(),
     });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
@@ -2839,7 +2840,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     const sized = tree([SUBLY]); generate(sized);
     withMirror(sized, {
       'index.html': mirrored({ body: '<img src="/me.jpg" alt="me" width="150" height="192">' }),
-      'cv.html': CV(),
     });
     const a = guard(sized);
     assert.equal(a.code, 0, a.out);
@@ -2848,7 +2848,6 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     const unsized = tree([SUBLY]); generate(unsized);
     withMirror(unsized, {
       'index.html': mirrored({ body: '<img src="/me.jpg" alt="me">' }),
-      'cv.html': CV(),
     });
     const b = guard(unsized);
     assert.equal(b.code, 1, b.out);
@@ -2869,7 +2868,7 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     assert.match(a.out, /sites\/nikatru\/index\.html carries og:image but no og:image:width\b/);
 
     const mr = tree([SUBLY]); generate(mr);
-    withMirror(mr, { 'index.html': mirrored().replace(/<meta property="og:image:width"[^>]*>\n/, ''), 'cv.html': CV() });
+    withMirror(mr, { 'index.html': mirrored().replace(/<meta property="og:image:width"[^>]*>\n/, '') });
     const b = guard(mr);
     assert.equal(b.code, 1, b.out);
     assert.match(b.out, /sites\/rajasekarselvam\/index\.html carries og:image but no og:image:width\b/);
@@ -2888,7 +2887,7 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     // artwork under a declared 1200x630 disagrees on both axes and on the order
     // of magnitude, which any half-working comparison catches.
     const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored({ ogH: '631' }), 'cv.html': CV() });
+    withMirror(root, { 'index.html': mirrored({ ogH: '631' }) });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /sites\/rajasekarselvam\/index\.html declares og:image 1200x631 and sites\/rajasekarselvam\/og-image\.png is actually 1200x630/);
@@ -2902,7 +2901,7 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     // 800x418 while the nikatru one stays 1200x630, and every page declares
     // 1200x630. Only the mirror page may be faulted.
     const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() }, { ogPx: { w: 800, h: 418 } });
+    withMirror(root, { 'index.html': mirrored() }, { ogPx: { w: 800, h: 418 } });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /sites\/rajasekarselvam\/index\.html declares og:image 1200x630 and sites\/rajasekarselvam\/og-image\.png is actually 800x418/);
@@ -2912,7 +2911,7 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
 
   test('🔴 a mirror root with NO og-image.png FAILS, counting the pages that point at it', () => {
     const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() }, { ogImage: false });
+    withMirror(root, { 'index.html': mirrored() }, { ogImage: false });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
     // ONE page points at the mirror asset — its homepage — where three point at
@@ -2926,68 +2925,56 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
     // and walked to by nothing that reports — so `continue` on a missing file,
     // which is right for a page limb A already named, would have been silence.
     const root = tree([SUBLY]); generate(root);
-    withMirror(root, { '404.html': mirrored({ skipClass: 'skip-link' }), 'cv.html': CV() });
+    withMirror(root, { '404.html': mirrored({ skipClass: 'skip-link' }) });
     const r = guard(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /sites\/rajasekarselvam\/index\.html does not exist, and it is a HAND-WRITTEN page this limb names explicitly/);
-    // and the condition exemption that names that page notices it went away.
-    assert.match(r.out, /PAGE_QUALITY_CONDITION_EXCLUDED names sites\/rajasekarselvam\/index\.html#skip-link, and this limb evaluated no such condition/);
   });
 
-  // ── the two exemption maps, and the audits that retire them ───────────────
-  test('cv.html is excused BY NAME, and nothing about it is reported', () => {
+  // ── 2026-10-02: both exemption maps are EMPTY, because both subjects were fixed ──
+  // cv.html (the unfilled CV template) left the deploy root, and the homepage's skip link
+  // took the shared class; each entry's audit had turned red asking for its deletion.
+  // What remains to prove is that nothing on the mirror is excused any more.
+  test('🔴 a mirror cv.html — an unfilled template — is now GRADED like any served page', () => {
     const root = tree([SUBLY]); generate(root);
     withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() });
     const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/cv\.html has 0 <main> element\(s\)/);
+    assert.match(r.out, /sites\/rajasekarselvam\/cv\.html has no skip link/);
+  });
+
+  test('🔴 a mirror homepage spelling its skip link `skip` FAILS — the class is no longer excused', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored({ skipClass: 'skip' }) });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html has no skip link/);
+  });
+
+  test('🔴 R12-05: a mirror homepage that stops linking a live app OUT fails, naming the URL', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored({ workLink: '' }) });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html does not link https:\/\/nikatru\.com\/apps\/subscriptiontracker/);
+  });
+
+  test('🔴 R12-05: an apps/ directory on the mirror fails — it would make the root owe legal pages', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored() });
+    mkdirSync(m(root, 'apps'), { recursive: true });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/apps\/ exists\. R12-05 decided the mirror LINKS OUT/);
+  });
+
+  test('a sound mirror reports nothing excused', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored() });
+    const r = guard(root);
     assert.equal(r.code, 0, r.out);
-    assert.doesNotMatch(r.out, /cv\.html/);
-    // 4 subjects: the 3 chrome pages of this tree plus the mirror homepage. The
-    // excused page is NOT one of them, which is the number saying so.
-    assert.match(r.out, /4 page\(s\) across sites\/nikatru \+ sites\/rajasekarselvam carry lang/);
-  });
-
-  test('🔴 an excused page that LOSES its noindex FAILS — the excuse rests on nobody being sent there', () => {
-    const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV({ robots: null }) });
-    const r = guard(root);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /sites\/rajasekarselvam\/cv\.html is excused from the page-quality contract by PAGE_QUALITY_EXCLUDED, and it has LOST its/);
-    // and it is still not GRADED — the exemption holds, the premise does not.
-    assert.doesNotMatch(r.out, /cv\.html has 0 <main>/);
-  });
-
-  test('🔴 an exemption that OUTLIVES its subject FAILS — a hole waiting for a future page', () => {
-    const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored() }); // the mirror exists; cv.html does not
-    const r = guard(root);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /PAGE_QUALITY_EXCLUDED names sites\/rajasekarselvam\/cv\.html, which is not served from any page-quality root/);
-  });
-
-  test('the condition exemption excuses ONE condition and not the page', () => {
-    // The homepage keeps its `skip` class (excused) AND loses its <main> (not).
-    const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored({ main: false }), 'cv.html': CV() });
-    const r = guard(root);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /sites\/rajasekarselvam\/index\.html has 0 <main> element\(s\)/);
-    assert.doesNotMatch(r.out, /sites\/rajasekarselvam\/index\.html has no skip link/);
-  });
-
-  test('🔴 SELF-RETIRING — the run after the page is fixed FAILS asking for the exemption back out', () => {
-    // 🔴 THIS IS WHAT SEPARATES A NAMED EXEMPTION FROM A HOLE. An exemption kept
-    // past its cause silently covers the NEXT regression on the same page. Here
-    // the fixture homepage is written with the class the real file should have
-    // — the whole of the outstanding repair — and the guard turns red demanding
-    // the entry be deleted rather than going quietly green.
-    const root = tree([SUBLY]); generate(root);
-    withMirror(root, { 'index.html': mirrored({ skipClass: 'skip-link' }), 'cv.html': CV() });
-    const r = guard(root);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /PAGE_QUALITY_CONDITION_EXCLUDED still excuses sites\/rajasekarselvam\/index\.html#skip-link, and that page now SATISFIES the condition/);
-    // and nothing else is wrong with that tree — the audit is the only reporter.
-    assert.doesNotMatch(r.out, /has no skip link/);
-    assert.doesNotMatch(r.out, /DRIFTED/);
+    assert.match(r.out, /\(0 page\(s\) and 0 single condition\(s\) excused by name/);
   });
 });
 

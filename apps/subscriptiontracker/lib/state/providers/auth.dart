@@ -1026,3 +1026,12 @@ lastAccountDeletionOutcomeProvider =
 /// runs, so the E2E can name the cause in one run, and a user never sees it.
 final StateProvider<String?> lastAccountDeletionDetailProvider =
     StateProvider<String?>((ref) => null);
+
+/// ⏱ 2026-10-01 · AB-A5-02-client. The server's OWN reason a deletion was
+/// refused — today only DELETE /v1/account's 503 `subscription_still_billing`,
+/// whose sentence says what to cancel first. Parked beside the outcome for the
+/// same reason: the seam signs out on that refusal too, the redirect tears the
+/// dialog down, and `LoginScreen` is where the user reads it. Cleared with the
+/// outcome when the notice is dismissed. Shown as plain text, never parsed.
+final StateProvider<String?> lastDeletionBillingSentenceProvider =
+    StateProvider<String?>((ref) => null);

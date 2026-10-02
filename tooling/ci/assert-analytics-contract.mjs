@@ -479,19 +479,14 @@ const WIRE_CONTRACTS = [
       member: 'static CancellationReceipt fromJson(',
       reader: 'j',
     },
-    requiredBoth: ['has_active_plan', 'recorded', 'executed'],
+    // ⏱ 2026-10-01 · AB-M4-03-client (train st-money-ready): `cancel_at` and
+    // `manage_url` moved here from `serverOnly` with their Dart reader — the
+    // client reads the 409 for a store row as CancellationOutcome.inStore.
+    requiredBoth: ['has_active_plan', 'recorded', 'executed', 'cancel_at', 'manage_url'],
     clientOnly: {},
     serverOnly: {
       not_executed_reason:
         'a recovery hint for a human (`no_provider_on_row` vs `provider_not_configured`), stored on the row and returned for support. The receipt models three INDEPENDENT booleans on purpose; a client that branched on the reason would be re-deriving "did it happen" from a string.',
-      // ⏱ 2026-09-29 · AB-M4-03 — the three keys the rail-aware cancel added. No
-      // released client reads them YET: the client half (moneyflows MF-3b) is an
-      // OPEN precondition in tooling/paywall-flip.json, and when it lands each
-      // key moves from here to `requiredBoth` with its Dart reader.
-      cancel_at:
-        'AB-M4-03: on a 409 for a store row, which store bills the subscription (`app_store` | `play_store` | `store`). Read by no client until MF-3b (tooling/paywall-flip.json AB-M4-03-client); a released client maps the 409 to `failed`, which says nothing untrue.',
-      manage_url:
-        "AB-M4-03: on a 409 for a store row, the store's own subscriptions page, or null. Read by no client until MF-3b (tooling/paywall-flip.json AB-M4-03-client).",
       effective_at:
         "AB-M4-03: on a 200 executed Paddle cancel, Paddle's `scheduled_change.effective_at` — when access ends. Read by no client until MF-3b; `executed` alone already decides the outcome.",
     },
@@ -577,16 +572,31 @@ const WIRE_CONTRACTS = [
     absentFromDart: '/v1/money',
   },
   {
+    // ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START (train st-money-ready).
+    // This was a `gap` whose `absentFromDart` tripwire said "nothing calls it
+    // yet". The hosted rail now calls it (DioCheckoutSessionTransport) and opens
+    // the `checkout_url` it returns, so the wire is pinned like `report`.
     id: 'checkout',
-    kind: 'gap',
-    reason:
-      'NO CLIENT IN THIS REPO, AND UNLIKE money-webhook THAT IS A STATE, NOT A CONSTRUCTION — which is why the claim below is the load-bearing part. [ADR 044] §5(2) measured that `Paddle.Checkout.open({items})` opens a checkout with NO server-created transaction and NO API key on the request path, exercising the identical payment-link and `_ptxn` machinery, so the server endpoint is not a v1 dependency. The owner chose both rungs; this is rung 2 and nothing calls it yet. There is therefore no released client of ours to break and no wire contract to pin. What stands in for one is the SHAPE: the create body type carries no settable `status` field at all, so `status:"billed"` — which mints an invoice number and an immutable tax record, and on a cardless trial auto-completes the transaction — is a compile error rather than a review catch.',
-    /** THE CLAIM IS CHECKED, NOT ASSERTED, and here it is a TRIPWIRE ON OUR OWN
-     *  ROADMAP. The day any Dart source builds this path, a released client
-     *  exists, "nothing calls it yet" becomes false, and this fails instead of
-     *  going on printing it — which is exactly when a wire contract has to be
-     *  pinned, and exactly when nobody would think to come back here. */
-    absentFromDart: '/v1/checkout',
+    kind: 'body',
+    server: 'services/platform/src/routes/checkout.ts',
+    client: {
+      file: 'packages/core/lib/src/checkout_session_transport.dart',
+      member: 'static CheckoutSession? fromJson(',
+      reader: 'j',
+    },
+    requiredBoth: ['checkout_url', 'transaction_id'],
+    clientOnly: {},
+    serverOnly: {
+      provider: 'which merchant of record created the transaction; the client opens the page whichever it is.',
+      app_id: 'an echo of the request, for the log; the client asked for it and does not re-read it.',
+      offering_id: 'same — an echo of the request.',
+    },
+    /** The REQUEST half: the client posts exactly these two keys, and the host
+     *  attributes the transaction to the VERIFIED subject, never a body field. */
+    request: {
+      client: { file: 'packages/api_client/lib/src/dio_checkout_session_transport.dart', marker: 'data: <String, Object?>' },
+      keys: ['app_id', 'offering_id'],
+    },
   },
   {
     // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING, chassis half. This was a `gap`

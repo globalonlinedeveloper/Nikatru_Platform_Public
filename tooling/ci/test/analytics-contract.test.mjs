@@ -255,6 +255,11 @@ const LIMB5_FILES = [
   'services/platform/src/routes/report.ts',
   'packages/core/lib/src/content_report_transport.dart',
   'packages/api_client/lib/src/dio_content_report_transport.dart',
+  // ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START (train st-money-ready): the
+  // checkout body pin — it was a `gap` until the hosted rail began to call it.
+  'services/platform/src/routes/checkout.ts',
+  'packages/core/lib/src/checkout_session_transport.dart',
+  'packages/api_client/lib/src/dio_checkout_session_transport.dart',
   // ⏱ 2026-09-28 · ST-N1 (ST-T7b): the `sdk` pins of the four native credential
   // routes — the route that serves each op, the client that points gotrue-dart
   // at its base, and the package test that drives each op to it.
@@ -740,9 +745,10 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /wire plan-cancel — body pinned/);
     assert.match(r.out, /GAP {2}wire money-webhook/);
     // checkout joined the gaps 2026-08-12 — the Paddle create-transaction server
-    // half ([ADR 044] rung 2). Its gap is a STATE, not a construction: the day a
-    // Dart client builds /v1/checkout the guard fails and demands a real pin.
-    assert.match(r.out, /GAP {2}wire checkout/);
+    // half ([ADR 044] rung 2). Its gap was a STATE, not a construction: on
+    // 2026-10-01 (st-money-ready) a Dart client began to build /v1/checkout, the
+    // tripwire fired as designed, and it is a real body pin now.
+    assert.match(r.out, /ok {3}wire checkout — body pinned/);
     // …and the third, added with the bundle union read. Its gap is a STATE too:
     // the day a Dart client builds /v1/entitlements/subject the guard fails and
     // demands a real pin.
@@ -778,7 +784,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 20 -> 21 pinned, 19 -> 18 gaps.
     // ⏱ 2026-10-02 (AB-A4-01): + POST /v1/sessions/revoke-all is a body pin now that log-out-all calls it.
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 23 -> 24 pinned, 16 -> 15 gaps.
-    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 24 pinned, 15 printed gap/); // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned (/v1/sessions list + revoke), -2 gaps. // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 25 pinned, 14 printed gap/); // ⏱ 2026-10-02 · merge with main: revoke-all (this branch) + checkout (main) both body pins — 25 pinned, 14 gaps. // ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin (23 -> 24 pinned, 16 -> 15 gaps). // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned (/v1/sessions list + revoke), -2 gaps. // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -1139,10 +1145,9 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     })));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /GAP {2}wire money-webhook/);
-    // checkout joined the gaps 2026-08-12 — the Paddle create-transaction server
-    // half ([ADR 044] rung 2). Its gap is a STATE, not a construction: the day a
-    // Dart client builds /v1/checkout the guard fails and demands a real pin.
-    assert.match(r.out, /GAP {2}wire checkout/);
+    // checkout was a gap from 2026-08-12 until 2026-10-01 (st-money-ready), when a
+    // Dart client began to build /v1/checkout and it became a body pin.
+    assert.match(r.out, /ok {3}wire checkout — body pinned/);
   });
 
   test('COVERAGE LOST when a delegated pin loses the marker it points at', () => {
@@ -1250,7 +1255,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 19 -> 20 pinned, 19 -> 18 gaps.
     // ⏱ 2026-10-02 (AB-A4-01): revoke-all became a body pin.
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 22 -> 23 pinned, 16 -> 15 gaps.
-    assert.match(r.out, /23 pinned, 15 printed gap/); // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned, -2 gaps (/v1/sessions). // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    assert.match(r.out, /24 pinned, 14 printed gap/); // ⏱ 2026-10-02 · merge with main: revoke-all + checkout both body pins — 24 pinned, 14 gaps. // ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin (22 -> 23 pinned, 16 -> 15 gaps). // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned, -2 gaps (/v1/sessions). // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

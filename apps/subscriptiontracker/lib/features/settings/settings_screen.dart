@@ -65,6 +65,7 @@ import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
 import '../account/account_rows.dart';
 import 'categories_manager.dart' show CategoriesSettingsRow;
+import 'delete_account_billing.dart';
 import 'reminder_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -1273,16 +1274,11 @@ class SettingsScreen extends ConsumerWidget {
   ) async {
     final AuthRepository auth = ref.read(authRepositoryProvider);
     final AuthUser? user = auth.currentUser;
-    // 🔴 ALL THREE RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason
-    // [userStateDrops] records: `deleteAccount()` signs out, the router tears
-    // this shell down, and a `ref.read` on the far side of that await throws
-    // `StateError`. The drops read sits INSIDE the try, where that throw dies in
-    // the deliberately empty `catch` below and the forget silently does nothing
-    // on the one path where the account it belongs to no longer exists. The two
-    // sinks are read AFTER the try, so theirs escaped `_deleteAccount` before
-    // `return outcome` ever ran — into `_DeleteAccountDialog._run`, which does
-    // not catch: the dialog stays `_busy` (so `PopScope` refuses to close) and
-    // the login screen is handed no outcome at all. That is the live E2E flake.
+    // 🔴 ALL FOUR RESOLVED HERE, BEFORE THE FIRST AWAIT ([userStateDrops]):
+    // `deleteAccount()` signs out, the router tears this shell down, and a
+    // `ref.read` past that await throws `StateError` — inside the try it killed
+    // the forget silently; after it, it escaped into `_DeleteAccountDialog._run`,
+    // leaving the dialog `_busy` with no outcome. That was the live E2E flake.
     final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
@@ -1290,6 +1286,7 @@ class SettingsScreen extends ConsumerWidget {
     final StateController<String?> detailSink = ref.read(
       lastAccountDeletionDetailProvider.notifier,
     );
+    final void Function(Object) noteBilling = deletionBillingRecorder(ref);
     core.AccountDeletionOutcome outcome;
     String? detail;
     try {
@@ -1329,6 +1326,7 @@ class SettingsScreen extends ConsumerWidget {
         // one fact that explains it already thrown away. Parked, not rendered in
         // release: see [lastAccountDeletionDetailProvider].
         detail = '$e';
+        noteBilling(e);
       }
       // BOTH BRANCHES ABOVE, because `deleteAccount` signs out whether or not
       // the server deleted anything — so the session is gone either way and the
@@ -1606,6 +1604,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                 : l10n.deleteAccountConfirmBody,
             style: t.body,
           ),
+          const DeleteAccountPlanLine(),
           const SizedBox(height: 14),
           Text(
             widget.passwordless
@@ -1701,6 +1700,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             key: E2EKeys.deleteAccountResult,
             style: t.body,
           ),
+          const DeleteAccountServerSentence(),
           // 🔴 THE EMAIL ROUTE ON EVERY FAILURE, INCLUDING reauthFailed — and
           // that inclusion is not tidiness. Re-auth is `signInWithEmail`, and an
           // account created through "Continue with Apple" has NO PASSWORD here,
