@@ -3886,6 +3886,11 @@
         }
       ]
     },
+    "tooling/scripts/assert-business-facts.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/scripts/assert-no-dead-files.mjs": {
       "catches": 4,
       "firstSeen": "2026-08-17",

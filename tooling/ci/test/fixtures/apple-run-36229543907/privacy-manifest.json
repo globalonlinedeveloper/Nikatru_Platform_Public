@@ -70,7 +70,7 @@
       "kind": "remote",
       "url": "developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api",
       "quote": "Starting May 1, 2024, apps that don't describe their use of required reason API in their privacy manifest file aren't accepted by App Store Connect.",
-      "recordedIn": "nikatru/vendors/apple.md §9, where the fetch is dated",
+      "recordedIn": "nikatru/vendors/apple.md#status, where the fetch is dated",
       "note": "Enforcement is at UPLOAD, before review — it costs an upload round-trip, not a review cycle."
     },
     "rejectionCode": {
