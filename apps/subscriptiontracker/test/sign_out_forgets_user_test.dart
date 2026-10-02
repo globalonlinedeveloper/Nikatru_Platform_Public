@@ -381,39 +381,43 @@ void main() {
   // ⏱ 2026-10-02 · review 2 of #1140, finding 4 — the adapter's truthful
   // refusal (signed out everywhere, other sign-ins still open) must reach the
   // screen: "try again" names a control this signed-out device no longer has.
-  testWidgets('🔴 SIGNED OUT EVERYWHERE BUT THE WORKERS NOT TOLD: SAYS SIGN IN AGAIN FIRST', (
-    WidgetTester tester,
-  ) async {
-    final _FakeAuth auth = _FakeAuth(
-      signOutFailure: core.AuthFailure(
-        'You are signed out on every device, but the sign-ins already open on '
-        'other devices could not all be ended.',
-        code: core.AuthFailure.othersNotRevoked,
-      ),
-    );
-    final h = _harness(auth);
+  testWidgets(
+    '🔴 SIGNED OUT EVERYWHERE BUT THE WORKERS NOT TOLD: SAYS SIGN IN AGAIN FIRST',
+    (WidgetTester tester) async {
+      final _FakeAuth auth = _FakeAuth(
+        signOutFailure: core.AuthFailure(
+          'You are signed out on every device, but the sign-ins already open on '
+          'other devices could not all be ended.',
+          code: core.AuthFailure.othersNotRevoked,
+        ),
+      );
+      final h = _harness(auth);
 
-    await _pumpSettings(tester, h.container);
-    await tester.tap(find.text('Log out of all devices'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Log out everywhere'));
-    await tester.pumpAndSettle();
+      await _pumpSettings(tester, h.container);
+      await tester.tap(find.text('Log out of all devices'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Log out everywhere'));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text(
-        'You are signed out on every device, but sign-ins already open on other '
-        'devices could not all be ended. Sign in again, then use Log out of all '
-        'devices once more to finish.',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Logging out of all devices did not finish. Please try again.'),
-      findsNothing,
-      reason: 'this device is signed out, so "try again" has no control to press',
-    );
-    expect(auth.signOutScopes, <core.SignOutScope>[core.SignOutScope.global]);
-  });
+      expect(
+        find.text(
+          'You are signed out on every device, but sign-ins already open on other '
+          'devices could not all be ended. Sign in again, then use Log out of all '
+          'devices once more to finish.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Logging out of all devices did not finish. Please try again.',
+        ),
+        findsNothing,
+        reason:
+            'this device is signed out, so "try again" has no control to press',
+      );
+      expect(auth.signOutScopes, <core.SignOutScope>[core.SignOutScope.global]);
+    },
+  );
 
   testWidgets('🔴 CANCEL ON THE LOG-OUT-EVERYWHERE DIALOG SIGNS NOTHING OUT', (
     WidgetTester tester,

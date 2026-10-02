@@ -68,12 +68,14 @@ const run = (cmd, args) => {
   const r = spawnSync(AS[0] ?? cmd, AS.length ? [...AS.slice(1), cmd, ...args] : args, { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: r.stdout ?? '' };
 };
-/** One psql call; ON_ERROR_STOP, so a failed statement is a non-zero exit. */
+/** One psql call; ON_ERROR_STOP, so a failed statement is a non-zero exit. As the
+ *  cluster's superuser `postgres` (initdb -U postgres), never the OS user: CI's
+ *  `runner` has no role in a fresh cluster. */
 const psql = (sql) => {
   const f = join(dir, `q-${Math.random().toString(36).slice(2)}.sql`);
   writeFileSync(f, sql);
   chmodSync(f, 0o644);
-  const r = run('psql', ['-X', '-q', '-tA', '-v', 'ON_ERROR_STOP=1', '-h', sock, '-p', '5439', '-d', 'postgres', '-f', f]);
+  const r = run('psql', ['-X', '-q', '-tA', '-v', 'ON_ERROR_STOP=1', '-h', sock, '-p', '5439', '-U', 'postgres', '-d', 'postgres', '-f', f]);
   assert.equal(r.code, 0, r.out);
   return r.stdout.trim();
 };

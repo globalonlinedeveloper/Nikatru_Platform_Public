@@ -1102,13 +1102,13 @@ class SettingsScreen extends ConsumerWidget {
       await signOutAndForgetUser(ref, scope: scope);
     } catch (e) {
       // Review 2 of #1140, finding 4: signed out everywhere, Workers not told.
-      final bool signInFirst = e is core.AuthFailure &&
-          e.code == core.AuthFailure.othersNotRevoked;
-      messenger.showSnackBar(SnackBar(content: Text(signInFirst
+      final String text =
+          e is core.AuthFailure && e.code == core.AuthFailure.othersNotRevoked
           ? l10n.logOutAllDevicesSignInAgain
           : scope == core.SignOutScope.global
-              ? l10n.logOutAllDevicesFailed
-              : l10n.signOutFailed)));
+          ? l10n.logOutAllDevicesFailed
+          : l10n.signOutFailed;
+      messenger.showSnackBar(SnackBar(content: Text(text)));
     }
   }
 
