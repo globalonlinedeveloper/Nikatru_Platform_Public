@@ -689,7 +689,8 @@ function prLaneConnect() {
   const m = /^connect=(.*)$/m.exec(r.stdout);
   assert.ok(m, r.stdout);
   const args = m[1].split(' ');
-  assert.ok(args.includes(API), `the emitted list no longer names ${API}: ${m[1]}`);
+  // Each origin is compared whole, as one list element (CodeQL #579).
+  assert.ok(args.some((a) => a === API), `the emitted list no longer names ${API}: ${m[1]}`);
   return args;
 }
 
