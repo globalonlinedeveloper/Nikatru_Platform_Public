@@ -31,6 +31,8 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisL10nX, DataStateView, MonthGrid;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
+    show SetupStepsView;
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -1022,6 +1024,100 @@ void main() {
     expect(find.byType(AppShell), findsOneWidget);
   }
 
+  /// Walks the after-sign-in setup IF it is showing, and says whether it was.
+  ///
+  /// ⏱ 2026-10-02 · ST-T9 (EN-18, #1130). Home sends a signed-in account whose
+  /// list loads EMPTY to `/setup` — three steps (home currency, reminder
+  /// channels, "pick what you pay for"), a full ROUTE, not a dialog — and the
+  /// account is marked seen when it finishes or skips, ONCE PER ACCOUNT
+  /// (`setupSeenProvider`, keyed by the account id in the device store). Every
+  /// leg here signs in a fresh admin-API user, so it meets the setup every run;
+  /// the first E2E after #1130 (run 36948740532) timed out on its step 1 in BOTH
+  /// legs because nothing here knew it existed.
+  ///
+  /// The suite VISITS every page, so this WALKS all three steps with Next,
+  /// accepting the defaults (nothing picked on step 3, so no row is added), and
+  /// asserts each step's heading from the arb before advancing. A setup that is
+  /// NOT shown (a returning account, a list that was not empty) is not a
+  /// failure — the same contract as [skipOnboardingIfShown] — and the landing
+  /// assertion after it is unchanged.
+  ///
+  /// 🔴 THE REDIRECT IS AFTER A FRAME, so "Home with the list loaded" can be
+  /// true for a moment before `/setup` replaces it. This waits for the setup's
+  /// advance button, and only gives up on it once Home has held its loaded list
+  /// for two seconds.
+  Future<bool> walkSetupIfShown(WidgetTester tester, String leg) async {
+    final Finder advance = find.byKey(SetupStepsView.advanceButton);
+    final int startedIn = testEpoch;
+    final DateTime end = DateTime.now().add(const Duration(seconds: 15));
+    DateTime? homeSince;
+    while (DateTime.now().isBefore(end) && advance.evaluate().isEmpty) {
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
+      if (listLoadedOnHome(tester)) {
+        homeSince ??= DateTime.now();
+        if (DateTime.now().difference(homeSince) > const Duration(seconds: 2)) {
+          break;
+        }
+      } else {
+        homeSince = null;
+      }
+    }
+    if (advance.evaluate().isEmpty) return false;
+
+    final AppLocalizations l10n = AppLocalizations.of(tester.element(advance));
+    final List<String> titles = <String>[
+      l10n.setupCurrencyTitle,
+      l10n.setupRemindersTitle,
+      l10n.setupPickTitle,
+    ];
+    for (int i = 0; i < titles.length; i++) {
+      final bool last = i == titles.length - 1;
+      expect(
+        await waitFor(tester, find.text(titles[i])),
+        isTrue,
+        reason:
+            '$leg: setup step ${i + 1} of ${titles.length} ("${titles[i]}") '
+            'never showed. On screen: ${onScreen(tester)}',
+      );
+      expectNothingCoveringTheApp('setup step ${i + 1}');
+      await shot('03s-setup-step-${i + 1}');
+      expect(
+        find.descendant(
+          of: advance,
+          matching: find.text(last ? l10n.setupFinish : l10n.setupNext),
+        ),
+        findsOneWidget,
+        reason:
+            '$leg: setup step ${i + 1} does not offer '
+            '"${last ? l10n.setupFinish : l10n.setupNext}". On screen: '
+            '${onScreen(tester)}',
+      );
+      // A ROUTE, not a dialog — but the step change animates, so settle the
+      // frame before the tap rather than tapping a control mid-transition.
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      await tapWhenHittable(
+        tester,
+        advance,
+        last ? l10n.setupFinish : l10n.setupNext,
+      );
+      await pumpFor(tester, const Duration(milliseconds: 600));
+    }
+    // Done saves the currency, marks the account seen and routes to Home,
+    // whose list is one more live Worker read.
+    expect(
+      await waitGone(tester, advance, timeout: const Duration(seconds: 12)),
+      isTrue,
+      reason:
+          '$leg: "${l10n.setupFinish}" did not leave the setup. On screen: '
+          '${onScreen(tester)}',
+    );
+    final DateTime homeBy = DateTime.now().add(const Duration(seconds: 12));
+    while (DateTime.now().isBefore(homeBy) && !listLoadedOnHome(tester)) {
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
+    }
+    return true;
+  }
+
   /// The `E2E_EXPECT_WORKERS_TRUST=no` half of every Worker-dependent leg — a
   /// POSITIVE expectation, not a skip.
   ///
@@ -1280,6 +1376,11 @@ void main() {
     // router serves this interstitial to an AUTHENTICATED user only, so `true`
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
+
+    // ── 03s After-sign-in setup (ST-T9, EN-18) ───────────────────────────────
+    // A fresh account whose list loads empty meets it; see the helper.
+    final bool sawSetup = await walkSetupIfShown(tester, 'the full walk');
+    debugPrint('E2E full walk: after-sign-in setup shown = $sawSetup');
 
     // ── 03 Landing ───────────────────────────────────────────────────────────
     // ⏱ 2026-10-01 · IM-07 (ADR 077 §2.2): this was "03 Scan", a timed loader
@@ -2029,6 +2130,10 @@ void main() {
     // screen at all is proof of a valid session, and the assertion below is
     // the one that used to guess about exactly that.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
+
+    // ST-T9 (EN-18): the delete-leg user is fresh too, so it meets the setup.
+    final bool sawSetup = await walkSetupIfShown(tester, 'the delete leg');
+    debugPrint('E2E delete leg: after-sign-in setup shown = $sawSetup');
 
     // ⏱ 2026-10-01 · IM-07: the delete leg lands on Home like the full walk;
     // see `expectLandedOnHome` for the evidence rules (2026-09-02).
