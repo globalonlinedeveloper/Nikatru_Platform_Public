@@ -1,0 +1,935 @@
+{
+ "_readme": [
+  "RECORDED-SHAPE GitHub REST responses for tooling/ci/test/self-review.test.mjs: a week (2026-09-24..2026-10-01 UTC) where re-runs dominate. Keys are the exact `gh api` paths self-review.mjs requests; values {status, headers, body}. #101 goes red on its first push; #103-#106 go green only on a re-run of the same SHA; main is red for one hour; #104 has an empty pull_requests list and is matched by branch."
+ ],
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls?state=all&sort=updated&direction=desc&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"3327636f\""
+  },
+  "body": [
+   {
+    "number": 107,
+    "state": "closed",
+    "title": "lane lane/p107",
+    "created_at": "2026-09-29T08:00:00Z",
+    "updated_at": "2026-09-29T14:00:00Z",
+    "closed_at": "2026-09-29T14:00:00Z",
+    "merged_at": "2026-09-29T14:00:00Z",
+    "head": {
+     "ref": "lane/p107",
+     "sha": "ccccccccccccccccccccccccccccccccccccc437"
+    }
+   },
+   {
+    "number": 106,
+    "state": "closed",
+    "title": "lane lane/p106",
+    "created_at": "2026-09-28T08:00:00Z",
+    "updated_at": "2026-09-28T14:00:00Z",
+    "closed_at": "2026-09-28T14:00:00Z",
+    "merged_at": "2026-09-28T14:00:00Z",
+    "head": {
+     "ref": "lane/p106",
+     "sha": "ccccccccccccccccccccccccccccccccccccc42d"
+    }
+   },
+   {
+    "number": 105,
+    "state": "closed",
+    "title": "lane lane/p105",
+    "created_at": "2026-09-27T08:00:00Z",
+    "updated_at": "2026-09-27T14:00:00Z",
+    "closed_at": "2026-09-27T14:00:00Z",
+    "merged_at": "2026-09-27T14:00:00Z",
+    "head": {
+     "ref": "lane/p105",
+     "sha": "ccccccccccccccccccccccccccccccccccccc423"
+    }
+   },
+   {
+    "number": 104,
+    "state": "closed",
+    "title": "lane lane/p104",
+    "created_at": "2026-09-26T08:00:00Z",
+    "updated_at": "2026-09-26T14:00:00Z",
+    "closed_at": "2026-09-26T14:00:00Z",
+    "merged_at": "2026-09-26T14:00:00Z",
+    "head": {
+     "ref": "lane/p104",
+     "sha": "ccccccccccccccccccccccccccccccccccccc419"
+    }
+   },
+   {
+    "number": 103,
+    "state": "closed",
+    "title": "lane lane/p103",
+    "created_at": "2026-09-25T08:00:00Z",
+    "updated_at": "2026-09-25T14:00:00Z",
+    "closed_at": "2026-09-25T14:00:00Z",
+    "merged_at": "2026-09-25T14:00:00Z",
+    "head": {
+     "ref": "lane/p103",
+     "sha": "ccccccccccccccccccccccccccccccccccccc40f"
+    }
+   },
+   {
+    "number": 109,
+    "state": "open",
+    "title": "lane lane/p109",
+    "created_at": "2026-09-25T08:00:00Z",
+    "updated_at": "2026-09-25T08:30:00Z",
+    "closed_at": null,
+    "merged_at": null,
+    "head": {
+     "ref": "lane/p109",
+     "sha": "ccccccccccccccccccccccccccccccccccccc44b"
+    }
+   },
+   {
+    "number": 102,
+    "state": "closed",
+    "title": "lane lane/p102",
+    "created_at": "2026-09-24T08:00:00Z",
+    "updated_at": "2026-09-24T14:00:00Z",
+    "closed_at": "2026-09-24T14:00:00Z",
+    "merged_at": "2026-09-24T14:00:00Z",
+    "head": {
+     "ref": "lane/p102",
+     "sha": "ccccccccccccccccccccccccccccccccccccc405"
+    }
+   },
+   {
+    "number": 108,
+    "state": "closed",
+    "title": "lane lane/p108",
+    "created_at": "2026-09-24T08:00:00Z",
+    "updated_at": "2026-09-24T14:00:00Z",
+    "closed_at": "2026-09-24T14:00:00Z",
+    "merged_at": "2026-09-24T14:00:00Z",
+    "head": {
+     "ref": "lane/p108",
+     "sha": "ccccccccccccccccccccccccccccccccccccc441"
+    }
+   },
+   {
+    "number": 101,
+    "state": "closed",
+    "title": "lane lane/one",
+    "created_at": "2026-09-24T09:00:00Z",
+    "updated_at": "2026-09-24T12:00:00Z",
+    "closed_at": "2026-09-24T12:00:00Z",
+    "merged_at": "2026-09-24T12:00:00Z",
+    "head": {
+     "ref": "lane/one",
+     "sha": "ccccccccccccccccccccccccccccccccccccc3fb"
+    }
+   },
+   {
+    "number": 95,
+    "state": "closed",
+    "title": "lane lane/old",
+    "created_at": "2026-09-18T09:00:00Z",
+    "updated_at": "2026-09-18T15:00:00Z",
+    "closed_at": "2026-09-18T15:00:00Z",
+    "merged_at": "2026-09-18T15:00:00Z",
+    "head": {
+     "ref": "lane/old",
+     "sha": "ccccccccccccccccccccccccccccccccccccc3bf"
+    }
+   },
+   {
+    "number": 1,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-02T00:00:00Z",
+    "head": {
+     "ref": "ancient"
+    }
+   }
+  ]
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs?created=2026-09-03T00%3A00%3A00Z..2026-09-09T23%3A59%3A59Z&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"110cfcd0\""
+  },
+  "body": {
+   "total_count": 0,
+   "workflow_runs": []
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs?created=2026-09-10T00%3A00%3A00Z..2026-09-16T23%3A59%3A59Z&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"cde5addf\""
+  },
+  "body": {
+   "total_count": 0,
+   "workflow_runs": []
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs?created=2026-09-17T00%3A00%3A00Z..2026-09-23T23%3A59%3A59Z&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"9962e48b\""
+  },
+  "body": {
+   "total_count": 1,
+   "workflow_runs": [
+    {
+     "id": 36500000010,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/old",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3b6",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-18T09:05:00Z",
+     "run_started_at": "2026-09-18T09:05:00Z",
+     "updated_at": "2026-09-18T09:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 95
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs?created=2026-09-24T00%3A00%3A00Z..2026-09-30T23%3A59%3A59Z&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"f1e60b4a\""
+  },
+  "body": {
+   "total_count": 14,
+   "workflow_runs": [
+    {
+     "id": 36500000000,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/one",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3f2",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "failure",
+     "created_at": "2026-09-24T09:05:00Z",
+     "run_started_at": "2026-09-24T09:05:00Z",
+     "updated_at": "2026-09-24T09:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 101
+      }
+     ]
+    },
+    {
+     "id": 36500000001,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/one",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3f3",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-24T10:00:00Z",
+     "run_started_at": "2026-09-24T10:00:00Z",
+     "updated_at": "2026-09-24T10:20:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 101
+      }
+     ]
+    },
+    {
+     "id": 36500000002,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p102",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3fc",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-24T08:05:00Z",
+     "run_started_at": "2026-09-24T08:05:00Z",
+     "updated_at": "2026-09-24T08:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 102
+      }
+     ]
+    },
+    {
+     "id": 36500000003,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p103",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-25T08:05:00Z",
+     "run_started_at": "2026-09-25T08:05:00Z",
+     "updated_at": "2026-09-25T08:50:00Z",
+     "run_attempt": 2,
+     "pull_requests": [
+      {
+       "number": 103
+      }
+     ]
+    },
+    {
+     "id": 36500000004,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p104",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-26T08:05:00Z",
+     "run_started_at": "2026-09-26T08:05:00Z",
+     "updated_at": "2026-09-26T08:50:00Z",
+     "run_attempt": 2,
+     "pull_requests": []
+    },
+    {
+     "id": 36500000005,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p105",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-27T08:05:00Z",
+     "run_started_at": "2026-09-27T08:05:00Z",
+     "updated_at": "2026-09-27T08:50:00Z",
+     "run_attempt": 2,
+     "pull_requests": [
+      {
+       "number": 105
+      }
+     ]
+    },
+    {
+     "id": 36500000006,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p106",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-28T08:05:00Z",
+     "run_started_at": "2026-09-28T08:05:00Z",
+     "updated_at": "2026-09-28T08:50:00Z",
+     "run_attempt": 2,
+     "pull_requests": [
+      {
+       "number": 106
+      }
+     ]
+    },
+    {
+     "id": 36500000007,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p107",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc42e",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-29T08:05:00Z",
+     "run_started_at": "2026-09-29T08:05:00Z",
+     "updated_at": "2026-09-29T08:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 107
+      }
+     ]
+    },
+    {
+     "id": 36500000008,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p108",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc438",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-24T08:05:00Z",
+     "run_started_at": "2026-09-24T08:05:00Z",
+     "updated_at": "2026-09-24T08:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 108
+      }
+     ]
+    },
+    {
+     "id": 36500000009,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "lane/p109",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc442",
+     "event": "pull_request",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-25T08:05:00Z",
+     "run_started_at": "2026-09-25T08:05:00Z",
+     "updated_at": "2026-09-25T08:25:00Z",
+     "run_attempt": 1,
+     "pull_requests": [
+      {
+       "number": 109
+      }
+     ]
+    },
+    {
+     "id": 36500000011,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "main",
+     "head_sha": "cccccccccccccccccccccccccccccccccccc1388",
+     "event": "push",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-24T20:00:00Z",
+     "run_started_at": "2026-09-24T20:00:00Z",
+     "updated_at": "2026-09-24T20:20:00Z",
+     "run_attempt": 1,
+     "pull_requests": []
+    },
+    {
+     "id": 36500000012,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "main",
+     "head_sha": "cccccccccccccccccccccccccccccccccccc1389",
+     "event": "push",
+     "status": "completed",
+     "conclusion": "failure",
+     "created_at": "2026-09-25T09:40:00Z",
+     "run_started_at": "2026-09-25T09:40:00Z",
+     "updated_at": "2026-09-25T10:00:00Z",
+     "run_attempt": 1,
+     "pull_requests": []
+    },
+    {
+     "id": 36500000013,
+     "name": "CI",
+     "path": ".github/workflows/ci.yml",
+     "head_branch": "main",
+     "head_sha": "cccccccccccccccccccccccccccccccccccc138a",
+     "event": "push",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-25T10:40:00Z",
+     "run_started_at": "2026-09-25T10:40:00Z",
+     "updated_at": "2026-09-25T11:00:00Z",
+     "run_attempt": 1,
+     "pull_requests": []
+    },
+    {
+     "id": 36500000014,
+     "name": "Ops watch",
+     "path": ".github/workflows/ops-watch.yml",
+     "head_branch": "main",
+     "head_sha": "cccccccccccccccccccccccccccccccccccc138a",
+     "event": "schedule",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-09-26T06:00:00Z",
+     "run_started_at": "2026-09-26T06:00:00Z",
+     "updated_at": "2026-09-26T06:12:00Z",
+     "run_attempt": 1,
+     "pull_requests": []
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000003/jobs?filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"278f469e\""
+  },
+  "body": {
+   "total_count": 4,
+   "jobs": [
+    {
+     "id": 365000000031,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-25T08:05:00Z",
+     "completed_at": "2026-09-25T08:23:00Z"
+    },
+    {
+     "id": 365000000032,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-25T08:23:00Z",
+     "completed_at": "2026-09-25T08:24:00Z"
+    },
+    {
+     "id": 365000000033,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-25T08:28:00Z",
+     "completed_at": "2026-09-25T08:48:00Z"
+    },
+    {
+     "id": 365000000034,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-25T08:48:00Z",
+     "completed_at": "2026-09-25T08:49:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000004/jobs?filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"52c80109\""
+  },
+  "body": {
+   "total_count": 4,
+   "jobs": [
+    {
+     "id": 365000000041,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-26T08:05:00Z",
+     "completed_at": "2026-09-26T08:23:00Z"
+    },
+    {
+     "id": 365000000042,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-26T08:23:00Z",
+     "completed_at": "2026-09-26T08:24:00Z"
+    },
+    {
+     "id": 365000000043,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-26T08:28:00Z",
+     "completed_at": "2026-09-26T08:48:00Z"
+    },
+    {
+     "id": 365000000044,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-26T08:48:00Z",
+     "completed_at": "2026-09-26T08:49:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000005/jobs?filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"9e5b8fd6\""
+  },
+  "body": {
+   "total_count": 4,
+   "jobs": [
+    {
+     "id": 365000000051,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-27T08:05:00Z",
+     "completed_at": "2026-09-27T08:23:00Z"
+    },
+    {
+     "id": 365000000052,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-27T08:23:00Z",
+     "completed_at": "2026-09-27T08:24:00Z"
+    },
+    {
+     "id": 365000000053,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-27T08:28:00Z",
+     "completed_at": "2026-09-27T08:48:00Z"
+    },
+    {
+     "id": 365000000054,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-27T08:48:00Z",
+     "completed_at": "2026-09-27T08:49:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000006/jobs?filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"c11d601b\""
+  },
+  "body": {
+   "total_count": 4,
+   "jobs": [
+    {
+     "id": 365000000061,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-28T08:05:00Z",
+     "completed_at": "2026-09-28T08:23:00Z"
+    },
+    {
+     "id": 365000000062,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "run_attempt": 1,
+     "conclusion": "failure",
+     "started_at": "2026-09-28T08:23:00Z",
+     "completed_at": "2026-09-28T08:24:00Z"
+    },
+    {
+     "id": 365000000063,
+     "name": "Guards — the guards can still fail (shard 2)",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-28T08:28:00Z",
+     "completed_at": "2026-09-28T08:48:00Z"
+    },
+    {
+     "id": 365000000064,
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "run_attempt": 2,
+     "conclusion": "success",
+     "started_at": "2026-09-28T08:48:00Z",
+     "completed_at": "2026-09-28T08:49:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls/comments?sort=created&direction=asc&since=2026-09-24T00%3A00%3A00.000Z&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"9fb48181\""
+  },
+  "body": [
+   {
+    "id": 1,
+    "pull_request_url": "https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls/101",
+    "created_at": "2026-09-24T11:00:00Z",
+    "body": "🔴 class: correctness — the window is compared in local time"
+   },
+   {
+    "id": 2,
+    "pull_request_url": "https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls/102",
+    "created_at": "2026-09-24T12:00:00Z",
+    "body": "🟡 nit: rename"
+   },
+   {
+    "id": 3,
+    "pull_request_url": "https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls/102",
+    "created_at": "2026-09-24T13:00:00Z",
+    "in_reply_to_id": 2,
+    "body": "done"
+   }
+  ]
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc3f2/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"b6c72dd0\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3f2",
+     "status": "completed",
+     "conclusion": "failure",
+     "started_at": "2026-09-24T09:24:00Z",
+     "completed_at": "2026-09-24T09:25:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc3fc/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"4f2d0ecc\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3fc",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-24T08:24:00Z",
+     "completed_at": "2026-09-24T08:25:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc406/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"2082d5b2\""
+  },
+  "body": {
+   "total_count": 2,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "status": "completed",
+     "conclusion": "failure",
+     "started_at": "2026-09-25T08:24:00Z",
+     "completed_at": "2026-09-25T08:25:00Z"
+    },
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc406",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-25T08:49:00Z",
+     "completed_at": "2026-09-25T08:50:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc410/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"73d26238\""
+  },
+  "body": {
+   "total_count": 2,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "status": "completed",
+     "conclusion": "failure",
+     "started_at": "2026-09-26T08:24:00Z",
+     "completed_at": "2026-09-26T08:25:00Z"
+    },
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc410",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-26T08:49:00Z",
+     "completed_at": "2026-09-26T08:50:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc41a/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"d52c590c\""
+  },
+  "body": {
+   "total_count": 2,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "status": "completed",
+     "conclusion": "failure",
+     "started_at": "2026-09-27T08:24:00Z",
+     "completed_at": "2026-09-27T08:25:00Z"
+    },
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc41a",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-27T08:49:00Z",
+     "completed_at": "2026-09-27T08:50:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc424/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"132cb56b\""
+  },
+  "body": {
+   "total_count": 2,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "status": "completed",
+     "conclusion": "failure",
+     "started_at": "2026-09-28T08:24:00Z",
+     "completed_at": "2026-09-28T08:25:00Z"
+    },
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc424",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-28T08:49:00Z",
+     "completed_at": "2026-09-28T08:50:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc42e/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"489f9b1d\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc42e",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-29T08:24:00Z",
+     "completed_at": "2026-09-29T08:25:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc438/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"26d016fa\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc438",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-24T08:24:00Z",
+     "completed_at": "2026-09-24T08:25:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc442/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"cb8d8b4b\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc442",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-25T08:24:00Z",
+     "completed_at": "2026-09-25T08:25:00Z"
+    }
+   ]
+  }
+ },
+ "repos/globalonlinedeveloper/Nikatru_Platform_Public/commits/ccccccccccccccccccccccccccccccccccccc3b6/check-runs?check_name=ci-gate&filter=all&per_page=100": {
+  "status": 200,
+  "headers": {
+   "x-ratelimit-remaining": "4800",
+   "x-ratelimit-reset": "1790000000",
+   "etag": "W/\"072f35d4\""
+  },
+  "body": {
+   "total_count": 1,
+   "check_runs": [
+    {
+     "name": "ci-gate",
+     "head_sha": "ccccccccccccccccccccccccccccccccccccc3b6",
+     "status": "completed",
+     "conclusion": "success",
+     "started_at": "2026-09-18T09:24:00Z",
+     "completed_at": "2026-09-18T09:25:00Z"
+    }
+   ]
+  }
+ }
+}

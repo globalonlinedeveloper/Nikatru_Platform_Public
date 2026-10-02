@@ -364,6 +364,12 @@
       "reads": "the submission workflow the channel register names (default submit-snap.yml), through parseWorkflow"
     },
     {
+      "path": "tooling/review/self-review.mjs",
+      "property": "refuses-blind",
+      "evidence": "the workflow moved or was renamed, so its metrics would be computed on nothing",
+      "reads": "no workflow file: the Actions API's run.path, matched against ci.yml and ops-watch.yml to pick the gate's and ops-watch's runs; a path with no run in a window whose run list was read is a partial report (workflow-moved), exit 2"
+    },
+    {
       "path": "tooling/scripts/affected-guards.mjs",
       "property": "workflow-scan",
       "reads": "every `node <script>` and `node --test <glob>` call, with its working directory, in ci.yml and each workflow ci.yml calls; none at all is COVERAGE LOST"
