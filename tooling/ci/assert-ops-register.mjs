@@ -3507,10 +3507,12 @@ function jobsOfRun(repo, runId, cache) {
   return cache.get(runId);
 }
 
-async function scanUnit(q, repo, wf, cache, filters, what) {
-  const u = unitOf(q);
-  if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
-  const { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
+/** The unit scan's loop over one page of runs, newest first. `jobsFor(runId)` is the
+ *  job-list read — injected so a test can COUNT the reads: a run that predates every
+ *  call of the unit must cost none (⏱ 2026-10-02, review of #1115, finding 2: the skip
+ *  had no red control, and dropping it re-reads 30 runs' job lists and times the step
+ *  out on a new call unit). */
+export async function scanUnitRuns(q, runs, all, wf, jobsFor) {
   const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
@@ -3519,10 +3521,18 @@ async function scanUnit(q, repo, wf, cache, filters, what) {
       continue;
     }
     if (runPredatesUnitCalls(q, run, wf)) continue; // not in the unit's history, so its job list is never fetched
-    const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf, supersededBy(run, all ?? runs));
+    const c = unitConclusion(q, run, await jobsFor(run.id), wf, supersededBy(run, all ?? runs));
     entries.push({ run, c });
     if (c.verdict === 'success') break;
   }
+  return entries;
+}
+
+async function scanUnit(q, repo, wf, cache, filters, what) {
+  const u = unitOf(q);
+  if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
+  const { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
+  const entries = await scanUnitRuns(q, runs, all, wf, (runId) => jobsOfRun(repo, runId, cache));
   return gapCheckedScan(entries, pageFull, gapBelow); // a scan that ran off a fresh window with no success is UNREAD (file end)
 }
 

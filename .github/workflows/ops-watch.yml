@@ -654,7 +654,9 @@ jobs:
     # ⏱ 2026-09-26 · THE EDGE SHIELD IS STILL IN PATH (LEAD RULING SHIELD-R1 §7,
     # row O-BOXES-UNSHIELDED-FROM-SPIKES). services/edge-shield sits on two zone
     # routes in front of Box C's auth and Box B's crash intake and marks every
-    # answer `x-nikatru-shield: 1`. A route deleted in the dashboard, the Worker
+    # answer `x-nikatru-shield: <RELEASE>` — the deployed commit SHA, or `1` for a
+    # version deployed without one (⏱ 2026-10-02: a refusal carries it too, #1115
+    # review). A route deleted in the dashboard, the Worker
     # gone, or the Worker throwing (so the request passes straight to the origin)
     # all look exactly like a healthy box, because the origin still answers; the
     # header is the only difference. This asks one JWKS read and one keyless
@@ -694,7 +696,7 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=The edge shield is UNKNOWN - a probe never answered, or the probes do not cover its routes::Nothing about whether services/edge-shield is in front of Box B and Box C is known from this run, and that is never a pass. The step log names the probe or the route."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=Shield not in path - Box B or Box C is taking traffic with no edge limit::A probe answered without x-nikatru-shield: 1. Check the Worker routes on the nikatru.com zone (auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/*) and the edge-shield Worker's logs for exceptions; redeploy it from main. The step log names the probe."
+            echo "::error title=Shield not in path - Box B or Box C is taking traffic with no edge limit::A probe answered without x-nikatru-shield (the deployed SHA, or 1). Check the Worker routes on the nikatru.com zone (auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/*) and the edge-shield Worker's logs for exceptions; redeploy it from main. The step log names the probe."
           fi
           exit "$code"
 

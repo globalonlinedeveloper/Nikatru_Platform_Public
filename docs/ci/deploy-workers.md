@@ -498,7 +498,7 @@ What differs from the app Workers and the platform, each on purpose:
 - **No migrations, no `--var`, no secret.** The Worker reads none; nothing rides the deploy.
 - **The smoke is `tooling/ops/check-edge-shield.mjs --settle`, not `post-deploy-smoke.mjs`.** The
   shield owns no body and must not grow a health route on either box's host; what it adds to every
-  answer is `x-nikatru-shield: 1`, and the probe reads it on both routes. `--settle` re-asks an
+  answer is `x-nikatru-shield: <RELEASE>` (the deployed SHA, or `1` without one), and the probe reads it on both routes. `--settle` re-asks an
   answer without the header for about two minutes (a route bound seconds ago may not have reached
   every edge) and then judges it RED, never "could not look". ops-watch runs the same probe weekly
   (the Monday slot, like failure-ledger, and on any dispatch) as its own `edge-shield` job

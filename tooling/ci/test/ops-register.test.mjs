@@ -177,6 +177,7 @@ import {
   zeroEntryNeutral,
   calleeOf,
   runPredatesUnitCalls,
+  scanUnitRuns,
   decideUnitFreshness,
   decideUnitRedSince,
   scheduleWeekdays,
@@ -6740,6 +6741,26 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     assert.equal(empty.verdict, 'green', empty.line);
     const neutral = window.map((run) => ({ run, c: unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI()) }));
     assert.equal(classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), neutral, false)).verdict, 'unread');
+  });
+
+  // ⏱ 2026-10-02 · review of #1115, finding 2: RC-a4 re-implemented the scan's filter in
+  // the test, so deleting the skip inside the scan stayed green. This case goes through the
+  // scan's own loop and COUNTS the job-list reads. Red control: delete the
+  // `runPredatesUnitCalls(...)) continue;` line in scanUnitRuns and `reads` is two run ids.
+  test('RC-a5 — the unit scan reads NO job list for a run that predates every call of the unit', async () => {
+    const reads = [];
+    const jobsFor = async (runId) => {
+      reads.push(runId);
+      return RUN_3848_JOBS;
+    };
+    const window = [RUN_3848, { ...RUN_3848, id: 36106900355 }];
+    assert.deepEqual(await scanUnitRuns(q(['deploy-web']), window, window, CI(), jobsFor), []);
+    assert.deepEqual(reads, [], 'a predating run costs no job-list read');
+    // Green control: a run that references the call IS read, through the same loop.
+    const both = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    const entries = await scanUnitRuns(q(['deploy-web']), [both], [both], CI(), jobsFor);
+    assert.deepEqual(reads, [both.id]);
+    assert.equal(entries.length, 1);
   });
 
   test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {
