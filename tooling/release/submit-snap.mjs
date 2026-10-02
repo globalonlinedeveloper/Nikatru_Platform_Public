@@ -92,7 +92,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
-import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, storeSubmitter, invokedAsScript } from './submit-common.mjs';
 
 const CHANNEL_ID = 'linux-snap';
 const REGISTER = 'tooling/channel-register.json';
@@ -192,6 +192,33 @@ const EXPORT_LOGIN_STEP =
 const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
 const PACK_VERB = 'snapcraft pack';
 
+// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
+/** The Snap Store behind the one store contract. `plan` is the one-step
+ *  `snapcraft upload --release` `--submit` runs below (PRIMARY_SOURCES), into
+ *  the default channel; `upload` IS that `--submit`, PG-n gates and all. */
+export const snapSubmitter = storeSubmitter({
+  channel: CHANNEL_ID,
+  script: 'tooling/release/submit-snap.mjs',
+  steps: (artifact) => [
+    { does: `PG-6: read the "${PUBLISH_ENVIRONMENT}" environment back and require its reviewer`, surface: 'api', call: `GET https://api.github.com/repos/{owner}/{repo}/environments/${PUBLISH_ENVIRONMENT}`, writes: false },
+    { does: `check the ${CREDENTIAL_ENV} credential is live`, surface: 'cli', call: 'snapcraft whoami', writes: false },
+    { does: `upload ${artifact?.path ?? 'the .snap'} and release it to ${DEFAULT_CHANNEL} (never ${REFUSED_RISK})`, surface: 'cli', call: `snapcraft upload <snap> --release=${DEFAULT_CHANNEL}`, writes: true },
+  ],
+  uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
+});
+
+// ── the CLI, which runs only when this file is the entry point ────────────────
+// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
+// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
+// body runs on import cannot be imported — it would read the test's argv and
+// exit. So the body is `cli()`, called below only when node was pointed at this
+// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
+// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
+// every patch to it would stop applying. Its behaviour, flags and exit codes are
+// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
+if (invokedAsScript(import.meta.url)) await cli();
+
+async function cli() {
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
 const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-snap');
 
@@ -1017,4 +1044,5 @@ if (failure) {
   console.log(`      from here. Promoting to "${REFUSED_RISK}" is [ADR 031] class A — owner-only, per instance.`);
   console.log('   ⬜ [10]D-9 LEDGER: this is the event limb (iii) of D-10 has been waiting for. Record it.');
   process.exitCode = 0;
+}
 }

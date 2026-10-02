@@ -1,0 +1,389 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "channels",
+  "level": {
+    "claimed": 2,
+    "target": 3
+  },
+  "interface": {
+    "ts": {
+      "file": "tooling/release/submit-common.mjs",
+      "symbols": [
+        "ChannelSubmitter"
+      ]
+    }
+  },
+  "adapters": [
+    {
+      "id": "android-play",
+      "vendor": null,
+      "channel": "android-play",
+      "status": "built",
+      "impl": {
+        "file": "tooling/release/submit-play.mjs",
+        "symbol": "playSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [
+          "play-billing-subscription"
+        ],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/android-play, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews, ratings and install history. Permanent: the package name (applicationId) — an entity change TRANSFERS the app between Play accounts, keeping the package id and the upload key.",
+      "readAt": null,
+      "account": {
+        "kind": "organization",
+        "source": "tooling/channel-register.json channels[android-play].accountStatus — the Play ORGANIZATION account, verified 2026-08-04"
+      }
+    },
+    {
+      "id": "ios-appstore",
+      "vendor": null,
+      "channel": "ios-appstore",
+      "status": "built",
+      "impl": {
+        "file": "tooling/release/submit-appstore.mjs",
+        "symbol": "iosAppstoreSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [
+          "apple-iap-standard"
+        ],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/ios-appstore, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the bundle id (tooling/apple-provisioning.json) — an Individual → Organization change needs a D-U-N-S number and a team change, and the certificates are reissued.",
+      "readAt": null,
+      "account": {
+        "kind": "individual",
+        "source": "tooling/channel-register.json channels[ios-appstore].accountStatus.note — Individual enrolment, ACTIVE since 2026-08-31"
+      }
+    },
+    {
+      "id": "macos-appstore",
+      "vendor": null,
+      "channel": "macos-appstore",
+      "status": "built",
+      "impl": {
+        "file": "tooling/release/submit-appstore.mjs",
+        "symbol": "macosAppstoreSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [
+          "apple-iap-standard"
+        ],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/macos-appstore, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the bundle id (tooling/apple-provisioning.json) — moved with the same Apple team change as ios-appstore.",
+      "readAt": null,
+      "account": {
+        "kind": "individual",
+        "source": "tooling/channel-register.json channels[macos-appstore].accountStatus.note — the same Individual Apple membership"
+      }
+    },
+    {
+      "id": "windows-store",
+      "vendor": null,
+      "channel": "windows-store",
+      "status": "built",
+      "impl": {
+        "file": "tooling/release/submit-windows-store.mjs",
+        "symbol": "windowsStoreSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/windows-store, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the product id and the package identity name (apps/{app}/app.yaml stores.windows-store). The Partner Center account TYPE is what an entity change touches; an API-created submission is never edited in Partner Center (stores-07).",
+      "readAt": null,
+      "account": {
+        "kind": "organization",
+        "source": "tooling/channel-register.json channels[windows-store].accountStatus.note — a COMPANY Partner Center account"
+      }
+    },
+    {
+      "id": "linux-snap",
+      "vendor": null,
+      "channel": "linux-snap",
+      "status": "built",
+      "impl": {
+        "file": "tooling/release/submit-snap.mjs",
+        "symbol": "snapSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/linux-snap, rendered from apps/{app}/app.yaml, and every signed artifact and the generated snapcraft.yaml. Stays with the store: ratings and the install base. Permanent: the snap name, a global namespace claimed once per app (apps/{app}/store/linux-snap/snap-name.txt).",
+      "readAt": null,
+      "account": {
+        "kind": "none",
+        "source": "tooling/channel-register.json channels[linux-snap].accountStatus — status none: the owner step is the snap NAME, not an account"
+      }
+    },
+    {
+      "id": "apps-gov-in",
+      "vendor": null,
+      "channel": "apps-gov-in",
+      "status": "external",
+      "impl": {
+        "configAt": "tooling/channel-register.json channels[apps-gov-in].noSubmissionApi",
+        "verify": "the portal publishes NO submission API, so the path is the developer portal by hand — the register row's deferral names it; nothing here can call it"
+      },
+      "capabilities": [
+        "validate"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/apps-gov-in, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: the portal's listing record. Permanent: the package name; the profile's OWNER is what an entity change moves.",
+      "readAt": null,
+      "account": {
+        "kind": "individual",
+        "source": "tooling/channel-register.json channels[apps-gov-in].accountStatus.note — the developer profile is entity INDIVIDUAL"
+      }
+    },
+    {
+      "id": "chrome-webstore",
+      "vendor": null,
+      "channel": "chrome-webstore",
+      "status": "built",
+      "impl": {
+        "file": "extensions/scripts/publish-cws.mjs",
+        "symbol": "chromeWebstoreSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/chrome and store/_shared) and every packed zip. Stays with the store: reviews, ratings and users. Permanent: the item id (tool.json storeMetadata.stores.chrome.listingId); the VERIFIED PUBLISHER is what an entity change moves.",
+      "readAt": null,
+      "account": {
+        "kind": "individual",
+        "source": "tooling/channel-register.json channels[chrome-webstore].accountStatus.note — TRADER verified; the verified publisher is the proprietor's legal name"
+      }
+    },
+    {
+      "id": "edge-addons",
+      "vendor": null,
+      "channel": "edge-addons",
+      "status": "built",
+      "impl": {
+        "file": "extensions/scripts/publish-edge.mjs",
+        "symbol": "edgeAddonsSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/edge and store/_shared) and every packed zip. Stays with the store: reviews, ratings and users. Permanent: the product id; it moves with the Partner Center account type, as windows-store does.",
+      "readAt": null,
+      "account": {
+        "kind": "organization",
+        "source": "tooling/channel-register.json channels[edge-addons].accountStatus.note — the same Company Partner Center account as windows-store"
+      }
+    },
+    {
+      "id": "amo",
+      "vendor": null,
+      "channel": "amo",
+      "status": "built",
+      "impl": {
+        "file": "extensions/scripts/publish-amo.mjs",
+        "symbol": "amoSubmitter"
+      },
+      "capabilities": [
+        "validate",
+        "plan",
+        "upload",
+        "status"
+      ],
+      "secrets": [],
+      "identity": [
+        "ownerDomain"
+      ],
+      "environments": [
+        "test",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/release/test/submitters.contract.test.mjs"
+      },
+      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/firefox and store/_shared), the amo-metadata payload and every signed xpi. Stays with the store: reviews, ratings and users. Permanent: gecko.id, fixed at the first signing — unchanged by any entity change, and CONFIRMED, never set (stores-01).",
+      "readAt": null,
+      "account": {
+        "kind": "unrecorded",
+        "source": "tooling/channel-register.json channels[amo].accountStatus.note — the signup asked no account type; none is recorded"
+      }
+    }
+  ],
+  "selection": {
+    "by": "per-call",
+    "source": "tooling/channel-register.json#channels",
+    "default": {
+      "live": null,
+      "sandbox": null,
+      "test": null
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": {
+    "suite": {
+      "file": "tooling/release/submit-common.mjs",
+      "runner": "submitterConformance"
+    },
+    "pending": []
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#channels",
+    "dryRun": "node tooling/ops/port-switch.mjs channels --to <adapter> --dry-run"
+  },
+  "candidates": [
+    {
+      "id": "indus-appstore",
+      "name": "Indus Appstore",
+      "submittable": false,
+      "deferral": {
+        "reason": "A channel to EVALUATE, not one to ship: [ADR 076]'s rider names the Indus Appstore for its 0% commission on in-app payments. No developer account exists, so no row is written to the channel register and no submitter is built; the facts below are read first.",
+        "source": "[ADR 076] rider",
+        "ownerSteps": [
+          "open an Indus Appstore developer account, as the entity the other Android channel uses — the account kind is what an entity change later has to move",
+          "read the developer terms and record the commission as a tooling/catalog/fee-register.json cell, with the date read and its URL",
+          "then scaffold the channel: node tooling/kit/new-channel.mjs --id indus-appstore --dry-run, and --write once the row's facts are read"
+        ]
+      },
+      "commission": {
+        "cell": null,
+        "asOf": null,
+        "verify": "UNREAD: the 0% figure is the rider's, not a reading of the store's terms. Read the Indus Appstore developer terms and write the cell with asOf before any margin is computed from it."
+      },
+      "exportDuty": "The same as android-play once built: the listing is ours (rendered from app.yaml), the reviews and ratings stay with the store, and the package name is permanent — so it must be the SAME package id the Play channel ships."
+    }
+  ],
+  "_why": [
+    "EVERY STORE CHANNEL IS A REGISTER ROW PLUS A SUBMITTER THAT PASSES ONE DRY-RUN CONTRACT. The row is tooling/channel-register.json's (cited by `channel`, never restated); the submitter is the ChannelSubmitter each script exports (tooling/release/submit-common.mjs): validate · plan · upload · status. Adding a store is a row, an adapter here, and a submitter that passes submitterConformance — tooling/kit/new-channel.mjs scaffolds the three.",
+    "One adapter per `kind: store` row, and the contract test holds that set equal both ways. The web row and the two `kind: direct` rows have no store to submit to and no adapter. `vendor` is null on every adapter on purpose: the store is the row's, and apple-app-store, google-play and microsoft-store stay placed once in _non-port.json as billing authorities.",
+    "L2, not L3, CLAIMED: every adapter is chosen per call by its channel id and passes the conformance suite DRY, against recorded fixtures with no network. No channel is served and no `upload` has ever run here, so nothing has shown the upload half conforms; the claim waits for a first real submission on two channels.",
+    "apps-gov-in is `external`: the portal has no submission API (the row's noSubmissionApi), so its path is a person at the portal and there is nothing to call dry or wet.",
+    "cost.feeCells is the STORE's commission where the store bills: Play Billing and Apple IAP. The paddle-rail stores take none on our own checkout; that rail's cells are the payments port's. secrets are none here: every store credential is named once in the register's signing.ciSecrets and ciSecretRegister.",
+    "candidates holds a store not built because an owner step stands first. Its commission is UNREAD until the store's terms are read and dated."
+  ]
+}

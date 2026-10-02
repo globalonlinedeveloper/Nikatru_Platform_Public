@@ -86,6 +86,8 @@ import {
   NOT_CONFIRMED,
 } from './store-poll.mjs';
 import { CouldNotLook } from '../../tooling/ops/bounded-retry.mjs';
+import { storeSubmitter, invokedAsScript } from '../../tooling/release/submit-common.mjs';
+import * as vocabulary from '../../contracts/store/vocabulary.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRIMARY SOURCES — fetched 2026-09-07.
@@ -96,6 +98,24 @@ const PRIMARY_SOURCES = Object.freeze({
 });
 
 const API_ORIGIN = 'https://chromewebstore.googleapis.com';
+
+/** The Chrome Web Store behind the one store contract (tooling/release/submit-common.mjs,
+ *  tooling/ports/channels.json). `plan` is what main() below does, in its order, against
+ *  the v2 endpoints this header cites; `upload` IS this script, arming and gate and all. */
+export const chromeWebstoreSubmitter = storeSubmitter({
+  channel: 'chrome-webstore',
+  vocabulary,
+  script: 'extensions/scripts/publish-cws.mjs',
+  steps: (artifact) => [
+    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
+    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
+    { does: 'mint a bearer token for the service account', surface: 'api', call: `POST ${TOKEN_URL}`, writes: false },
+    { does: `upload ${artifact?.path ?? 'the chromium zip'} to the item`, surface: 'api', call: `POST ${API_ORIGIN}/upload/v2/publishers/{publisherId}/items/{itemId}:upload`, writes: true },
+    { does: 'poll the upload to its terminal state', surface: 'api', call: `GET ${API_ORIGIN}/v2/publishers/{publisherId}/items/{itemId}:fetchStatus`, writes: false },
+    { does: 'submit the item for review', surface: 'api', call: `POST ${API_ORIGIN}/v2/publishers/{publisherId}/items/{itemId}:publish`, writes: true },
+  ],
+  uploadArgv: (artifact) => ['--tool', artifact.tool, '--zip', artifact.path],
+});
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback = null) => {
@@ -266,4 +286,4 @@ async function main() {
   console.log(`publish-cws: SUBMITTED — ${TOOL} uploaded and submitted for review on the Chrome Web Store (item state ${submission.detail}).`);
 }
 
-await main();
+if (invokedAsScript(import.meta.url)) await main();

@@ -373,17 +373,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
       # Slowest green 49 s (median 37), so 3 minutes.
-      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d): a PR runs
-      # this job. Until the owner mints it the Cloudflare rows read `unreadable`, inside the
-      # register's declared `_maxUnreadable` ceiling.
+      # why: NO CLOUDFLARE TOKEN AT ALL (#1095 review, findings 1-2; limb 8d). A PR runs this
+      # job, and even CLOUDFLARE_READ_TOKEN is account-scoped D1 READ, i.e. every production
+      # user row (`productionData: read`). The Cloudflare rows therefore read `unreadable` here
+      # by policy, inside `_maxUnreadable`, and are read on schedule by ops-watch.yml's
+      # `assert-ops-register` step, which holds the token (READ || API: the API half's
+      # repositoryFallback ends 2026-11-30, assert-channel-register 8c).
       - name: Every failure has a detector, a response and a cadence
         if: ${{ !cancelled() }}
         timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --single-threaded tooling/ci/assert-ops-register.mjs
       # ⏱ 2026-09-28 · ops watch 36416498456: `reminder_mail` was declared at a
       # cloud draft's sandbox commit, which owed a slot hours before the job
@@ -459,16 +460,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
-      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d). The dated
-      # flag defers ONLY the D1 timer limb while that token does not exist yet, loudly; on
-      # 2026-10-21 an absent token is COVERAGE LOST again. Delete the flag once the token is minted.
+      # why: NO CLOUDFLARE TOKEN (#1095 review, finding 2; limb 8d): a PR runs this job, and a D1
+      # read token reads every production row. The OUTCOME record is graded here; the D1 TIMER
+      # row is read on schedule by ops-watch.yml's heartbeats job. The flag is a standing policy,
+      # printed on every run, not a dated deferral.
       - name: The nightly golden-path proof is fresh
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tooling/ci/assert-e2e-proof-fresh.mjs --cloudflare-read-pending-until 2026-10-21
+        run: node tooling/ci/assert-e2e-proof-fresh.mjs --timer-read-by-ops-watch
       - name: The nightly exercised the legs it claims
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-e2e-legs.mjs
@@ -909,6 +909,9 @@ jobs:
       - name: Every port earns the level it claims, and every vendor is placed
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ports.mjs
+      - name: Every secret a Worker reads is a row of tooling/worker-secrets.json
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-worker-secrets-declared.mjs
       - name: One convention set reaches every app, and can fail a build
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs
@@ -2002,6 +2005,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      # why: every store submitter (tooling/ports/channels.json) against the one dry-run
+      # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
+      - name: Every store submitter passes the dry-run contract, with no network
+        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
       - name: The Microsoft Store submission path still walks (dry run)
         run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The App Store submission path still walks — iOS (dry run)

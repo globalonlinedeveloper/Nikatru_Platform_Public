@@ -1,0 +1,12 @@
+{
+  "_why": [
+    "WHICH BOX HOLDS WHICH ROLE — the selection source of tooling/ports/boxes.json (`selection.source` points here). A role names a duty the platform needs from a machine; a box is the machine that holds it today. One box per role (`by: single`): a move is this file's one edit plus the box-move dry run (tooling/ops/box-move.mjs), never a hunt through the tree.",
+    "Read by tooling/ci/assert-ports.mjs limb 2 (the pointer must resolve), by tooling/ops/box-declaration.mjs (every `box` must be a tooling/boxes/<box>.json declaration that lists the role back, and every declaration's roles must be here) and by tooling/ops/box-move.mjs (the roles a move carries).",
+    "Same rule as tooling/ops/register.json `_substrateHosts._portabilityWhy`: a duty names a ROLE, never a box, so a move changes the right-hand side here and nothing that cites the role."
+  ],
+  "roles": {
+    "auth": { "by": "single", "box": "boxc", "what": "The self-hosted GoTrue and its Postgres: every identity in the portfolio (since 2026-09-24)." },
+    "ops": { "by": "single", "box": "boxb", "what": "The operations box: the vault, ntfy, GlitchTip and its monitors, Beszel, the log viewer, and the restic repositories." },
+    "backup-leg": { "by": "single", "box": "boxa", "what": "The Oracle Cloud tenancy whose Object Storage holds the encrypted third copy of the restic repositories ([ADR 060]); the VM itself runs none of the platform." }
+  }
+}
