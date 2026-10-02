@@ -52,6 +52,9 @@ export const PROXIABLE = Object.freeze(['A', 'AAAA', 'CNAME']);
 const RECORD_KEYS = ['name', 'type', 'content', 'ttl', 'proxied'];
 const RECORD_EXTRA_KEYS = ['why', 'mailAuth'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A bare lowercase DNS name. `zone` is the one declared value that reaches a Cloudflare API
+ *  path (`/zones?name=`), so anything else is refused before a request is built (CodeQL #560). */
+export const ZONE_NAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 const lc = (s) => (typeof s === 'string' ? s.toLowerCase() : s);
 const endOfDay = (d) => Date.parse(`${d}T23:59:59Z`);
@@ -61,6 +64,7 @@ export function validateDeclaration(doc, { root = ROOT } = {}) {
   const bad = [];
   if (doc?.provider !== 'cloudflare') bad.push(`\`provider\` is ${JSON.stringify(doc?.provider)}; this reader speaks "cloudflare" only`);
   if (typeof doc?.zone !== 'string' || !doc.zone) bad.push('no `zone`');
+  else if (!ZONE_NAME.test(doc.zone)) bad.push(`\`zone\` ${JSON.stringify(doc.zone)} is not a bare lowercase DNS name`);
   const dns = doc?.dns;
   if (!Array.isArray(dns?.dnsOnly) || dns.dnsOnly.some((n) => typeof n !== 'string')) bad.push('`dns.dnsOnly` is not a list of names');
   if (!Array.isArray(dns?.records) || dns.records.length === 0) bad.push('`dns.records` declares no record');

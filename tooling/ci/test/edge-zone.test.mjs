@@ -108,6 +108,12 @@ describe('the declaration (tooling/edge/zone.json)', () => {
     assert.doesNotMatch(JSON.stringify(RAW), /\b[0-9a-f]{32}\b/, 'a 32-hex Cloudflare id is written in the declaration');
   });
 
+  test('refuses a zone that is not a bare DNS name: it is the one declared value a Cloudflare request carries', () => {
+    for (const zone of ['nikatru.com/../accounts', 'nikatru.com?x=1', 'Nikatru.com', 'evil.example.com@nikatru.com', 'nikatru']) {
+      assert.ok(validateDeclaration({ ...RAW, zone }, { root: REPO }).some((b) => b.includes('is not a bare lowercase DNS name')), `${zone} was accepted`);
+    }
+  });
+
   test('every DNS record is the provider-neutral { name, type, content, ttl, proxied }', () => {
     for (const r of RAW.dns.records) {
       assert.deepEqual(Object.keys(r).filter((k) => !['why', 'mailAuth'].includes(k)), ['name', 'type', 'content', 'ttl', 'proxied']);

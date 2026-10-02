@@ -594,6 +594,14 @@
       "path": "tooling/ci/assert-mor-adapters.mjs",
       "disposition": "fixed-in-tree",
       "reason": "The unread REGISTRY constant (line 82) became a comment in this PR; since #1127 limb 2 derives the provider set from RENDERED_RAILS. Goes stale once main analysis marks #551 fixed; delete it then."
+    },
+    {
+      "alert": 560,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-wildcard-dns.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "tooling/ops/check-edge-zone.mjs (#1147) passes the declared `zone` from tooling/edge/zone.json to readZoneRecords/zoneId, which GET it from the literal CF_API origin (https://api.cloudflare.com/client/v4) with the read token: comparing the declared zone with the live one is the script's purpose. The file cannot choose the host, and validateDeclaration refuses any `zone` that is not a bare lowercase DNS name (ZONE_NAME) before a request is built; the value is URL-encoded into the query. Added 2026-10-02."
     }
   ]
 }
