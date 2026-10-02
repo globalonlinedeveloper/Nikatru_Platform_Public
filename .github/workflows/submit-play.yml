@@ -113,18 +113,6 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
-      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
-      - name: Name clearance holds for android-play (owner HELD or PROVEN-FREE)
-        run: node tooling/ci/assert-name-clearance.mjs --for-submission=android-play
-      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
-      # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
-      - name: The app's Play declarations are sworn, not preview (--for-submission)
-        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"
-      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
-      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
-      - name: A pending in-app purchase declaration is not submitted (android-play)
-        run: node tooling/ci/assert-app-yaml.mjs --for-submission=android-play --app "$APP"
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:
@@ -203,8 +191,6 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed.mjs
           "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
-      - name: The Play screenshot set spans enough device types
-        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
       - name: Every native library is aligned for a 16 KB memory page
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
@@ -214,6 +200,26 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_TRACK: ${{ vars.PLAY_TRACK }}
         run: node tooling/release/submit-play.mjs --dry-run --app "$APP"
+      # why: O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): the gates below run AFTER the build and the
+      # store dry run, so a red gate still fails this job and skips submit, but only once the bundle was rehearsed.
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for android-play (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=android-play
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
+      - name: The app's Play declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (android-play)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=android-play --app "$APP"
+      - name: The Play screenshot set spans enough device types
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. A dry run prints what a real submission of a build that cannot
+      # sign in would be refused, and never refuses; the submit job passes --real-submission.
+      - name: A build that cannot sign in reaches no public track (android-play)
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=android-play
       # why: the hand-off the submit job verifies. The name carries the posture
       # android-signing.mjs exported, which the submit job cannot recompute, so it
       # travels as an output; the upload below reads the same output, so the name
@@ -330,6 +336,12 @@ jobs:
       # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
       - name: A pending in-app purchase declaration is not submitted (android-play)
         run: node tooling/ci/assert-app-yaml.mjs --for-submission=android-play --app "$APP"
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. Refused while nativeAuth is false on the production track only: the
+      # sign-in proof needs an internal-track upload (PLAY_RECOGNIZED). PLAY_TRACK is the expression the upload reads.
+      - name: A build that cannot sign in reaches no public track (android-play)
+        env:
+          PLAY_TRACK: ${{ inputs.track }}
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=android-play --real-submission
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:
