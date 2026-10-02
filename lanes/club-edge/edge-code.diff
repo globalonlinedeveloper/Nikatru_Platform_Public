@@ -1,0 +1,1015 @@
+diff --git a/.github/workflows/ops-watch.yml b/.github/workflows/ops-watch.yml
+index 13d7461d..f42a7fb6 100644
+--- a/.github/workflows/ops-watch.yml
++++ b/.github/workflows/ops-watch.yml
+@@ -714,6 +714,31 @@ jobs:
+           fi
+           exit "$code"
+ 
++      # why (2026-10-01, lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED): the rest of the
++      # edge is declared in tooling/edge/zone.json - the proxied flag of every record, the
++      # WAF custom rules, the Access apps - and this reads it back. Every Access-gated host
++      # is also asked GET / from outside for the 302 to the Access login (PB-19: beszel and
++      # logs were unwatched). A READ. CLOUDFLARE_READ_TOKEN ONLY, no fallback: the deploy
++      # token is not known to hold Access read, and #1095's read token is the one the owner
++      # mints with it. Until then the API limbs print UNREADABLE inside the same
++      # pending-until date ci.yml gives #1095's own deferral, and exit 2 the day after.
++      - name: The edge zone is the one tooling/edge/zone.json declares
++        if: always()
++        env:
++          CLOUDFLARE_READ_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
++          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
++        run: |
++          set +e
++          node tooling/ops/check-edge-zone.mjs --cloudflare-read-pending-until 2026-10-21
++          code=$?
++          set -e
++          if [ "$code" -eq 2 ]; then
++            echo "::error title=The edge zone is UNKNOWN::The declaration did not validate, a Cloudflare read was refused, an Access-gate probe never answered, or CLOUDFLARE_READ_TOKEN is still unset past its pending-until date. Nothing about those parts is known from this run, and that is never a pass. The step log names each one."
++          elif [ "$code" -eq 1 ]; then
++            echo "::error title=The edge zone drifted from tooling/edge/zone.json::A proxiable record is DNS-only outside the declared list, a declared record or Access app is gone, an undeclared Access app or WAF rule appeared, or a gated host no longer answers the Access 302. The step log names each finding. Restore it in the dashboard, or change the file in a reviewed PR if the live zone is right."
++          fi
++          exit "$code"
++
+       # why (2026-09-30, lane fix-auth-jwks-504): every ES256 verification rests on
+       # the JWKS read the shield caches, and nothing counted how often a CLIENT got
+       # it as a 5xx. Per UTC day over the week since the last run; over 1% on any
+diff --git a/tooling/channel-register.json b/tooling/channel-register.json
+index ae30a392..a2ced996 100644
+--- a/tooling/channel-register.json
++++ b/tooling/channel-register.json
+@@ -1395,7 +1395,7 @@
+       {
+         "name": "CLOUDFLARE_READ_TOKEN",
+         "kind": "service-credential",
+-        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
++        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read (the WAF custom-rule phase included), Access: Apps and Policies Read (tooling/ops/check-edge-zone.mjs, added to the owner's mint list 2026-10-01 by lane fix-edge-as-code), Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
+       },
+       {
+         "name": "CLOUDFLARE_D1_TOKEN",
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..7f47c934 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -344,6 +344,9 @@
+   "edge-shield-probe.test.mjs":
+     18,
+ 
++  "edge-zone.test.mjs":
++    21,
++
+   "elf-page-alignment.test.mjs":
+     23,
+ 
+diff --git a/tooling/ci/test/edge-zone.test.mjs b/tooling/ci/test/edge-zone.test.mjs
+new file mode 100644
+index 00000000..8f83e966
+--- /dev/null
++++ b/tooling/ci/test/edge-zone.test.mjs
+@@ -0,0 +1,275 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// edge-zone.test.mjs — tooling/edge/zone.json is a usable declaration of the
++// nikatru.com zone, and tooling/ops/check-edge-zone.mjs goes RED on drift and says
++// "could not look" rather than green when it could not.
++//
++// ⏱ 2026-10-01 · lane fix-edge-as-code (train P30), row NEW O-EDGE-CONFIG-NOT-DECLARED.
++// No case reaches the network: the Cloudflare API is an injected `api(path, token)`
++// stub and every probe is an injected fetch.
++//
++// Run:  node --test tooling/ci/test/edge-zone.test.mjs
++// ─────────────────────────────────────────────────────────────────────────────
++import { test, describe } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { join, dirname, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { CouldNotLook } from '../../ops/bounded-retry.mjs';
++import {
++  ZONE_FILE_REL,
++  loadDeclaration,
++  validateDeclaration,
++  judgeDns,
++  judgeAccess,
++  judgeWaf,
++  judgeProbe,
++  exportZone,
++  run,
++} from '../../ops/check-edge-zone.mjs';
++
++const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
++const DECL = loadDeclaration(REPO);
++const RAW = JSON.parse(readFileSync(join(REPO, ZONE_FILE_REL), 'utf8'));
++const MAIL = JSON.parse(readFileSync(join(REPO, 'tooling', 'mail-transport.json'), 'utf8')).authRecords.records;
++const NOW = Date.parse('2026-10-02T00:00:00Z');
++const noSleep = async () => {};
++const clone = (o) => JSON.parse(JSON.stringify(o));
++
++/** A live record list that satisfies every declared record. */
++function liveRecords() {
++  return DECL.dns.records.map((d, i) => ({
++    id: `rec${i}`,
++    name: d.name,
++    type: d.type ?? 'CNAME',
++    content: d.content ?? 'origin.example',
++    ttl: d.ttl ?? 300,
++    proxied: d.proxied,
++  }));
++}
++/** A live Access app list that satisfies every APPLIED declared app. */
++function liveApps() {
++  return DECL.cloudflare.access.apps
++    .filter((a) => a.status === 'applied')
++    .map((a, i) => ({ id: `app${i}`, name: a.domain, domain: a.domain, policies: [{ id: `pol${i}` }] }));
++}
++function liveWaf() {
++  return DECL.cloudflare.wafCustom.rules.map((r, i) => ({ id: `w${i}`, ref: r.ref ?? `ref${i}`, description: r.description ?? `rule ${i}`, action: r.action ?? 'block', enabled: true }));
++}
++
++/** The Cloudflare API stub, cf()-shaped: (path, token) -> body, or a thrown CouldNotLook. */
++function cloudflare({ records = liveRecords(), apps = liveApps(), waf = liveWaf(), refuse = null } = {}) {
++  const calls = [];
++  const api = async (path) => {
++    calls.push(path);
++    if (refuse && path.includes(refuse)) throw new CouldNotLook(`GET ${path} answered HTTP 403: {}`);
++    if (path.startsWith('/zones?name=')) return { success: true, result: [{ id: 'z1' }] };
++    if (path.startsWith('/zones/z1/dns_records')) return { success: true, result: records };
++    if (path === '/zones/z1/rulesets/phases/http_request_firewall_custom/entrypoint') return { success: true, result: { rules: waf } };
++    if (path.startsWith('/accounts/acct/access/apps')) return { success: true, result: apps };
++    throw new Error(`not stubbed: ${path}`);
++  };
++  api.calls = calls;
++  return api;
++}
++
++/** Every probe answers the Access 302 unless `answer` says otherwise. */
++function gates(answer = () => ({ status: 302, location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/x' })) {
++  const asked = [];
++  const impl = async (url) => {
++    asked.push(url);
++    const a = answer(url);
++    if (a instanceof Error) throw a;
++    return new Response(null, { status: a.status, headers: a.location ? { location: a.location } : {} });
++  };
++  impl.asked = asked;
++  return impl;
++}
++
++async function quiet(fn) {
++  const out = [];
++  const [log, err] = [console.log, console.error];
++  console.log = (...a) => out.push(a.join(' '));
++  console.error = (...a) => out.push(a.join(' '));
++  try {
++    return { code: await fn(), out: out.join('\n') };
++  } finally {
++    console.log = log;
++    console.error = err;
++  }
++}
++
++const ENV = { CLOUDFLARE_READ_TOKEN: 'test-token', CLOUDFLARE_ACCOUNT_ID: 'acct' };
++const go = (opts = {}) => quiet(() => run({ root: REPO, env: ENV, api: cloudflare(), fetchImpl: gates(), sleep: noSleep, now: NOW, ...opts }));
++
++describe('the declaration (tooling/edge/zone.json)', () => {
++  test('validates: the provider is ONE field and the zone id is never written as a value', () => {
++    assert.deepEqual(validateDeclaration(RAW, { root: REPO }), []);
++    assert.equal(RAW.provider, 'cloudflare');
++    assert.doesNotMatch(JSON.stringify(RAW), /\b[0-9a-f]{32}\b/, 'a 32-hex Cloudflare id is written in the declaration');
++  });
++
++  test('every DNS record is the provider-neutral { name, type, content, ttl, proxied }', () => {
++    for (const r of RAW.dns.records) {
++      assert.deepEqual(Object.keys(r).filter((k) => !['why', 'mailAuth'].includes(k)), ['name', 'type', 'content', 'ttl', 'proxied']);
++    }
++  });
++
++  test('the mail DNS is declared: every mail-transport authRecords row has exactly one record here, by name', () => {
++    for (const m of MAIL) {
++      const here = RAW.dns.records.filter((r) => r.mailAuth === m.id);
++      assert.equal(here.length, 1, `${m.id} is declared ${here.length} time(s)`);
++      assert.equal(here[0].name, m.name);
++      assert.equal(here[0].proxied, false);
++    }
++    const ids = new Set(MAIL.map((m) => m.id));
++    for (const r of RAW.dns.records.filter((x) => x.mailAuth)) assert.ok(ids.has(r.mailAuth), `${r.mailAuth} is no authRecords row`);
++  });
++
++  test('PB-19: beszel and logs are applied Access apps WITH an outside probe for the 302', () => {
++    for (const d of ['beszel.nikatru.com', 'logs.nikatru.com']) {
++      const a = RAW.cloudflare.access.apps.find((x) => x.domain === d);
++      assert.equal(a?.status, 'applied', d);
++      assert.deepEqual(a.probe, { path: '/', expectStatus: 302, expectLocationHostSuffix: '.cloudflareaccess.com' });
++    }
++  });
++
++  test('PB-15 and PB-22: the vault admin, ntfy and GlitchTip UI apps are declared, each bounded by `until`', () => {
++    for (const d of ['vault.nikatru.com/admin', 'ntfy.nikatru.com', 'glitchtip.nikatru.com']) {
++      const a = RAW.cloudflare.access.apps.find((x) => x.domain === d);
++      assert.ok(a, `${d} is not declared`);
++      assert.match(a.until ?? '', /^\d{4}-\d{2}-\d{2}$/, d);
++    }
++    const g = RAW.cloudflare.access.apps.find((x) => x.domain === 'glitchtip.nikatru.com');
++    assert.ok(g.bypass.includes('/api/*') && g.bypass.includes('/_health/'));
++    assert.match(g.why, /monitor 1/);
++  });
++
++  test('a malformed declaration is refused, naming each problem', () => {
++    const bad = clone(RAW);
++    bad.provider = 'route53';
++    bad.dns.records[0].region = 'x';
++    bad.cloudflare.wafCustom.count = 3;
++    bad.cloudflare.access.apps.push({ domain: 'x.nikatru.com', status: 'prepared', policyIds: null });
++    bad.cloudflare.tunnelIngress.hostnames.push('nowhere.nikatru.com');
++    const got = validateDeclaration(bad, { root: REPO }).join('\n');
++    assert.match(got, /`provider` is "route53"/);
++    assert.match(got, /carries `region`/);
++    assert.match(got, /declares a `count` its `rules` do not have/);
++    assert.match(got, /is prepared with no YYYY-MM-DD `until`/);
++    assert.match(got, /tunnel ingress nowhere\.nikatru\.com is not a declared proxied DNS record/);
++  });
++});
++
++describe('the drift reader (tooling/ops/check-edge-zone.mjs)', () => {
++  test('GREEN CONTROL: a live zone equal to the declaration → exit 0, reading only', async () => {
++    const api = cloudflare();
++    const { code, out } = await go({ api });
++    assert.equal(code, 0, out);
++    assert.match(out, /^ok {3}DNS$/m);
++    assert.match(out, /^ok {3}WAF$/m);
++    assert.match(out, /^ok {3}ACCESS$/m);
++    assert.ok(api.calls.some((p) => p.startsWith('/accounts/acct/access/apps')));
++  });
++
++  test('🔴 RED CONTROL: one proxied=false A record outside dns.dnsOnly → exit 1, naming it', async () => {
++    const records = [...liveRecords(), { id: 'leak', name: 'origin.nikatru.com', type: 'A', content: '203.0.113.7', ttl: 1, proxied: false }];
++    const { code, out } = await go({ api: cloudflare({ records }) });
++    assert.equal(code, 1, out);
++    assert.match(out, /FAIL DNS {2}origin\.nikatru\.com A -> 203\.0\.113\.7 is DNS-ONLY/);
++  });
++
++  test('🔴 RED CONTROL: an Access app missing → exit 1, naming the host left public', async () => {
++    const apps = liveApps().filter((a) => a.domain !== 'beszel.nikatru.com');
++    const { code, out } = await go({ api: cloudflare({ apps }) });
++    assert.equal(code, 1, out);
++    assert.match(out, /FAIL ACCESS {2}declared app beszel\.nikatru\.com is NOT on the account/);
++  });
++
++  test('a declared proxied record turned DNS-only, or gone → exit 1', () => {
++    const flipped = liveRecords().map((r) => (r.name === 'glitchtip.nikatru.com' ? { ...r, proxied: false } : r));
++    assert.ok(judgeDns(DECL, flipped).findings.some((f) => /glitchtip\.nikatru\.com CNAME proxied=false, declared true/.test(f)));
++    const gone = liveRecords().filter((r) => r.name !== 'vault.nikatru.com');
++    assert.ok(judgeDns(DECL, gone).findings.some((f) => /declared vault\.nikatru\.com CNAME is NOT in the zone/.test(f)));
++  });
++
++  test('a DNS-only TXT or MX is no finding: only A, AAAA and CNAME can be proxied', () => {
++    const records = [...liveRecords(), { id: 't', name: 'x.nikatru.com', type: 'TXT', content: 'v', ttl: 1, proxied: false }];
++    assert.deepEqual(judgeDns(DECL, records).findings, []);
++  });
++
++  test('a live Access app nobody declared, or a declared policy set that moved → exit 1', () => {
++    const extra = [...liveApps(), { id: 'new', name: 'stray', domain: 'stray.nikatru.com', policies: [] }];
++    assert.ok(judgeAccess(DECL, extra, { now: NOW }).findings.some((f) => /"stray" \(id=new\) on stray\.nikatru\.com is declared nowhere/.test(f)));
++    const pinned = clone(DECL);
++    pinned.cloudflare.access.apps.find((a) => a.domain === 'logs.nikatru.com').policyIds = ['pol-declared'];
++    assert.ok(judgeAccess(pinned, liveApps(), { now: NOW }).findings.some((f) => /logs\.nikatru\.com policies are \["pol\d"\], declared \["pol-declared"\]/.test(f)));
++  });
++
++  test('a prepared app is a note until its `until`, exit 1 after it, and claims a path-scoped live app', () => {
++    const before = judgeAccess(DECL, liveApps(), { now: NOW });
++    assert.deepEqual(before.findings, []);
++    assert.ok(before.notes.some((n) => /prepared app vault\.nikatru\.com\/admin not applied yet/.test(n)));
++    const after = judgeAccess(DECL, liveApps(), { now: Date.parse('2026-10-22T00:00:00Z') });
++    assert.ok(after.findings.some((f) => /prepared app vault\.nikatru\.com\/admin is still not applied/.test(f)));
++    const applied = [...liveApps(), { id: 'va', name: 'vault admin', destinations: [{ type: 'public', uri: 'vault.nikatru.com/admin' }], policies: [{ id: 'p' }] }];
++    const v = judgeAccess(DECL, applied, { now: NOW });
++    assert.deepEqual(v.findings, []);
++    assert.ok(v.notes.some((n) => /prepared app vault\.nikatru\.com\/admin IS live/.test(n)));
++  });
++
++  test('the WAF phase with a different number of rules, or a declared ref gone → exit 1', () => {
++    assert.ok(judgeWaf(DECL, liveWaf().slice(0, 1)).findings.some((f) => /holds 1 rule\(s\), declared 2/.test(f)));
++    const pinned = clone(DECL);
++    pinned.cloudflare.wafCustom.rules[0].ref = 'gone-ref';
++    assert.ok(judgeWaf(pinned, liveWaf()).findings.some((f) => /declared rule ref gone-ref is NOT in the phase/.test(f)));
++  });
++
++  test('🔴 RED CONTROL (PB-19): a gated host answering 200 instead of the Access 302 → exit 1', async () => {
++    const fetchImpl = gates((url) => (url.startsWith('https://logs.') ? { status: 200 } : { status: 302, location: 'https://t.cloudflareaccess.com/login' }));
++    const { code, out } = await go({ fetchImpl });
++    assert.equal(code, 1, out);
++    assert.match(out, /PROBE {2}GET https:\/\/logs\.nikatru\.com\/ → HTTP 200 — expected 302/);
++  });
++
++  test('a 302 to anywhere but *.cloudflareaccess.com is not the gate', () => {
++    const p = { path: '/', expectStatus: 302, expectLocationHostSuffix: '.cloudflareaccess.com' };
++    const res = new Response(null, { status: 302, headers: { location: 'https://cloudflareaccess.com.evil.example/x' } });
++    assert.equal(judgeProbe('logs.nikatru.com', p, res).ok, false);
++  });
++
++  test('an API that refuses → exit 2, COULD NOT LOOK, never a pass', async () => {
++    const { code, out } = await go({ api: cloudflare({ refuse: '/access/apps' }) });
++    assert.equal(code, 2, out);
++    assert.match(out, /✗ COULD NOT LOOK — ACCESS {2}GET \/accounts\/acct\/access\/apps/);
++  });
++
++  test('no read token inside the pending-until date → the API limbs are UNREADABLE, the probes still judge', async () => {
++    const fetchImpl = gates();
++    const { code, out } = await go({ env: {}, fetchImpl, pendingUntil: '2026-10-21' });
++    assert.equal(code, 0, out);
++    assert.match(out, /UNREADABLE — CLOUDFLARE_READ_TOKEN and CLOUDFLARE_ACCOUNT_ID is not set/);
++    assert.ok(fetchImpl.asked.length >= 2);
++  });
++
++  test('no read token past the pending-until date, or with no date at all → exit 2', async () => {
++    const late = await go({ env: {}, pendingUntil: '2026-10-01' });
++    assert.equal(late.code, 2, late.out);
++    assert.match(late.out, /the deferral ran out on 2026-10-01/);
++    const none = await go({ env: {} });
++    assert.equal(none.code, 2, none.out);
++  });
++
++  test('a probe that never answers → exit 2', async () => {
++    const { code, out } = await go({ fetchImpl: gates(() => new TypeError('fetch failed')) });
++    assert.equal(code, 2, out);
++    assert.match(out, /PROBE {2}https:\/\/\w+\.nikatru\.com\/ never answered/);
++  });
++
++  test('--export prints the records provider-neutral, plus what has no neutral equivalent', () => {
++    const x = exportZone(DECL, liveRecords());
++    assert.equal(x.provider, 'cloudflare');
++    assert.deepEqual(Object.keys(x.records[0]), ['name', 'type', 'content', 'ttl', 'proxied']);
++    assert.ok(x.noNeutralEquivalent.some((l) => /Access app\(s\)/.test(l)));
++    assert.ok(x.noNeutralEquivalent.some((l) => /tunnel ingress/.test(l)));
++  });
++});
+diff --git a/tooling/edge/zone.json b/tooling/edge/zone.json
+new file mode 100644
+index 00000000..72347380
+--- /dev/null
++++ b/tooling/edge/zone.json
+@@ -0,0 +1,148 @@
++{
++  "_why": [
++    "THE EDGE, DECLARED AS CODE (lane fix-edge-as-code, train P30; ADR draft `edge-declared-as-code`, recorded by",
++    "the next Private pass; row NEW O-EDGE-CONFIG-NOT-DECLARED). Before this file only the zone's rate-limit rule was",
++    "declared and drift-read (tooling/edge-ratelimit-rule.json). That every served host was proxied was a one-off",
++    "fact (PB-05); the two WAF custom rules, the Access apps, the proxied flag of every DNS record and the tunnel",
++    "ingress were dashboard state with nothing reading them. A dashboard edit to any of them left every box",
++    "answering exactly as before.",
++    "",
++    "READ BY tooling/ops/check-edge-zone.mjs, in ops-watch.yml's weekly `edge-shield` job (and on any dispatch):",
++    "  0 the live zone is what this file declares · 1 drift (a proxiable record DNS-only outside `dns.dnsOnly`, a",
++    "  declared record or Access app missing, a live Access app nobody declared, a policy-id set or a WAF rule that",
++    "  moved, or a gated host whose GET / no longer answers 302 to *.cloudflareaccess.com) · 2 COULD NOT LOOK.",
++    "  Offline, tooling/ci/test/edge-zone.test.mjs holds this file's shape and its cross-file joins.",
++    "",
++    "PROVIDER-NEUTRAL WHERE A NEUTRAL FORM EXISTS (the plan-portability addendum). The provider is ONE field,",
++    "`provider`; the zone id is never written here, it is resolved by name at read time. Every DNS record is",
++    "`{ name, type, content, ttl, proxied }` and `proxied` is the one Cloudflare-specific flag in it. The WAF rules,",
++    "the rate-limit rule, the Access apps and the tunnel ingress have no neutral form and live under `cloudflare`.",
++    "So a DNS-provider move is `node tooling/ops/check-edge-zone.mjs --export`: the records in this shape plus the",
++    "list of what has no equivalent. tooling/ports/_non-port.json names the zone as declared, not ported.",
++    "",
++    "🔴 `null` MEANS NOT YET MEASURED, NEVER 'ANY VALUE'. A field written null is printed with its live value on",
++    "every run and is not compared; a field with a value is compared and its drift is exit 1. Nothing in this file",
++    "was read from the live zone in the lane that wrote it (it had no Cloudflare credential), so every value below",
++    "is one the repository already asserts elsewhere, cited per row, and every other value is null. The first",
++    "`--export` with CLOUDFLARE_READ_TOKEN fills them in a reviewed change; it never writes this file itself.",
++    "",
++    "⚠️ RECORDS NOT DECLARED ARE PRINTED, NOT FAILED, unless they break the one rule PB-05 is about: a proxiable",
++    "record (A, AAAA, CNAME) that is DNS-only and is not in `dns.dnsOnly` is exit 1, declared or not. That is the",
++    "'100% of served hosts are proxied' fact made standing rather than one-off. Worker custom domains and routes",
++    "(services/*/wrangler.jsonc) are owned by those files and their deploys, and are not repeated here."
++  ],
++  "provider": "cloudflare",
++  "zone": "nikatru.com",
++  "zoneId": "by name: GET /zones?name=nikatru.com must resolve to exactly one zone; its id is never written here",
++  "dns": {
++    "dnsOnly": [],
++    "_dnsOnlyWhy": "The names that may hold a DNS-only PROXIABLE record (A, AAAA or CNAME). EMPTY ON PURPOSE: every proxiable record on the zone is proxied (PB-05), and the mail records below are TXT and MX, which Cloudflare never proxies, so none of them needs a name here. A proxiable record that is DNS-only and named nowhere in this list is exit 1. A provider CNAME that must stay DNS-only (a DKIM or return-path CNAME) is added here, with its why, in the same change that creates it.",
++    "records": [
++      { "name": "nikatru.com", "type": null, "content": null, "ttl": 1, "proxied": true, "why": "The hub site (Cloudflare Pages, sites/nikatru). tooling/monitor-register.json host row." },
++      { "name": "www.nikatru.com", "type": null, "content": null, "ttl": 1, "proxied": true, "why": "tooling/monitor-register.json host row." },
++      { "name": "glitchtip.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Box B, through the tunnel. Its /api/* is an edge-shield zone route (services/edge-shield/wrangler.jsonc), which only a proxied record can carry." },
++      { "name": "auth-api.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Box C's GoTrue, through the tunnel. Its /auth/v1/* is an edge-shield zone route (services/edge-shield/wrangler.jsonc)." },
++      { "name": "studio.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Supabase Studio, behind Access (GlitchTip monitor 18 `Studio Access gate`)." },
++      { "name": "vault.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Vaultwarden on Box B, through the tunnel (tooling/monitor-register.json host row)." },
++      { "name": "ntfy.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "ntfy on Box B, through the tunnel (tooling/monitor-register.json host row)." },
++      { "name": "beszel.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Beszel on Box B, through the tunnel, behind Access (tooling/monitor-register.json host row)." },
++      { "name": "logs.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Dozzle on Box B, through the tunnel, behind Access (tooling/monitor-register.json host row)." },
++      { "name": "nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "spf-google" },
++      { "name": "google._domainkey.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dkim-google" },
++      { "name": "_dmarc.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dmarc" },
++      { "name": "send.mail.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "spf-resend" },
++      { "name": "send.mail.nikatru.com", "type": "MX", "content": null, "ttl": null, "proxied": false, "mailAuth": "mx-resend" },
++      { "name": "resend._domainkey.mail.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dkim-resend" }
++    ],
++    "_mailWhy": "THE MAIL DNS, DECLARED HERE AS RECORDS (portability item E-03, L1 -> L2; lane port-mail's dry run reads them from this file). `mailAuth` is the id of the row in tooling/mail-transport.json `authRecords` that says what the record must CONTAIN; that block stays the one authority on content (tooling/ops/check-mail-auth-dns.mjs reads it over DoH), so `content` here is null on purpose rather than a second copy. The two files are joined both ways by tooling/ci/test/edge-zone.test.mjs: every authRecords row has exactly one record here, with the same name."
++  },
++  "cloudflare": {
++    "_why": "What has no provider-neutral form. A DNS-provider move carries none of this; `--export` lists it as the work a move has to redo.",
++    "rateLimit": {
++      "file": "tooling/edge-ratelimit-rule.json",
++      "phase": "http_ratelimit",
++      "readBy": "tooling/ops/edge-ratelimit-rule.mjs (written only by deploy-workers.yml's edge-shield job). check-edge-zone.mjs checks only that the file is there and names this zone; the comparison stays with its own reader."
++    },
++    "wafCustom": {
++      "phase": "http_request_firewall_custom",
++      "count": 2,
++      "rules": [
++        { "ref": null, "description": null, "action": null, "enabled": true },
++        { "ref": null, "description": null, "action": null, "enabled": true }
++      ],
++      "_why": "The zone's two WAF custom rules (PB-05), by ref. The count is the review's measurement; each ref, description and action is null until the first --export with CLOUDFLARE_READ_TOKEN (Zone WAF Read) prints them. A live phase with a different number of rules, a declared ref that is gone, or a declared field that moved is exit 1."
++    },
++    "access": {
++      "_why": [
++        "Every Access app on the account that fronts a nikatru.com host, by domain and policy id. A declared app that is",
++        "gone, a live app nobody declared, or a policy-id set that moved is exit 1. `policyIds: null` is not yet",
++        "measured: the live ids are printed and not compared. `probe` asks GET <domain>/ from outside with no",
++        "credential and requires HTTP 302 to a *.cloudflareaccess.com login (PB-19): the API says the app exists, the",
++        "probe says it is in front of the host.",
++        "",
++        "`status`: `applied` is judged. `prepared` is a decided app whose apply belongs to the owner's apply run",
++        "(cf-shieldfollow.mjs, the PB-15 plan, applied with a read-back). Until its `until` date a prepared app that is",
++        "absent is a note; after it, absent is exit 1. A prepared app that IS live is reported so this file is",
++        "flipped to `applied` with its policy ids in the same change that records the read-back."
++      ],
++      "apps": [
++        {
++          "domain": "studio.nikatru.com",
++          "status": "applied",
++          "policyIds": null,
++          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
++          "why": "Supabase Studio. Watched from outside by GlitchTip monitor 18 `Studio Access gate` (tooling/ops/alarm-chains.json)."
++        },
++        {
++          "domain": "beszel.nikatru.com",
++          "status": "applied",
++          "policyIds": null,
++          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
++          "why": "Beszel host metrics for both boxes (PB-19: unwatched until this file). tooling/monitor-register.json: 302 from outside, measured 2026-09-07."
++        },
++        {
++          "domain": "logs.nikatru.com",
++          "status": "applied",
++          "policyIds": null,
++          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
++          "why": "Dozzle container logs (PB-19: unwatched until this file). tooling/monitor-register.json: 302 from outside, measured 2026-09-07."
++        },
++        {
++          "domain": "vault.nikatru.com/admin",
++          "status": "prepared",
++          "until": "2026-10-21",
++          "policyIds": null,
++          "why": "PB-15: the Vaultwarden admin panel is public behind one token. Path-scoped to /admin, so every Bitwarden client keeps working (tooling/monitor-register.json: an Access 302 at / breaks every client that is not the web vault). Prepared and self-tested as cf-shieldfollow.mjs; applied by the owner's run with --verify read-back."
++        },
++        {
++          "domain": "ntfy.nikatru.com",
++          "status": "prepared",
++          "until": "2026-10-21",
++          "policyIds": null,
++          "why": "PB-15: ntfy's web app, stats and docs are open. The prepared app gates the web surface on an ALLOWLIST of paths and leaves the publish and subscribe API ungated, because a 302 there kills the phone's long-lived subscription stream (tooling/monitor-register.json: 'No Access, ever, at any path' was written about that stream; the allowlist keeps it). Its exact destinations are the plan's (cf-shieldfollow.mjs) and are recorded here from the apply read-back."
++        },
++        {
++          "domain": "glitchtip.nikatru.com",
++          "status": "prepared",
++          "until": "2026-10-21",
++          "policyIds": null,
++          "bypass": ["/api/*", "/_health/", "the MCP endpoint path(s), measured on the instance at apply time"],
++          "why": "PB-22, DECIDED: path-scoped Access on the GlitchTip UI, owner-only, excluding /api/* (every SDK envelope, the monitor API ensure-monitors.mjs uses, the heartbeat check-ins) and the MCP endpoints. RECOMMENDED because the UI is owner-only — one person reads it — while its login is today the only thing in front of every crash, every monitor and every recipient, so a stolen GlitchTip password is the whole ops half; Access puts the owner's identity provider in front of that at no cost on the Free plan. 🔴 PRECONDITION: GlitchTip monitor 1 GETs / and expects 200 with `<title>GlitchTip</title>` (tooling/monitor-register.json); behind Access it would answer 302 and page. Repoint monitor 1 to /_health/ (bypassed here) in the SAME apply, or monitor 1 goes red on the first check. Runbook line for the Private pass: 'glitchtip: the UI is behind Access (owner-only); /api/*, /_health/ and MCP bypass it; monitor 1 reads /_health/'."
++        }
++      ]
++    },
++    "tunnelIngress": {
++      "hostnames": [
++        "glitchtip.nikatru.com",
++        "auth-api.nikatru.com",
++        "studio.nikatru.com",
++        "vault.nikatru.com",
++        "ntfy.nikatru.com",
++        "beszel.nikatru.com",
++        "logs.nikatru.com"
++      ],
++      "read": false,
++      "_why": "The hostnames the boxes' tunnels publish (each origin's service:port lives in the box's cloudflared config, not here). NOT YET READ LIVE: the tunnel configuration needs Account → Cloudflare Tunnel → Read, which is not on #1095's CLOUDFLARE_READ_TOKEN scope list; it is on the owner's mint list. Until then the offline test holds that every hostname here is a declared, proxied DNS record."
++    }
++  }
++}
+diff --git a/tooling/enforcement-index.json b/tooling/enforcement-index.json
+index 1831ba15..dfe6b46d 100644
+--- a/tooling/enforcement-index.json
++++ b/tooling/enforcement-index.json
+@@ -3728,6 +3728,16 @@
+     "references": [],
+     "state": "WIRED"
+   },
++  {
++    "claims": [],
++    "invokedBy": [
++      ".github/workflows/ops-watch.yml#edge-shield"
++    ],
++    "kind": "script",
++    "ref": "tooling/ops/check-edge-zone.mjs",
++    "references": [],
++    "state": "WIRED"
++  },
+   {
+     "claims": [
+       "B-11",
+diff --git a/tooling/guard-yield.json b/tooling/guard-yield.json
+index 06438a49..834cdb17 100644
+--- a/tooling/guard-yield.json
++++ b/tooling/guard-yield.json
+@@ -3651,6 +3651,11 @@
+       "firstSeen": "2026-09-27",
+       "evidence": []
+     },
++    "tooling/ops/check-edge-zone.mjs": {
++      "catches": 0,
++      "firstSeen": "2026-10-01",
++      "evidence": []
++    },
+     "tooling/ops/check-heartbeats.mjs": {
+       "catches": 0,
+       "firstSeen": "2026-08-02",
+diff --git a/tooling/ops/alarm-chains.json b/tooling/ops/alarm-chains.json
+index e8116dcc..07f4b5f1 100644
+--- a/tooling/ops/alarm-chains.json
++++ b/tooling/ops/alarm-chains.json
+@@ -164,6 +164,20 @@
+     "A host row with no monitor id yet prints as EXPECTED BUT ABSENT and does not fail, for the reason the asymmetry",
+     "paragraphs above give: a canary red for the hours between provisioning and creation gets switched off."
+   ],
++  "_accessGatesWatched": [
++    "⏱ 2026-10-01 · PB-19 (lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED, folding O-ACCESS-GATES-UNWATCHED-BESZEL-LOGS).",
++    "The Access gates in front of beszel.nikatru.com and logs.nikatru.com had no reader: monitor 39 reads their ORIGINS",
++    "from inside Box B and says nothing about the gate. They are now watched from outside, the way monitor 18 `Studio",
++    "Access gate` watches studio.nikatru.com: tooling/ops/check-edge-zone.mjs asks GET / of each and requires HTTP 302",
++    "to *.cloudflareaccess.com, and reads the Access app list itself, both declared in tooling/edge/zone.json",
++    "(`cloudflare.access.apps[].probe`). It runs in ops-watch.yml's `edge-shield` job, whose failure reaches the",
++    "durable ops-watch issue through the `alert` job — that is the chain, and it is not a GlitchTip chain, so it is",
++    "not a row of expectedMonitors below.",
++    "",
++    "⬜ NOT DONE BY THAT CHANGE: a GlitchTip monitor per gate (the shape of 18: GET, expect 302) would page within",
++    "minutes instead of on the weekly slot. Creating one is a live write to the instance, so it belongs to the run",
++    "that applies the PB-15 Access apps; its id is added below in the same change, as 18's was."
++  ],
+   "expectedMonitors": [
+     {
+       "id": 3,
+diff --git a/tooling/ops/check-edge-zone.mjs b/tooling/ops/check-edge-zone.mjs
+new file mode 100644
+index 00000000..009d27ac
+--- /dev/null
++++ b/tooling/ops/check-edge-zone.mjs
+@@ -0,0 +1,414 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// check-edge-zone.mjs — IS THE LIVE nikatru.com ZONE THE ONE tooling/edge/zone.json DECLARES?
++//
++// ⏱ 2026-10-01 · lane fix-edge-as-code (train P30), row NEW O-EDGE-CONFIG-NOT-DECLARED;
++// ADR draft `edge-declared-as-code`, recorded by the next Private pass. It EXTENDS
++// check-wildcard-dns.mjs: the same Cloudflare read (`cf`, bounded retry, success:false
++// is an answer) and the same paged record list (`readZoneRecords`), imported, not copied.
++//
++// WHAT IS JUDGED, each limb a finding (exit 1) when it moves:
++//   DNS     · a PROXIABLE record (A, AAAA, CNAME) that is DNS-only and whose name is not
++//             in `dns.dnsOnly` (PB-05: "every served host is proxied" as a standing fact);
++//           · a declared record that is gone, or whose declared `proxied`, `type`,
++//             `content` or `ttl` differs (a null field is printed, never compared).
++//   WAF     · the custom-rule phase holds a different number of rules, or a declared ref
++//             is gone, or a declared field of it moved.
++//   ACCESS  · an `applied` app that is gone; a live nikatru.com app nobody declared; a
++//             declared policy-id set that moved; a `prepared` app absent past its `until`.
++//   PROBE   · a gated host (PB-19: beszel, logs) whose GET / does not answer 302 to a
++//             *.cloudflareaccess.com login. No credential; asked from outside.
++// The rate-limit rule stays with tooling/ops/edge-ratelimit-rule.mjs; this file checks only
++// that the declaration it points at is there and names this zone.
++//
++// EXIT CODES (AGENTS.md): 0 the zone is the declared one · 1 drift, each finding named ·
++// 2 COULD NOT LOOK: the declaration is malformed, the zone or an account list could not be
++// read, a probe never answered, or the read token is absent past its pending-until date.
++// A finding outranks a could-not-look: what WAS read and found wrong is reported as wrong.
++//
++// THE TOKEN. It reads CLOUDFLARE_READ_TOKEN (#1095's read-only token: Zone DNS Read, Zone WAF
++// Read, and Access: Apps and Policies Read, which this file adds to the owner's mint list) and
++// CLOUDFLARE_ACCOUNT_ID. Until the owner mints it, `--cloudflare-read-pending-until <date>`
++// (the date ci.yml gives #1095's own deferral) makes the API limbs print UNREADABLE and the
++// run go on with the unauthenticated probes; the day after the date that is exit 2.
++//
++// Usage:  node tooling/ops/check-edge-zone.mjs [--cloudflare-read-pending-until YYYY-MM-DD] [--root <dir>]
++//         node tooling/ops/check-edge-zone.mjs --export     (the records in the provider-neutral
++//              shape plus what has no neutral equivalent — a DNS-provider move's worklist)
++//
++// 🔴 `process.exit()` IS BANNED IN THIS FILE, as in its neighbours: set `process.exitCode`.
++// ─────────────────────────────────────────────────────────────────────────────
++import { readFileSync, existsSync } from 'node:fs';
++import { join, resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { cf, readZoneRecords, CouldNotLook, MAX_PAGES, PAGE_SIZE } from './check-wildcard-dns.mjs';
++import { readWithBoundedRetry, classifyThrown } from './bounded-retry.mjs';
++
++const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
++
++export const ZONE_FILE_REL = 'tooling/edge/zone.json';
++export const TOKEN_ENV = 'CLOUDFLARE_READ_TOKEN';
++export const PROXIABLE = Object.freeze(['A', 'AAAA', 'CNAME']);
++const RECORD_KEYS = ['name', 'type', 'content', 'ttl', 'proxied'];
++const RECORD_EXTRA_KEYS = ['why', 'mailAuth'];
++const DATE = /^\d{4}-\d{2}-\d{2}$/;
++
++const lc = (s) => (typeof s === 'string' ? s.toLowerCase() : s);
++const endOfDay = (d) => Date.parse(`${d}T23:59:59Z`);
++
++/** PURE. Every way the declaration is unusable; an empty list means it can be judged against. */
++export function validateDeclaration(doc, { root = ROOT } = {}) {
++  const bad = [];
++  if (doc?.provider !== 'cloudflare') bad.push(`\`provider\` is ${JSON.stringify(doc?.provider)}; this reader speaks "cloudflare" only`);
++  if (typeof doc?.zone !== 'string' || !doc.zone) bad.push('no `zone`');
++  const dns = doc?.dns;
++  if (!Array.isArray(dns?.dnsOnly) || dns.dnsOnly.some((n) => typeof n !== 'string')) bad.push('`dns.dnsOnly` is not a list of names');
++  if (!Array.isArray(dns?.records) || dns.records.length === 0) bad.push('`dns.records` declares no record');
++  for (const [i, r] of (Array.isArray(dns?.records) ? dns.records : []).entries()) {
++    const at = `dns.records[${i}]`;
++    for (const k of RECORD_KEYS) if (!(k in (r ?? {}))) bad.push(`${at} has no \`${k}\` (write null for "not yet measured")`);
++    for (const k of Object.keys(r ?? {})) if (!RECORD_KEYS.includes(k) && !RECORD_EXTRA_KEYS.includes(k)) bad.push(`${at} carries \`${k}\`, which is not part of the provider-neutral record`);
++    if (typeof r?.name !== 'string' || !r.name) bad.push(`${at} has no name`);
++    else if (typeof doc?.zone === 'string' && lc(r.name) !== lc(doc.zone) && !lc(r.name).endsWith(`.${lc(doc.zone)}`)) bad.push(`${at} ${r.name} is not in the zone ${doc.zone}`);
++    if (typeof r?.proxied !== 'boolean') bad.push(`${at} \`proxied\` is not true or false`);
++    if (r?.proxied === true && r?.type !== null && !PROXIABLE.includes(r?.type)) bad.push(`${at} is a ${r.type} declared proxied, and only ${PROXIABLE.join('/')} can be`);
++  }
++  const c = doc?.cloudflare;
++  const rl = c?.rateLimit;
++  if (typeof rl?.file !== 'string') bad.push('`cloudflare.rateLimit.file` is missing');
++  else {
++    const abs = join(root, ...rl.file.split('/'));
++    if (!existsSync(abs)) bad.push(`\`cloudflare.rateLimit.file\` ${rl.file} does not exist`);
++    else {
++      try {
++        const rule = JSON.parse(readFileSync(abs, 'utf8'));
++        if (rule?.zone !== doc?.zone) bad.push(`${rl.file} names the zone ${JSON.stringify(rule?.zone)}, not ${doc?.zone}`);
++        if (rule?.phase !== rl.phase) bad.push(`${rl.file} is the ${JSON.stringify(rule?.phase)} phase, not ${JSON.stringify(rl.phase)}`);
++      } catch (err) {
++        bad.push(`${rl.file} is not JSON (${err.message})`);
++      }
++    }
++  }
++  const waf = c?.wafCustom;
++  if (waf?.phase !== 'http_request_firewall_custom') bad.push('`cloudflare.wafCustom.phase` is not "http_request_firewall_custom"');
++  if (!Number.isInteger(waf?.count) || !Array.isArray(waf?.rules) || waf.rules.length !== waf.count) bad.push('`cloudflare.wafCustom` declares a `count` its `rules` do not have');
++  const apps = c?.access?.apps;
++  if (!Array.isArray(apps) || apps.length === 0) bad.push('`cloudflare.access.apps` declares no app');
++  const seen = new Set();
++  for (const [i, a] of (Array.isArray(apps) ? apps : []).entries()) {
++    const at = `cloudflare.access.apps[${i}]`;
++    if (typeof a?.domain !== 'string' || !a.domain) bad.push(`${at} has no domain`);
++    else if (seen.has(lc(a.domain))) bad.push(`${at} ${a.domain} is declared twice`);
++    else seen.add(lc(a.domain));
++    if (a?.status !== 'applied' && a?.status !== 'prepared') bad.push(`${at} \`status\` is ${JSON.stringify(a?.status)}, not "applied" or "prepared"`);
++    if (a?.status === 'prepared' && (!DATE.test(a?.until ?? '') || Number.isNaN(endOfDay(a.until)))) bad.push(`${at} is prepared with no YYYY-MM-DD \`until\`, so its deferral cannot be bounded`);
++    if (a?.policyIds !== null && !(Array.isArray(a?.policyIds) && a.policyIds.length > 0 && a.policyIds.every((p) => typeof p === 'string' && p))) bad.push(`${at} \`policyIds\` is neither null nor a non-empty list of ids`);
++    if (a?.probe !== undefined) {
++      if (a.status !== 'applied') bad.push(`${at} probes an app that is not applied, which would be red by construction`);
++      if (typeof a.probe?.path !== 'string' || !a.probe.path.startsWith('/') || !Number.isInteger(a.probe?.expectStatus) || typeof a.probe?.expectLocationHostSuffix !== 'string') bad.push(`${at} \`probe\` needs path, expectStatus and expectLocationHostSuffix`);
++    }
++  }
++  const declaredProxied = new Set((Array.isArray(dns?.records) ? dns.records : []).filter((r) => r?.proxied === true).map((r) => lc(r.name)));
++  const ingress = c?.tunnelIngress?.hostnames;
++  if (!Array.isArray(ingress)) bad.push('`cloudflare.tunnelIngress.hostnames` is not a list');
++  else for (const h of ingress) if (!declaredProxied.has(lc(h))) bad.push(`tunnel ingress ${h} is not a declared proxied DNS record`);
++  return bad;
++}
++
++/** The declaration, or CouldNotLook naming every problem in it. */
++export function loadDeclaration(root = ROOT) {
++  const abs = join(root, ...ZONE_FILE_REL.split('/'));
++  if (!existsSync(abs)) throw new CouldNotLook(`${ZONE_FILE_REL} is not there, so there is nothing to compare the zone with`);
++  let doc;
++  try {
++    doc = JSON.parse(readFileSync(abs, 'utf8'));
++  } catch (err) {
++    throw new CouldNotLook(`${ZONE_FILE_REL} is not JSON (${err.message})`);
++  }
++  const bad = validateDeclaration(doc, { root });
++  if (bad.length) throw new CouldNotLook(`${ZONE_FILE_REL} cannot be judged against:\n    ${bad.join('\n    ')}`);
++  return doc;
++}
++
++/** PURE. DNS findings and notes for a live record list. */
++export function judgeDns(decl, records) {
++  const findings = [];
++  const notes = [];
++  const dnsOnly = new Set(decl.dns.dnsOnly.map(lc));
++  for (const r of records) {
++    if (PROXIABLE.includes(r?.type) && r?.proxied !== true && !dnsOnly.has(lc(r?.name))) {
++      findings.push(`DNS  ${r.name} ${r.type} -> ${r.content} is DNS-ONLY (proxied=${r.proxied === true}, id=${r.id}) and not in dns.dnsOnly: the origin's address is public and nothing at the edge is in front of it`);
++    }
++  }
++  const matched = new Set();
++  for (const d of decl.dns.records) {
++    const live = records.filter((r) => lc(r?.name) === lc(d.name) && (d.type === null ? (d.proxied ? PROXIABLE.includes(r?.type) : true) : r?.type === d.type));
++    if (live.length === 0) {
++      findings.push(`DNS  declared ${d.name} ${d.type ?? '(any proxiable type)'} is NOT in the zone`);
++      continue;
++    }
++    for (const r of live) matched.add(r);
++    const r = live[0];
++    if ((r.proxied === true) !== d.proxied) findings.push(`DNS  ${d.name} ${r.type} proxied=${r.proxied === true}, declared ${d.proxied}`);
++    for (const k of ['content', 'ttl']) {
++      if (d[k] === null) notes.push(`${d.name} ${r.type} ${k} not declared; live: ${JSON.stringify(r[k])}`);
++      else if (r[k] !== d[k]) findings.push(`DNS  ${d.name} ${r.type} ${k} is ${JSON.stringify(r[k])}, declared ${JSON.stringify(d[k])}`);
++    }
++    if (d.type === null) notes.push(`${d.name} type not declared; live: ${r.type}`);
++  }
++  const undeclared = records.filter((r) => !matched.has(r));
++  if (undeclared.length) notes.push(`${undeclared.length} live record(s) are not declared (printed by --export): ${undeclared.map((r) => `${r.name} ${r.type}`).join(', ')}`);
++  return { findings, notes };
++}
++
++/** PURE. WAF custom-rule findings for the live phase's rules. */
++export function judgeWaf(decl, rules) {
++  const findings = [];
++  const notes = [];
++  const w = decl.cloudflare.wafCustom;
++  if (rules.length !== w.count) findings.push(`WAF  the custom-rule phase holds ${rules.length} rule(s), declared ${w.count}`);
++  w.rules.forEach((d, i) => {
++    const live = d.ref === null ? rules[i] : rules.find((r) => r?.ref === d.ref);
++    if (!live) {
++      if (d.ref !== null) findings.push(`WAF  declared rule ref ${d.ref} is NOT in the phase`);
++      return;
++    }
++    if (d.ref === null) notes.push(`WAF rule ${i + 1} ref not declared; live: ${JSON.stringify(live.ref)} "${live.description ?? ''}" action=${live.action}`);
++    for (const k of ['description', 'action']) if (d[k] !== null && live[k] !== d[k]) findings.push(`WAF  rule ${d.ref ?? i + 1} ${k} is ${JSON.stringify(live[k])}, declared ${JSON.stringify(d[k])}`);
++    if (d.enabled !== null && (live.enabled !== false) !== d.enabled) findings.push(`WAF  rule ${d.ref ?? i + 1} enabled=${live.enabled !== false}, declared ${d.enabled}`);
++  });
++  return { findings, notes };
++}
++
++/** PURE. Every domain a live Access app answers on, normalised. */
++export function appDomains(app) {
++  const out = new Set();
++  const add = (d) => typeof d === 'string' && d && out.add(lc(d).replace(/\/+$/, ''));
++  add(app?.domain);
++  for (const d of Array.isArray(app?.self_hosted_domains) ? app.self_hosted_domains : []) add(d);
++  for (const d of Array.isArray(app?.destinations) ? app.destinations : []) add(d?.uri);
++  return [...out];
++}
++
++/** PURE. Does a live app sit on a declared domain (the domain itself or a path under it)? */
++export function appMatches(app, domain) {
++  const want = lc(domain).replace(/\/+$/, '');
++  return appDomains(app).some((d) => d === want || d.startsWith(`${want}/`));
++}
++
++/** PURE. Access findings and notes for the account's live app list. */
++export function judgeAccess(decl, apps, { now = Date.now() } = {}) {
++  const findings = [];
++  const notes = [];
++  const zone = lc(decl.zone);
++  const inZone = apps.filter((a) => appDomains(a).some((d) => { const host = d.split('/')[0]; return host === zone || host.endsWith(`.${zone}`); }));
++  const claimed = new Set();
++  // The longest declared domain claims a live app first, so vault.nikatru.com/admin is never
++  // swallowed by a shorter declaration.
++  const declared = [...decl.cloudflare.access.apps].sort((a, b) => b.domain.length - a.domain.length);
++  for (const d of declared) {
++    const live = inZone.filter((a) => !claimed.has(a) && appMatches(a, d.domain));
++    for (const a of live) claimed.add(a);
++    if (live.length === 0) {
++      if (d.status === 'applied') findings.push(`ACCESS  declared app ${d.domain} is NOT on the account: the host is public`);
++      else if (now > endOfDay(d.until)) findings.push(`ACCESS  prepared app ${d.domain} is still not applied, and its deferral ran out on ${d.until}`);
++      else notes.push(`prepared app ${d.domain} not applied yet (deferred until ${d.until})`);
++      continue;
++    }
++    if (d.status === 'prepared') notes.push(`prepared app ${d.domain} IS live — flip it to "applied" with its policy ids in ${ZONE_FILE_REL}`);
++    const ids = [...new Set(live.flatMap((a) => (Array.isArray(a?.policies) ? a.policies : []).map((p) => p?.id)).filter(Boolean))].sort();
++    if (d.policyIds === null) notes.push(`${d.domain} policyIds not declared; live: ${JSON.stringify(ids)}`);
++    else {
++      const want = [...d.policyIds].sort();
++      if (JSON.stringify(want) !== JSON.stringify(ids)) findings.push(`ACCESS  ${d.domain} policies are ${JSON.stringify(ids)}, declared ${JSON.stringify(want)}`);
++    }
++  }
++  for (const a of inZone) if (!claimed.has(a)) findings.push(`ACCESS  live app ${JSON.stringify(a?.name ?? null)} (id=${a?.id}) on ${appDomains(a).join(', ')} is declared nowhere in ${ZONE_FILE_REL}`);
++  return { findings, notes };
++}
++
++/** PURE. One gate probe's verdict. */
++export function judgeProbe(domain, probe, res) {
++  const loc = res.headers.get('location');
++  let host = null;
++  try {
++    host = loc ? new URL(loc).host.toLowerCase() : null;
++  } catch {
++    host = null;
++  }
++  const where = `GET https://${domain}${probe.path} → HTTP ${res.status}${loc ? ` → ${loc.split('?')[0]}` : ''}`;
++  if (res.status === probe.expectStatus && host !== null && host.endsWith(probe.expectLocationHostSuffix)) return { ok: true, line: `ok   PROBE  ${where}` };
++  return { ok: false, line: `PROBE  ${where} — expected ${probe.expectStatus} to *${probe.expectLocationHostSuffix}: the Access gate is NOT in front of ${domain}` };
++}
++
++async function askProbe(url, { fetchImpl, sleep }) {
++  return readWithBoundedRetry(
++    async (_attempt, { signal }) => {
++      try {
++        return await fetchImpl(url, { method: 'GET', headers: { 'user-agent': 'nikatru-ops-watch/check-edge-zone' }, redirect: 'manual', signal });
++      } catch (err) {
++        throw classifyThrown(err, `GET ${url} did not answer (${err?.name ?? 'error'}: ${err?.message ?? err})`);
++      }
++    },
++    { sleep, note: (m) => console.log(`     ${m}`), secondLook: true, slowPath: (line) => console.log(`     ${line}`) },
++  );
++}
++
++/** IMPURE. The zone's id, by name. */
++export async function zoneId(apex, token, api = cf) {
++  const body = await api(`/zones?name=${encodeURIComponent(apex)}`, token);
++  const list = Array.isArray(body?.result) ? body.result : [];
++  if (list.length !== 1 || typeof list[0]?.id !== 'string' || !list[0].id) throw new CouldNotLook(`\`/zones?name=${apex}\` resolved to ${list.length} zone(s); exactly one with an id is required`);
++  return list[0].id;
++}
++
++/** IMPURE. The rules of the zone's WAF custom-rule phase. */
++export async function readWafRules(id, token, api = cf) {
++  let body;
++  try {
++    body = await api(`/zones/${id}/rulesets/phases/http_request_firewall_custom/entrypoint`, token);
++  } catch (err) {
++    // A phase with no entrypoint answers 404: that is an ANSWER (zero rules), judged against
++    // the declared count, never "could not look" (the rule edge-ratelimit-rule.mjs keeps too).
++    if (err instanceof CouldNotLook && / answered HTTP 404:/.test(err.message)) return [];
++    throw err;
++  }
++  const rules = body?.result?.rules;
++  if (rules === undefined) return [];
++  if (!Array.isArray(rules)) throw new CouldNotLook('the WAF custom-rule phase answered rules that are not a list');
++  return rules;
++}
++
++/** IMPURE. Every Access app on the account, paged to the end. */
++export async function readAccessApps(accountId, token, api = cf) {
++  const apps = [];
++  for (let page = 1; page <= MAX_PAGES; page += 1) {
++    const body = await api(`/accounts/${accountId}/access/apps?per_page=${PAGE_SIZE}&page=${page}`, token);
++    const got = Array.isArray(body?.result) ? body.result : null;
++    if (got === null) throw new CouldNotLook(`the Access app list page ${page} was not an array`);
++    apps.push(...got);
++    if (got.length < PAGE_SIZE) return apps;
++  }
++  throw new CouldNotLook(`the account holds more than ${MAX_PAGES * PAGE_SIZE} Access apps, so this run did not read the list to the end`);
++}
++
++/** PURE. The DNS-provider move's worklist: neutral records, and what has no neutral form. */
++export function exportZone(decl, records) {
++  return {
++    provider: decl.provider,
++    zone: decl.zone,
++    records: records.map((r) => ({ name: r.name, type: r.type, content: r.content, ttl: r.ttl, proxied: r.proxied === true })),
++    noNeutralEquivalent: [
++      `the proxied flag on ${records.filter((r) => r.proxied === true).length} record(s): the edge (TLS, WAF, rate limit, Access) in front of each`,
++      `the rate-limit rule (${decl.cloudflare.rateLimit.file})`,
++      `${decl.cloudflare.wafCustom.count} WAF custom rule(s) (${decl.cloudflare.wafCustom.phase})`,
++      `${decl.cloudflare.access.apps.length} Access app(s): ${decl.cloudflare.access.apps.map((a) => a.domain).join(', ')}`,
++      `the tunnel ingress for ${decl.cloudflare.tunnelIngress.hostnames.length} hostname(s)`,
++    ],
++  };
++}
++
++/** The whole check. Returns the exit code; prints its own lines. */
++export async function run({ root = ROOT, env = process.env, api = cf, fetchImpl = globalThis.fetch, sleep, now = Date.now(), pendingUntil = null, exportMode = false } = {}) {
++  let decl;
++  try {
++    decl = loadDeclaration(root);
++  } catch (err) {
++    console.error(`✗ COULD NOT LOOK — ${err.message}`);
++    return 2;
++  }
++  if (pendingUntil !== null && (!DATE.test(pendingUntil) || Number.isNaN(endOfDay(pendingUntil)))) {
++    console.error(`✗ COULD NOT LOOK — --cloudflare-read-pending-until is "${pendingUntil}", not a YYYY-MM-DD date, so the deferral it declares cannot be bounded.`);
++    return 2;
++  }
++  console.log(`check-edge-zone — the live ${decl.zone} zone against ${ZONE_FILE_REL}`);
++  const token = typeof env[TOKEN_ENV] === 'string' ? env[TOKEN_ENV].trim() : '';
++  const accountId = typeof env.CLOUDFLARE_ACCOUNT_ID === 'string' ? env.CLOUDFLARE_ACCOUNT_ID.trim() : '';
++
++  if (exportMode) {
++    if (!token) {
++      console.error(`✗ COULD NOT LOOK — ${TOKEN_ENV} is not in the environment; --export reads the live zone.`);
++      return 2;
++    }
++    try {
++      console.log(JSON.stringify(exportZone(decl, await readZoneRecords(decl.zone, token, api)), null, 2));
++      return 0;
++    } catch (err) {
++      console.error(`✗ COULD NOT LOOK — ${err instanceof CouldNotLook ? err.message : `${err.name}: ${err.message}`}`);
++      return 2;
++    }
++  }
++
++  const findings = [];
++  const notes = [];
++  const unreadable = [];
++
++  for (const a of decl.cloudflare.access.apps.filter((x) => x.probe)) {
++    const url = `https://${a.domain}${a.probe.path}`;
++    try {
++      const v = judgeProbe(a.domain, a.probe, await askProbe(url, { fetchImpl, sleep }));
++      if (v.ok) console.log(v.line);
++      else findings.push(v.line);
++    } catch (err) {
++      unreadable.push(`PROBE  ${url} never answered: ${err instanceof CouldNotLook ? err.message : String(err)}`);
++    }
++  }
++
++  if (!token || !accountId) {
++    const missing = [!token && TOKEN_ENV, !accountId && 'CLOUDFLARE_ACCOUNT_ID'].filter(Boolean).join(' and ');
++    if (pendingUntil !== null && now <= endOfDay(pendingUntil)) {
++      console.log(`::warning title=The edge zone is UNREADABLE until ${missing} is set (deferred until ${pendingUntil})::DNS, WAF and Access were NOT read; only the Access gate probes ran.`);
++      notes.push(`UNREADABLE — ${missing} is not set; the DNS, WAF and Access limbs are deferred until ${pendingUntil} (#1095's pending-until). Nothing about them is known from this run.`);
++    } else {
++      unreadable.push(`${missing} is not set${pendingUntil ? `, and the deferral ran out on ${pendingUntil}` : ''}: the owner mints ${TOKEN_ENV} with Zone DNS Read, Zone WAF Read and Access: Apps and Policies Read`);
++    }
++  } else {
++    const limbs = [
++      ['DNS', async () => judgeDns(decl, await readZoneRecords(decl.zone, token, api))],
++      ['WAF', async () => judgeWaf(decl, await readWafRules(await zoneId(decl.zone, token, api), token, api))],
++      ['ACCESS', async () => judgeAccess(decl, await readAccessApps(accountId, token, api), { now })],
++    ];
++    for (const [name, limb] of limbs) {
++      try {
++        const v = await limb();
++        findings.push(...v.findings);
++        notes.push(...v.notes);
++        if (v.findings.length === 0) console.log(`ok   ${name}`);
++      } catch (err) {
++        unreadable.push(`${name}  ${err instanceof CouldNotLook ? err.message : `${err.name}: ${err.message}`}`);
++      }
++    }
++  }
++
++  for (const n of notes) console.log(`note ${n}`);
++  for (const f of findings) console.error(`FAIL ${f}`);
++  for (const u of unreadable) console.error(`✗ COULD NOT LOOK — ${u}`);
++  if (findings.length) {
++    console.error(`\nedge zone — ${findings.length} finding(s): the live zone is not the one ${ZONE_FILE_REL} declares.`);
++    return 1;
++  }
++  if (unreadable.length) {
++    console.error(`\nedge zone — ${unreadable.length} part(s) could not be read; nothing is known about them. Not a pass.`);
++    return 2;
++  }
++  console.log(`\nedge zone — the live zone is the declared one, in every limb this run could read.`);
++  return 0;
++}
++
++if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  const args = process.argv.slice(2);
++  const usage = 'Usage: node tooling/ops/check-edge-zone.mjs [--cloudflare-read-pending-until YYYY-MM-DD] [--export] [--root <dir>]';
++  const valued = ['--root', '--cloudflare-read-pending-until'];
++  const unknown = args.filter((a, i) => a.startsWith('--') && !valued.includes(a) && a !== '--export' && !valued.includes(args[i - 1]));
++  if (unknown.length) {
++    console.error(`✗ unknown flag ${unknown.join(', ')}. ${usage}`);
++    process.exitCode = 2;
++  } else {
++    const val = (f) => (args.indexOf(f) >= 0 ? args[args.indexOf(f) + 1] ?? '' : null);
++    process.exitCode = await run({
++      root: val('--root') ? resolve(val('--root')) : ROOT,
++      pendingUntil: val('--cloudflare-read-pending-until'),
++      exportMode: args.includes('--export'),
++    });
++  }
++}
+diff --git a/tooling/ops/register.json b/tooling/ops/register.json
+index a95d1ceb..519e70d6 100644
+--- a/tooling/ops/register.json
++++ b/tooling/ops/register.json
+@@ -5326,14 +5326,14 @@
+       "id": "duty.edge-shield-in-path",
+       "kind": "duty",
+       "what": "LEAD RULING SHIELD-R1 §7, row O-BOXES-UNSHIELDED-FROM-SPIKES — services/edge-shield is still in front of Box C (auth-api.nikatru.com/auth/v1/*) and Box B (glitchtip.nikatru.com/api/*). The shield marks every answer it passes `x-nikatru-shield: 1`; a zone route deleted in the dashboard, the Worker deleted, or the Worker throwing (so passThroughOnException hands the request straight to the origin) all leave the box answering exactly as before, with no edge limit in front of it. The header is the only difference, and this duty reads it. ⏱ 2026-09-27 (LEAD RULING SHIELD-R3): the shield's per-IP half is the nikatru.com zone's own rate-limiting rule on the credential paths, declared in tooling/edge-ratelimit-rule.json; a dashboard edit or deletion of that rule is just as invisible from the boxes, so the same job compares the live rule with the file.",
+-      "detector": "tooling/ops/check-edge-shield.mjs, run WEEKLY (the Monday 07:45 UTC slot, and on any workflow_dispatch) by .github/workflows/ops-watch.yml as its own job `edge-shield` (the unit of this row, so it overlaps no other duty [INV3]), and with --settle as the post-deploy smoke of deploy-workers.yml's edge-shield job. It first holds its two probes (GET the GoTrue JWKS, POST a keyless envelope) against the zone routes services/edge-shield/wrangler.jsonc declares, both ways. Three-valued: 0 both answers carry the header · 1 an answer without it — shield not in path · 2 COULD NOT LOOK (the routes unreadable or not covered by the probes, or a probe never answered after the bounded retry and its second look). The job's second step, tooling/ops/edge-ratelimit-rule.mjs (no --apply), reads the zone's http_ratelimit phase and compares it with tooling/edge-ratelimit-rule.json: 0 equal · 1 differs, each field named · 2 could not look.",
++      "detector": "tooling/ops/check-edge-shield.mjs, run WEEKLY (the Monday 07:45 UTC slot, and on any workflow_dispatch) by .github/workflows/ops-watch.yml as its own job `edge-shield` (the unit of this row, so it overlaps no other duty [INV3]), and with --settle as the post-deploy smoke of deploy-workers.yml's edge-shield job. It first holds its two probes (GET the GoTrue JWKS, POST a keyless envelope) against the zone routes services/edge-shield/wrangler.jsonc declares, both ways. Three-valued: 0 both answers carry the header · 1 an answer without it — shield not in path · 2 COULD NOT LOOK (the routes unreadable or not covered by the probes, or a probe never answered after the bounded retry and its second look). The job's second step, tooling/ops/edge-ratelimit-rule.mjs (no --apply), reads the zone's http_ratelimit phase and compares it with tooling/edge-ratelimit-rule.json: 0 equal · 1 differs, each field named · 2 could not look. ⏱ 2026-10-01 (lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED): the same job also runs tooling/ops/check-edge-zone.mjs, which reads the zone against tooling/edge/zone.json (records DNS-only outside the declared list, WAF custom rules, Access apps) and asks GET / of every Access-gated host for the 302 to the Access login (PB-19).",
+       "response": "Exit 1 fails the edge-shield job, which the alert job `needs`, so it reaches the durable ops-watch issue; the annotation names the two zone routes to check on the nikatru.com zone and says to read the edge-shield Worker's logs for exceptions, then redeploy it from main. Exit 2 is the separate \"nothing was judged\" state and fails too.",
+       "cadence": "7d",
+       "mechanism": {
+         "substrate": "github-actions",
+         "anchor": "tooling/ops/check-edge-shield.mjs",
+         "record": "GitHub Actions run history for .github/workflows/ops-watch.yml (event = schedule) — a failing step is a failing run. The durable-issue clause is deliberately not restated here, for the reason duty.analytics-silence-judgment records (assert-alert-disposition.mjs derives its sources from it).",
+-        "failingValue": "a non-zero exit from tooling/ops/check-edge-shield.mjs or tooling/ops/edge-ratelimit-rule.mjs (the latter's exit 1 is driven by tooling/ci/test/edge-ratelimit-rule.test.mjs with a stubbed zone whose rule differs from the file). REACHABLE by construction and by test: tooling/ci/test/edge-shield-probe.test.mjs drives the script with one probe answered without the header (exit 1), with every probe unanswered (exit 2), and with a route that has no probe (exit 2). NOT YET REACHED LIVE: the shield is not deployed until the row that opens it (O-BOXES-UNSHIELDED-FROM-SPIKES) merges; today, before that merge, both probes answer without the header, which is exactly exit 1.",
++        "failingValue": "a non-zero exit from tooling/ops/check-edge-shield.mjs or tooling/ops/edge-ratelimit-rule.mjs (the latter's exit 1 is driven by tooling/ci/test/edge-ratelimit-rule.test.mjs with a stubbed zone whose rule differs from the file). REACHABLE by construction and by test: tooling/ci/test/edge-shield-probe.test.mjs drives the script with one probe answered without the header (exit 1), with every probe unanswered (exit 2), and with a route that has no probe (exit 2). NOT YET REACHED LIVE: the shield is not deployed until the row that opens it (O-BOXES-UNSHIELDED-FROM-SPIKES) merges; today, before that merge, both probes answer without the header, which is exactly exit 1. Or a non-zero exit from tooling/ops/check-edge-zone.mjs, whose exit 1 is driven by tooling/ci/test/edge-zone.test.mjs with a stubbed zone holding one proxied=false A record, a stubbed account missing an Access app, and a gated host answering 200.",
+         "readBy": ".github/workflows/ops-watch.yml — the edge-shield job, whose non-zero exit fails that job and files the durable issue; and .github/workflows/deploy-workers.yml's edge-shield job, which runs the same script with --settle so a deploy that did not put the shield in path is red where it happened.",
+         "recordQuery": {
+           "reader": "github-run-history",
+diff --git a/tooling/ports/_non-port.json b/tooling/ports/_non-port.json
+index 5d9ea543..80a3ae4f 100644
+--- a/tooling/ports/_non-port.json
++++ b/tooling/ports/_non-port.json
+@@ -2,7 +2,8 @@
+   "$schema": "./port.schema.json#/$defs/nonPortRegister",
+   "_why": [
+     "Every vendor of tooling/capability-register.json `vendors` and every provider of tooling/legal/provider-register.json `providers` that is NOT an adapter of some tooling/ports/<capability>.json. tooling/ci/assert-ports.mjs limb 8 requires each id to be exactly one adapter's `vendor` or exactly one row here, so a vendor nobody placed fails the build.",
+-    "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two."
++    "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two.",
++    "The nikatru.com zone (DNS records, WAF custom rules, Access apps, tunnel ingress) is DECLARED, NOT PORTED: tooling/edge/zone.json, read by tooling/ops/check-edge-zone.mjs, whose --export is the DNS-provider move's worklist."
+   ],
+   "rows": [
+     { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },
