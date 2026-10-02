@@ -53,6 +53,25 @@ class DioCancellationTransport implements core.CancellationTransport {
       return core.Result<core.CancellationReceipt>.ok(
         core.CancellationReceipt.fromJson(body.cast<String, Object?>()),
       );
+    } on DioException catch (e) {
+      // ⏱ 2026-10-01 · AB-M4-03-client (moneyflows MF-3b). Two non-2xx answers
+      // are ANSWERS, not failures, and each carries the receipt shape: 404
+      // `{has_active_plan: false}` is "no active plan", and 409 is a store row
+      // with `cancel_at`/`manage_url` — the plan is real and only its store can
+      // cancel it. Reading them as "we could not cancel" told a store buyer
+      // their request failed when there was nothing for us to do.
+      final int? status = e.response?.statusCode;
+      final Object? body = e.response?.data;
+      if ((status == 404 || status == 409) &&
+          body is Map &&
+          body.containsKey('has_active_plan')) {
+        return core.Result<core.CancellationReceipt>.ok(
+          core.CancellationReceipt.fromJson(body.cast<String, Object?>()),
+        );
+      }
+      return core.Result<core.CancellationReceipt>.err(
+        core.Failure('cancellation request failed', cause: e),
+      );
     } catch (e) {
       // Includes the 404 the host returns when there is no subscription: dio
       // throws on a non-2xx under this validateStatus. Reported as a failure,

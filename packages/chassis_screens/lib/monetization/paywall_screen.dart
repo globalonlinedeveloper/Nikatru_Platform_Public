@@ -38,6 +38,22 @@ enum PaywallPhase { choosing, opening, pending, unlocked, refused }
 /// points its buyer at an outside checkout breaks that store's billing rule.
 enum PaywallCheckoutStyle { hosted, store }
 
+/// Where the buyer cancels the plan they are about to buy — the sentence the
+/// terms line ends with. ⏱ 2026-10-01 · MO-04: it read "in Settings" on every
+/// rail, which is false on a store build, where only the store can stop a store
+/// subscription. The adapter picks it from the rail's kind; a store build never
+/// names the web, and a hosted build never names a store.
+enum PaywallCancelWhere {
+  /// Our own cancel, in this app's Manage plan screen (the hosted rail).
+  here,
+
+  /// Apple's App Store (iOS and the Mac App Store).
+  appStore,
+
+  /// Google Play.
+  googlePlay,
+}
+
 /// What a refused checkout shows. Both offer Try again ([PaywallView.onRetry]).
 ///
 /// The adapter reduces a refusal's route to this. A cancel never gets here (it
@@ -84,7 +100,11 @@ class PaywallOffer {
   /// Already formatted from an amount and an ISO currency by the rail.
   final String formattedPrice;
 
-  /// The billing term's wire code (`month`, `year`, …), rendered through l10n.
+  /// The billing term's wire code (`month` or `year`), rendered through l10n
+  /// as ONE whole sentence per term. ⏱ 2026-10-01 · MO-04: this used to be
+  /// spliced into "Billed per {term}", so Tamil showed the English wire token
+  /// mid-sentence. A term with no sentence (a one-time plan, which never reaches
+  /// an app — `RailConfig.fromPaywallExtra`) draws no line rather than a code.
   final String term;
 
   /// The free trial, or null when the plan has none.
@@ -169,6 +189,12 @@ class PaywallView extends StatelessWidget {
     this.loadingOffers = false,
     this.offline = false,
     this.onReconnect,
+    this.cancelWhere = PaywallCancelWhere.here,
+    this.onRestore,
+    this.restoring = false,
+    this.onOpenTerms,
+    this.onOpenPrivacy,
+    this.onOpenEula,
     super.key,
   });
 
@@ -191,8 +217,17 @@ class PaywallView extends StatelessWidget {
   /// The "What Pro adds" card.
   static const Key featuresCard = Key('paywallFeatures');
 
-  /// The terms line under the plans.
+  /// The terms line ABOVE the plans: how it renews and where it is cancelled.
   static const Key termsLine = Key('paywallTerms');
+
+  /// The store-compliance links under the plans (MO-03).
+  static const Key restoreLink = Key('paywallRestore');
+  static const Key termsLink = Key('paywallTermsLink');
+  static const Key privacyLink = Key('paywallPrivacyLink');
+  static const Key eulaLink = Key('paywallEulaLink');
+
+  /// The live region that announces each phase change (MO-08).
+  static const Key phaseRegion = Key('paywallPhase');
 
   /// The widest the two-column layout grows: two panes and the gap between.
   static const double wideMaxWidth = AppBreakpoints.pane * 2 + AppSpacing.xl;
@@ -251,6 +286,27 @@ class PaywallView extends StatelessWidget {
   /// The offline warning's Retry, or null for none.
   final VoidCallback? onReconnect;
 
+  /// Where the buyer cancels — the end of the terms line.
+  final PaywallCancelWhere cancelWhere;
+
+  /// ⏱ 2026-10-01 · MO-03 — THE LINKS A STORE REVIEWER LOOKS FOR, each drawn
+  /// only when its callback is given, so the brick's plans-only paywall is
+  /// unchanged until its adapter opts in. Restore is the adapter's
+  /// `restorePurchasesOf` + server re-read (Apple 3.1.1 makes it mandatory on a
+  /// StoreKit build); Terms and Privacy open the app's legal pages through its
+  /// `ExternalLinkLauncher`; [onOpenEula] is Apple's standard EULA, passed only
+  /// on an Apple rail (Apple requires a link to the terms of use for an
+  /// auto-renewable subscription).
+  final VoidCallback? onRestore;
+  final VoidCallback? onOpenTerms;
+  final VoidCallback? onOpenPrivacy;
+  final VoidCallback? onOpenEula;
+
+  /// ⏱ 2026-10-01 · review 1 of #1114: a restore is in flight. Restore stays
+  /// drawn and is DISABLED, so a second tap cannot start a second store ask —
+  /// the same busy rule as Manage plan's controls.
+  final bool restoring;
+
   /// The only phase in which there is anything to pitch: plans on screen.
   bool get _choosingWithPlans =>
       phase == PaywallPhase.choosing && canStartCheckout && offers.isNotEmpty;
@@ -259,7 +315,21 @@ class PaywallView extends StatelessWidget {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
     final ThemeData theme = Theme.of(context);
-    final List<Widget> plans = _body(context, l10n, theme);
+    final List<Widget> body = _body(context, l10n, theme);
+    // ⏱ 2026-10-01 · MO-08: the in-flight and terminal phases (opening →
+    // pending → unlocked / refused) are a LIVE REGION, so a screen reader hears
+    // the purchase move on without hunting for what changed. The choosing phase
+    // is not: a list of plans announcing itself on every repaint is noise.
+    final List<Widget> plans = phase == PaywallPhase.choosing
+        ? body
+        : <Widget>[
+            Semantics(
+              key: phaseRegion,
+              container: true,
+              liveRegion: true,
+              child: _column(body),
+            ),
+          ];
     final Widget? features = _choosingWithPlans ? _features(l10n, theme) : null;
 
     return Scaffold(
@@ -372,6 +442,45 @@ class PaywallView extends StatelessWidget {
     );
   }
 
+  /// Restore, Terms, Privacy and (on an Apple rail) the EULA, as a wrap of
+  /// text buttons under the plans. Each is drawn only when its callback is.
+  List<Widget> _links(ChassisLocalizations l10n) {
+    final List<Widget> links = <Widget>[
+      if (onRestore != null)
+        TextButton(
+          key: restoreLink,
+          onPressed: restoring ? null : onRestore,
+          child: Text(l10n.restorePurchases),
+        ),
+      if (onOpenTerms != null)
+        TextButton(
+          key: termsLink,
+          onPressed: onOpenTerms,
+          child: Text(l10n.termsOfService),
+        ),
+      if (onOpenEula != null)
+        TextButton(
+          key: eulaLink,
+          onPressed: onOpenEula,
+          child: Text(l10n.paywallAppleEula),
+        ),
+      if (onOpenPrivacy != null)
+        TextButton(
+          key: privacyLink,
+          onPressed: onOpenPrivacy,
+          child: Text(l10n.privacyPolicy),
+        ),
+    ];
+    if (links.isEmpty) return const <Widget>[];
+    return <Widget>[
+      Wrap(
+        alignment: WrapAlignment.center,
+        spacing: AppSpacing.sm,
+        children: links,
+      ),
+    ];
+  }
+
   List<Widget> _body(
     BuildContext context,
     ChassisLocalizations l10n,
@@ -470,7 +579,25 @@ class PaywallView extends StatelessWidget {
         }
         final bool anyTrial =
             showTrial && offers.any((PaywallOffer o) => o.trial != null);
+        // ⏱ 2026-10-01 · MO-04: the terms line sits ABOVE the plans, so the
+        // buyer reads how it renews and where it is cancelled BEFORE the
+        // control that buys it — not under the last Upgrade, where it was.
+        final String cancelSentence = switch (cancelWhere) {
+          PaywallCancelWhere.here => l10n.paywallCancelHere,
+          PaywallCancelWhere.appStore => l10n.paywallCancelInAppStore,
+          PaywallCancelWhere.googlePlay => l10n.paywallCancelInGooglePlay,
+        };
         return <Widget>[
+          Text(
+            '${anyTrial ? l10n.paywallTermsTrial : l10n.paywallTerms} '
+            '$cancelSentence',
+            key: termsLine,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.lg),
           if (offline) ...<Widget>[
             DecisionStrip(
               kind: StatusKind.warn,
@@ -491,15 +618,7 @@ class PaywallView extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
           ],
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            anyTrial ? l10n.paywallTermsTrial : l10n.paywallTerms,
-            key: termsLine,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          ..._links(l10n),
         ];
     }
   }
@@ -634,19 +753,13 @@ class _PlanCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            switch (trial) {
-              final ({int count, String unit}) t => l10n.paywallTermWithTrial(
-                offer.term,
-                t.count,
-                t.unit,
+          if (_termLine(l10n, offer.term, trial) case final String line)
+            Text(
+              line,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              null => l10n.paywallTerm(offer.term),
-            },
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ),
           const SizedBox(height: AppSpacing.lg),
           FilledButton(
             key: PaywallView.upgradeButton,
@@ -658,6 +771,22 @@ class _PlanCard extends StatelessWidget {
     );
   }
 }
+
+/// One whole sentence per billing term, or null for a term with none — never
+/// the wire code spliced into a sentence (MO-04: Tamil showed `month`).
+String? _termLine(
+  ChassisLocalizations l10n,
+  String term,
+  ({int count, String unit})? trial,
+) => switch ((term, trial)) {
+  ('month', null) => l10n.paywallTermMonthly,
+  ('year', null) => l10n.paywallTermYearly,
+  ('month', final ({int count, String unit}) t) =>
+    l10n.paywallTermMonthlyWithTrial(t.count, t.unit),
+  ('year', final ({int count, String unit}) t) =>
+    l10n.paywallTermYearlyWithTrial(t.count, t.unit),
+  _ => null,
+};
 
 /// Asks for a paywall's plans once, and tells its [builder] whether the
 /// question is still open — ST-U7 (C38).

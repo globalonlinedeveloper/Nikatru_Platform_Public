@@ -52,7 +52,17 @@ final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
 final Provider<bool> sellingEnabledProvider = Provider<bool>(
   (ref) =>
       (ref.watch(appConfigProvider).value?.paywall.enabled ?? false) &&
-      channelMaySell(AppConfig.releaseChannel),
+      channelMaySell(ref.watch(releaseChannelProvider)),
+);
+
+/// The channel this binary was BUILT for — the compile-time `RELEASE_CHANNEL`.
+///
+/// ⏱ 2026-10-01 · IN-05. A provider rather than a bare constant read so the
+/// two readers that must agree — [sellingEnabledProvider] and
+/// [paywallLockedProvider] — read ONE value, and a widget test can drive a
+/// gov-channel build the binary itself can only be compiled as.
+final Provider<String> releaseChannelProvider = Provider<String>(
+  (ref) => AppConfig.releaseChannel,
 );
 
 /// Whether [releaseChannel] may show a Pro surface at all: false only for a
@@ -113,6 +123,19 @@ final Provider<core.CancellationTransport> cancellationTransportProvider =
         return const core.UnavailableCancellationTransport();
       }
       return DioCancellationTransport(platformBaseUrl: kPlatformBaseUrl);
+    });
+
+/// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START. The hosted rail's way to a
+/// checkout page: `POST /v1/checkout` on the shared platform host, which creates
+/// the transaction with this account's attribution and answers its URL. Same
+/// discard rule as the two above — a build whose backend is not live opens no
+/// checkout, and says so.
+final Provider<core.CheckoutSessionTransport> checkoutSessionTransportProvider =
+    Provider<core.CheckoutSessionTransport>((ref) {
+      if (!AppConfig.isBackendLive) {
+        return const core.UnavailableCheckoutSessionTransport();
+      }
+      return DioCheckoutSessionTransport(platformBaseUrl: kPlatformBaseUrl);
     });
 
 /// Where the merchant of record sends the buyer back to.
@@ -186,6 +209,7 @@ PurchaseRail purchaseRailFor(
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
+    checkoutSessions: ref.watch(checkoutSessionTransportProvider),
     // This app declares `billing.mobileIap` and depends on
     // nikatru_billing_revenuecat — `assert-app-yaml` limb 6 holds the two
     // together. The buyer's id is NOT passed here: the SDK is configured on the
@@ -316,9 +340,16 @@ final FutureProvider<core.Entitlements> entitlementsProvider =
 ///
 /// `paywall.enabled` is therefore the outer switch, and it is what makes being
 /// born with the gate free for an app that sells nothing.
+///
+/// ⏱ 2026-10-01 · IN-05: AND THE CHANNEL, exactly as [sellingEnabledProvider]
+/// reads it. A `rail: none` build (`apps-gov-in`) can never sell, so a served
+/// `paywall.enabled: true` locked a feature behind a "See Pro" that led to a
+/// paywall with nothing to buy. There the lock is off: nothing it guards can be
+/// bought, and the gov build ships the free product whole.
 final Provider<bool> paywallLockedProvider = Provider<bool>((ref) {
   final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
   if (cfg == null || !cfg.paywall.enabled) return false;
+  if (!channelMaySell(ref.watch(releaseChannelProvider))) return false;
   final core.Entitlements? ent = ref.watch(entitlementsProvider).value;
   if (ent == null) return true;
   return !ent.isProAt(DateTime.now());
