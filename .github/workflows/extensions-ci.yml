@@ -1170,7 +1170,7 @@ jobs:
   # red when any job here is.
   ci-required:
     name: ci-required
-    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh, ops-tooling]
+    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, ops-tooling, templates, e2e-proof-fresh]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
