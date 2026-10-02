@@ -1,0 +1,2916 @@
+diff --git a/apps/subscriptiontracker/lib/data/models/subscription.dart b/apps/subscriptiontracker/lib/data/models/subscription.dart
+index 244e5c19..b88f8f68 100644
+--- a/apps/subscriptiontracker/lib/data/models/subscription.dart
++++ b/apps/subscriptiontracker/lib/data/models/subscription.dart
+@@ -40,6 +40,26 @@ enum SubscriptionStatus {
+       );
+ }
+ 
++/// The user's answer to Insights' "Still using?" (0008's `still_using`).
++///
++/// ⏱ 2026-10-01 · train T11 (IN-08). The answer used to live on ONE device
++/// (`LocalSubscriptionStore.writeStillUsing`), so every other device asked
++/// again. It is a field of the row now, written by PATCH; the device store is a
++/// cache of it.
++enum StillUsing {
++  yes,
++  no;
++
++  /// The wire value, or null for anything else — "not answered", which is
++  /// what every row written before 0008 is.
++  static StillUsing? parse(Object? raw) {
++    for (final StillUsing a in StillUsing.values) {
++      if (a.name == raw) return a;
++    }
++    return null;
++  }
++}
++
+ /// A single tracked subscription. JSON is snake_case to match the Worker/D1 API.
+ ///
+ /// Subly-domain model — lives in the app, not the shared spine (de-Subly-fy
+@@ -67,6 +87,9 @@ class Subscription {
+     this.reminderDays,
+     this.noticeDays,
+     this.noticeDaysSupported = false,
++    this.priceAfterTrial,
++    this.stillUsing,
++    this.stillUsingAt,
+   });
+ 
+   final String id;
+@@ -160,6 +183,21 @@ class Subscription {
+   /// value.
+   final int? noticeDays;
+ 
++  /// What a trial converts to (0008's `price_after_trial_minor`), in this
++  /// row's own currency — the API stores it as minor units of `currency`, so
++  /// it is never a second currency. NULL = the trial converts at [price].
++  ///
++  /// ⏱ 2026-10-01 · train T11 (AD-08). The platform Worker's nightly trial-end
++  /// step moves [price] to it on [trialEndsOn] and clears it.
++  final Money? priceAfterTrial;
++
++  /// The user's answer to "Still using?", or null when not answered.
++  final StillUsing? stillUsing;
++
++  /// When the answer was given — the SERVER's clock (the API never stores the
++  /// client's), so two devices agree on it.
++  final DateTime? stillUsingAt;
++
+   /// Whether the wire CARRIED `notice_days` at all. The detail screen offers
+   /// the field only then: an API that predates 0004 would drop the value and
+   /// answer with a row that no longer has it. Deploy order is the API first.
+@@ -282,8 +320,29 @@ class Subscription {
+     reminderDays: readReminderDays(j['reminder_days']),
+     noticeDays: readNoticeDays(j['notice_days']),
+     noticeDaysSupported: j.containsKey('notice_days'),
++    priceAfterTrial: readPriceAfterTrial(
++      j,
++      fallbackCurrencyCode: fallbackCurrencyCode,
++    ),
++    stillUsing: StillUsing.parse(j['still_using']),
++    stillUsingAt: _instantOrNull(j['still_using_at']),
+   );
+ 
++  /// `price_after_trial_minor` off the wire, in the row's own currency (the
++  /// one [readPrice] reads). `is int` for [readPrice]'s reason; anything else,
++  /// or a negative, is "none".
++  static Money? readPriceAfterTrial(
++    Map<String, dynamic> j, {
++    String fallbackCurrencyCode = Money.fallbackCurrencyCode,
++  }) {
++    final Object? minor = j['price_after_trial_minor'];
++    if (minor is! int || minor < 0) return null;
++    return Money(
++      minor,
++      readPrice(j, fallbackCurrencyCode: fallbackCurrencyCode).currencyCode,
++    );
++  }
++
+   /// `reminder_days` off the wire: a list of whole days, deduplicated and
+   /// nearest-to-the-charge LAST (the order the reminders fire in), or null
+   /// for "the default". Anything malformed is the default, never a guess.
+@@ -392,6 +451,14 @@ class Subscription {
+     // The cache round-trips this row through toJson, so the capability rides
+     // with it: a cached row must not lose the field the API had emitted.
+     if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
++    // 0008 (train T11). Always sent, null included, so [changesFrom] can send
++    // a CLEAR; an API before 0008 ignores keys it does not know. The amount is
++    // in `currency` above — the API refuses one with no currency to be in.
++    'price_after_trial_minor': priceAfterTrial?.minorUnits,
++    'still_using': stillUsing?.name,
++    // Kept so the cache round-trips it; the API checks its shape and stamps
++    // its own time, so a value sent here is never stored.
++    'still_using_at': stillUsingAt?.toUtc().toIso8601String(),
+   };
+ 
+   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
+@@ -443,7 +510,10 @@ class Subscription {
+   ///   · a `price` or `currency` without `price_minor` drops the stored exact
+   ///     amount — [readPrice] prefers `price_minor`, so a stale one would
+   ///     outrank the new decimal;
+-  ///   · a legacy `cycle` without the pair re-derives the pair from it.
++  ///   · a legacy `cycle` without the pair re-derives the pair from it;
++  ///   · (0008) a currency that MOVES without `price_after_trial_minor` drops
++  ///     the post-trial amount, and an answer to "Still using?" is stamped
++  ///     now unless it repeats the stored one.
+   Subscription patched(Map<String, dynamic> changes) {
+     final Map<String, dynamic> merged = <String, dynamic>{
+       ...toJson(),
+@@ -453,6 +523,22 @@ class Subscription {
+         (changes.containsKey('price') || changes.containsKey('currency'))) {
+       merged.remove('price_minor');
+     }
++    if (!changes.containsKey('price_after_trial_minor') &&
++        changes.containsKey('currency') &&
++        changes['currency'] != price.currencyCode) {
++      merged.remove('price_after_trial_minor');
++    }
++    if (changes.containsKey('still_using')) {
++      final StillUsing? answer = StillUsing.parse(changes['still_using']);
++      merged['still_using_at'] = answer == null
++          ? null
++          : (answer == stillUsing && stillUsingAt != null
++                ? stillUsingAt!.toUtc().toIso8601String()
++                : DateTime.now().toUtc().toIso8601String());
++    } else {
++      // Never the caller's: the twin keeps what it had, as the API does.
++      merged['still_using_at'] = toJson()['still_using_at'];
++    }
+     if (changes.containsKey('cycle') && !changes.containsKey('cycle_unit')) {
+       final Cadence? legacy = Cadence.fromLegacy(changes['cycle']);
+       merged['cycle_every'] = legacy?.every;
+@@ -481,6 +567,8 @@ class Subscription {
+     final Map<String, dynamic> out = <String, dynamic>{};
+     for (final String k in b.keys) {
+       if (k == 'id') continue;
++      // The server stamps `still_using_at`; a PATCH never carries it.
++      if (k == 'still_using_at') continue;
+       if (a[k] != b[k]) out[k] = b[k];
+     }
+     for (final List<String> group in _togetherKeys) {
+@@ -494,6 +582,11 @@ class Subscription {
+   }
+ 
+   static const List<List<String>> _togetherKeys = <List<String>>[
++    // NOT `price_after_trial_minor`: an edit of the price alone sends only the
++    // price keys (truth pass AD-01/AD-02). The post-trial amount is sent when
++    // IT changes — alone, in the stored currency, which the API accepts — and
++    // a move to another currency changes it to null ([_with]), so the clear
++    // is sent explicitly with the money.
+     <String>['price', 'price_minor', 'currency'],
+     <String>['cycle', 'cycle_every', 'cycle_unit'],
+   ];
+@@ -531,6 +624,14 @@ class Subscription {
+     reminderDays: reminderDays,
+     noticeDays: noticeDays,
+     noticeDaysSupported: noticeDaysSupported,
++    // A new amount in another currency cannot keep a post-trial amount that
++    // was counted in the old one ([patched] mirrors the API on the same rule).
++    priceAfterTrial:
++        price == null || priceAfterTrial?.currencyCode == price.currencyCode
++        ? priceAfterTrial
++        : null,
++    stillUsing: stillUsing,
++    stillUsingAt: stillUsingAt,
+   );
+ 
+   /// The mark a row wears when nobody chose one: the first three letters of
+diff --git a/apps/subscriptiontracker/lib/data/portability/subscription_columns.dart b/apps/subscriptiontracker/lib/data/portability/subscription_columns.dart
+index f2300238..d2d202cb 100644
+--- a/apps/subscriptiontracker/lib/data/portability/subscription_columns.dart
++++ b/apps/subscriptiontracker/lib/data/portability/subscription_columns.dart
+@@ -43,6 +43,12 @@ const List<String> _kModelColumns = <String>[
+   'deleted_at',
+   'notes',
+   'cancel_url',
++  // ⏱ 2026-10-01 · train T11 (0008): what a trial converts to, in minor units
++  // of this row's `currency` — the wire's own exact amount, as `toJson` writes
++  // it — and the user's "Still using?" answer with the server's stamp.
++  'price_after_trial_minor',
++  'still_using',
++  'still_using_at',
+ ];
+ 
+ /// [s]'s [_kModelColumns] cells, read off `toJson()` so the file and the wire
+diff --git a/apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart b/apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart
+index 8e8d5ccc..8a3d0bec 100644
+--- a/apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart
++++ b/apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart
+@@ -410,6 +410,17 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
+       deletedAt: was?.deletedAt,
+       notes: _notes.text.trim(),
+       cancelUrl: website.isEmpty ? null : website,
++      // 0008 (train T11). This sheet has no field for either yet (the
++      // post-trial field is train T9's), so an edit CARRIES them: `toJson`
++      // always sends both, and a draft built without them would send a clear.
++      // The post-trial amount goes when the trial does, or when the price
++      // moves to another currency it was not counted in.
++      priceAfterTrial:
++          _trial && was?.priceAfterTrial?.currencyCode == price.currencyCode
++          ? was?.priceAfterTrial
++          : null,
++      stillUsing: was?.stillUsing,
++      stillUsingAt: was?.stillUsingAt,
+     );
+   }
+ 
+diff --git a/apps/subscriptiontracker/lib/features/insights/signals.dart b/apps/subscriptiontracker/lib/features/insights/signals.dart
+index 99436e72..5b480e65 100644
+--- a/apps/subscriptiontracker/lib/features/insights/signals.dart
++++ b/apps/subscriptiontracker/lib/features/insights/signals.dart
+@@ -30,6 +30,7 @@ import '../../core/format/sub_math.dart';
+ import '../../data/models/subscription.dart';
+ import '../../l10n/app_localizations.dart';
+ import '../../state/providers.dart';
++import '../../state/subscriptions_controller.dart';
+ import 'summary_tiles.dart' show chargeWithCycle;
+ 
+ /// How far ahead a yearly renewal is worth flagging.
+@@ -105,16 +106,33 @@ List<InsightSignal> signalsFor(
+   ];
+ }
+ 
+-/// The ids answered "still using" on this device, read from and written to the
+-/// local store (cleared with everything else on sign-out and deletion).
++/// The ids answered "still using" on THIS device — a CACHE of the row's own
++/// `still_using` (0008), read from and written to the local store (cleared
++/// with everything else on sign-out and deletion).
++///
++/// ⏱ 2026-10-01 · train T11 (IN-08). This set used to be the WHOLE answer, so
++/// a "Yes" on the phone was asked again on the laptop. The answer is written
++/// to the row by PATCH now and every device reads it after a sync
++/// ([answeredIds]); the set only hides the question at once, before the write
++/// lands, and keeps it hidden on a device that cannot reach the server.
+ class StillUsingController extends AsyncNotifier<Set<String>> {
+   @override
+   Future<Set<String>> build() =>
+       ref.watch(localSubscriptionStoreProvider).readStillUsing();
+ 
+-  /// Records "yes" for [id]. The row leaves at once; a failed write is not
+-  /// swallowed — the answer is rolled back so the question comes back.
+-  Future<void> answerYes(String id) async {
++  /// Records "yes" for [id]. See [answer].
++  Future<void> answerYes(String id) => answer(id, StillUsing.yes);
++
++  /// Records [value] for [id]: the row leaves at once (the cache), then the
++  /// answer goes to the server with the row (`PATCH {still_using}`), so the
++  /// question leaves every other device on its next sync.
++  ///
++  /// A failed CACHE write is not swallowed — the answer is rolled back so the
++  /// question comes back, as before. A failed SERVER write keeps the cached
++  /// answer: this device stays answered (exactly what it was before T11), the
++  /// row is untouched on the server, and the next answer on any device writes
++  /// it again.
++  Future<void> answer(String id, StillUsing value) async {
+     final Set<String> before = state.value ?? <String>{};
+     final Set<String> next = <String>{...before, id};
+     state = AsyncData<Set<String>>(next);
+@@ -122,10 +140,29 @@ class StillUsingController extends AsyncNotifier<Set<String>> {
+       await ref.read(localSubscriptionStoreProvider).writeStillUsing(next);
+     } catch (_) {
+       if (ref.mounted) state = AsyncData<Set<String>>(before);
++      return;
++    }
++    if (!ref.mounted) return;
++    try {
++      await ref
++          .read(subscriptionsControllerProvider.notifier)
++          .updateSubscription(id, <String, dynamic>{'still_using': value.name});
++    } catch (_) {
++      // Deliberately kept local: see the doc comment.
+     }
+   }
+ }
+ 
++/// Every id whose "Still using?" is answered: the row's own answer, synced
++/// from the server (0008), plus this device's cache of answers not yet
++/// written back.
++Set<String> answeredIds(Iterable<Subscription> subs, Set<String> cached) =>
++    <String>{
++      ...cached,
++      for (final Subscription s in subs)
++        if (s.stillUsing != null) s.id,
++    };
++
+ final AsyncNotifierProvider<StillUsingController, Set<String>>
+ stillUsingProvider = AsyncNotifierProvider<StillUsingController, Set<String>>(
+   StillUsingController.new,
+@@ -144,8 +181,10 @@ class SignalsSection extends ConsumerWidget {
+     final ThemeData theme = Theme.of(context);
+     final ColorScheme scheme = theme.colorScheme;
+     final TextTheme text = theme.textTheme;
+-    final Set<String> answered =
+-        ref.watch(stillUsingProvider).value ?? <String>{};
++    final Set<String> answered = answeredIds(
++      subs,
++      ref.watch(stillUsingProvider).value ?? <String>{},
++    );
+     // `nowProvider`, never `DateTime.now()` (ST truth pass, IN-02): the day
+     // counts are a function of today, and a test must be able to pin it.
+     final DateTime now = ref.watch(nowProvider)();
+diff --git a/apps/subscriptiontracker/test/insights_signals_test.dart b/apps/subscriptiontracker/test/insights_signals_test.dart
+index d47c1980..7b7bed61 100644
+--- a/apps/subscriptiontracker/test/insights_signals_test.dart
++++ b/apps/subscriptiontracker/test/insights_signals_test.dart
+@@ -34,11 +34,25 @@ Subscription _sub(
+ 
+ class _Repo implements SubscriptionRepository {
+   _Repo(this.subs);
+-  final List<Subscription> subs;
++  List<Subscription> subs;
++
++  /// Every PATCH body, by id. Applied the way the route applies it
++  /// (`Subscription.patched`), so a later `fetchAll` — a sync — reads it.
++  final List<(String, Map<String, dynamic>)> patches =
++      <(String, Map<String, dynamic>)>[];
+ 
+   @override
+   Future<List<Subscription>> fetchAll() async => subs;
+ 
++  @override
++  Future<Subscription> update(String id, Map<String, dynamic> changes) async {
++    patches.add((id, changes));
++    subs = <Subscription>[
++      for (final Subscription s in subs) s.id == id ? s.patched(changes) : s,
++    ];
++    return subs.firstWhere((Subscription s) => s.id == id);
++  }
++
+   @override
+   Future<BudgetInfo> budget() async => const BudgetInfo(
+     monthlyBudget: Money(0, 'USD'),
+@@ -143,6 +157,77 @@ void main() {
+     expect(store.data[kLocalStillUsingKey], '["big"]');
+   });
+ 
++  // Train T11 (IN-08). Red: drop the PATCH from `StillUsingController.answer`
++  // — device A only writes its own cache, and device B asks again; or drop the
++  // row's answer from `answeredIds` — device B asks again with the answer
++  // already on the row.
++  testWidgets(
++    'Yes on one device hides the question on ANOTHER after a sync (the answer is the row’s)',
++    (WidgetTester tester) async {
++      final _Repo server = _Repo(<Subscription>[
++        _sub('big', 'Video', 1500),
++        _sub('small', 'Music', 300),
++      ]);
++
++      // Device A answers.
++      await pumpAt(
++        tester,
++        const Size(420, 2600),
++        const InsightsScreen(),
++        overrides: <Override>[
++          keyValueStoreProvider.overrideWith((_) async => MemStore()),
++          subscriptionRepositoryProvider.overrideWithValue(server),
++          currencyCodeProvider.overrideWithValue('USD'),
++        ],
++      );
++      await tester.tap(
++        find.byKey(const Key('insights.signal.stillUsing.yes.big')),
++      );
++      await tester.pumpAndSettle();
++      expect(server.patches, hasLength(1));
++      expect(server.patches.single.$1, 'big');
++      expect(server.patches.single.$2, <String, dynamic>{'still_using': 'yes'});
++
++      // Device B: its own, EMPTY device store — nothing cached — reading the
++      // same rows after a sync.
++      await tester.pumpWidget(const SizedBox.shrink());
++      await pumpAt(
++        tester,
++        const Size(420, 2600),
++        const InsightsScreen(),
++        overrides: <Override>[
++          keyValueStoreProvider.overrideWith((_) async => MemStore()),
++          subscriptionRepositoryProvider.overrideWithValue(
++            _Repo(List<Subscription>.of(server.subs)),
++          ),
++          currencyCodeProvider.overrideWithValue('USD'),
++        ],
++      );
++      expect(find.text('Still using Plan big?'), findsNothing);
++      expect(find.text('Still using Plan small?'), findsOneWidget);
++    },
++  );
++
++  test('answeredIds is the rows’ answers plus the device cache', () {
++    final Subscription yes = _sub(
++      'a',
++      'Video',
++      100,
++    ).patched(<String, dynamic>{'still_using': 'yes'});
++    final Subscription no = _sub(
++      'b',
++      'Video',
++      100,
++    ).patched(<String, dynamic>{'still_using': 'no'});
++    expect(
++      answeredIds(
++        <Subscription>[yes, no, _sub('c', 'Music', 1)],
++        <String>{'d'},
++      ),
++      <String>{'a', 'b', 'd'},
++    );
++  });
++
+   test('the answers are forgotten with everything else', () async {
+     final MemStore store = MemStore();
+     final LocalSubscriptionStore local = LocalSubscriptionStore(
+diff --git a/apps/subscriptiontracker/test/settings_export_test.dart b/apps/subscriptiontracker/test/settings_export_test.dart
+index 19ee33a4..34b28f39 100644
+--- a/apps/subscriptiontracker/test/settings_export_test.dart
++++ b/apps/subscriptiontracker/test/settings_export_test.dart
+@@ -195,6 +195,10 @@ void main() {
+       'cancelled_on',
+       'deleted_at',
+       'cancel_url',
++      // ⏱ 2026-10-01 · train T11: 0008's three, kept and listed the same way.
++      'price_after_trial_minor',
++      'still_using',
++      'still_using_at',
+     ], reason: 'kept and listed, never dropped');
+     final core.ImportPlan plan = core.ImportPlan.build(
+       table,
+diff --git a/apps/subscriptiontracker/test/subscription_model_t11_test.dart b/apps/subscriptiontracker/test/subscription_model_t11_test.dart
+new file mode 100644
+index 00000000..4a066e9a
+--- /dev/null
++++ b/apps/subscriptiontracker/test/subscription_model_t11_test.dart
+@@ -0,0 +1,203 @@
++// Train T11 — the model carries 0008's fields: the price after a trial (AD-08)
++// and the "Still using?" answer (IN-08), the client half.
++//
++// Each case names the lib change that turns it red when reverted.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:subscriptiontracker/data/models/subscription.dart';
++
++Map<String, dynamic> _wire({Map<String, dynamic> extra = const {}}) =>
++    <String, dynamic>{
++      'id': 's1',
++      'name': 'JioHotstar',
++      'category': 'Video',
++      'price': 0,
++      'price_minor': 0,
++      'currency': 'INR',
++      'cycle': 'monthly',
++      'cycle_every': 1,
++      'cycle_unit': 'month',
++      'next_renewal': '2026-10-08',
++      'status': 'trialing',
++      'trial_ends_on': '2026-10-08',
++      ...extra,
++    };
++
++void main() {
++  group('AD-08 — the price after the trial', () {
++    // Red: drop `priceAfterTrial: readPriceAfterTrial(...)` from fromJson.
++    test(
++      'is read in the row’s own currency, and round-trips through toJson',
++      () {
++        final Subscription s = Subscription.fromJson(
++          _wire(extra: <String, dynamic>{'price_after_trial_minor': 89900}),
++        );
++        expect(s.priceAfterTrial, const Money(89900, 'INR'));
++        final Subscription back = Subscription.fromJson(s.toJson());
++        expect(back.priceAfterTrial, const Money(89900, 'INR'));
++        expect(s.toJson()['price_after_trial_minor'], 89900);
++      },
++    );
++
++    test('absent, null, negative or a decimal reads as none', () {
++      for (final Object? raw in <Object?>[null, -1, 899.0, '89900']) {
++        final Subscription s = Subscription.fromJson(
++          _wire(extra: <String, dynamic>{'price_after_trial_minor': raw}),
++        );
++        expect(s.priceAfterTrial, isNull, reason: '$raw');
++      }
++      expect(Subscription.fromJson(_wire()).priceAfterTrial, isNull);
++    });
++
++    test(
++      'a row with none still SENDS the key as null, so an edit can clear it',
++      () {
++        final Map<String, dynamic> json = Subscription.fromJson(
++          _wire(),
++        ).toJson();
++        expect(json.containsKey('price_after_trial_minor'), isTrue);
++        expect(json['price_after_trial_minor'], isNull);
++      },
++    );
++
++    // Red: drop the key from `toJson` — the edit sends nothing.
++    test(
++      'a changed post-trial price is sent alone (the API reads it in the stored currency)',
++      () {
++        final Subscription before = Subscription.fromJson(
++          _wire(extra: <String, dynamic>{'price_after_trial_minor': 64900}),
++        );
++        final Subscription after = before.patched(<String, dynamic>{
++          'price_after_trial_minor': 89900,
++        });
++        expect(after.changesFrom(before), <String, dynamic>{
++          'price_after_trial_minor': 89900,
++        });
++      },
++    );
++
++    // Red: drop the currency rule from `_with` — the old amount, counted in
++    // rupees, would stay on a row now in dollars and nothing would clear it.
++    test('a move to another currency sends the CLEAR with the money', () {
++      final Subscription before = Subscription.fromJson(
++        _wire(extra: <String, dynamic>{'price_after_trial_minor': 64900}),
++      );
++      final Subscription after = before.withPrice(const Money(999, 'USD'));
++      expect(after.changesFrom(before), <String, dynamic>{
++        'price': 9.99,
++        'price_minor': 999,
++        'currency': 'USD',
++        'price_after_trial_minor': null,
++      });
++    });
++
++    test('an edit of the price alone does not send it', () {
++      final Subscription before = Subscription.fromJson(
++        _wire(extra: <String, dynamic>{'price_after_trial_minor': 64900}),
++      );
++      expect(
++        before.withPrice(const Money(100, 'INR')).changesFrom(before).keys,
++        unorderedEquals(<String>['price', 'price_minor', 'currency']),
++      );
++    });
++
++    // Red: drop the currency rule from `patched`.
++    test(
++      'the PATCH twin drops it when the currency MOVES, keeps it when re-sent',
++      () {
++        final Subscription s = Subscription.fromJson(
++          _wire(extra: <String, dynamic>{'price_after_trial_minor': 89900}),
++        );
++        expect(
++          s.patched(<String, dynamic>{'currency': 'INR'}).priceAfterTrial,
++          const Money(89900, 'INR'),
++        );
++        expect(
++          s.patched(<String, dynamic>{'currency': 'JPY'}).priceAfterTrial,
++          isNull,
++        );
++      },
++    );
++
++    test('a new amount in another currency cannot keep it (withPrice)', () {
++      final Subscription s = Subscription.fromJson(
++        _wire(extra: <String, dynamic>{'price_after_trial_minor': 89900}),
++      );
++      expect(s.withPrice(const Money(500, 'INR')).priceAfterTrial, isNotNull);
++      expect(s.withPrice(const Money(500, 'USD')).priceAfterTrial, isNull);
++    });
++  });
++
++  group('IN-08 — "Still using?" is a field of the row', () {
++    // Red: drop `stillUsing:` / `stillUsingAt:` from fromJson.
++    test('the answer and the server’s stamp are read and round-trip', () {
++      final Subscription s = Subscription.fromJson(
++        _wire(
++          extra: <String, dynamic>{
++            'still_using': 'yes',
++            'still_using_at': '2026-10-01T09:00:00.000Z',
++          },
++        ),
++      );
++      expect(s.stillUsing, StillUsing.yes);
++      expect(s.stillUsingAt, DateTime.utc(2026, 10, 1, 9));
++      final Subscription back = Subscription.fromJson(s.toJson());
++      expect(back.stillUsing, StillUsing.yes);
++      expect(back.stillUsingAt, DateTime.utc(2026, 10, 1, 9));
++    });
++
++    test('anything but yes or no is "not answered"', () {
++      for (final Object? raw in <Object?>[null, 'maybe', true, 'YES']) {
++        expect(
++          Subscription.fromJson(
++            _wire(extra: <String, dynamic>{'still_using': raw}),
++          ).stillUsing,
++          isNull,
++          reason: '$raw',
++        );
++      }
++    });
++
++    test(
++      'an answer is a PATCH of `still_using` alone — the server stamps the time',
++      () {
++        final Subscription before = Subscription.fromJson(_wire());
++        final Subscription after = before.patched(<String, dynamic>{
++          'still_using': 'no',
++        });
++        expect(after.stillUsing, StillUsing.no);
++        expect(after.stillUsingAt, isNotNull);
++        expect(after.changesFrom(before), <String, dynamic>{
++          'still_using': 'no',
++        });
++      },
++    );
++
++    test(
++      'the twin keeps the stamp for a repeated answer and clears it with null',
++      () {
++        final Subscription s = Subscription.fromJson(
++          _wire(
++            extra: <String, dynamic>{
++              'still_using': 'yes',
++              'still_using_at': '2026-10-01T09:00:00.000Z',
++            },
++          ),
++        );
++        expect(
++          s.patched(<String, dynamic>{'still_using': 'yes'}).stillUsingAt,
++          DateTime.utc(2026, 10, 1, 9),
++        );
++        final Subscription cleared = s.patched(<String, dynamic>{
++          'still_using': null,
++        });
++        expect(cleared.stillUsing, isNull);
++        expect(cleared.stillUsingAt, isNull);
++        expect(
++          s.patched(<String, dynamic>{'notes': 'x'}).stillUsingAt,
++          DateTime.utc(2026, 10, 1, 9),
++          reason: 'an unrelated edit does not touch the answer',
++        );
++      },
++    );
++  });
++}
+diff --git a/services/platform/src/lib/reminders.ts b/services/platform/src/lib/reminders.ts
+index 415a5bc1..29e599c7 100644
+--- a/services/platform/src/lib/reminders.ts
++++ b/services/platform/src/lib/reminders.ts
+@@ -306,8 +306,12 @@ export function dueReminder(
+  *
+  * TODO(lane fix-st-api-bounds): that lane adds the shared ISO 4217 table under
+  * contracts/; once it lands, read it here and delete this map.
++ *
++ * Exported for test/subscription-housekeeping.test.ts, which holds the CASE the
++ * nightly trial-end statements convert a post-trial amount by
++ * (src/subscription-housekeeping.ts) equal to this table.
+  */
+-const MINOR_DIGITS_NOT_TWO: Readonly<Record<string, number>> = {
++export const MINOR_DIGITS_NOT_TWO: Readonly<Record<string, number>> = {
+   BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0, PYG: 0, RWF: 0,
+   UGX: 0, UYI: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+   BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+diff --git a/services/platform/src/renewals.ts b/services/platform/src/renewals.ts
+index 0343f52d..74d5978a 100644
+--- a/services/platform/src/renewals.ts
++++ b/services/platform/src/renewals.ts
+@@ -213,6 +213,8 @@ export async function recomputeRenewals(
+     const select = ['id', 'user_id', 'price', 'cycle', 'next_renewal'];
+     if (hasCadence) select.push('cycle_every', 'cycle_unit');
+     if (subColumns.has('currency')) select.push('currency');
++    const hasTrial = subColumns.has('trial_ends_on');
++    if (hasTrial) select.push('trial_ends_on');
+     const where = ['next_renewal IS NOT NULL', 'next_renewal < ?'];
+     // A row with no cadence at all has nothing to roll by: skipped, as before.
+     where.push(
+@@ -223,6 +225,19 @@ export async function recomputeRenewals(
+     // one would write a payment for a charge that never happens and move a date
+     // the user froze. A soft-deleted row (`deleted_at`) is gone from every list
+     // and must not keep "paying" behind the Undo window either.
++    //
++    // ⏱ 2026-10-01 · train T11 (SV-02): THESE TWO TERMS ARE AN INDEX'S WHERE.
++    // subscriptiontracker-api's 0008 adds the partial index
++    // `idx_subscriptions_charging_renewal ON subscriptions (next_renewal) WHERE
++    // deleted_at IS NULL AND status IN ('active', 'trialing')`. SQLite uses a
++    // partial index only when the query's WHERE carries each of its terms as
++    // written — MEASURED on the engine the tests run: `IN ('trialing',
++    // 'active')` (the same set, the other order) or dropping either term scans
++    // the whole table every night again, with no error anywhere. (SQLite does
++    // rewrite `status = 'active' OR status = 'trialing'` into this IN, so that
++    // one spelling keeps the index.) Before 0008 the only renewal index was
++    // (user_id, next_renewal), which this user-less query cannot use.
++    // test/renewals-index.test.ts holds the plan to `USING INDEX`.
+     if (subColumns.has('status')) where.push("status IN ('active', 'trialing')");
+     if (subColumns.has('deleted_at')) where.push('deleted_at IS NULL');
+     const due = await allRows<Subscription>(
+@@ -283,6 +298,7 @@ export async function recomputeRenewals(
+     const ops: D1PreparedStatement[] = [];
+     let rolled = 0;
+     let skipped = 0;
++    let inTrial = 0;
+     for (const sub of due) {
+       const cadence = cadenceOfRow(sub);
+       if (cadence === null) {
+@@ -293,6 +309,16 @@ export async function recomputeRenewals(
+       }
+       const { next, crossings } = rollForward(sub.next_renewal as string, cadence, today);
+       for (const when of crossings) {
++        // 🔴 NO ASSUMED PAYMENT INSIDE A TRIAL (train T11, AD-13). A charge
++        // date before `trial_ends_on` is a day the user paid nothing, so the
++        // date still rolls and no payment_history row is written for it. The
++        // day the trial ends IS charged: src/subscription-housekeeping.ts
++        // `endTrials` runs before this pass and has already moved the row to
++        // its post-trial price.
++        if (hasTrial && typeof sub.trial_ends_on === 'string' && when < sub.trial_ends_on) {
++          inTrial++;
++          continue;
++        }
+         const paidAt = `${when}T00:00:00Z`;
+         const values: unknown[] = [uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt];
+         if (hasUpdatedAt) values.push(paidAt);
+@@ -316,6 +342,7 @@ export async function recomputeRenewals(
+       detail:
+         `advanced ${rolled} subscription(s), ${ops.length} statement(s)` +
+         (skipped > 0 ? ` — SKIPPED ${skipped} with a cadence this build cannot read` : '') +
++        (inTrial > 0 ? `, ${inTrial} in-trial charge(s) not recorded` : '') +
+         (hasUpdatedAt
+           ? ''
+           : ' — WITHOUT updated_at: this app database has no such column on payment_history, so every row written tonight carries none'),
+diff --git a/services/platform/src/scheduled.ts b/services/platform/src/scheduled.ts
+index 4619c129..91b038a1 100644
+--- a/services/platform/src/scheduled.ts
++++ b/services/platform/src/scheduled.ts
+@@ -16,6 +16,7 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ import type { AppTarget, Env } from './types';
+ import { recomputeRenewals } from './renewals';
++import { endTrials, housekeepingDetail, probeHousekeepingSchema, purgeSoftDeleted } from './subscription-housekeeping';
+ import { runBackup } from './backup';
+ import { isMoneyEnvironment } from './lib/mor/contract';
+ import { verifierFor } from './lib/mor/registry';
+@@ -605,12 +606,44 @@ export async function renewalsFanOut(env: Env): Promise<void> {
+       rows.push({ target: t.appId, ok: false, detail: 'no database binding for this app' });
+       continue;
+     }
+-    const outcome = await recomputeRenewals(t.db, t.appId);
+-    rows.push({ target: t.appId, ok: outcome.ok, detail: outcome.detail });
++    rows.push({ target: t.appId, ...(await appRenewalsPass(t.db, t.appId)) });
+   }
+   await recordHeartbeat(env, rows, RENEWALS_JOB);
+ }
+ 
++/**
++ * ⏱ 2026-10-01 · train T11 — ONE APP'S NIGHT: trials end (AD-13), renewals
++ * roll, soft-deleted rows past their window are purged (SV-01; until now the
++ * API ran that purge on every list read). In that order, for the reasons in
++ * src/subscription-housekeeping.ts's header, each containing its own errors so
++ * one step's failure never skips the next. The three outcomes are ONE heartbeat
++ * row, ok only when all three were.
++ *
++ * A failed schema probe fails both housekeeping steps (their row says so) and
++ * still lets the renewals pass, which probes for itself, run.
++ */
++export async function appRenewalsPass(
++  db: D1Database,
++  appId: string,
++  nowMs: number = Date.now(),
++): Promise<{ ok: boolean; detail: string }> {
++  let schema: Awaited<ReturnType<typeof probeHousekeepingSchema>> | null = null;
++  let probeError = '';
++  try {
++    schema = await probeHousekeepingSchema(db);
++  } catch (err) {
++    probeError = String(err);
++  }
++  const trials = schema
++    ? await endTrials(db, schema, nowMs)
++    : { ok: false, detail: `trials failed: schema probe: ${probeError}` };
++  const renewals = await recomputeRenewals(db, appId);
++  const purge = schema
++    ? await purgeSoftDeleted(db, schema, nowMs)
++    : { ok: false, detail: 'purge failed: schema probe' };
++  return housekeepingDetail(trials, renewals, purge);
++}
++
+ /**
+  * ⏱ 2026-09-28 · ST-R1 — THE RENEWAL REMINDER DIGEST. One email per person per
+  * app per day, listing the renewals due within their lead days, to a CONFIRMED
+diff --git a/services/platform/src/subscription-housekeeping.ts b/services/platform/src/subscription-housekeeping.ts
+new file mode 100644
+index 00000000..0fc12948
+--- /dev/null
++++ b/services/platform/src/subscription-housekeeping.ts
+@@ -0,0 +1,326 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// The two nightly writes an app's `subscriptions` table needs besides the
++// renewals roll (train T11): trials that end on their own (AD-13), and the
++// 30-day purge of soft-deleted rows, moved OFF the list read (SV-01).
++//
++// Both run inside the renewals fan-out (scheduled.ts `renewalsFanOut`), per app
++// and in this order: `endTrials` → `recomputeRenewals` → `purgeSoftDeleted`.
++//   · a trial ends BEFORE the roll, so a charge on the day it ends is written at
++//     the post-trial price the row now carries, never the trial's;
++//   · the purge goes last: it is the only one of the three that destroys rows.
++// Their outcomes are folded into the app's ONE `renewals` heartbeat row
++// (`housekeepingDetail`), so `cron_heartbeat` keeps one row per (job, app) and
++// tooling/ops/check-heartbeats.mjs needs no new job to watch.
++//
++// 🔴 A FIXED STATEMENT BUDGET, WHATEVER THE DATA. Each step is SET-BASED — one
++// INSERT … SELECT and one UPDATE for every trial ending tonight, three DELETEs
++// for every expired row — never a statement per row, so the count below is a
++// property of this file, not of the night. The rows each step may touch are
++// capped per run (MAX_TRIAL_ENDS_PER_RUN, MAX_PURGE_PER_RUN); what a cap leaves
++// is tomorrow's, and the detail says `capped`.
++//
++// Like renewals.ts this is generic over any app database: every column a step
++// names is PROBED first, and a step whose columns are missing is skipped with a
++// detail that says so — never a throw that costs the app its renewals tonight.
++// ─────────────────────────────────────────────────────────────────────────────
++import { allRows, nowIso, uuid } from './lib/d1';
++
++/**
++ * How long a soft-deleted row stays restorable before `purgeSoftDeleted`
++ * removes it with its history. The app's Undo is a snackbar, so the window only
++ * has to outlast a mis-tap noticed later; 30 days is the recovery window the
++ * data inventory declares for it (tooling/legal/data-inventory.json).
++ *
++ * Moved here from subscriptiontracker-api's routes/subscriptions.ts with the
++ * purge itself (train T11, SV-01).
++ *
++ * @ceiling none — a retention PERIOD in days, not a platform resource.
++ */
++export const SOFT_DELETE_PURGE_DAYS = 30;
++
++/**
++ * The most subscriptions one night's purge removes. Each takes its own row and
++ * every payment_history and price_change row under it, so the night's row
++ * writes are this times (1 + its history): at the fan-out's own crossing guard
++ * (240 payments) plus as many price steps that is under 50,000 even in the
++ * worst case, inside the 100,000 daily row-write ceiling, and a real removed
++ * subscription carries a few dozen. A backlog past it is tomorrow's (`capped`).
++ *
++ * @ceiling d1.rowsWrittenPerDay lte
++ */
++export const MAX_PURGE_PER_RUN = 100;
++
++/**
++ * The most trials one night ends. Each costs one UPDATE row and at most one
++ * price_change row; a night that reaches it says `capped` and ends the rest
++ * tomorrow, each still dated by its own `trial_ends_on`.
++ *
++ * @ceiling d1.rowsWrittenPerDay lte
++ */
++export const MAX_TRIAL_ENDS_PER_RUN = 1000;
++
++/**
++ * Statements ONE app's housekeeping sends, per night, whatever the data: the
++ * column probe (1), `endTrials` (2 — the price_change INSERT … SELECT and the
++ * UPDATE) and `purgeSoftDeleted` (3 — payment_history, price_change,
++ * subscriptions). test/subscription-housekeeping.test.ts counts them.
++ *
++ * @ceiling d1.queriesPerInvocation lte
++ */
++export const HOUSEKEEPING_STATEMENTS_PER_APP = 6;
++
++/** What one app database has, read in ONE statement. */
++export interface HousekeepingSchema {
++  subscriptions: Set<string>;
++  paymentHistory: Set<string>;
++  priceChange: Set<string>;
++}
++
++/**
++ * Every column the two steps may name, in ONE statement: `pragma_table_info`
++ * with a LITERAL argument per table, three terms of one UNION ALL. A table that
++ * does not exist yields no rows rather than an error.
++ *
++ * 🔴 NEVER `sqlite_master` IN THE SAME STATEMENT. D1 refuses a statement that
++ * names sqlite_master AND calls a pragma function (SQLITE_AUTH, measured against
++ * both production databases — tooling/ci/assert-d1-sql-inventory.mjs R1), which
++ * is the obvious way to write this and the way that failed every in-app account
++ * deletion for months. Three literal terms are far inside the five D1 accepts
++ * in one compound SELECT (services/_shared/src/erasure.ts `everyColumn`).
++ */
++export async function probeHousekeepingSchema(db: D1Database): Promise<HousekeepingSchema> {
++  const rows = await allRows<{ tbl: string; col: string }>(
++    db.prepare(
++      `SELECT 'subscriptions' AS tbl, name AS col FROM pragma_table_info('subscriptions')
++       UNION ALL SELECT 'payment_history' AS tbl, name AS col FROM pragma_table_info('payment_history')
++       UNION ALL SELECT 'price_change' AS tbl, name AS col FROM pragma_table_info('price_change')`,
++    ),
++  );
++  const of = (table: string) => new Set(rows.filter((r) => r.tbl === table).map((r) => r.col));
++  return { subscriptions: of('subscriptions'), paymentHistory: of('payment_history'), priceChange: of('price_change') };
++}
++
++// ── THE STATEMENTS, EVERY ONE A LITERAL AT ITS `.prepare(` ──────────────────
++// D1 cannot bind an identifier, and a hand-built statement is one nobody audits
++// (tooling/ci/assert-d1-sql-inventory.mjs R2/R3), so no statement here is
++// assembled: each variant a step may send is written out whole, where it is
++// sent. Each binds the same tail: `today` and the per-run cap for a trial,
++// `cutoff` and the cap for a purge.
++//
++// THE TRIALS ENDING TONIGHT, in every trial statement: still `trialing`, not
++// removed, `trial_ends_on` today or earlier, oldest first, at most the cap. The
++// first two terms are the partial index `idx_subscriptions_trial_end`'s WHERE
++// (subscriptiontracker-api migrations/0008), term for term, so the scan reads
++// only trialing rows (test/renewals-index.test.ts).
++//
++// THE DECIMAL A MINOR AMOUNT MEANS, `minor / 10^digits` by the row's currency,
++// is the CASE written into the statements that convert: each currency whose
++// exponent is not two, by its digits, and 100 for the rest. It is
++// src/lib/reminders.ts MINOR_DIGITS_NOT_TWO spelled as SQL, and
++// test/subscription-housekeeping.test.ts reads the code lists back out of this
++// file and holds them equal to that table.
++//
++// A row with no currency is never converted (`currency IS NOT NULL`): an exact
++// amount with no unit has no decimal, and the API never stores one that way.
++
++export interface StepOutcome {
++  ok: boolean;
++  detail: string;
++}
++
++/**
++ * TRIALS END ON THEIR OWN (train T11, AD-13). Before this nothing ever moved a
++ * row out of `trialing`: the app said "Trial" for ever, and the renewals roll
++ * wrote the trial's price as the first real charge.
++ *
++ * On `trial_ends_on` — the day the trial converts and the first charge lands —
++ * the row becomes `active`, and when `price_after_trial_minor` (0008) is set,
++ * `price` and `price_minor` move to it and it is cleared, with ONE price_change
++ * row when the price actually moved (the PATCH route's rule: a different
++ * `price`). The price_change INSERT … SELECT runs FIRST in the batch, so it
++ * reads the trial price the UPDATE is about to replace; one batch is one
++ * transaction, so the log can never hold a step the row does not.
++ */
++export async function endTrials(
++  db: D1Database,
++  schema: HousekeepingSchema,
++  nowMs: number = Date.now(),
++): Promise<StepOutcome> {
++  const cols = schema.subscriptions;
++  if (!['status', 'trial_ends_on', 'deleted_at'].every((c) => cols.has(c))) {
++    return { ok: true, detail: 'trials=skipped(no lifecycle columns)' };
++  }
++  const today = new Date(nowMs).toISOString().slice(0, 10);
++  const ts = nowIso();
++  try {
++    const statements: D1PreparedStatement[] = [];
++    const reprices = cols.has('price_after_trial_minor') && cols.has('currency') && cols.has('price_minor');
++    const logs =
++      reprices && ['subscription_id', 'user_id', 'new_price_minor'].every((c) => schema.priceChange.has(c));
++    if (logs) {
++      // One price_change row per trial whose post-trial price differs from its price.
++      statements.push(
++        db
++          .prepare(
++            `INSERT INTO price_change
++               (id, subscription_id, user_id, old_price, new_price, old_price_minor,
++                new_price_minor, old_currency, new_currency, changed_at)
++             SELECT ? || '-' || id, id, user_id, price,
++                    price_after_trial_minor * 1.0 / (CASE
++                   WHEN currency IN ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','UYI','VND','VUV','XAF','XOF','XPF') THEN 1
++                   WHEN currency IN ('BHD','IQD','JOD','KWD','LYD','OMR','TND') THEN 1000
++                   WHEN currency IN ('CLF','UYW') THEN 10000
++                   ELSE 100 END),
++                    price_minor, price_after_trial_minor, currency, currency, ?
++               FROM subscriptions
++              WHERE id IN (SELECT id FROM subscriptions
++                            WHERE status = 'trialing' AND deleted_at IS NULL
++                              AND trial_ends_on IS NOT NULL AND trial_ends_on <= ?
++                            ORDER BY trial_ends_on LIMIT ?)
++                AND price_after_trial_minor IS NOT NULL AND currency IS NOT NULL
++                AND price_after_trial_minor * 1.0 / (CASE
++                   WHEN currency IN ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','UYI','VND','VUV','XAF','XOF','XPF') THEN 1
++                   WHEN currency IN ('BHD','IQD','JOD','KWD','LYD','OMR','TND') THEN 1000
++                   WHEN currency IN ('CLF','UYW') THEN 10000
++                   ELSE 100 END) IS NOT price`,
++          )
++          .bind(uuid(), ts, today, MAX_TRIAL_ENDS_PER_RUN),
++      );
++    }
++    if (reprices) {
++      // The trial ends: `active`, and at its post-trial price where it has one.
++      statements.push(
++        db
++          .prepare(
++            `UPDATE subscriptions
++                SET status = 'active',
++                    updated_at = ?,
++                    price = CASE WHEN price_after_trial_minor IS NOT NULL AND currency IS NOT NULL
++                                 THEN price_after_trial_minor * 1.0 / (CASE
++                   WHEN currency IN ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','UYI','VND','VUV','XAF','XOF','XPF') THEN 1
++                   WHEN currency IN ('BHD','IQD','JOD','KWD','LYD','OMR','TND') THEN 1000
++                   WHEN currency IN ('CLF','UYW') THEN 10000
++                   ELSE 100 END)
++                                 ELSE price END,
++                    price_minor = CASE WHEN price_after_trial_minor IS NOT NULL AND currency IS NOT NULL
++                                       THEN price_after_trial_minor ELSE price_minor END,
++                    price_after_trial_minor = CASE WHEN price_after_trial_minor IS NOT NULL AND currency IS NOT NULL
++                                                   THEN NULL ELSE price_after_trial_minor END
++              WHERE id IN (SELECT id FROM subscriptions
++                            WHERE status = 'trialing' AND deleted_at IS NULL
++                              AND trial_ends_on IS NOT NULL AND trial_ends_on <= ?
++                            ORDER BY trial_ends_on LIMIT ?)`,
++          )
++          .bind(ts, today, MAX_TRIAL_ENDS_PER_RUN),
++      );
++    } else {
++      // A database with no post-trial price column (before 0008): status only.
++      statements.push(
++        db
++          .prepare(
++            `UPDATE subscriptions
++                SET status = 'active', updated_at = ?
++              WHERE id IN (SELECT id FROM subscriptions
++                            WHERE status = 'trialing' AND deleted_at IS NULL
++                              AND trial_ends_on IS NOT NULL AND trial_ends_on <= ?
++                            ORDER BY trial_ends_on LIMIT ?)`,
++          )
++          .bind(ts, today, MAX_TRIAL_ENDS_PER_RUN),
++      );
++    }
++    const results = await db.batch(statements);
++    const repriced = logs ? (results[0]?.meta.changes ?? 0) : 0;
++    const ended = results[results.length - 1]?.meta.changes ?? 0;
++    return {
++      ok: true,
++      detail:
++        `trials_ended=${ended} repriced=${repriced}` +
++        (ended >= MAX_TRIAL_ENDS_PER_RUN ? ' capped' : '') +
++        (reprices ? '' : ' (no post-trial price column)'),
++    };
++  } catch (err) {
++    return { ok: false, detail: `trials failed: ${String(err)}` };
++  }
++}
++
++// THE EXPIRED SET, in every purge statement: soft-deleted before the cutoff,
++// oldest first, at most the cap. Its first term is the partial index
++// `idx_subscriptions_deleted`'s WHERE (0008), so the night reads only removed
++// rows. The history DELETEs match on (subscription_id, user_id), as the per-user
++// purge did, so a history row only ever goes with the row of the SAME user.
++
++/**
++ * THE 30-DAY PURGE, OFF THE READ PATH (train T11, SV-01). This was
++ * subscriptiontracker-api's `purgeExpired`, run by GET /v1/subscriptions ahead
++ * of every list: three DELETEs for one SELECT, per user, per app open.
++ *
++ * Removes every row soft-deleted more than SOFT_DELETE_PURGE_DAYS ago, oldest
++ * first and at most MAX_PURGE_PER_RUN a night, WITH the payment_history and
++ * price_change rows that belong to it, in ONE batch (one transaction): a row
++ * never goes without its history or the history without its row.
++ *
++ * 🔴 THIS IS THE ONE PLACE A SUBSCRIPTION IS EVER HARD-DELETED outside account
++ * erasure. The expired set is the same subquery in all three statements; the
++ * first two do not touch `subscriptions`, so inside the transaction it selects
++ * the same rows three times.
++ */
++export async function purgeSoftDeleted(
++  db: D1Database,
++  schema: HousekeepingSchema,
++  nowMs: number = Date.now(),
++): Promise<StepOutcome> {
++  if (!schema.subscriptions.has('deleted_at')) return { ok: true, detail: 'purged=skipped(no deleted_at)' };
++  const cutoff = new Date(nowMs - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
++  const history = (cols: Set<string>) => cols.has('subscription_id') && cols.has('user_id');
++  try {
++    const statements: D1PreparedStatement[] = [];
++    if (history(schema.paymentHistory)) {
++      statements.push(
++        db
++          .prepare(
++            `DELETE FROM payment_history
++              WHERE (subscription_id, user_id) IN (SELECT id, user_id FROM subscriptions
++                      WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT ?)`,
++          )
++          .bind(cutoff, MAX_PURGE_PER_RUN),
++      );
++    }
++    if (history(schema.priceChange)) {
++      statements.push(
++        db
++          .prepare(
++            `DELETE FROM price_change
++              WHERE (subscription_id, user_id) IN (SELECT id, user_id FROM subscriptions
++                      WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT ?)`,
++          )
++          .bind(cutoff, MAX_PURGE_PER_RUN),
++      );
++    }
++    statements.push(
++      db
++        .prepare(
++          `DELETE FROM subscriptions
++            WHERE (id, user_id) IN (SELECT id, user_id FROM subscriptions
++                    WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT ?)`,
++        )
++        .bind(cutoff, MAX_PURGE_PER_RUN),
++    );
++    const results = await db.batch(statements);
++    const purged = results[results.length - 1]?.meta.changes ?? 0;
++    return { ok: true, detail: `purged=${purged}` + (purged >= MAX_PURGE_PER_RUN ? ' capped' : '') };
++  } catch (err) {
++    return { ok: false, detail: `purge failed: ${String(err)}` };
++  }
++}
++
++/**
++ * One app's renewals heartbeat row: the housekeeping tokens FIRST, because
++ * recordHeartbeat keeps 200 characters and the renewals detail is the one that
++ * can run long. ok only when all three steps were.
++ */
++export function housekeepingDetail(trials: StepOutcome, renewals: StepOutcome, purge: StepOutcome): StepOutcome {
++  return {
++    ok: trials.ok && renewals.ok && purge.ok,
++    detail: `${trials.detail}; ${purge.detail}; ${renewals.detail}`,
++  };
++}
+diff --git a/services/platform/src/types.ts b/services/platform/src/types.ts
+index c77c4eb7..8c168270 100644
+--- a/services/platform/src/types.ts
++++ b/services/platform/src/types.ts
+@@ -1053,6 +1053,9 @@ export interface Subscription {
+   cycle_every?: number | null;
+   cycle_unit?: string | null;
+   currency?: string | null;
++  // 0003's `trial_ends_on`: a crossing dated before it is inside the trial, and
++  // the pass writes no assumed payment for it (train T11, AD-13).
++  trial_ends_on?: string | null;
+ }
+ 
+ /** One app the nightly scheduler fans out to. */
+diff --git a/services/platform/test/renewals-index.test.ts b/services/platform/test/renewals-index.test.ts
+new file mode 100644
+index 00000000..be794b09
+--- /dev/null
++++ b/services/platform/test/renewals-index.test.ts
+@@ -0,0 +1,93 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Train T11 · SV-02 — the nightly scans read an INDEX, not the table.
++//
++// `recomputeRenewals` selects every charging row whose `next_renewal` has
++// passed, across ALL users. The only renewal index before subscriptiontracker-
++// api's 0008 was (user_id, next_renewal), which a query with no user_id cannot
++// use, so every night was a whole-table scan. 0008 adds partial indexes whose
++// WHERE is each scan's own predicate — and SQLite uses a partial index only
++// when the query carries its terms as written, so a reworded filter falls back
++// to `SCAN subscriptions` with no error anywhere. This holds each plan.
++//
++// THE SQL GRADED IS THE SQL SENT: each pass runs against the real engine with
++// `prepare` recorded, and the recorded statement is what EXPLAIN QUERY PLAN
++// reads — never a copy of the query typed here, which would stay green while
++// the code drifted.
++//
++// RED CONTROLS: on the tree before 0008 the renewals plan is
++// `SCAN subscriptions` (the third test pins that). With 0008 applied, write
++// renewals.ts's filter as `status IN ('trialing', 'active')` — the same set in
++// the other order — and the first test reds the same way; drop
++// `status = 'trialing' AND` from the trial statements and the second does.
++// (Measured: SQLite rewrites `status = 'active' OR status = 'trialing'` into
++// the IN form, so THAT rewording keeps the index and is not a red control.)
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect } from 'vitest';
++import { recomputeRenewals } from '../src/renewals';
++import { endTrials, probeHousekeepingSchema, purgeSoftDeleted } from '../src/subscription-housekeeping';
++import { RealDb } from './harness';
++
++const APP_MIGRATIONS = import.meta.glob('../../subscriptiontracker-api/migrations/*.sql', {
++  query: '?raw',
++  import: 'default',
++  eager: true,
++});
++
++function appDb(): RealDb {
++  const names = Object.keys(APP_MIGRATIONS).sort();
++  expect(names.some((n) => n.endsWith('/0008_trial_price_still_using.sql'))).toBe(true);
++  return new RealDb(names.map((n) => APP_MIGRATIONS[n]));
++}
++
++/** The plan SQLite chooses for `sql`, every `?` bound to a harmless value. */
++function planOf(db: RealDb, sql: string): string[] {
++  const holes = (sql.match(/\?/g) ?? []).length;
++  return db.db
++    .prepare(`EXPLAIN QUERY PLAN ${sql}`)
++    .all(...Array.from({ length: holes }, () => '2026-10-01'))
++    .map((r) => String((r as { detail: string }).detail));
++}
++
++/** The one recorded statement matching [pattern] — exactly one, or the test is about nothing. */
++function sent(db: RealDb, pattern: RegExp): string {
++  const hits = db.sql.filter((s) => pattern.test(s));
++  expect(hits, `expected ONE statement matching ${pattern}, the pass sent ${hits.length}`).toHaveLength(1);
++  return hits[0];
++}
++
++describe('SV-02 — the nightly scans use 0008’s partial indexes', () => {
++  it('the renewals scan is SEARCH … USING INDEX idx_subscriptions_charging_renewal, never SCAN subscriptions', async () => {
++    const db = appDb();
++    const out = await recomputeRenewals(db as never, 'subscriptiontracker');
++    expect(out.ok, out.detail).toBe(true);
++    const plan = planOf(db, sent(db, /FROM subscriptions WHERE next_renewal IS NOT NULL/));
++    expect(plan.join(' | ')).toContain('USING INDEX idx_subscriptions_charging_renewal');
++    expect(plan.some((step) => /^SCAN subscriptions\b/.test(step)), plan.join(' | ')).toBe(false);
++  });
++
++  it('the trial-end and purge scans read their own partial indexes too', async () => {
++    const db = appDb();
++    const schema = await probeHousekeepingSchema(db as never);
++    await endTrials(db as never, schema);
++    await purgeSoftDeleted(db as never, schema);
++
++    const trial = planOf(db, sent(db, /^UPDATE subscriptions\s+SET status = 'active',\s+updated_at = \?,\s+price =/));
++    expect(trial.join(' | ')).toContain('USING INDEX idx_subscriptions_trial_end');
++    const purge = planOf(db, sent(db, /^DELETE FROM subscriptions\s+WHERE/));
++    expect(purge.join(' | ')).toContain('USING INDEX idx_subscriptions_deleted');
++    for (const plan of [trial, purge]) {
++      expect(plan.some((step) => /^SCAN subscriptions\b/.test(step)), plan.join(' | ')).toBe(false);
++    }
++  });
++
++  it('control: the same renewals SQL on a schema WITHOUT 0008 scans the table', async () => {
++    // Proves the assertion above can fail: the plan reader is not blind to a scan.
++    const names = Object.keys(APP_MIGRATIONS)
++      .sort()
++      .filter((n) => !n.endsWith('/0008_trial_price_still_using.sql'));
++    const db = new RealDb(names.map((n) => APP_MIGRATIONS[n]));
++    await recomputeRenewals(db as never, 'subscriptiontracker');
++    const plan = planOf(db, sent(db, /FROM subscriptions WHERE next_renewal IS NOT NULL/));
++    expect(plan.some((step) => /^SCAN subscriptions\b/.test(step)), plan.join(' | ')).toBe(true);
++  });
++});
+diff --git a/services/platform/test/subscription-housekeeping.test.ts b/services/platform/test/subscription-housekeeping.test.ts
+new file mode 100644
+index 00000000..3dbfc9cf
+--- /dev/null
++++ b/services/platform/test/subscription-housekeeping.test.ts
+@@ -0,0 +1,321 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Train T11 · the nightly housekeeping of an app's `subscriptions` table
++// (src/subscription-housekeeping.ts), run per app by scheduled.ts
++// `appRenewalsPass`:
++//
++//   · AD-13 — trials end on their own: a row still `trialing` on its
++//     `trial_ends_on` becomes `active`, at its post-trial price (0008's
++//     `price_after_trial_minor`) with ONE price_change row; and the renewals
++//     roll writes no assumed payment for a charge date inside the trial.
++//   · SV-01 — the 30-day purge of soft-deleted rows, which GET
++//     /v1/subscriptions used to run before every list, is this limb now: a
++//     31-day-old removed row goes WITH its payment_history and price_change.
++//   · the statement budget — a fixed count of statements per app per night,
++//     whatever the data.
++//
++// RED CONTROLS (each named at its test): on the tree before this change there
++// is no module to import, so the file fails whole; each test also names the
++// one-line mutation of the module that turns it red on its own.
++//
++// Built on subscriptiontracker_db at the schema that SHIPS — every migration in
++// the app's directory, by glob, as test/reminder-days.test.ts does.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect } from 'vitest';
++import {
++  HOUSEKEEPING_STATEMENTS_PER_APP,
++  MAX_PURGE_PER_RUN,
++  SOFT_DELETE_PURGE_DAYS,
++  endTrials,
++  probeHousekeepingSchema,
++  purgeSoftDeleted,
++} from '../src/subscription-housekeeping';
++import { appRenewalsPass } from '../src/scheduled';
++import { MINOR_DIGITS_NOT_TWO } from '../src/lib/reminders';
++import housekeepingSrc from '../src/subscription-housekeeping.ts?raw';
++import { RealDb } from './harness';
++
++const APP_MIGRATIONS = import.meta.glob('../../subscriptiontracker-api/migrations/*.sql', {
++  query: '?raw',
++  import: 'default',
++  eager: true,
++});
++
++const DAY = 86_400_000;
++const U = 'user-a';
++
++/** subscriptiontracker_db at the schema that ships: every migration, in order. */
++function appDb(): RealDb {
++  const names = Object.keys(APP_MIGRATIONS).sort();
++  // Floor: 0008 adds `price_after_trial_minor`. A glob that found fewer would
++  // grade only the "no post-trial price column" path.
++  expect(names.some((n) => n.endsWith('/0008_trial_price_still_using.sql'))).toBe(true);
++  return new RealDb(names.map((n) => APP_MIGRATIONS[n]));
++}
++
++/** 'YYYY-MM-DD', `days` from the real today (the passes read the real clock). */
++const inDays = (days: number) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10);
++
++type Seed = Record<string, string | number | null>;
++
++function seed(db: RealDb, id: string, cols: Seed = {}): void {
++  const row: Seed = {
++    id,
++    user_id: U,
++    name: id,
++    price: 649,
++    price_minor: 64900,
++    currency: 'INR',
++    cycle: 'monthly',
++    cycle_every: 1,
++    cycle_unit: 'month',
++    next_renewal: inDays(10),
++    status: 'active',
++    ...cols,
++  };
++  const keys = Object.keys(row);
++  db.db
++    .prepare(`INSERT INTO subscriptions (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`)
++    .run(...keys.map((k) => row[k]));
++}
++
++function seedHistory(db: RealDb, subscriptionId: string, userId = U): void {
++  db.db
++    .prepare(
++      `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at)
++       VALUES (?, ?, ?, 649, '2026-08-01T00:00:00Z')`,
++    )
++    .run(`p-${subscriptionId}-${userId}`, subscriptionId, userId);
++  db.db
++    .prepare(
++      `INSERT INTO price_change (id, subscription_id, user_id, old_price, new_price, changed_at)
++       VALUES (?, ?, ?, 499, 649, '2026-08-01T00:00:00Z')`,
++    )
++    .run(`c-${subscriptionId}-${userId}`, subscriptionId, userId);
++}
++
++const one = (db: RealDb, id: string) => db.rows('SELECT * FROM subscriptions WHERE id = ?', id)[0];
++
++// ═════════════════════════════════════════════════════════════════════════════
++describe('AD-13 — a trial ends on its own, at its post-trial price', () => {
++  // Red control: drop `price = CASE …` from endTrials' UPDATE — the row is
++  // active at the trial's price 0, and the price_change row disagrees with it.
++  it('a trial that ended yesterday is active after the run, at its post-trial price, with ONE price_change row', async () => {
++    const db = appDb();
++    seed(db, 'trial', {
++      price: 0,
++      price_minor: 0,
++      status: 'trialing',
++      trial_ends_on: inDays(-1),
++      next_renewal: inDays(-1),
++      price_after_trial_minor: 89900,
++    });
++    const out = await appRenewalsPass(db as never, 'subscriptiontracker');
++    expect(out.ok, out.detail).toBe(true);
++
++    const row = one(db, 'trial');
++    expect([row.status, row.price, row.price_minor, row.price_after_trial_minor]).toEqual(['active', 899, 89900, null]);
++    const steps = db.rows(
++      'SELECT subscription_id, user_id, old_price, new_price, old_price_minor, new_price_minor, old_currency, new_currency FROM price_change',
++    );
++    expect(steps).toEqual([
++      {
++        subscription_id: 'trial',
++        user_id: U,
++        old_price: 0,
++        new_price: 899,
++        old_price_minor: 0,
++        new_price_minor: 89900,
++        old_currency: 'INR',
++        new_currency: 'INR',
++      },
++    ]);
++    // The day the trial ended IS a charge, and at the price after the trial.
++    expect(db.rows('SELECT amount, paid_at FROM payment_history')).toEqual([
++      { amount: 899, paid_at: `${inDays(-1)}T00:00:00Z` },
++    ]);
++    expect(out.detail).toMatch(/^trials_ended=1 repriced=1; purged=0; advanced 1 subscription/);
++  });
++
++  it('the decimal follows the currency’s own minor digits: JPY has none, KWD has three', async () => {
++    const db = appDb();
++    seed(db, 'jpy', { currency: 'JPY', price: 0, price_minor: 0, status: 'trialing', trial_ends_on: inDays(-1), price_after_trial_minor: 1200 });
++    seed(db, 'kwd', { currency: 'KWD', price: 0, price_minor: 0, status: 'trialing', trial_ends_on: inDays(-1), price_after_trial_minor: 3500 });
++    const schema = await probeHousekeepingSchema(db as never);
++    expect((await endTrials(db as never, schema)).ok).toBe(true);
++    expect(one(db, 'jpy').price).toBe(1200);
++    expect(one(db, 'kwd').price).toBe(3.5);
++  });
++
++  // Red control: drop 'KWD' from one of the statements' 1000 lists — the
++  // statement and the table disagree and this reds (and so may the KWD case
++  // above, at 35.0, depending on which statement lost it).
++  it('every CASE the statements divide by IS the ISO minor-digits table, code for code', () => {
++    const divisorOf: Record<number, number> = { 0: 1, 3: 1000, 4: 10000 };
++    const expected = new Map<number, string[]>();
++    for (const [code, digits] of Object.entries(MINOR_DIGITS_NOT_TWO)) {
++      const d = divisorOf[digits];
++      expected.set(d, [...(expected.get(d) ?? []), code].sort());
++    }
++    const arms = [...housekeepingSrc.matchAll(/WHEN currency IN \(([^)]*)\) THEN (\d+)/g)];
++    // The CASE is written into three places: the log's new price, the log's
++    // "did it move" test and the UPDATE's price. A floor, so a regex that
++    // stopped matching cannot pass on nothing.
++    expect(arms.length, 'the CASE arms are no longer found in the source').toBe(9);
++    for (const [, list, divisor] of arms) {
++      const codes = list.split(',').map((c: string) => c.trim().replace(/'/g, '')).sort();
++      expect(codes, `the ${divisor} arm`).toEqual(expected.get(Number(divisor)));
++    }
++    expect(housekeepingSrc.match(/ELSE 100 END\)/g)).toHaveLength(3);
++  });
++
++  it('ends on trial_ends_on itself; a trial ending tomorrow, a paused or a removed one is left alone', async () => {
++    const db = appDb();
++    seed(db, 'today', { status: 'trialing', trial_ends_on: inDays(0) });
++    seed(db, 'tomorrow', { status: 'trialing', trial_ends_on: inDays(1) });
++    seed(db, 'paused', { status: 'paused', trial_ends_on: inDays(-5) });
++    seed(db, 'removed', { status: 'trialing', trial_ends_on: inDays(-5), deleted_at: new Date().toISOString() });
++    const schema = await probeHousekeepingSchema(db as never);
++    const out = await endTrials(db as never, schema);
++    expect(out.detail).toBe('trials_ended=1 repriced=0');
++    expect(['today', 'tomorrow', 'paused', 'removed'].map((id) => one(db, id).status)).toEqual([
++      'active',
++      'trialing',
++      'paused',
++      'trialing',
++    ]);
++  });
++
++  it('a trial with no post-trial price converts at its own price and logs no price step', async () => {
++    const db = appDb();
++    seed(db, 'plain', { status: 'trialing', trial_ends_on: inDays(-2) });
++    const schema = await probeHousekeepingSchema(db as never);
++    await endTrials(db as never, schema);
++    expect([one(db, 'plain').status, one(db, 'plain').price, one(db, 'plain').price_minor]).toEqual(['active', 649, 64900]);
++    expect(db.count('price_change')).toBe(0);
++  });
++
++  it('a post-trial price equal to the trial price moves nothing and logs nothing (the PATCH route’s rule)', async () => {
++    const db = appDb();
++    seed(db, 'same', { status: 'trialing', trial_ends_on: inDays(-1), price_after_trial_minor: 64900 });
++    const schema = await probeHousekeepingSchema(db as never);
++    await endTrials(db as never, schema);
++    expect(one(db, 'same').status).toBe('active');
++    expect(db.count('price_change')).toBe(0);
++  });
++
++  // Red control: delete the `when < sub.trial_ends_on` skip in renewals.ts —
++  // every missed charge date inside the trial is written as a payment at 649.
++  it('the renewals roll writes NO assumed payment for a charge date inside the trial, and still rolls the date', async () => {
++    const db = appDb();
++    seed(db, 'in-trial', {
++      cycle: null,
++      cycle_every: 1,
++      cycle_unit: 'week',
++      status: 'trialing',
++      trial_ends_on: inDays(5),
++      next_renewal: inDays(-15),
++    });
++    const out = await appRenewalsPass(db as never, 'subscriptiontracker');
++    expect(out.ok, out.detail).toBe(true);
++    expect(db.count('payment_history'), 'a charge inside the trial was recorded as paid').toBe(0);
++    expect(one(db, 'in-trial').next_renewal).toBe(inDays(6));
++    expect(one(db, 'in-trial').status).toBe('trialing');
++    expect(out.detail).toContain('3 in-trial charge(s) not recorded');
++  });
++});
++
++// ═════════════════════════════════════════════════════════════════════════════
++describe('SV-01 — the 30-day purge runs nightly, not on the list read', () => {
++  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
++
++  // Red control: drop the payment_history DELETE from the batch — the
++  // 31-day-old row goes and its history stays behind, an orphan.
++  it(`a row soft-deleted ${SOFT_DELETE_PURGE_DAYS + 1} days ago goes WITH its history; a recent or live one stays`, async () => {
++    const db = appDb();
++    seed(db, 'old', { deleted_at: ago(SOFT_DELETE_PURGE_DAYS + 1) });
++    seed(db, 'recent', { deleted_at: ago(SOFT_DELETE_PURGE_DAYS - 1) });
++    seed(db, 'live');
++    for (const id of ['old', 'recent', 'live']) seedHistory(db, id);
++    // A history row under the same subscription id but ANOTHER user's is not
++    // the purged row's history, and is never taken with it.
++    seedHistory(db, 'old', 'user-b');
++
++    const out = await appRenewalsPass(db as never, 'subscriptiontracker');
++    expect(out.ok, out.detail).toBe(true);
++    expect(out.detail).toContain('purged=1');
++    expect(db.rows('SELECT id FROM subscriptions ORDER BY id').map((r) => r.id)).toEqual(['live', 'recent']);
++    const left = (table: string) =>
++      db.rows(`SELECT subscription_id || '/' || user_id AS k FROM ${table} ORDER BY k`).map((r) => r.k);
++    expect(left('payment_history')).toEqual(['live/user-a', 'old/user-b', 'recent/user-a']);
++    expect(left('price_change')).toEqual(['live/user-a', 'old/user-b', 'recent/user-a']);
++  });
++
++  it(`removes at most MAX_PURGE_PER_RUN (${MAX_PURGE_PER_RUN}) a night, oldest first, and says capped`, async () => {
++    const db = appDb();
++    for (let i = 0; i <= MAX_PURGE_PER_RUN; i++) {
++      seed(db, `gone-${String(i).padStart(3, '0')}`, { deleted_at: ago(SOFT_DELETE_PURGE_DAYS + 2 + i) });
++    }
++    const schema = await probeHousekeepingSchema(db as never);
++    const out = await purgeSoftDeleted(db as never, schema);
++    expect(out).toEqual({ ok: true, detail: `purged=${MAX_PURGE_PER_RUN} capped` });
++    // The one left is the NEWEST of the expired rows: oldest first.
++    expect(db.rows('SELECT id FROM subscriptions').map((r) => r.id)).toEqual(['gone-000']);
++  });
++
++  it('a failed purge is an ok=0 heartbeat row, and the renewals pass before it still ran', async () => {
++    const db = appDb();
++    seed(db, 'due', { next_renewal: inDays(-1) });
++    seed(db, 'old', { deleted_at: ago(SOFT_DELETE_PURGE_DAYS + 1) });
++    const real = db.batch.bind(db);
++    db.batch = async (statements) => {
++      if (statements.length === 3) throw new Error('D1_ERROR: simulated purge failure');
++      return real(statements);
++    };
++    const out = await appRenewalsPass(db as never, 'subscriptiontracker');
++    expect(out.ok).toBe(false);
++    expect(out.detail).toContain('purge failed: Error: D1_ERROR: simulated purge failure');
++    expect(db.count('payment_history'), 'the renewals roll was skipped by the purge failing').toBe(1);
++    expect(db.count('subscriptions'), 'the purge batch is one transaction').toBe(2);
++  });
++});
++
++// ═════════════════════════════════════════════════════════════════════════════
++describe('the statement budget — fixed per app, whatever the data', () => {
++  async function housekeepingStatements(db: RealDb): Promise<number> {
++    const before = db.sql.length;
++    const schema = await probeHousekeepingSchema(db as never);
++    await endTrials(db as never, schema);
++    await purgeSoftDeleted(db as never, schema);
++    return db.sql.length - before;
++  }
++
++  // Red control: end trials with one UPDATE per row (a loop over the due ids)
++  // — the busy night sends 2 + 40 statements and this reds.
++  it(`HOUSEKEEPING_STATEMENTS_PER_APP (${HOUSEKEEPING_STATEMENTS_PER_APP}) on an empty night AND on a busy one`, async () => {
++    const quiet = appDb();
++    expect(await housekeepingStatements(quiet)).toBe(HOUSEKEEPING_STATEMENTS_PER_APP);
++
++    const busy = appDb();
++    for (let i = 0; i < 40; i++) {
++      seed(busy, `t${i}`, { status: 'trialing', trial_ends_on: inDays(-1), price_after_trial_minor: 1000 + i });
++      seed(busy, `d${i}`, { deleted_at: new Date(Date.now() - 40 * DAY).toISOString() });
++      seedHistory(busy, `d${i}`);
++    }
++    expect(await housekeepingStatements(busy)).toBe(HOUSEKEEPING_STATEMENTS_PER_APP);
++    expect(busy.count('subscriptions', "status = 'trialing'")).toBe(0);
++    expect(busy.count('subscriptions', 'deleted_at IS NOT NULL')).toBe(0);
++  });
++});
++
++// ═════════════════════════════════════════════════════════════════════════════
++describe('an app database without the columns is skipped, never thrown on', () => {
++  it('a subscriptions table that predates 0003 reads as skipped, ok', async () => {
++    const db = new RealDb([
++      `CREATE TABLE subscriptions (id TEXT PRIMARY KEY, user_id TEXT, price REAL, cycle TEXT, next_renewal TEXT);
++       CREATE TABLE payment_history (id TEXT PRIMARY KEY, subscription_id TEXT, user_id TEXT, amount REAL, paid_at TEXT);`,
++    ]);
++    const out = await appRenewalsPass(db as never, 'brick');
++    expect(out.ok, out.detail).toBe(true);
++    expect(out.detail).toMatch(/^trials=skipped\(no lifecycle columns\); purged=skipped\(no deleted_at\); nothing due/);
++  });
++});
+diff --git a/services/subscriptiontracker-api/README.md b/services/subscriptiontracker-api/README.md
+index 989f0058..521b4f99 100644
+--- a/services/subscriptiontracker-api/README.md
++++ b/services/subscriptiontracker-api/README.md
+@@ -27,11 +27,11 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
+ | Method | Path | Auth | Purpose |
+ |---|---|---|---|
+ | GET | `/v1/health` | none | Liveness / deploy verification |
+-| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads) |
+-| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`) |
++| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows. ONE statement: since train T11 the 30-day purge of soft-deleted rows is the platform Worker's nightly limb (`services/platform/src/subscription-housekeeping.ts`), not this read |
++| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; `name` is required (blank or whitespace → 400 `name_required`); an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`) |
+ | GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history + price_history |
+-| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`, and `{cancelled_on: null}` alone keeps a cancelled row's date; a removed row is a 404 to everything but `{deleted_at: null}` (restore) and `{deleted_at: <any>}` alone (a repeat removal: 200, the first stamp kept, as `DELETE`) |
+-| DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history) |
++| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — a sent `name` must not be blank (400 `name_required`); `price_after_trial_minor` (minor units of the row's currency) and `still_using` (`yes`/`no`/`null`, stamped `still_using_at` by the server) are 0008's; incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`, and `{cancelled_on: null}` alone keeps a cancelled row's date; a removed row is a 404 to everything but `{deleted_at: null}` (restore) and `{deleted_at: <any>}` alone (a repeat removal: 200, the first stamp kept, as `DELETE`) |
++| DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history by the platform Worker's nightly pass) |
+ | POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`); `paid_on` is 2000-01-01 to tomorrow (UTC); takes the same optional `Idempotency-Key`: a retry answers the payment as recorded, 409 `idempotency_in_progress` while the first attempt runs, 422 for the key with another body or subscription, 410 once the subscription is removed |
+ | GET | `/v1/renewals?withinDays=7` | Supabase JWT | Upcoming renewals + `days_left` |
+ | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
+diff --git a/services/subscriptiontracker-api/migrations/0008_trial_price_still_using.sql b/services/subscriptiontracker-api/migrations/0008_trial_price_still_using.sql
+new file mode 100644
+index 00000000..ea48f346
+--- /dev/null
++++ b/services/subscriptiontracker-api/migrations/0008_trial_price_still_using.sql
+@@ -0,0 +1,76 @@
++-- ─────────────────────────────────────────────────────────────────────────────
++-- 0008_trial_price_still_using.sql — a trial knows what it will cost, a "Still
++-- using?" answer lives on the row, and the nightly renewals scan has an index
++-- (train T11: AD-08, IN-08, SV-02).
++-- Applies to APP_DB (subscriptiontracker_db):
++--   wrangler d1 migrations apply APP_DB --local   (or --remote)
++--
++-- Before this file:
++--   · a trial converted at the price the user typed for the trial — there was
++--     nowhere to say "free for 7 days, then ₹649" (AD-08);
++--   · "Still using?" was answered on ONE device (the client's local store), so
++--     the question came back on every other device the user owns (IN-08);
++--   · the platform Worker's nightly renewals query
++--     (services/platform/src/renewals.ts `recomputeRenewals`) filters on
++--     `next_renewal < ?`, `status IN ('active','trialing')` and
++--     `deleted_at IS NULL` with NO user_id, and the only renewal index is
++--     0001's `(user_id, next_renewal)` — so every night scanned the whole table
++--     (SV-02).
++--
++-- STRICTLY ADDITIVE, like 0002 to 0007: three ADD COLUMN and three CREATE
++-- INDEX IF NOT EXISTS; no DROP, no RENAME, no type change, no table rebuild
++-- (tooling/ci/check-migrations.mjs bans all four).
++--
++-- ⚠️ ONE CHECK, ON PURPOSE, AGAINST 0003's "NO CHECK ON ANY NEW COLUMN". That
++-- rule exists because a CHECK freezes an OPEN set (status, rail, cycle_unit) at
++-- today's members. `still_using` is not open: the question is yes/no, and a
++-- third answer would be a different question. NULL is "not asked / not
++-- answered", which the CHECK admits. The route validates it too, so a bad value
++-- is a 400 naming the field and never this constraint's 500.
++--
++-- DEPLOY: this file ALONE first, then the Worker that names its columns, then
++-- the platform Worker whose nightly limbs read them. The API Worker before this
++-- change selects `*` and serializes named keys, so three extra columns are
++-- invisible to it; the platform Worker probes `pragma_table_info` before naming
++-- any 0003-or-later column. The order is safe both ways.
++-- ─────────────────────────────────────────────────────────────────────────────
++
++-- ── the price after the trial (AD-08) ───────────────────────────────────────
++-- An exact count of the ROW's currency's minor unit — the same unit and the
++-- same bound as `price_minor` (the route checks both). NULL = the trial
++-- converts at the row's own price, which is what every row today does. The
++-- platform Worker's nightly trial-end limb moves `price`/`price_minor` to it on
++-- `trial_ends_on`, with a price_change row.
++ALTER TABLE subscriptions ADD COLUMN price_after_trial_minor INTEGER;
++
++-- ── "Still using?" (IN-08) ──────────────────────────────────────────────────
++-- The user's answer and when they gave it (ISO-8601 instant, server time).
++-- Written by PATCH /v1/subscriptions/:id, so every device reads the same answer
++-- after a sync; the device store becomes a cache of it.
++ALTER TABLE subscriptions ADD COLUMN still_using TEXT CHECK (still_using IN ('yes', 'no'));
++ALTER TABLE subscriptions ADD COLUMN still_using_at TEXT;
++
++-- ── the nightly renewals scan (SV-02) ───────────────────────────────────────
++-- PARTIAL, with the scan's own predicate, so the index holds only the rows the
++-- scan can return: a paused, cancelled or removed row is never in it. SQLite
++-- uses a partial index only when the query's WHERE implies the index's WHERE
++-- term for term, so services/platform/src/renewals.ts writes the same two
++-- terms, and services/platform/test/renewals-index.test.ts holds the plan to
++-- `USING INDEX`.
++CREATE INDEX IF NOT EXISTS idx_subscriptions_charging_renewal
++  ON subscriptions (next_renewal)
++  WHERE deleted_at IS NULL AND status IN ('active', 'trialing');
++
++-- ── the two other nightly scans (train T11, with SV-01 and AD-13) ───────────
++-- The same train moves the 30-day purge of soft-deleted rows off the list read
++-- and adds the trial-end step, both into the platform Worker's nightly pass
++-- (services/platform/src/subscription-housekeeping.ts). Without an index each
++-- would be one more whole-table scan a night, which is the defect above moved
++-- rather than fixed. Both are partial, so each holds only the rows its scan can
++-- return, and each query writes the index's WHERE term for term.
++CREATE INDEX IF NOT EXISTS idx_subscriptions_trial_end
++  ON subscriptions (trial_ends_on)
++  WHERE status = 'trialing' AND deleted_at IS NULL;
++CREATE INDEX IF NOT EXISTS idx_subscriptions_deleted
++  ON subscriptions (deleted_at)
++  WHERE deleted_at IS NOT NULL;
+diff --git a/services/subscriptiontracker-api/src/routes/subscriptions.ts b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+index 4903e4e7..a902e35b 100644
+--- a/services/subscriptiontracker-api/src/routes/subscriptions.ts
++++ b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+@@ -10,7 +10,6 @@ import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempo
+ import { Hono, type Context } from 'hono';
+ import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
+ import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
+-import { reportWorkerError, requestSinkContext } from '../lib/error-sink';
+ import {
+   isBoundedString,
+   isCalendarDate,
+@@ -84,6 +83,11 @@ export function serializeSubscription(row: Subscription) {
+     // 0004_notice_days.sql (ST-R8). `?? null`: a DB 0004 has not reached yields
+     // no such key on the row, and the wire says null ("no notice period").
+     notice_days: row.notice_days ?? null,
++    // 0008_trial_price_still_using.sql (train T11). `?? null` for 0004's reason.
++    // The post-trial price is in the row's `currency`, like `price_minor`.
++    price_after_trial_minor: row.price_after_trial_minor ?? null,
++    still_using: row.still_using ?? null,
++    still_using_at: row.still_using_at ?? null,
+   };
+ }
+ 
+@@ -211,22 +215,20 @@ const CANCEL_DATED_ON_TRANSITION =
+   "cancelled_on = CASE WHEN status = 'cancelled' AND cancelled_on IS NOT NULL THEN cancelled_on ELSE ? END";
+ 
+ /**
+- * How long a soft-deleted row stays restorable before `purgeExpired` removes it
+- * with its history. The app's Undo is a snackbar, so the window only has to
+- * outlast a mis-tap noticed later; 30 days is the recovery window the data
+- * inventory declares for it (tooling/legal/data-inventory.json).
++ * The most statements any `.batch()` on this router sends: a price-moving
++ * PATCH's two (the price_change row and the UPDATE). FIXED BY THE CODE, not
++ * sized by input, and test/lifecycle.test.ts counts every batch against it.
+  *
+- * @ceiling none — a retention PERIOD in days, not a platform resource.
+- */
+-export const SOFT_DELETE_PURGE_DAYS = 30;
+-/**
+- * The most statements any `.batch()` on this router sends: `purgeExpired`'s
+- * three (PATCH's price-change batch is two). FIXED BY THE CODE, not sized by
+- * input, and test/lifecycle.test.ts counts every batch against it.
++ * ⏱ 2026-10-01 · train T11 (SV-01): this was three, for `purgeExpired`, the
++ * 3-statement DELETE batch GET / ran ahead of EVERY list read — four statements
++ * per list, on the path every app open takes. The purge is a nightly platform
++ * limb now (services/platform/src/subscription-housekeeping.ts
++ * `purgeSoftDeleted`, which owns SOFT_DELETE_PURGE_DAYS), and GET / is one
++ * SELECT.
+  *
+  * @ceiling d1.queriesPerInvocation lte
+  */
+-export const MAX_BATCH_STATEMENTS = 3;
++export const MAX_BATCH_STATEMENTS = 2;
+ /** @ceiling none — column width; an ISO-8601 instant is 24 characters. */
+ const MAX_INSTANT = 40;
+ /** An ISO-8601 instant with an explicit zone: what `toISOString()` writes. */
+@@ -242,6 +244,9 @@ const RAILS = [
+   'unknown',
+ ] as const;
+ const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
++/** The "Still using?" answers (0008). The one closed set 0008 DID put in a
++ *  CHECK: the question is yes/no, so a third member is a different question. */
++const STILL_USING = ['yes', 'no'] as const;
+ 
+ /** ISO 4217 is three letters; stored upper case, as the client reads it.
+  *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
+@@ -281,7 +286,10 @@ type Column =
+   | 'share_numerator'
+   | 'share_denominator'
+   | 'category_id'
+-  | 'notice_days';
++  | 'notice_days'
++  | 'price_after_trial_minor'
++  | 'still_using'
++  | 'still_using_at';
+ 
+ /** Only the keys the body actually carried — PATCH must not touch the others. */
+ type Fields = Partial<Record<Column, string | number | null>>;
+@@ -483,13 +491,15 @@ function validate(body: unknown): ValidatedSubscription {
+     // ⏱ 2026-09-29 · ST-E3 (round-2 F03): SOFT DELETE, WRITABLE. A row with
+     // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
+     // `null` brings it back (the app's Undo). It is kept, history and all, for
+-    // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
++    // SOFT_DELETE_PURGE_DAYS, then the platform Worker's nightly
++    // `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts)
++    // removes the two together.
+     //
+     // 🔴 THE CLIENT'S INSTANT IS CHECKED FOR SHAPE AND THEN NOT TRUSTED. It is
+     // the device clock: one a month behind (or any past instant) would make
+-    // the next GET / purge the row AND its history at once, with no Undo, and
+-    // a future one would hide the row forever. So a non-null value means
+-    // "delete now" and PATCH stamps the SERVER's time, keeping an existing
++    // the next nightly purge take the row AND its history at once, with no
++    // Undo, and a future one would hide the row forever. So a non-null value
++    // means "delete now" and PATCH stamps the SERVER's time, keeping an existing
+     // stamp exactly as DELETE /:id does (review of #1063, finding 1).
+     if (deletedAt === null) {
+       fields.deleted_at = null;
+@@ -550,6 +560,49 @@ function validate(body: unknown): ValidatedSubscription {
+     }
+   }
+ 
++  // ── 0008: the price after the trial (AD-08) and "Still using?" (IN-08) ──────
++  // The post-trial price is an exact amount in the ROW's currency, bounded as
++  // `price_minor` is. Whether that currency exists is the route's to check
++  // (`afterTrialCurrency`): on PATCH it may be the stored row's.
++  const afterTrial = body.price_after_trial_minor;
++  if (afterTrial !== undefined) {
++    if (afterTrial === null) {
++      fields.price_after_trial_minor = null;
++    } else if (!isWholeNumber(afterTrial, 0, MAX_PRICE_MINOR)) {
++      return invalid(`price_after_trial_minor must be a whole number between 0 and ${MAX_PRICE_MINOR}, or null`);
++    } else {
++      fields.price_after_trial_minor = afterTrial;
++    }
++  }
++
++  const stillUsing = body.still_using;
++  if (stillUsing !== undefined) {
++    if (stillUsing === null) {
++      // NULL = not answered: the question comes back on every device.
++      fields.still_using = null;
++    } else if (!isOneOf(stillUsing, STILL_USING)) {
++      return invalid(`still_using must be one of ${STILL_USING.join(', ')}, or null`);
++    } else {
++      fields.still_using = stillUsing;
++    }
++  }
++
++  // 🔴 `still_using_at` IS CHECKED FOR SHAPE AND THEN NOT TRUSTED, for
++  // `deleted_at`'s reason: it is the device clock. The route stamps the SERVER's
++  // time when an answer is written (and keeps the stamp when the same answer is
++  // re-sent), so a body that echoes the row back is not refused and cannot
++  // back-date an answer either. Never written to `fields`.
++  const stillUsingAt = body.still_using_at;
++  if (
++    stillUsingAt !== undefined &&
++    stillUsingAt !== null &&
++    (!isBoundedString(stillUsingAt, MAX_INSTANT) ||
++      !INSTANT.test(stillUsingAt) ||
++      Number.isNaN(Date.parse(stillUsingAt)))
++  ) {
++    return invalid('still_using_at must be an ISO-8601 instant with a zone, or null; the server stamps it');
++  }
++
+   // ── 0003: rules that span two keys ─────────────────────────────────────────
+   // Each reads only THIS body, never the stored row, so POST and PATCH share
+   // them and a PATCH needs no read before it can be judged.
+@@ -744,59 +797,54 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
+ }
+ 
+ /**
+- * Remove THIS user's rows that were soft-deleted more than
+- * SOFT_DELETE_PURGE_DAYS ago, with the history that belongs to them, in ONE
+- * batch (one implicit transaction): a row never goes without its history or
+- * the history without its row.
++ * NAMES ARE REQUIRED (train T11, AD-01 server half). `isBoundedString` checks a
++ * length and nothing else, so `{name: "  "}` was stored and every list showed a
++ * row with no name — a subscription the user could not tell from any other.
++ *
++ *   · POST: a name must be sent, and must hold something other than whitespace;
++ *   · PATCH: a body that OMITS `name` is a partial edit and is fine; one that
++ *     sends it null or blank is refused, because that is clearing the name.
+  *
+- * 🔴 THIS IS THE ONE PLACE A SUBSCRIPTION IS EVER HARD-DELETED outside account
+- * erasure. It runs on the user's own list read, so it needs no cron and touches
+- * no one else's rows; a user who never opens the app again keeps their removed
+- * rows until they do, or until erasure takes everything.
++ * Its own error code, not `invalid_body`, so a client can put the message on
++ * the name field. Checked after `validate`, so a non-string name is still the
++ * `invalid_body` it always was.
+  */
+-async function purgeExpired(db: D1Database, userId: string): Promise<void> {
+-  const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
+-  const expired =
+-    'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';
+-  await db.batch([
+-    db
+-      .prepare(`DELETE FROM payment_history WHERE user_id = ? AND subscription_id IN (${expired})`)
+-      .bind(userId, userId, cutoff),
+-    db
+-      .prepare(`DELETE FROM price_change WHERE user_id = ? AND subscription_id IN (${expired})`)
+-      .bind(userId, userId, cutoff),
+-    db
+-      .prepare('DELETE FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?')
+-      .bind(userId, cutoff),
+-  ]);
++function nameMissing(f: Fields, create: boolean): boolean {
++  if (f.name === undefined) return create;
++  return f.name === null || String(f.name).trim() === '';
++}
++
++const NAME_REQUIRED = {
++  error: 'name_required',
++  detail: 'name must hold at least one character that is not a space',
++} as const;
++
++/**
++ * THE POST-TRIAL PRICE IS IN THE ROW'S CURRENCY (train T11, AD-08), so a
++ * non-null one needs a currency to be in: the body's, or on PATCH a stored one.
++ * `storedCurrency` is undefined on POST (there is no row yet).
++ */
++function afterTrialCurrency(f: Fields, storedCurrency?: string | null): Invalid | null {
++  if (f.price_after_trial_minor === undefined || f.price_after_trial_minor === null) return null;
++  const currency = f.currency !== undefined ? f.currency : storedCurrency;
++  if (currency === undefined || currency === null) {
++    return invalid('price_after_trial_minor needs a currency: send `currency`, or set one on the row first');
++  }
++  return null;
+ }
+ 
+ // GET / — list, most expensive first. A soft-deleted row is not listed; a
+ // paused or cancelled one is (it stays, with its history — ST-E3).
++//
++// ⏱ 2026-10-01 · train T11 (SV-01): ONE STATEMENT. This handler ran
++// `purgeExpired` — a 3-statement DELETE batch — ahead of its SELECT on every
++// list read, so the read every app open makes cost four statements and three
++// of them were writes. The 30-day purge of soft-deleted rows, with their
++// payment_history and price_change, is the platform Worker's nightly limb now
++// (services/platform/src/subscription-housekeeping.ts `purgeSoftDeleted`).
++// test/list-read.test.ts counts the statements.
+ app.get('/', async (c) => {
+   const userId = c.get('userId');
+-  // BEST-EFFORT: housekeeping must never take the user's list down. A purge
+-  // that fails is retried on the next list; the rows it would have removed stay
+-  // soft-deleted, which is the safe side of the failure.
+-  //
+-  // 🔴 …AND IT IS REPORTED, NOT ONLY LOGGED (review of #1063, minor 3). The
+-  // catch answers around the failure, so `app.onError` never sees it, and a
+-  // `console.error` alone is a `wrangler tail` nobody watches: a purge failing
+-  // on every list for a month looked exactly like one that worked. It goes to
+-  // the Worker's one error sink with the context `app.onError` sends — built by
+-  // the same `requestSinkContext`, not a copy of it — under `waitUntil` so the
+-  // list is not held open behind it.
+-  try {
+-    await purgeExpired(c.env.APP_DB, userId);
+-  } catch (err) {
+-    console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
+-    const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
+-    try {
+-      c.executionCtx.waitUntil(report);
+-    } catch {
+-      void report;
+-    }
+-  }
+   const rows = await allRows<Subscription>(
+     c.env.APP_DB.prepare(
+       'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
+@@ -841,9 +889,12 @@ app.post('/', async (c) => {
+     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
+   }
+   const f = checked.fields;
++  if (nameMissing(f, true)) return c.json(NAME_REQUIRED, 400);
+   if (f.deleted_at !== undefined && f.deleted_at !== null) {
+     return c.json({ error: 'invalid_body', detail: 'deleted_at cannot be set on create' }, 400);
+   }
++  const afterTrial = afterTrialCurrency(f);
++  if (afterTrial) return c.json({ error: 'invalid_body', detail: afterTrial.detail }, 400);
+   const category = await resolveCategory(c.env.APP_DB, userId, f);
+   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
+   // A row created cancelled with no date was cancelled today: the detail screen
+@@ -864,10 +915,11 @@ app.post('/', async (c) => {
+           currency, price_minor, cycle_every, cycle_unit, first_charge_on,
+           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
+           cancel_url, rail, rail_holder, reminder_days, shared_with,
+-          share_numerator, share_denominator, category_id, notice_days)
++          share_numerator, share_denominator, category_id, notice_days,
++          price_after_trial_minor, still_using, still_using_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+-               ?, ?)`,
++               ?, ?, ?, ?, ?)`,
+     ).bind(
+       id,
+       userId,
+@@ -903,6 +955,10 @@ app.post('/', async (c) => {
+       f.share_denominator ?? 1,
+       f.category_id ?? null,
+       f.notice_days ?? null,
++      f.price_after_trial_minor ?? null,
++      f.still_using ?? null,
++      // An answer is stamped with the SERVER's time — see `validate`.
++      f.still_using === undefined || f.still_using === null ? null : ts,
+     ),
+   );
+ 
+@@ -1136,6 +1192,7 @@ app.patch('/:id', async (c) => {
+   if (!checked.ok) {
+     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
+   }
++  if (nameMissing(checked.fields, false)) return c.json(NAME_REQUIRED, 400);
+ 
+   // ── OWNERSHIP, AND A REMOVED ROW IS NOT THERE (review of #1063, minor 1) ───
+   // A soft-deleted row answers a PATCH exactly as GET /:id and POST /:id/payments
+@@ -1169,6 +1226,18 @@ app.patch('/:id', async (c) => {
+     return c.json({ error: 'not_found' }, 404);
+   }
+   if (removing && existing.deleted_at !== null) return answerRow(c, id);
++  // A post-trial price sent WITHOUT a currency is in the stored one: read only
++  // then, so every other PATCH keeps the one ownership read it had.
++  const storedCurrency =
++    f.price_after_trial_minor != null && f.currency === undefined
++      ? ((
++          await firstRow<Pick<Subscription, 'currency'>>(
++            c.env.APP_DB.prepare('SELECT currency FROM subscriptions WHERE id = ? AND user_id = ?').bind(id, userId),
++          )
++        )?.currency ?? null)
++      : undefined;
++  const afterTrial = afterTrialCurrency(f, storedCurrency);
++  if (afterTrial) return c.json({ error: 'invalid_body', detail: afterTrial.detail }, 400);
+   const category = await resolveCategory(c.env.APP_DB, userId, f);
+   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
+ 
+@@ -1215,6 +1284,29 @@ app.patch('/:id', async (c) => {
+     sets.push("cancelled_on = CASE WHEN status = 'cancelled' THEN COALESCE(cancelled_on, ?) ELSE NULL END");
+     values.push(todayYmd());
+   }
++  // ── 0008 (train T11) ───────────────────────────────────────────────────────
++  // An answer to "Still using?" is stamped with the server's time, and a body
++  // that re-sends the SAME answer (a full-body edit, an outbox replay) keeps the
++  // stamp it had: SET reads the row as it was, so the comparison is against the
++  // stored answer, decided inside the write.
++  if (f.still_using !== undefined) {
++    if (f.still_using === null) {
++      put('still_using_at', null);
++    } else {
++      sets.push('still_using_at = CASE WHEN still_using IS ? THEN COALESCE(still_using_at, ?) ELSE ? END');
++      values.push(f.still_using, ts, ts);
++    }
++  }
++  // A currency that MOVES takes the post-trial price with it unless the body
++  // sends a new one, for `checkExactAmount`'s reason: an amount in minor units
++  // read in another currency is ₹649.00 relabelled ¥64,900. Unlike
++  // `price_minor` it is kept when the SAME currency is re-sent, because every
++  // client before 0008 sends `currency` on every edit and none sends this
++  // column, and wiping a trial's real price would convert it at the trial's.
++  if (f.currency !== undefined && f.price_after_trial_minor === undefined) {
++    sets.push('price_after_trial_minor = CASE WHEN currency IS ? THEN price_after_trial_minor ELSE NULL END');
++    values.push(f.currency);
++  }
+ 
+   if (removing) {
+     // A removal that matches an already-removed row (a retry, a racing device)
+@@ -1308,7 +1400,8 @@ async function answerRow(c: Context<AppEnv>, id: string) {
+ // has no foreign key, so nothing cascaded) — history no screen could reach and
+ // only erasure would ever remove. Now it sets `deleted_at` exactly as
+ // PATCH {deleted_at} does, so an older client's DELETE is restorable too, and
+-// `purgeExpired` removes the row WITH its history once the window has passed.
++// the nightly `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts)
++// removes the row WITH its history once the window has passed.
+ // Idempotent: a second DELETE keeps the first instant.
+ app.delete('/:id', async (c) => {
+   const userId = c.get('userId');
+diff --git a/services/subscriptiontracker-api/src/types.ts b/services/subscriptiontracker-api/src/types.ts
+index 31d44eb5..a1747704 100644
+--- a/services/subscriptiontracker-api/src/types.ts
++++ b/services/subscriptiontracker-api/src/types.ts
+@@ -150,6 +150,10 @@ export interface Subscription {
+   category_id: string | null; // a `categories` row; `category` keeps its name in step
+   // ── added by 0004_notice_days.sql (ST-R8) ──
+   notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
++  // ── added by 0008_trial_price_still_using.sql (train T11) ──
++  price_after_trial_minor: number | null; // the row's currency's minor units; NULL = converts at `price`
++  still_using: 'yes' | 'no' | null; // the user's "Still using?" answer; NULL = not answered
++  still_using_at: string | null; // ISO-8601 instant the SERVER stamped the answer
+ }
+ 
+ /** A payment_history row.
+diff --git a/services/subscriptiontracker-api/test/erasure.test.ts b/services/subscriptiontracker-api/test/erasure.test.ts
+index 06a76b2c..45e9eb58 100644
+--- a/services/subscriptiontracker-api/test/erasure.test.ts
++++ b/services/subscriptiontracker-api/test/erasure.test.ts
+@@ -144,16 +144,18 @@ const columnsOf = (db: SqliteD1, table: string): ColumnInfo[] =>
+  * EVERY column — so a column a later migration adds is exercised by the sweep the
+  * day it lands rather than sitting NULL and satisfying it trivially.
+  *
+- * ⚠️ `cycle` IS THE ONE COLUMN THIS CANNOT FILL WITH FILLER. 0001_init.sql
++ * ⚠️ `cycle` IS ONE OF TWO COLUMNS THIS CANNOT FILL WITH FILLER. 0001_init.sql
+  * constrains it to ('monthly','yearly'), so a generic string makes the INSERT
+  * fail — and a fixture that throws while planting looks exactly like a route that
+- * failed to delete. Named here rather than worked around silently.
++ * failed to delete. Named here rather than worked around silently. The other is
++ * 0008's `still_using`, constrained to ('yes','no') for the same reason.
+  */
+ function plant(db: SqliteD1, table: string, userId: string, tag: string): void {
+   const cols = columnsOf(db, table);
+   const values = cols.map((c, i) => {
+     if (c.name === 'user_id' || c.name.endsWith('_user_id')) return userId;
+     if (c.name === 'cycle') return 'monthly';
++    if (c.name === 'still_using') return 'yes';
+     return /INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? i : `filler-${table}-${tag}-${i}`;
+   });
+   db.db
+diff --git a/services/subscriptiontracker-api/test/harness.ts b/services/subscriptiontracker-api/test/harness.ts
+index cc389bf7..e37e99ca 100644
+--- a/services/subscriptiontracker-api/test/harness.ts
++++ b/services/subscriptiontracker-api/test/harness.ts
+@@ -28,6 +28,7 @@ import init0004 from '../migrations/0004_notice_days.sql?raw';
+ import init0005 from '../migrations/0005_lifecycle_history_categories.sql?raw';
+ import init0006 from '../migrations/0006_idempotency_keys.sql?raw';
+ import init0007 from '../migrations/0007_budget_currency.sql?raw';
++import init0008 from '../migrations/0008_trial_price_still_using.sql?raw';
+ import type { AppEnv } from '../src/types';
+ 
+ type SQLValue = string | number | bigint | null | Uint8Array;
+@@ -148,7 +149,7 @@ export class SqliteD1 {
+  * thing to forget to extend when 0003 lands. Same reasoning, and the same shape,
+  * as `PLATFORM_MIGRATIONS` in services/platform/test/harness.ts.
+  */
+-export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003, init0004, init0005, init0006, init0007];
++export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003, init0004, init0005, init0006, init0007, init0008];
+ 
+ /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for
+  *  tests that need to force a DB-level failure the route cannot pre-empt (a
+diff --git a/services/subscriptiontracker-api/test/lifecycle.test.ts b/services/subscriptiontracker-api/test/lifecycle.test.ts
+index 4b5980db..1d259b2f 100644
+--- a/services/subscriptiontracker-api/test/lifecycle.test.ts
++++ b/services/subscriptiontracker-api/test/lifecycle.test.ts
+@@ -8,14 +8,18 @@
+ // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
+ // ─────────────────────────────────────────────────────────────────────────────
+ import renewalsSrc from '../src/routes/renewals.ts?raw';
+-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
++import { describe, it, expect, beforeEach, vi } from 'vitest';
+ import { recomputeRenewals } from '../../platform/src/renewals';
+ import renewals from '../src/routes/renewals';
+-import subscriptions, {
+-  CHARGING_STATUSES,
+-  MAX_BATCH_STATEMENTS,
++import subscriptions, { CHARGING_STATUSES, MAX_BATCH_STATEMENTS } from '../src/routes/subscriptions';
++// ⏱ 2026-10-01 · train T11 (SV-01): the 30-day purge is the platform Worker's
++// nightly limb now, so the window and the purge are imported from there, as the
++// fan-out above is.
++import {
+   SOFT_DELETE_PURGE_DAYS,
+-} from '../src/routes/subscriptions';
++  probeHousekeepingSchema,
++  purgeSoftDeleted,
++} from '../../platform/src/subscription-housekeeping';
+ import { todayYmd } from '../src/lib/d1';
+ import { realAppDb, asUser, SqliteD1 } from './harness';
+ 
+@@ -99,7 +103,10 @@ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being
+ });
+ 
+ describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/ceilings.json)', () => {
+-  it('the purge and a price-moving PATCH send at most that many statements, and the purge sends exactly it', async () => {
++  // ⏱ 2026-10-01 · train T11 (SV-01): the list used to send the purge's batch
++  // of three. It sends none now (test/list-read.test.ts counts its one SELECT),
++  // and a price-moving PATCH's two is the largest batch this router sends.
++  it('the list sends no batch, and a price-moving PATCH sends exactly that many statements', async () => {
+     const sizes: number[] = [];
+     const real = db.batch.bind(db);
+     db.batch = async (statements) => {
+@@ -108,8 +115,9 @@ describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/cei
+     };
+     const id = await create();
+     await subs(U, '/v1/subscriptions');
++    expect(sizes, 'the list sent a batch').toEqual([]);
+     await patch(id, { price: 999 });
+-    expect(sizes, 'the list must purge and the price edit must log').toHaveLength(2);
++    expect(sizes, 'the price edit must log').toHaveLength(1);
+     expect(Math.max(...sizes)).toBe(MAX_BATCH_STATEMENTS);
+   });
+ });
+@@ -231,7 +239,10 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both
+     expect(db.rows('SELECT deleted_at FROM subscriptions')[0]?.deleted_at).toBe(first);
+   });
+ 
+-  it(`past ${SOFT_DELETE_PURGE_DAYS} days the next list removes the row AND its history — no orphan`, async () => {
++  // ⏱ 2026-10-01 · train T11 (SV-01): this was "the next LIST removes the row".
++  // The list no longer writes; the platform Worker's nightly purge does, for
++  // every user at once, so another user's expired row goes too.
++  it(`past ${SOFT_DELETE_PURGE_DAYS} days the nightly purge removes the row AND its history — no orphan`, async () => {
+     const old = await create();
+     const recent = await create();
+     const other = await create();
+@@ -241,14 +252,17 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both
+     // an old stamp can only be one the server wrote a month ago.
+     db.db.exec(`UPDATE subscriptions SET deleted_at = '${longAgo}' WHERE id = '${old}'`);
+     await patch(recent, { deleted_at: new Date().toISOString() });
+-    // Another user's expired row is not this user's list's to purge.
++    // Another user's expired row: the nightly purge is not per user.
+     db.db.exec(
+       `INSERT INTO subscriptions (id, user_id, name, deleted_at) VALUES ('theirs', 'user-b', 'Y', '${longAgo}')`,
+     );
+ 
+     expect(await listIds()).toEqual([other]);
++    expect(db.rows('SELECT id FROM subscriptions'), 'the list purged: it must only read').toHaveLength(4);
++    const out = await purgeSoftDeleted(db as never, await probeHousekeepingSchema(db as never));
++    expect(out).toEqual({ ok: true, detail: 'purged=2' });
+     expect(db.rows('SELECT id FROM subscriptions ORDER BY id').map((r) => r.id).sort()).toEqual(
+-      [other, recent, 'theirs'].sort(),
++      [other, recent].sort(),
+     );
+     expect(
+       db.rows('SELECT subscription_id FROM payment_history').map((r) => r.subscription_id).sort(),
+@@ -256,7 +270,10 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both
+     ).toEqual([other, recent].sort());
+   });
+ 
+-  it('a purge that fails does not take the list down (best-effort, finding 2)', async () => {
++  // Since train T11 the list sends no batch at all, so a D1 refusing every
++  // batch cannot reach it; kept as the regression for "housekeeping never
++  // takes the list down".
++  it('a D1 that refuses every batch does not take the list down (finding 2)', async () => {
+     const id = await create();
+     db.batch = async () => {
+       throw new Error('D1_ERROR: simulated purge failure');
+@@ -394,46 +411,16 @@ describe('minor 2 — the cancel date is set on the TRANSITION into cancelled, a
+   });
+ });
+ 
+-describe('minor 3 — a failed purge reaches the error sink, not only the log', () => {
+-  afterEach(() => {
+-    vi.unstubAllGlobals();
+-  });
+-
+-  // Red control: delete the `reportWorkerError` call from GET /'s catch (the
+-  // `console.error` alone, as #1063 shipped it) — nothing is sent.
+-  it('the list still loads, and ONE envelope naming this Worker and the route goes to GlitchTip', async () => {
+-    const sent: Array<{ url: string; body: string }> = [];
+-    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+-      sent.push({ url: String(url), body: String(init.body) });
+-      return new Response('', { status: 200 });
+-    });
+-    const reporting = asUser(subscriptions, '/v1/subscriptions', {
+-      APP_DB: db as never,
+-      GLITCHTIP_DSN: 'https://abc123@glitchtip.example.test/7',
+-      RELEASE: 'sha-purge',
+-    });
+-    const id = await create();
+-    db.batch = async () => {
+-      throw new Error('D1_ERROR: simulated purge failure');
+-    };
+-
+-    const res = await reporting(U, '/v1/subscriptions?email=a@b.test');
+-    expect(res.status).toBe(200);
+-    expect(((await res.json()) as Row[]).map((r) => r.id)).toEqual([id]);
+-    expect(sent, 'the purge failure reached console.error and nothing else').toHaveLength(1);
+-    expect(sent[0]?.url).toBe('https://glitchtip.example.test/api/7/envelope/');
+-    expect(sent[0]?.body).toContain('"server_name":"subscriptiontracker-api"');
+-    expect(sent[0]?.body).toContain('"release":"sha-purge"');
+-    expect(sent[0]?.body).toContain('"transaction":"GET /v1/subscriptions"');
+-    expect(sent[0]?.body).toContain('simulated purge failure');
+-    expect(sent[0]?.body, 'the query string reached the sink').not.toContain('email=');
+-  });
+-});
++// ⏱ 2026-10-01 · train T11 (SV-01): "minor 3 — a failed purge reaches the error
++// sink" and "#1089 nit 5 — the purge report is handed to waitUntil" stood here
++// and below. Both graded the catch around GET /'s purge, and the purge left the
++// list read with this train. Its failure is now an ok=0 `renewals` heartbeat row
++// on the platform Worker — services/platform/test/subscription-housekeeping.test.ts
++// "a failed purge is an ok=0 heartbeat row" — which check-heartbeats.mjs reads.
+ 
+ // ─────────────────────────────────────────────────────────────────────────────
+-// Independent review of #1089 — finding 1 (a repeated removal is idempotent),
+-// finding 2 (a date cleared alone) and nit 5 (the `waitUntil` hand-off). Each
+-// block names its red control.
++// Independent review of #1089 — finding 1 (a repeated removal is idempotent)
++// and finding 2 (a date cleared alone). Each block names its red control.
+ // ─────────────────────────────────────────────────────────────────────────────
+ 
+ /** The production transient, verbatim (services/_shared/test/d1-retry.test.ts). */
+@@ -626,44 +613,3 @@ describe('review of #1089, finding 2 — clearing the cancel date alone cannot l
+     expect(out).toMatchObject({ status: 'active', cancelled_on: null });
+   });
+ });
+-
+-describe('review of #1089, nit 5 — the purge report is handed to waitUntil', () => {
+-  afterEach(() => {
+-    vi.unstubAllGlobals();
+-  });
+-
+-  // Red control: delete `c.executionCtx.waitUntil(report)` from GET /'s catch.
+-  // The report is still sent (fetch runs before its first await), so minor 3's
+-  // test stays green, but nothing keeps the Worker alive to finish it.
+-  it('the report promise goes to the execution context, and resolves as delivered', async () => {
+-    let sent = 0;
+-    vi.stubGlobal('fetch', async () => {
+-      sent++;
+-      return new Response('', { status: 200 });
+-    });
+-    const handed: Promise<unknown>[] = [];
+-    const ctx = {
+-      waitUntil: (p: Promise<unknown>) => {
+-        handed.push(p);
+-      },
+-      passThroughOnException: () => {},
+-      props: {},
+-    } as unknown as ExecutionContext;
+-    const reporting = asUser(
+-      subscriptions,
+-      '/v1/subscriptions',
+-      { APP_DB: db as never, GLITCHTIP_DSN: 'https://abc123@glitchtip.example.test/7', RELEASE: 'sha-wait' },
+-      ctx,
+-    );
+-    await create();
+-    db.batch = async () => {
+-      throw new Error('D1_ERROR: simulated purge failure');
+-    };
+-
+-    const res = await reporting(U, '/v1/subscriptions');
+-    expect(res.status).toBe(200);
+-    expect(handed, 'the report was never handed to waitUntil').toHaveLength(1);
+-    expect(await handed[0]).toBe(true);
+-    expect(sent).toBe(1);
+-  });
+-});
+diff --git a/services/subscriptiontracker-api/test/list-read.test.ts b/services/subscriptiontracker-api/test/list-read.test.ts
+new file mode 100644
+index 00000000..2166f840
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/list-read.test.ts
+@@ -0,0 +1,90 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Train T11 · SV-01 — GET /v1/subscriptions is ONE statement.
++//
++// The list ran `purgeExpired` — a 3-statement DELETE batch over payment_history,
++// price_change and subscriptions — before its SELECT, on every call: the read
++// every app open makes cost four statements, three of them writes. The purge is
++// the platform Worker's nightly limb now (services/platform/src/subscription-
++// housekeeping.ts `purgeSoftDeleted`, tested in services/platform/test/
++// subscription-housekeeping.test.ts).
++//
++// THE STUB COUNTS EXECUTIONS, NOT PREPARES: every `.all/.first/.run` is one
++// statement, and every statement inside a `.batch` is one more — the
++// worst-case reading tooling/ceilings.json's d1.queriesPerInvocation uses.
++//
++// RED CONTROL: put the purge back ahead of the SELECT (the tree before this
++// change) — the count is 4 and a batch was sent.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect } from 'vitest';
++import subscriptions from '../src/routes/subscriptions';
++import { realAppDb, asUser, type SqliteD1 } from './harness';
++
++const U = 'user-a';
++
++/** Wrap [db] so every statement it EXECUTES is counted, batched or not. */
++function counting(db: SqliteD1) {
++  const seen = { statements: 0, batches: 0, sql: [] as string[] };
++  const wrap = (stmt: ReturnType<SqliteD1['prepare']>, sql: string): unknown =>
++    new Proxy(stmt, {
++      get(target, prop, receiver) {
++        if (prop === 'bind') return (...args: unknown[]) => wrap(target.bind(...args), sql);
++        if (prop === 'all' || prop === 'first' || prop === 'run') {
++          return (...args: unknown[]) => {
++            seen.statements++;
++            seen.sql.push(sql);
++            return (target as unknown as Record<string, (...a: unknown[]) => unknown>)[prop](...args);
++          };
++        }
++        return Reflect.get(target, prop, receiver);
++      },
++    });
++  const stub = new Proxy(db, {
++    get(target, prop, receiver) {
++      if (prop === 'prepare') return (sql: string) => wrap(target.prepare(sql), sql);
++      if (prop === 'batch') {
++        return (statements: unknown[]) => {
++          seen.batches++;
++          seen.statements += statements.length;
++          return target.batch(statements as never);
++        };
++      }
++      return Reflect.get(target, prop, receiver);
++    },
++  });
++  return { stub, seen };
++}
++
++describe('SV-01 — a list read is one SELECT and no write', () => {
++  it('GET /v1/subscriptions executes exactly ONE statement, and sends no batch', async () => {
++    const db = realAppDb();
++    // Something to purge, had the route still purged: a row removed 40 days ago.
++    db.db.exec(
++      `INSERT INTO subscriptions (id, user_id, name, deleted_at)
++       VALUES ('old', '${U}', 'Old', '${new Date(Date.now() - 40 * 86_400_000).toISOString()}'),
++              ('live', '${U}', 'Live', NULL)`,
++    );
++    const { stub, seen } = counting(db);
++    const subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: stub as never });
++
++    const res = await subs(U, '/v1/subscriptions');
++    expect(res.status).toBe(200);
++    expect(((await res.json()) as Array<{ id: string }>).map((r) => r.id)).toEqual(['live']);
++    expect(seen.batches, `the list sent a batch: ${seen.sql.join(' | ')}`).toBe(0);
++    expect(seen.statements, seen.sql.join(' | ')).toBe(1);
++    expect(seen.sql[0]).toMatch(/^SELECT \* FROM subscriptions WHERE user_id = \? AND deleted_at IS NULL/);
++    // …and the row the old purge would have removed is still there for the
++    // nightly limb, which is the only writer that removes it now.
++    expect(db.rows("SELECT id FROM subscriptions WHERE id = 'old'")).toHaveLength(1);
++  });
++
++  it('control: the counter sees a batch when one is sent (a price-moving PATCH sends two statements)', async () => {
++    const db = realAppDb();
++    db.db.exec(`INSERT INTO subscriptions (id, user_id, name, price) VALUES ('s', '${U}', 'S', 1)`);
++    const { stub, seen } = counting(db);
++    const subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: stub as never });
++    const res = await subs(U, '/v1/subscriptions/s', { method: 'PATCH', body: { price: 2 } });
++    expect(res.status).toBe(200);
++    expect(seen.batches).toBe(1);
++    expect(seen.statements).toBeGreaterThanOrEqual(3);
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/migrations-replay.test.ts b/services/subscriptiontracker-api/test/migrations-replay.test.ts
+index 7f99cf4b..a8ec6db4 100644
+--- a/services/subscriptiontracker-api/test/migrations-replay.test.ts
++++ b/services/subscriptiontracker-api/test/migrations-replay.test.ts
+@@ -322,5 +322,26 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
+     expect(cols('budget_categories')).toContain('category_id');
+     // 0004_notice_days.sql — its one ADD COLUMN, asserted for the same reason.
+     expect(cols('subscriptions')).toContain('notice_days');
++    // 0008_trial_price_still_using.sql (train T11) — its three columns and its
++    // three partial indexes, each WITH the predicate a nightly scan matches:
++    // an index whose WHERE drifted from the query's would still be listed here
++    // and never be used (services/platform/test/renewals-index.test.ts).
++    expect(cols('subscriptions')).toEqual(
++      expect.arrayContaining(['price_after_trial_minor', 'still_using', 'still_using_at']),
++    );
++    const indexSql = (name: string) =>
++      String(db.rows('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?', 'index', name)[0]?.sql ?? '')
++        .replace(/\s+/g, ' ');
++    expect(indexSql('idx_subscriptions_charging_renewal')).toMatch(
++      /ON subscriptions \(next_renewal\) WHERE deleted_at IS NULL AND status IN \('active', 'trialing'\)$/,
++    );
++    expect(indexSql('idx_subscriptions_trial_end')).toMatch(
++      /ON subscriptions \(trial_ends_on\) WHERE status = 'trialing' AND deleted_at IS NULL$/,
++    );
++    expect(indexSql('idx_subscriptions_deleted')).toMatch(/ON subscriptions \(deleted_at\) WHERE deleted_at IS NOT NULL$/);
++    // The one CHECK 0008 carries: `still_using` is yes, no or not answered.
++    expect(() => db.db.exec("INSERT INTO subscriptions (id, user_id, still_using) VALUES ('c', 'u', 'maybe')")).toThrow(
++      /CHECK constraint failed/,
++    );
+   });
+ });
+diff --git a/services/subscriptiontracker-api/test/names-required.test.ts b/services/subscriptiontracker-api/test/names-required.test.ts
+new file mode 100644
+index 00000000..9c673111
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/names-required.test.ts
+@@ -0,0 +1,101 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Train T11 · AD-01 (server half) — a subscription has a name.
++//
++// `validate` checked `name` with `isBoundedString`, a LENGTH check and nothing
++// else, and POST bound `f.name ?? null`: `{name: "  "}` and a body with no name
++// at all were both 201, and every list then showed a row the user could not
++// tell from any other. POST and PATCH now answer 400 `name_required` to a name
++// that is absent (POST), null, empty or only whitespace, and write nothing; a
++// PATCH that OMITS `name` is a partial edit and is fine.
++//
++// RED CONTROL: make `nameMissing` return false — the whitespace POST is 201 and
++// stores a row, and the null/blank PATCHes are 200 and clear the stored name.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect, beforeEach } from 'vitest';
++import subscriptions from '../src/routes/subscriptions';
++import { realAppDb, asUser } from './harness';
++
++const U = 'user-a';
++type Row = Record<string, unknown>;
++
++let db: ReturnType<typeof realAppDb>;
++let subs: ReturnType<typeof asUser>;
++
++beforeEach(() => {
++  db = realAppDb();
++  subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
++});
++
++const post = (body: unknown) => subs(U, '/v1/subscriptions', { method: 'POST', body });
++const patch = (id: string, body: unknown) => subs(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body });
++
++const BLANK_NAMES: ReadonlyArray<readonly [string, unknown]> = [
++  ['two spaces', '  '],
++  ['the empty string', ''],
++  ['tabs and newlines', '\t\n \r'],
++  ['a no-break space', '\u00a0'],
++  ['null', null],
++];
++
++describe('POST refuses a subscription with no name — 400 name_required, and no row', () => {
++  for (const [label, name] of BLANK_NAMES) {
++    it(`name: ${label}`, async () => {
++      const res = await post({ name, price: 649, cycle: 'monthly' });
++      expect(res.status).toBe(400);
++      expect(((await res.json()) as Row).error).toBe('name_required');
++      expect(db.rows('SELECT id FROM subscriptions'), 'a nameless row was stored').toHaveLength(0);
++    });
++  }
++
++  it('a body that sends no name at all', async () => {
++    const res = await post({ price: 649, cycle: 'monthly' });
++    expect(res.status).toBe(400);
++    expect(((await res.json()) as Row).error).toBe('name_required');
++    expect(db.rows('SELECT id FROM subscriptions')).toHaveLength(0);
++  });
++
++  it('a name with words is stored as typed (spaces around it are the user’s)', async () => {
++    const res = await post({ name: ' Netflix ', price: 649, cycle: 'monthly' });
++    expect(res.status).toBe(201);
++    expect(((await res.json()) as Row).name).toBe(' Netflix ');
++  });
++
++  it('a name that is not a string is still the invalid_body it always was', async () => {
++    const res = await post({ name: 42 });
++    expect(res.status).toBe(400);
++    expect(((await res.json()) as Row).error).toBe('invalid_body');
++  });
++});
++
++describe('PATCH refuses to blank a name, and leaves one it was not sent alone', () => {
++  async function seeded(): Promise<string> {
++    const res = await post({ name: 'Netflix', price: 649, cycle: 'monthly' });
++    expect(res.status).toBe(201);
++    return ((await res.json()) as Row).id as string;
++  }
++
++  for (const [label, name] of BLANK_NAMES) {
++    it(`name: ${label} → 400 name_required, the row unchanged`, async () => {
++      const id = await seeded();
++      const before = db.rows('SELECT * FROM subscriptions WHERE id = ?', id);
++      const res = await patch(id, { name, price: 999 });
++      expect(res.status).toBe(400);
++      expect(((await res.json()) as Row).error).toBe('name_required');
++      expect(db.rows('SELECT * FROM subscriptions WHERE id = ?', id), 'the refused edit wrote').toEqual(before);
++    });
++  }
++
++  it('a PATCH that omits name is fine, and keeps it', async () => {
++    const id = await seeded();
++    const res = await patch(id, { price: 999 });
++    expect(res.status).toBe(200);
++    expect(await res.json()).toMatchObject({ name: 'Netflix', price: 999 });
++  });
++
++  it('a rename to real text is fine', async () => {
++    const id = await seeded();
++    const res = await patch(id, { name: 'Netflix Premium' });
++    expect(res.status).toBe(200);
++    expect(((await res.json()) as Row).name).toBe('Netflix Premium');
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/subscription-model.test.ts b/services/subscriptiontracker-api/test/subscription-model.test.ts
+index 87a00666..a1f39fff 100644
+--- a/services/subscriptiontracker-api/test/subscription-model.test.ts
++++ b/services/subscriptiontracker-api/test/subscription-model.test.ts
+@@ -73,6 +73,9 @@ const INR_WEEKLY_TRIAL = {
+   shared_with: 'Family',
+   share_numerator: 1,
+   share_denominator: 4,
++  // 0008 (train T11): what the trial converts to, and a "Still using?" answer.
++  price_after_trial_minor: 89900,
++  still_using: 'yes',
+ } as const;
+ 
+ /** What the model's keys must read back as — `cycle` is DERIVED, never sent. */
+@@ -97,10 +100,16 @@ const EXPECTED_MODEL_KEYS = {
+   shared_with: 'Family',
+   share_numerator: 1,
+   share_denominator: 4,
++  price_after_trial_minor: 89900,
++  still_using: 'yes',
++  // Stamped by the SERVER, never sent: any instant, checked by its own test.
++  still_using_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+ };
+ 
+-async function create(body: unknown): Promise<Row> {
+-  const res = await post(body);
++/** A body that names no subscription is given one: a name is required since
++ *  train T11 (AD-01), and these tests are about the other keys. */
++async function create(body: Row): Promise<Row> {
++  const res = await post({ name: 'A subscription', ...body });
+   expect(res.status).toBe(201);
+   return (await res.json()) as Row;
+ }
+@@ -162,7 +171,11 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
+     // rolled — by seven days. What stays pinned is the route's half: `cycle`
+     // is NULL for a weekly row, so a Worker that predates the pair still
+     // cannot roll it a month and invent a payment.
+-    const weekly = await create({ ...INR_WEEKLY_TRIAL, next_renewal: inDays(-3) });
++    // ⏱ 2026-10-01 · train T11 (AD-13): ACTIVE and with no trial. The fixture
++    // is a trial ending in three days, and a charge dated inside a trial is no
++    // charge — the fan-out writes no payment for it
++    // (services/platform/test/subscription-housekeeping.test.ts).
++    const weekly = await create({ ...INR_WEEKLY_TRIAL, status: 'active', trial_ends_on: null, next_renewal: inDays(-3) });
+     const monthly = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly', next_renewal: inDays(-3) });
+     expect(db.rows('SELECT cycle FROM subscriptions WHERE id = ?', weekly.id as string)[0].cycle).toBeNull();
+     await recomputeRenewals(db as never, 'subscriptiontracker');
+@@ -322,8 +335,10 @@ describe('the write rules that span keys', () => {
+       { cancel_url: 'http://example.com/cancel' },
+       { status: 'active', cancelled_on: '2026-09-28' },
+       { rail: 'unknown', service_id: 'x.y_z-1' },
++      { price_after_trial_minor: 10_000_000_000_000, currency: 'KWD' },
++      { price_after_trial_minor: 0, currency: 'INR', still_using: 'no' },
+     ]) {
+-      expect((await post(body)).status, JSON.stringify(body)).toBe(201);
++      expect((await post({ name: 'Boundary', ...body })).status, JSON.stringify(body)).toBe(201);
+     }
+   });
+ });
+diff --git a/services/subscriptiontracker-api/test/subscriptions.test.ts b/services/subscriptiontracker-api/test/subscriptions.test.ts
+index c593a262..c75a06f0 100644
+--- a/services/subscriptiontracker-api/test/subscriptions.test.ts
++++ b/services/subscriptiontracker-api/test/subscriptions.test.ts
+@@ -175,18 +175,22 @@ describe('the valid shapes the first-party client sends still work', () => {
+     expect(res.status).toBe(201);
+   });
+ 
+-  it('accepts a create with no body fields at all', async () => {
+-    const res = await post({});
++  // ⏱ 2026-10-01 · train T11 (AD-01): this was "accepts a create with no body
++  // fields at all", asserting a stored NULL name. A name is required now
++  // (test/names-required.test.ts); the defaults below are what it still holds.
++  it('accepts a create with a name and nothing else, and defaults the rest', async () => {
++    const res = await post({ name: 'Only a name' });
+     expect(res.status).toBe(201);
+     const [row] = db.rows('SELECT * FROM subscriptions');
+     expect(row.used_pct).toBe(0);
+     expect(row.unused).toBe(0);
+-    expect(row.name).toBeNull();
++    expect(row.name).toBe('Only a name');
++    expect(row.category).toBeNull();
+   });
+ 
+   it('accepts the range boundaries: price 0, used_pct 0 and 100', async () => {
+-    expect((await post({ price: 0, used_pct: 0 })).status).toBe(201);
+-    expect((await post({ price: 1_000_000_000, used_pct: 100 })).status).toBe(201);
++    expect((await post({ name: 'Low', price: 0, used_pct: 0 })).status).toBe(201);
++    expect((await post({ name: 'High', price: 1_000_000_000, used_pct: 100 })).status).toBe(201);
+   });
+ 
+   it('accepts a real price in a low-denomination currency', async () => {
+@@ -198,12 +202,13 @@ describe('the valid shapes the first-party client sends still work', () => {
+   });
+ 
+   it('explicit null clears EVERY nullable column, including unused', async () => {
+-    // One rule for null, not a per-column table nobody can remember.
++    // One rule for null, not a per-column table nobody can remember. `name` is
++    // not in the list since train T11: it is required, and a null name is the
++    // 400 `name_required` (test/names-required.test.ts).
+     const id = await seed();
+     const res = await subs(U, `/v1/subscriptions/${id}`, {
+       method: 'PATCH',
+       body: {
+-        name: null,
+         category: null,
+         price: null,
+         cycle: null,
+@@ -218,7 +223,6 @@ describe('the valid shapes the first-party client sends still work', () => {
+     expect(res.status).toBe(200);
+     const [row] = db.rows('SELECT * FROM subscriptions WHERE id = ?', id);
+     for (const col of [
+-      'name',
+       'category',
+       'price',
+       'cycle',
+@@ -234,8 +238,8 @@ describe('the valid shapes the first-party client sends still work', () => {
+   });
+ 
+   it('accepts a leap day and rejects the same date in a non-leap year', async () => {
+-    expect((await post({ next_renewal: '2028-02-29' })).status).toBe(201);
+-    expect((await post({ next_renewal: '2027-02-29' })).status).toBe(400);
++    expect((await post({ name: 'Leap', next_renewal: '2028-02-29' })).status).toBe(201);
++    expect((await post({ name: 'Leap', next_renewal: '2027-02-29' })).status).toBe(400);
+   });
+ 
+   it('PATCH updates only the keys present, and explicit null clears a column', async () => {
+@@ -267,7 +271,7 @@ describe('the valid shapes the first-party client sends still work', () => {
+   });
+ 
+   it('a float used_pct is truncated into the INTEGER column', async () => {
+-    await post({ used_pct: 33.7 });
++    await post({ name: 'Float', used_pct: 33.7 });
+     expect(db.rows('SELECT used_pct FROM subscriptions')[0].used_pct).toBe(33);
+   });
+ });
+diff --git a/services/subscriptiontracker-api/test/trial-still-using.test.ts b/services/subscriptiontracker-api/test/trial-still-using.test.ts
+new file mode 100644
+index 00000000..52927a85
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/trial-still-using.test.ts
+@@ -0,0 +1,163 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Train T11 · 0008's fields on the wire: the price after a trial (AD-08) and the
++// "Still using?" answer (IN-08).
++//
++//   · `price_after_trial_minor` — an exact amount in the ROW's currency,
++//     bounded like `price_minor`. Before 0008 there was nowhere to put it, so a
++//     trial converted at the price typed for the trial.
++//   · `still_using` / `still_using_at` — the answer, and the SERVER's time it
++//     was given. Before, the answer lived on one device
++//     (localSubscriptionStoreProvider.writeStillUsing), so every other device
++//     asked again.
++//
++// RED CONTROL: remove the three keys from `serializeSubscription` — the
++// round-trip tests read `undefined` for every one; remove them from `validate`
++// and the POST stores NULL for both.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
++import subscriptions from '../src/routes/subscriptions';
++import { realAppDb, asUser } from './harness';
++
++const U = 'user-a';
++type Row = Record<string, unknown>;
++
++let db: ReturnType<typeof realAppDb>;
++let subs: ReturnType<typeof asUser>;
++
++beforeEach(() => {
++  db = realAppDb();
++  subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
++});
++afterEach(() => {
++  vi.useRealTimers();
++});
++
++const post = (body: Row) => subs(U, '/v1/subscriptions', { method: 'POST', body });
++const patch = (id: string, body: Row) => subs(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body });
++const getOne = async (id: string) => (await (await subs(U, `/v1/subscriptions/${id}`)).json()) as Row;
++const getAll = async () => (await (await subs(U, '/v1/subscriptions')).json()) as Row[];
++
++/** A free week, then ₹899 a month. */
++const TRIAL = {
++  name: 'JioHotstar',
++  price: 0,
++  price_minor: 0,
++  currency: 'INR',
++  cycle: 'monthly',
++  status: 'trialing',
++  trial_ends_on: '2026-10-08',
++  next_renewal: '2026-10-08',
++  price_after_trial_minor: 89900,
++};
++
++async function create(body: Row): Promise<Row> {
++  const res = await post(body);
++  expect(res.status, JSON.stringify(await res.clone().json())).toBe(201);
++  return (await res.json()) as Row;
++}
++
++describe('AD-08 — a trialing row with a post-trial price round-trips exactly', () => {
++  it('POST, GET /:id and GET / serve the post-trial price as sent; the DB holds it as an integer', async () => {
++    const created = await create(TRIAL);
++    expect(created).toMatchObject({ status: 'trialing', price: 0, price_after_trial_minor: 89900, currency: 'INR' });
++    const { payment_history: _h, price_history: _p, ...one } = await getOne(created.id as string);
++    expect(one).toEqual(created);
++    expect(await getAll()).toEqual([created]);
++    expect(db.rows('SELECT price_after_trial_minor FROM subscriptions')).toEqual([{ price_after_trial_minor: 89900 }]);
++  });
++
++  it('a row without one, and every row that predates 0008, serves null', async () => {
++    const created = await create({ name: 'Netflix', price: 649, cycle: 'monthly' });
++    expect(created).toMatchObject({ price_after_trial_minor: null, still_using: null, still_using_at: null });
++  });
++
++  it('PATCH sets it in the stored currency, and null clears it', async () => {
++    const { id } = await create({ ...TRIAL, price_after_trial_minor: null });
++    const set = await patch(id as string, { price_after_trial_minor: 64900 });
++    expect(set.status).toBe(200);
++    expect(await set.json()).toMatchObject({ price_after_trial_minor: 64900, currency: 'INR' });
++    const cleared = await patch(id as string, { price_after_trial_minor: null });
++    expect(await cleared.json()).toMatchObject({ price_after_trial_minor: null });
++  });
++
++  it('is bounded like price_minor: a whole number, 0 to 10^13', async () => {
++    for (const bad of [-1, 1.5, '89900', 10_000_000_000_001, true]) {
++      const res = await post({ ...TRIAL, price_after_trial_minor: bad });
++      expect(res.status, JSON.stringify(bad)).toBe(400);
++      expect(((await res.json()) as Row).detail).toMatch(/^price_after_trial_minor must be a whole number/);
++    }
++    expect(db.rows('SELECT id FROM subscriptions')).toHaveLength(0);
++  });
++
++  it('needs a currency to be in: a POST without one, or a PATCH on a row with none, is a 400 that writes nothing', async () => {
++    const noCurrency = await post({ name: 'X', price: 0, price_after_trial_minor: 500 });
++    expect(noCurrency.status).toBe(400);
++    expect(((await noCurrency.json()) as Row).detail).toMatch(/needs a currency/);
++    expect(db.rows('SELECT id FROM subscriptions')).toHaveLength(0);
++
++    const { id } = await create({ name: 'Legacy', price: 5 });
++    const res = await patch(id as string, { price_after_trial_minor: 500 });
++    expect(res.status).toBe(400);
++    expect(db.rows('SELECT price_after_trial_minor FROM subscriptions')).toEqual([{ price_after_trial_minor: null }]);
++    // Sent WITH a currency, the same edit is fine.
++    expect((await patch(id as string, { price_after_trial_minor: 500, currency: 'usd' })).status).toBe(200);
++  });
++
++  it('a currency that MOVES takes it away; the same currency re-sent (every older client’s full-body edit) keeps it', async () => {
++    const { id } = await create(TRIAL);
++    const same = await patch(id as string, { name: 'JioHotstar Super', currency: 'INR', price: 0, price_minor: 0 });
++    expect(await same.json()).toMatchObject({ price_after_trial_minor: 89900 });
++    const moved = await patch(id as string, { currency: 'JPY' });
++    expect(await moved.json()).toMatchObject({ currency: 'JPY', price_after_trial_minor: null });
++  });
++});
++
++describe('IN-08 — "Still using?" is answered once, for every device', () => {
++  it('an answer is stored with the SERVER’s time; a device that syncs afterwards reads it', async () => {
++    vi.useFakeTimers({ now: Date.parse('2026-10-01T09:00:00Z'), toFake: ['Date'] });
++    const { id } = await create({ name: 'Gym', price: 40, cycle: 'monthly' });
++    const res = await patch(id as string, { still_using: 'yes' });
++    expect(res.status).toBe(200);
++    expect(await res.json()).toMatchObject({ still_using: 'yes', still_using_at: '2026-10-01T09:00:00.000Z' });
++    // The second device: another session for the same user, reading the list.
++    const otherDevice = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
++    const [row] = (await (await otherDevice(U, '/v1/subscriptions')).json()) as Row[];
++    expect([row.still_using, row.still_using_at]).toEqual(['yes', '2026-10-01T09:00:00.000Z']);
++  });
++
++  it('the client’s still_using_at is never stored: a back-dated echo keeps the server stamp', async () => {
++    vi.useFakeTimers({ now: Date.parse('2026-10-01T09:00:00Z'), toFake: ['Date'] });
++    const { id } = await create({ name: 'Gym', price: 40, still_using: 'no', still_using_at: '2001-01-01T00:00:00Z' });
++    expect(db.rows('SELECT still_using, still_using_at FROM subscriptions WHERE id = ?', id as string)).toEqual([
++      { still_using: 'no', still_using_at: '2026-10-01T09:00:00.000Z' },
++    ]);
++  });
++
++  it('re-sending the SAME answer keeps its stamp; a DIFFERENT answer re-stamps; null clears both', async () => {
++    vi.useFakeTimers({ now: Date.parse('2026-10-01T09:00:00Z'), toFake: ['Date'] });
++    const { id } = await create({ name: 'Gym', price: 40 });
++    await patch(id as string, { still_using: 'yes' });
++    vi.setSystemTime(Date.parse('2026-10-05T09:00:00Z'));
++    expect(await (await patch(id as string, { still_using: 'yes', notes: 'x' })).json()).toMatchObject({
++      still_using: 'yes',
++      still_using_at: '2026-10-01T09:00:00.000Z',
++    });
++    expect(await (await patch(id as string, { still_using: 'no' })).json()).toMatchObject({
++      still_using: 'no',
++      still_using_at: '2026-10-05T09:00:00.000Z',
++    });
++    expect(await (await patch(id as string, { still_using: null })).json()).toMatchObject({
++      still_using: null,
++      still_using_at: null,
++    });
++  });
++
++  it('only yes, no or null is an answer; a malformed still_using_at is refused', async () => {
++    for (const body of [{ still_using: 'maybe' }, { still_using: true }, { still_using: 'YES' }, { still_using_at: 'yesterday' }]) {
++      const res = await post({ name: 'X', ...body });
++      expect(res.status, JSON.stringify(body)).toBe(400);
++      expect(((await res.json()) as Row).error).toBe('invalid_body');
++    }
++    expect(db.rows('SELECT id FROM subscriptions')).toHaveLength(0);
++  });
++});
+diff --git a/tooling/ceilings.json b/tooling/ceilings.json
+index 0b8a7696..bfedc59a 100644
+--- a/tooling/ceilings.json
++++ b/tooling/ceilings.json
+@@ -543,7 +543,7 @@
+       {
+         "file": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+         "boundedBy": "MAX_BATCH_STATEMENTS",
+-        "note": "⏱ 2026-09-29 (ST-E3, ST-I4). Two FIXED-size batches: `purgeExpired` (3 — payment_history, price_change, subscriptions) and a price-moving PATCH (2 — the UPDATE and its price_change row). Neither grows with input; test/lifecycle.test.ts counts them."
++        "note": "⏱ 2026-09-29 (ST-E3, ST-I4). Two FIXED-size batches: `purgeExpired` (3 — payment_history, price_change, subscriptions) and a price-moving PATCH (2 — the UPDATE and its price_change row). Neither grows with input; test/lifecycle.test.ts counts them. ⏱ 2026-10-01 · train T11 (SV-01): `purgeExpired` left this router — GET / ran it before every list — for the platform Worker's nightly limb (services/platform/src/subscription-housekeeping.ts, its own row below). One batch remains, the PATCH's 2, and MAX_BATCH_STATEMENTS is 2."
+       },
+       {
+         "file": "services/subscriptiontracker-api/src/routes/categories.ts",
+@@ -554,6 +554,11 @@
+         "file": "services/platform/src/scheduled.ts",
+         "unboundedReason": "The heartbeat writes ONE row per cron TARGET, and the target list is `appTargets()` — a compiled-in array in this repo, not caller input, so its size is a source edit and is visible in review. It is nonetheless unbounded in the arithmetic sense: at 50 apps this batch is 50 statements and crosses the Free ceiling under the worst-case reading. [4]B-11 (increment 9) is where the job/target set stops being a hardcoded array, and the chunking belongs with it rather than here, where it would be a second uncoordinated fan-out policy. ⏱ 2026-09-24 · THE BACKUP FIRING SPENDS THIS BATCH INSIDE A BUDGET. On `30 2 * * *` the export runs alone and this batch writes one row per outcome of `runBackup` — 8 statements — in the same invocation as the export's D1 pool, so MAX_D1_QUERIES_PER_RUN (services/platform/src/backup/index.ts) is 50 - 8 = 42 and the two together stay inside d1.queriesPerInvocation's recorded 50 under the worst-case reading. services/platform/test/backup-export.test.ts counts that whole invocation on the databases and fails when the sum passes the ceiling."
+       },
++      {
++        "file": "services/platform/src/subscription-housekeeping.ts",
++        "boundedBy": "HOUSEKEEPING_STATEMENTS_PER_APP",
++        "note": "⏱ 2026-10-01 · train T11 (AD-13, SV-01). Two FIXED-size, SET-BASED batches per app per night, inside the renewals fan-out: `endTrials` (2 — a price_change INSERT … SELECT and one UPDATE for every trial ending tonight) and `purgeSoftDeleted` (3 — payment_history, price_change, subscriptions). With the one-statement column probe that is HOUSEKEEPING_STATEMENTS_PER_APP = 6, whatever the data: the rows each step touches are capped by MAX_TRIAL_ENDS_PER_RUN and MAX_PURGE_PER_RUN, never the statement count. services/platform/test/subscription-housekeeping.test.ts counts them on an empty night and a busy one."
++      },
+       {
+         "file": "services/platform/src/renewals.ts",
+         "unboundedReason": "🔴 GENUINELY UNBOUNDED BY DATA, AND THE WORST OF THE FIVE. `ops` grows with the number of subscriptions due today PLUS one payment row per missed billing crossing, so a single app with a few hundred due renewals produces a batch far past 50 with no constant anywhere to annotate. It has never fired because Subly's row count is tiny. Chunking it is [4]B-11's increment (the fan-out already lives there) and must not be bolted on here: a retry/partial-failure policy invented at this call site would be the second one, and the cron's failure semantics are that increment's subject. Recorded, dated 2026-08-01, and printed on every run so it cannot go quiet again."
+diff --git a/tooling/ci/test/d1-sql-inventory.test.mjs b/tooling/ci/test/d1-sql-inventory.test.mjs
+index cd0c260e..909dc9e0 100644
+--- a/tooling/ci/test/d1-sql-inventory.test.mjs
++++ b/tooling/ci/test/d1-sql-inventory.test.mjs
+@@ -911,7 +911,12 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
+       // ⏱ 2026-09-28 · ST-T3b (ST-M3): 5. renewals.ts probes
+       // `pragma_table_info('subscriptions')` for 0003's cadence and lifecycle
+       // columns, as it already probed payment_history's.
+-      assert.match(r.stdout, /ok {2}platform_db — 5 introspective and 2 mutating statement\(s\) executed/);
++      // ⏱ 2026-10-01 · train T11: 6. src/subscription-housekeeping.ts probes
++      // the three tables its nightly trial-end and purge steps write, in ONE
++      // statement: a UNION ALL of literal `pragma_table_info` reads, with no
++      // sqlite_master (R1). The fixture above answers it, and it is executed.
++      assert.match(r.stdout, /step 1 — services\/platform\/src\/subscription-housekeeping\.ts:\d+ accepted/);
++      assert.match(r.stdout, /ok {2}platform_db — 6 introspective and 2 mutating statement\(s\) executed/);
+     });
+   });
+ 
+diff --git a/tooling/legal/data-inventory.json b/tooling/legal/data-inventory.json
+index d86e4153..7515155c 100644
+--- a/tooling/legal/data-inventory.json
++++ b/tooling/legal/data-inventory.json
+@@ -848,10 +848,10 @@
+       "kind": "d1-table",
+       "name": "subscriptions",
+       "personalData": true,
+-      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id.",
++      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id. 0008_trial_price_still_using.sql (train T11) adds `price_after_trial_minor` (what a trial converts to, in the row's currency) and the user's own answer to \"Still using?\" (`still_using`, yes or no) with the server time it was given (`still_using_at`).",
+       "retention": {
+         "kind": "keep",
+-        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`, which runs on that user's next list."
++        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by the platform Worker's nightly `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts), at most 100 rows a night, oldest first. ⏱ 2026-10-01 · train T11 (SV-01): until then the purge was subscriptiontracker-api's `purgeExpired`, run on that user's next list, so a user who never opened the app again kept their removed rows; the nightly purge reaches every user's."
+       },
+       "erasure": {
+         "kind": "purge",
+@@ -862,7 +862,9 @@
+         "services/subscriptiontracker-api/migrations/0001_init.sql",
+         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+         "services/subscriptiontracker-api/migrations/0003_subscription_model.sql",
+-        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql"
++        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
++        "services/subscriptiontracker-api/migrations/0008_trial_price_still_using.sql",
++        "services/platform/src/subscription-housekeeping.ts"
+       ],
+       "disclosure": {
+         "page": "privacy.html",
+@@ -948,10 +950,10 @@
+       "kind": "d1-table",
+       "name": "price_change",
+       "personalData": true,
+-      "holds": "One row per edit that moved a subscription's price, exact amount or currency: the old and new values and when the edit was made (0005_lifecycle_history_categories.sql, [ADR 077] §5.2, ST-I4). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. A record of what the user typed, not of a charge and never a payment instrument.",
++      "holds": "One row per edit that moved a subscription's price, exact amount or currency: the old and new values and when the edit was made (0005_lifecycle_history_categories.sql, [ADR 077] §5.2, ST-I4). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. A record of what the user typed, not of a charge and never a payment instrument. Since train T11 a trial that converts to the post-trial price the user typed (`price_after_trial_minor`, 0008) writes one row too, from the platform Worker's nightly `endTrials`.",
+       "retention": {
+         "kind": "keep",
+-        "reason": "The user's own history, kept until they delete it: it goes with its subscription when a soft-deleted row is purged (services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`), and with the account on erasure."
++        "reason": "The user's own history, kept until they delete it: it goes with its subscription when a soft-deleted row is purged (the platform Worker's nightly `purgeSoftDeleted`, services/platform/src/subscription-housekeeping.ts — until train T11, subscriptiontracker-api's `purgeExpired` on the list read), and with the account on erasure."
+       },
+       "erasure": {
+         "kind": "purge",
+@@ -960,7 +962,8 @@
+       },
+       "writtenBy": [
+         "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
++        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
++        "services/platform/src/subscription-housekeeping.ts"
+       ],
+       "disclosure": {
+         "page": "privacy.html",
+diff --git a/tooling/prod-provenance.json b/tooling/prod-provenance.json
+index 6ef1e299..87ef4af0 100644
+--- a/tooling/prod-provenance.json
++++ b/tooling/prod-provenance.json
+@@ -277,7 +277,7 @@
+       "tables": {
+         "subscriptions": {
+           "resolver": "exempt",
+-          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `user_id`, `name`, `category`, `price`, `cycle`, `next_renewal`, `plan`, `glyph`, `used_pct`, `usage_note`, `unused`, `created_at` and `updated_at`, and not one of them names a build, an app, a money world or a closed set a resolver could check. Rows are written by POST and PATCH /v1/subscriptions (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, and `next_renewal` is advanced by the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts). `user_id` is a Supabase subject this database cannot resolve, and `name`/`category`/`plan` are the user's own free text. So it is exempt; a marker column added later (above all `app_version`, which the gate's limb 5 then holds to `released-build`) re-opens this rule. ⏱ 2026-09-28 · 0003_subscription_model.sql ([ADR 077] §5) adds `currency`, `price_minor`, `cycle_every`, `cycle_unit`, `first_charge_on`, `status`, `trial_ends_on`, `cancelled_on`, `deleted_at`, `notes`, `service_id`, `cancel_url`, `rail`, `rail_holder`, `reminder_days`, `shared_with`, `share_numerator` and `share_denominator`, written by the same two routes. Still no marker: `status`, `rail` and `cycle_unit` are closed sets, but they describe the user's subscription, not which build, app or money world wrote the row — `rail` is how the user's charge reaches them ([ADR 077] §7), never a money-rail environment — and the rest are the user's own dates, amounts, labels and free text. The exemption stands; the gate's limb 4 holds it to naming every column. ⏱ 2026-09-29 · 0004_notice_days.sql (ST-R8) adds `notice_days`, the whole days before `next_renewal` by which the user must cancel, written by the same two routes. It is the user's own number about their own plan and names no build, app or money world, so it is not a marker either. The exemption stands. ⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-X8) adds `category_id`, the id of a `categories` row, written by the same two routes. It names the user's category, not a build, app or money world. The exemption stands."
++          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `user_id`, `name`, `category`, `price`, `cycle`, `next_renewal`, `plan`, `glyph`, `used_pct`, `usage_note`, `unused`, `created_at` and `updated_at`, and not one of them names a build, an app, a money world or a closed set a resolver could check. Rows are written by POST and PATCH /v1/subscriptions (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, and `next_renewal` is advanced by the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts). `user_id` is a Supabase subject this database cannot resolve, and `name`/`category`/`plan` are the user's own free text. So it is exempt; a marker column added later (above all `app_version`, which the gate's limb 5 then holds to `released-build`) re-opens this rule. ⏱ 2026-09-28 · 0003_subscription_model.sql ([ADR 077] §5) adds `currency`, `price_minor`, `cycle_every`, `cycle_unit`, `first_charge_on`, `status`, `trial_ends_on`, `cancelled_on`, `deleted_at`, `notes`, `service_id`, `cancel_url`, `rail`, `rail_holder`, `reminder_days`, `shared_with`, `share_numerator` and `share_denominator`, written by the same two routes. Still no marker: `status`, `rail` and `cycle_unit` are closed sets, but they describe the user's subscription, not which build, app or money world wrote the row — `rail` is how the user's charge reaches them ([ADR 077] §7), never a money-rail environment — and the rest are the user's own dates, amounts, labels and free text. The exemption stands; the gate's limb 4 holds it to naming every column. ⏱ 2026-09-29 · 0004_notice_days.sql (ST-R8) adds `notice_days`, the whole days before `next_renewal` by which the user must cancel, written by the same two routes. It is the user's own number about their own plan and names no build, app or money world, so it is not a marker either. The exemption stands. ⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-X8) adds `category_id`, the id of a `categories` row, written by the same two routes. It names the user's category, not a build, app or money world. The exemption stands. ⏱ 2026-10-01 · 0008_trial_price_still_using.sql (train T11) adds `price_after_trial_minor`, what the user says a trial converts to (minor units of the row's own currency), and `still_using` / `still_using_at`, the user's yes-or-no answer to \"Still using?\" and the server time it was given — written by the same two routes, and `price_after_trial_minor` cleared by the platform Worker's nightly trial-end step (services/platform/src/subscription-housekeeping.ts). `still_using` is a closed set (yes, no), but it is the user's answer about their own plan, not which build, app or money world wrote the row. None is a marker. The exemption stands."
+         },
+         "budgets": {
+           "resolver": "exempt",
