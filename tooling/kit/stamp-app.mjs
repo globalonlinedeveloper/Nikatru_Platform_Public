@@ -57,10 +57,13 @@
 //   1. apps/<id>/pubspec.yaml exists — a stamp that wrote no app is not a stamp;
 //   2. `node tooling/sites/regen.mjs --check` exits 0;
 //   3. `node tooling/ci/tag-owner.mjs --check` exits 0;
-//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0.
+//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0;
+//   5. `node tooling/kit/snap-update-row.mjs --check --app <id>` exits 0 — the
+//      app is served its snapcraft.io page on the armed `linux-snap` channel,
+//      which the step of the same name writes after the licence rows ([10]D-8).
 // Any one failing makes the exit 1, and the line names it.
 //
-// Exit 0 = stamped, and all four post-conditions hold (or --dry-run printed the plan).
+// Exit 0 = stamped, and all five post-conditions hold (or --dry-run printed the plan).
 // Exit 1 = refused before mason, a mason step failed, the root pub get left a
 //          tracked file changed, or a post-condition failed.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +84,7 @@ export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 export const REGEN = 'tooling/sites/regen.mjs';
 export const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
 export const APP_LICENCE_ROWS = 'tooling/ci/gen-app-licence-rows.mjs';
+export const SNAP_UPDATE_ROW = 'tooling/kit/snap-update-row.mjs';
 const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
 
 /**
@@ -150,11 +154,13 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
       ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'flutter.bat', ...args], cwd: root, env: childEnv }
       : { label, command: 'flutter', args, cwd: root, env: childEnv };
   const licenceRows = join(root, ...APP_LICENCE_ROWS.split('/'));
+  const snapRow = join(root, ...SNAP_UPDATE_ROW.split('/'));
   const steps = [
     mason('mason get', ['get']),
     mason('mason make', ['make', 'app', '-c', vars, '-o', '.', '--on-conflict', 'overwrite']),
     { ...flutter('flutter pub get (repo root)', ['pub', 'get']), keepsTrackedTree: true },
     { label: `node ${APP_LICENCE_ROWS} --write --app ${id}`, command: process.execPath, args: [licenceRows, '--write', '--app', id], cwd: root, env: childEnv },
+    { label: `node ${SNAP_UPDATE_ROW} --write --app ${id}`, command: process.execPath, args: [snapRow, '--write', '--app', id], cwd: root, env: childEnv },
   ];
   if (problems.length) return nothing(id, vars, overwrite);
 
@@ -163,6 +169,7 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     { label: `node ${REGEN} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...REGEN.split('/')), '--check'], cwd: root },
     { label: `node ${TAG_OWNER} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...TAG_OWNER.split('/')), '--check'], cwd: root },
     { label: `node ${APP_LICENCE_ROWS} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [licenceRows, '--check', '--app', id], cwd: root },
+    { label: `node ${SNAP_UPDATE_ROW} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [snapRow, '--check', '--app', id], cwd: root },
   ];
   return { problems, id, vars, overwrite, steps, post };
 }
@@ -292,7 +299,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gi
     );
     return 1;
   }
-  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter and its licence rows all check clean.`);
+  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter, its licence rows and its snap update row all check clean.`);
   return 0;
 }
 

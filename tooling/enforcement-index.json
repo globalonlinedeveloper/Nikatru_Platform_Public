@@ -3732,7 +3732,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "D-8"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/time-travel.yml#brick-worker"

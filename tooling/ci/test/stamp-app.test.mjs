@@ -18,7 +18,7 @@
 //     own uncommitted edit included), and any OTHER tracked file it changes,
 //     the root pubspec.lock aside, fails the stamp by name — driven against a
 //     real throwaway git checkout;
-//   · the four post-conditions exist, in order, and a failing one makes the
+//   · the five post-conditions exist, in order, and a failing one makes the
 //     exit non-zero;
 //   · no workflow stamps with a raw `mason make`: a stamp step that skips this
 //     file skips its post-conditions too. The one raw `mason make` a workflow
@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
-import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS } from '../../kit/stamp-app.mjs';
+import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, SNAP_UPDATE_ROW } from '../../kit/stamp-app.mjs';
 
 let ROOT;
 const GOOD = 'good-vars.json';
@@ -132,7 +132,7 @@ const pubGetWrites = (root, extra = () => {}) => (command) => {
 };
 
 describe('stamp-app.mjs — one command, and loud about what it left behind', () => {
-  test('mason get, mason make, the root pub get and the licence rows run in that order, all from the repo root', () => {
+  test('mason get, mason make, the root pub get, the licence rows and the snap update row run in that order, all from the repo root', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -142,9 +142,10 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         ['mason', 'make', 'app', '-c', GOOD, '-o', '.', '--on-conflict', 'overwrite'],
         ['flutter', 'pub', 'get'],
         [process.execPath, join(ROOT, ...APP_LICENCE_ROWS.split('/')), '--write', '--app', 'habittracker'],
+        [process.execPath, join(ROOT, ...SNAP_UPDATE_ROW.split('/')), '--write', '--app', 'habittracker'],
       ],
     );
-    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, ROOT]);
+    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, ROOT, ROOT]);
   });
 
   test('on Windows every mason and flutter step is cmd.exe /d /s /c <tool>.bat with the same arguments', () => {
@@ -159,6 +160,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
       ],
     );
     assert.equal(p.steps[3].command, process.execPath, 'the licence-row generator is node, spawned without a shell');
+    assert.equal(p.steps[4].command, process.execPath, 'the snap update row is node, spawned without a shell');
   });
 
   test('the licence rows are written only after the root pub get, and a failed pub get stops the stamp before them', () => {
@@ -185,7 +187,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
   test('NIKATRU_ALLOW_OVERWRITE=1 is set only by --overwrite, and an inherited one is stripped', () => {
     const without = plan(['--vars', GOOD], { env: { PATH: '/bin', NIKATRU_ALLOW_OVERWRITE: '1' } });
     assert.deepEqual(without.problems, []);
-    assert.equal(without.steps.length, 4);
+    assert.equal(without.steps.length, 5);
     assert.ok(without.steps.every((s) => !('NIKATRU_ALLOW_OVERWRITE' in s.env)), 'a stamp without --overwrite carries NIKATRU_ALLOW_OVERWRITE');
     assert.ok(without.steps.every((s) => s.env.PATH === '/bin'), 'the caller environment is not passed through');
 
@@ -226,7 +228,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.match(noVars.problems.join('\n'), /--vars <file\.json> is required/);
   });
 
-  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs and the licence rows --check, in that order', () => {
+  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows --check and the snap update row --check, in that order', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -236,12 +238,14 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         `node ${REGEN} --check`,
         `node ${TAG_OWNER} --check`,
         `node ${APP_LICENCE_ROWS} --check --app habittracker`,
+        `node ${SNAP_UPDATE_ROW} --check --app habittracker`,
       ],
     );
     assert.equal(p.post[0].path, join(ROOT, 'apps', 'habittracker', 'pubspec.yaml'));
     assert.deepEqual(p.post[1].args, [join(ROOT, 'tooling', 'sites', 'regen.mjs'), '--check']);
     assert.deepEqual(p.post[2].args, [join(ROOT, 'tooling', 'ci', 'tag-owner.mjs'), '--check']);
     assert.deepEqual(p.post[3].args, [join(ROOT, 'tooling', 'ci', 'gen-app-licence-rows.mjs'), '--check', '--app', 'habittracker']);
+    assert.deepEqual(p.post[4].args, [join(ROOT, 'tooling', 'kit', 'snap-update-row.mjs'), '--check', '--app', 'habittracker']);
   });
 
   test('a stamp whose licence rows check red exits 1 and names the generator', () => {
@@ -264,7 +268,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const red = runStamp(p, { run: regenFails, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(red, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/sites\/regen\.mjs --check/);
-    assert.equal(calls.length, 7, `expected mason get, mason make, pub get, the --write and the three --check runs; got ${calls.join(' | ')}`);
+    assert.equal(calls.length, 9, `expected mason get, mason make, pub get, the two --write and the four --check runs; got ${calls.join(' | ')}`);
 
     const green = runStamp(p, { run: () => 0, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(green, 0);
