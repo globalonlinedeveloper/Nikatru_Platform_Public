@@ -17,15 +17,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   NATIVE_PLATFORMS,
   ORG,
   flutterCreateArgs,
+  runFlutter,
   stampNative,
   withAmazonReceiverRemoved,
   withNdkSwitchedOff,
@@ -459,5 +461,90 @@ describe('stamp-native — the orchestrator', () => {
     const r = stampNative({ root, id: 'demo', flutter: fakeFlutter([]) });
     assert.equal(r.ok, false);
     assert.match(r.lines.join('\n'), /REFUSED .*app_icon_1024\.png does not exist/);
+  });
+});
+
+// ── 🔴 no shell between the environment and flutter (CodeQL #578, lead ruling 2026-10-02) ──
+// The create destination is under os.tmpdir(), i.e. TMPDIR / TMP. Whatever that holds must
+// reach flutter as ONE literal argument and run nothing else. The old runner (cmd.exe /c
+// flutter.bat on Windows, every argument pattern-checked first) never ran flutter at all
+// for such a value: the RED CONTROL below fails on it with "flutter was never run".
+const HOSTILE = 't; rm -rf x & echo pwned > pwned';
+
+describe('stamp-native — the environment reaches flutter as data, never as a command', () => {
+  test(
+    '🔴 RED CONTROL: a TMPDIR carrying `; rm -rf x` and `& echo pwned` arrives as ONE literal argument of the REAL default runner',
+    { skip: process.platform === 'win32' && 'drives a POSIX shebang stub; the Windows branch is the injected test below' },
+    () => {
+      const { root } = stampedApp();
+      const work = join(TMP, `w${seq++}`);
+      const bin = join(work, 'bin');
+      const hostile = join(work, HOSTILE);
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(hostile, { recursive: true });
+      mkdirSync(join(work, 'x'), { recursive: true }); // the canary `rm -rf x` would remove
+      const record = join(work, 'argv.json');
+      // The stub `flutter` on PATH records its argv and exits 1, so the stamp stops right there.
+      const stub = join(bin, 'flutter');
+      writeFileSync(stub, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.env.NIKATRU_TEST_RECORD, JSON.stringify(process.argv.slice(2)));\nprocess.exit(1);\n`);
+      chmodSync(stub, 0o755);
+      const driver =
+        "const { stampNative } = await import(process.env.NIKATRU_TEST_MODULE);" +
+        "const r = stampNative({ root: process.env.NIKATRU_TEST_ROOT, id: 'demo' });" +
+        'process.stdout.write(JSON.stringify(r));';
+      const r = spawnSync(process.execPath, ['--input-type=module', '-e', driver], {
+        cwd: work,
+        encoding: 'utf8',
+        env: {
+          PATH: `${bin}:/usr/bin:/bin`,
+          TMPDIR: hostile,
+          NIKATRU_TEST_RECORD: record,
+          NIKATRU_TEST_MODULE: pathToFileURL(join(REPO, 'tooling', 'kit', 'stamp-native.mjs')).href,
+          NIKATRU_TEST_ROOT: root,
+        },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      const result = JSON.parse(r.stdout);
+      assert.ok(existsSync(record), `flutter was never run: ${result.lines.join(' | ')}`);
+      const argv = JSON.parse(readFileSync(record, 'utf8'));
+      assert.equal(argv.length, flutterCreateArgs({ id: 'demo', dest: 'x' }).length, `the destination was split: ${JSON.stringify(argv)}`);
+      const dest = argv[argv.length - 1];
+      assert.ok(dest.startsWith(`${hostile}/nikatru-native-`) && dest.endsWith('/demo'), `the destination did not arrive literally: ${dest}`);
+      assert.ok(existsSync(join(work, 'x')), '`rm -rf x` ran: a shell read the environment');
+      assert.ok(!existsSync(join(work, 'pwned')), '`echo pwned` ran: a shell read the environment');
+      assert.equal(result.ok, false);
+      assert.match(result.lines.join('\n'), /exited 1; no native folder was written/);
+    },
+  );
+
+  test('🔴 on Windows the runner spawns the dart.exe flutter.bat runs, shell: false, the hostile destination one literal argument', () => {
+    const sdk = 'C:\\sdk\\flutter';
+    const dart = `${sdk}\\bin\\cache\\dart-sdk\\bin\\dart.exe`;
+    const snapshot = `${sdk}\\bin\\cache\\flutter_tools.snapshot`;
+    const packages = `${sdk}\\packages\\flutter_tools\\.dart_tool\\package_config.json`;
+    const files = new Set([`${sdk}\\bin\\flutter.bat`, dart, snapshot, packages]);
+    const dest = `C:\\Users\\${HOSTILE}\\Temp\\demo`;
+    const spawned = [];
+    const r = runFlutter(flutterCreateArgs({ id: 'demo', dest }), {
+      platform: 'win32',
+      env: { Path: `${sdk}\\bin`, TMP: `C:\\Users\\${HOSTILE}\\Temp` },
+      isFile: (f) => files.has(f),
+      spawn: (command, args, options) => {
+        spawned.push({ command, args, options });
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
+    assert.equal(r.status, 0, r.output);
+    assert.equal(spawned.length, 1);
+    const [{ command, args, options }] = spawned;
+    assert.equal(command, dart, 'flutter must be the dart.exe flutter.bat runs, never cmd.exe');
+    assert.equal(options.shell, false);
+    assert.deepEqual(args, [`--packages=${packages}`, snapshot, ...flutterCreateArgs({ id: 'demo', dest })]);
+    assert.equal(args.filter((a) => a.includes('pwned')).length, 1, 'the hostile value is not ONE argument');
+    assert.equal(options.env.FLUTTER_ROOT, sdk);
+
+    const missing = runFlutter(['--version'], { platform: 'win32', env: { Path: 'C:\\Windows' }, isFile: () => false, spawn: () => assert.fail('spawned with no SDK') });
+    assert.equal(missing.status, -1);
+    assert.match(missing.output, /flutter\.bat is not on PATH/);
   });
 });
