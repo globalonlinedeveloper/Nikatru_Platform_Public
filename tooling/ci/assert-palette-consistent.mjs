@@ -244,7 +244,11 @@ const MUST_COMPARE = [
 /*  23 -> 24 on 2026-10-01: sites/nikatru/app/connect.html, the desktop app's
  *  system-browser sign-in page (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH).
  *  Measured off this tree by the guard's own ok line: 24 page(s) (23 at 7bb11a54). */
-const MIN_PAGES = 24;
+/*  24 -> 23 on 2026-10-02: sites/rajasekarselvam/cv.html, the unfilled CV TEMPLATE,
+ *  was DELETED from the deploy root (/cv now 301s home; rajasekarselvam.com audit D2).
+ *  Measured off this tree by the guard's own ok line: 23 page(s) (24 with cv.html
+ *  restored on the same tree). A page removed, not a page lost. */
+const MIN_PAGES = 23;
 /** What the exclusion must still match. */
 const MIN_SNAPSHOTS = 3;
 /** `:root` blocks across every source. Today 33. EXACT: a block is a page's
@@ -284,7 +288,10 @@ const MIN_SNAPSHOTS = 3;
  *  ext/connect.html, receives shared chrome (the `scale-css` `:root`) and declares
  *  a light `:root` and a dark override — three blocks. Measured by the guard's own
  *  ok line: 62 `:root` block(s) (59 at 7bb11a54). */
-const MIN_ROOT_BLOCKS = 62;
+/*  62 -> 61 on 2026-10-02, with MIN_PAGES above: cv.html declared one light `:root`
+ *  and no dark override. Measured by the guard's own ok line: 61 `:root` block(s)
+ *  (62 with cv.html restored on the same tree). */
+const MIN_ROOT_BLOCKS = 61;
 /** Declarations inside those blocks. Today 358 (265 until 2026-09-09), floored SLACK on purpose. The
  *  three exact floors already fence the subject; this one exists for the single
  *  failure they cannot see — a reducer that blanks one character too many and
