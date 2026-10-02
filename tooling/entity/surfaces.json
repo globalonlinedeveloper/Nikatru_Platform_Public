@@ -1,0 +1,86 @@
+{
+  "_readme": [
+    "THE ENTITY SURFACES: every place a business fact is printed, and how it is rendered from the entity source (tooling/house-identity.json `entity`, `people`). Rendered by `node tooling/entity/render.mjs`; checked by tooling/scripts/assert-business-facts.mjs, which also refuses a guarded value anywhere this file does not declare.",
+    "THREE SHAPES. `facts` are the named templates a FACT region renders (`<!-- FACT:<name> -->…<!-- /FACT:<name> -->`, HTML pages; the markers are zero-width to every visible-text comparison, tooling/ci/text-reductions.mjs `stripInert`). `anchored` entries replace the named group `v` of a regex, an exact number of times, where a comment cannot sit: an attribute, JSON-LD, a JSON value, a licence line, Markdown. `files` are rendered whole. The site footer is rendered by tooling/sites/chrome.mjs `footer()` and the Worker module by tooling/ports/render-entity.mjs, both from the same source.",
+    "A TEMPLATE THAT DEPENDS ON THE ENTITY FORM is written `byForm`. A form with no wording is a refusal naming the template, never a blank: `node tooling/kit/entity-change.mjs --dry-run <proposed.json>` lists every one a proposed form leaves unworded.",
+    "`literals` are the values the guard refuses outside the source and the declared outputs, READ FROM THE SOURCE, never typed here. Domain facts (the support inbox, the owner domain) and the brand are deliberately not among them: an entity change leaves them alone, and assert-house-identity, assert-repo-posture and assert-ports limb 9 hold them. `exempt` is the ONLY way out, one path per entry, each with its kind and its reason."
+  ],
+  "facts": {
+    "legal-name": { "template": "{{legalName}}" },
+    "founder-name": { "template": "{{founder.name}}" },
+    "entity-of": { "byForm": { "sole-proprietorship": "proprietorship of {{legalName}}" }, "why": "\"Nikatru is a <entity-of>\": the form and its holder." },
+    "entity-of-long": { "byForm": { "sole-proprietorship": "sole proprietorship of {{legalName}}" } },
+    "same-person-note": { "byForm": { "sole-proprietorship": "A proprietorship has no legal identity separate from its proprietor, so \"Nikatru\" and \"{{legalName}}\" name the same legal person" }, "why": "True of a proprietorship only. A company has a legal identity of its own, so another form re-words or removes the sentence." },
+    "udyam": { "template": "{{udyam}}" },
+    "office-lines": { "template": "{{office.floor}}, {{office.building}}, {{office.street}},<br>\n      {{office.area}}, {{office.locality}},<br>\n      {{office.city}}, {{office.state}}, {{office.postalCode}}, {{office.country}}" },
+    "office-inline": { "template": "{{office.floor}}, {{office.building}}, {{office.street}}, {{office.area}}, {{office.locality}}, {{office.city}}, {{office.state}}, {{office.postalCode}}, {{office.country}}" },
+    "office-place": { "template": "{{office.city}}, {{office.state}}, {{office.country}}" },
+    "phone-link": { "template": "<a href=\"tel:{{phone.href}}\">{{phone.display}}</a>" },
+    "phone-display": { "template": "{{phone.display}}" },
+    "founder-role": { "byForm": { "sole-proprietorship": "proprietor" }, "why": "The founder's role in the business: a proprietor of a proprietorship, an officer of anything else." },
+    "grievance-officer": { "template": "{{grievance.name}}, {{grievance.title}}" },
+    "governing-law": { "template": "{{jurisdiction.law}}" },
+    "courts": { "template": "{{jurisdiction.courts}}" }
+  },
+  "anchored": [
+    { "file": "sites/nikatru/index.html", "pattern": "\"@id\": \"https://rajasekarselvam\\.com/#person\", \"name\": \"(?<v>[^\"]+)\"", "template": "{{founder.name}}", "escape": "json", "why": "The founder in the homepage JSON-LD; a comment cannot sit inside a script's JSON." },
+    { "file": "sites/nikatru/index.html", "pattern": "alt=\"(?<v>[^\"]+), founder of Nikatru\"", "template": "{{founder.name}}", "escape": "html", "why": "An attribute." },
+    { "file": "sites/nikatru/llms.txt", "pattern": "\\(Udyam (?<v>[^)]+)\\)", "template": "{{udyam}}" },
+    { "file": "sites/nikatru/llms.txt", "pattern": "Founder & developer: (?<v>.+?) \\(11\\+ years", "template": "{{founder.name}}" },
+    { "file": "NOTICE.md", "pattern": "^© (?<v>.+)\\. All rights reserved\\.$", "flags": "m", "template": "{{copyright.years}} {{legalName}}, {{form.roleNoun}}, trading as {{tradeName}}" },
+    { "file": "README.md", "pattern": "^© (?<v>.+)\\. All rights reserved\\.$", "flags": "m", "template": "{{copyright.years}} {{legalName}}, {{form.roleNoun}}, trading as {{tradeName}}" },
+    { "file": "extensions/Extension/Full_Screen_Shot/LICENSE", "pattern": "^Required Notice: Copyright (?<v>.+) \\(https://nikatru\\.com\\)$", "flags": "m", "template": "{{legalName}}, trading as {{tradeName}}", "why": "The licensor; extensions/scripts/lib/licence.mjs reads this line into the store listings." },
+    { "file": "extensions/templates/tool/LICENSE", "pattern": "^Required Notice: Copyright (?<v>.+) \\(https://nikatru\\.com\\)$", "flags": "m", "template": "{{legalName}}, trading as {{tradeName}}", "why": "The licence every new tool is stamped with." },
+    { "file": "contracts/legal/fullshot-privacy.md", "pattern": "developed by (?<v>[^.\\n]+)\\. For any privacy question", "template": "{{legalName}}", "why": "The Markdown source of the two FullShot policy copies (contracts/legal/render-fullshot-privacy.mjs); the three are rendered alike, so assert-legal-text-parity holds." },
+    { "file": "contracts/legal/fullshot-privacy.md", "pattern": "FullShot is published by (?<v>[^.\\n]+)\\.", "template": "{{legalName}}, trading as {{tradeName}}" },
+    { "file": "extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html", "pattern": "developed by (?<v>[^.\\n<]+)\\. For any privacy question", "template": "{{legalName}}", "escape": "html" },
+    { "file": "extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html", "pattern": "FullShot is published by (?<v>[^.\\n<]+)\\.", "template": "{{legalName}}, trading as {{tradeName}}", "escape": "html" },
+    { "file": "sites/nikatru/fullshot/privacy.html", "pattern": "developed by (?<v>[^.\\n<]+)\\. For any privacy question", "template": "{{legalName}}", "escape": "html" },
+    { "file": "sites/nikatru/fullshot/privacy.html", "pattern": "FullShot is published by (?<v>[^.\\n<]+)\\.", "template": "{{legalName}}, trading as {{tradeName}}", "escape": "html" },
+    { "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md", "pattern": "public\\*\\* — \\*(?<v>[^*]+)\\* \\(", "template": "{{legalName}}, trading as {{tradeName}}" },
+    { "file": "extensions/Extension/Full_Screen_Shot/store/_shared/privacy-policy-url.txt", "pattern": "carrying \"(?<v>[^\"]+)\", \"NIKATRU\"", "template": "{{legalName}}" },
+    { "file": "tooling/legal/asset-register.json", "pattern": "\"owner\": \"(?<v>[^\"]*, trading as NIKATRU\\))\"", "count": 6, "template": "{{legalName}} ({{form.roleNoun}}, trading as {{tradeName}})", "escape": "json", "why": "The owner of each first-party brand asset." },
+    { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "'Legal / owner: (?<v>[^']+) \\(Sole Proprietor\\)'", "template": "{{legalName}}", "escape": "json" },
+    { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "\"draft\": \"(?<v>[^\"]+) \\(owner, sole proprietor\\)\"", "template": "{{founder.name}}", "escape": "json", "why": "A person (who decided), not the entity." },
+    { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "\"draft\": \"(?<v>[^\"]+) \\(owner\\)\"", "template": "{{founder.name}}", "escape": "json", "why": "A person (the reviewer), not the entity." },
+    { "file": "SECURITY.md", "pattern": "^NIKATRU is a (?<v>[a-z ]+) — one person reads this mailbox", "flags": "m", "template": "{{form.longNoun}}", "why": "The security policy names the form; tooling/sites/generate-well-known.mjs serves a byte copy, the next entry." },
+    { "file": "sites/nikatru/.well-known/security-policy.txt", "pattern": "^NIKATRU is a (?<v>[a-z ]+) — one person reads this mailbox", "flags": "m", "template": "{{form.longNoun}}" },
+    { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"appleAppStore\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 2, "template": "{{storeAccounts.appleAppStore}}", "escape": "json", "why": "The account each store channel publishes through (entity `storeAccounts`). assert-business-facts also reads each channel's `accountStatus.note` for the type word." },
+    { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"googlePlay\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 1, "template": "{{storeAccounts.googlePlay}}", "escape": "json" },
+    { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"microsoftStore\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 2, "template": "{{storeAccounts.microsoftStore}}", "escape": "json" },
+    { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"appsGovIn\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 1, "template": "{{storeAccounts.appsGovIn}}", "escape": "json" }
+  ],
+  "files": [
+    { "file": "apps/subscriptiontracker/store/apps-gov-in/developed-by.txt", "template": "{{storeSellerName}}", "why": "The apps.gov.in \"Developed By\" field: the seller name the store prints." }
+  ],
+  "literals": {
+    "values": [
+      { "class": "legal name", "path": "entity.legalName.value" },
+      { "class": "founder name", "path": "people.founder.name.value" },
+      { "class": "Udyam number", "path": "entity.registrations.udyam.value" },
+      { "class": "phone number", "path": "entity.phone.value", "match": "digits" },
+      { "class": "registered-office street", "path": "entity.registeredOffice.street.value" },
+      { "class": "registered-office building", "path": "entity.registeredOffice.building.value" },
+      { "class": "registered-office area", "path": "entity.registeredOffice.area.value" },
+      { "class": "registered-office PIN", "path": "entity.registeredOffice.postalCode.value", "match": "word" }
+    ],
+    "formWords": {
+      "paths": ["entity.form.wording.noun", "entity.form.wording.longNoun", "entity.form.wording.roleNoun", "entity.form.wording.roleTitle"],
+      "surfaces": ["sites/nikatru/", "extensions/Extension/", "apps/subscriptiontracker/store/", "apps/subscriptiontracker/lib/"],
+      "ignore": [
+        { "path": "extensions/Extension/Full_Screen_Shot/LICENSE", "why": "The licence's own definition of \"your company\" (\"any legal entity, sole proprietorship, or other kind of organization\"): the licence's words, not a statement about this business. Its Required Notice line is an anchored field." }
+      ],
+      "why": "The words for the CURRENT form, refused on a printed surface outside a FACT region or an anchored field: a sentence that names the form is a sentence a form change must re-word, so it has to be one the dry run can list. Surfaces only; a code comment or a record may discuss the form."
+    }
+  },
+  "exempt": [
+    { "path": "sites/nikatru/legal/", "kind": "dated-history", "why": "The dated policy snapshots: what was served on each date, frozen (tooling/ci/assert-policy-archive.mjs). Re-rendering one would falsify the record of what a user consented to." },
+    { "path": "tooling/ci/test/apple-signing.test.mjs", "kind": "pinned-fixture", "why": "The ZIP64 case's archive digest is a HISTORICAL measurement over exact fixture bytes, and the stub profile's TeamName is among them. The test's own comment forbids re-baselining (\"Restoring the names is the fix rather than repasting node's new numbers\"), so the name in it is a frozen artefact, never printed and never rendered." },
+    { "path": "sites/rajasekarselvam/", "kind": "personal-site", "why": "The founder's own site, a person's shop window and not the entity's (tooling/sites/chrome.mjs CHROME_ROOT says the same). It names the person, who stays the same through an entity change." }
+  ],
+  "floors": {
+    "files": 800,
+    "regions": 1,
+    "anchored": 0
+  }
+}
