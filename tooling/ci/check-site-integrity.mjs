@@ -23,6 +23,7 @@
 //   · a Function that reads the client IP fingerprints it with a KEYED hash
 //   · a promise a Function quotes from the site copy is still ON the site copy
 //   · the site's app list and catalog/apps.json do not disagree
+//   · every product screenshot it serves hashes to a recorded store capture
 //
 // That last one is not cosmetic. Both app stores require a reachable privacy
 // policy; `sites/nikatru` is the policy host for every app we publish. Deleting
@@ -50,6 +51,7 @@ import { join, relative, resolve, dirname, sep, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 // ONE reading of "what a person saw on this page", shared with the archive and
 // claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
 // `stripSourceComments` is the same module's reading of "what this file's CODE
@@ -1258,6 +1260,109 @@ try {
   rmSync(scratch, { recursive: true, force: true });
 }
 
+// ── a product screenshot the site serves is a RECORDED capture, by its bytes ─
+// ⏱ 2026-10-02 — O-SITE-SCREENSHOTS-STALE. The four images on
+// https://nikatru.com/apps/subscriptiontracker showed the retired name "Subly"
+// and a red "Could not reach the network" banner, while clean store captures sat
+// in apps/subscriptiontracker/store/android-play/screenshots/. Nothing compared
+// the two: the retired-name guard reads file NAMES, not pixels, and no limb
+// asked where a served screenshot came from. So the web copies could be any
+// picture at all, and were.
+//
+// This limb reads tooling/site-shots.json, the DERIVATION RECORD of every web
+// copy, and fails when:
+//   · a file under <root>/apps/shots/ has no entry (an old image put back), or
+//     its bytes do not hash to the entry's `sha256` (a picture swapped in place);
+//   · the entry's `from` is not a frame of a store-screenshot capture — a PNG
+//     under apps/<app>/store/<channel>/screenshots*/ whose CAPTURE.json names the
+//     pipeline (`capturedBy`) and records a `live` posture;
+//   · that frame no longer hashes to the entry's `sourceSha256`: the store set
+//     was re-captured and the site still shows the old one;
+//   · an entry names a file the site no longer serves (a stale record).
+// The record is the apps.gov.in derivation's mechanism (its CAPTURE.json
+// `derivation.sources`), pointed at the site: the hashes, not a reviewer's eye,
+// tie a served picture to a capture. What no hash can do is judge the frame;
+// the capture's own pull request is that review.
+const SHOTS_RECORD = 'tooling/site-shots.json';
+const SHOT_SOURCE = /^apps\/[a-z0-9-]+\/store\/[a-z0-9-]+\/screenshots[a-z0-9-]*\/[^/]+\.png$/;
+const sha256Of = (abs) => createHash('sha256').update(readFileSync(abs)).digest('hex');
+let shotsChecked = 0;
+{
+  const served = [];
+  for (const root of siteRoots) {
+    for (const abs of walk(join(root, 'apps', 'shots'))) served.push(relative(repoRoot, abs).split(sep).join('/'));
+  }
+  const recordAbs = join(repoRoot, ...SHOTS_RECORD.split('/'));
+  let entries = [];
+  let readable = true;
+  if (existsSync(recordAbs)) {
+    try {
+      const parsed = JSON.parse(readFileSync(recordAbs, 'utf8'));
+      if (!Array.isArray(parsed.shots)) throw new Error('it has no `shots` array');
+      entries = parsed.shots;
+    } catch (err) {
+      readable = false;
+      problems.push(`${SHOTS_RECORD} cannot be read (${err.message}), so no served screenshot can be traced to a capture.`);
+    }
+  }
+  const byFile = new Map(entries.map((e) => [e.file, e]));
+  const command = `re-derive it from the capture and re-record it (the command is in ${SHOTS_RECORD} \`derivation.command\`)`;
+  for (const rel of served) {
+    const entry = byFile.get(rel);
+    if (!entry) {
+      if (readable) {
+        problems.push(
+          `${rel} is served as a product screenshot and ${SHOTS_RECORD} records no capture it was made from — ` +
+            `an image nobody can trace to the store-screenshot pipeline; ${command}, or delete it.`,
+        );
+      }
+      continue;
+    }
+    shotsChecked++;
+    const actual = sha256Of(join(repoRoot, ...rel.split('/')));
+    if (actual !== entry.sha256) {
+      problems.push(
+        `${rel} does not match its recorded bytes (sha256 ${actual.slice(0, 12)}…, recorded ${String(entry.sha256).slice(0, 12)}…) — ` +
+          `the served picture is not the one derived from ${entry.from}; ${command}.`,
+      );
+    }
+    const from = String(entry.from ?? '');
+    const fromAbs = join(repoRoot, ...from.split('/'));
+    if (!SHOT_SOURCE.test(from) || !existsSync(fromAbs)) {
+      problems.push(
+        `${rel} is recorded as made from \`${from}\`, which is not a frame of a store-screenshot capture ` +
+          '(a PNG under apps/<app>/store/<channel>/screenshots*/ that exists).',
+      );
+      continue;
+    }
+    let capture = null;
+    try {
+      capture = JSON.parse(readFileSync(join(dirname(fromAbs), 'CAPTURE.json'), 'utf8'));
+    } catch {
+      /* reported below */
+    }
+    if (!capture?.capturedBy || capture.posture !== 'live') {
+      problems.push(
+        `${rel} is made from ${from}, whose set's CAPTURE.json does not record a live capture by the pipeline ` +
+          `(capturedBy ${JSON.stringify(capture?.capturedBy ?? null)}, posture ${JSON.stringify(capture?.posture ?? null)}).`,
+      );
+    }
+    const source = sha256Of(fromAbs);
+    if (source !== entry.sourceSha256) {
+      problems.push(
+        `${rel} was derived from ${from} as recorded, and that frame has changed on disk (sha256 ${source.slice(0, 12)}…, recorded ` +
+          `${String(entry.sourceSha256).slice(0, 12)}…): the store set was re-captured and the site still shows the old frame; ${command}.`,
+      );
+    }
+  }
+  const servedSet = new Set(served);
+  for (const e of entries) {
+    if (!servedSet.has(e.file)) {
+      problems.push(`${SHOTS_RECORD} records ${e.file}, which no deploy root serves — a stale entry; remove it.`);
+    }
+  }
+}
+
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
 // A claimed root the scan does not actually reach is the lane guard's claim
 // pointing at nothing — the caller (ci.yml) says "this script covers X" and X is
@@ -1364,6 +1469,13 @@ if (SCANNING_OWN_REPO) {
         'nothing. sites/nikatru publishes support@nikatru.com on eleven pages today; if the contact route stopped ' +
         'being a mailto: (a form, a JS handler), rule 4(2) still wants a readable address in the served bytes and ' +
         'this limb has stopped being the thing that checks for one.',
+    );
+  }
+  if (shotsChecked === 0) {
+    lost.push(
+      `NO served product screenshot was traced to a store capture, so the ${SHOTS_RECORD} provenance limb ranged over ` +
+        'nothing. sites/nikatru/apps/shots/ serves four today; if they moved, re-point this limb, because an untraced ' +
+        'picture is how the site came to show the retired name and an offline banner.',
     );
   }
   if (lost.length) {
@@ -1673,6 +1785,9 @@ console.log(
 );
 console.log(
   `    ${emailOffChecks} page(s) with a mailto: keep it inside <!--email_off-->, so the rule 4(2) contact address is in the served bytes without JavaScript`,
+);
+console.log(
+  `    ${shotsChecked} served product screenshot(s) match the bytes ${SHOTS_RECORD} records, each derived from a live store capture frame that is still on disk`,
 );
 console.log(
   `    ${routerDocsChecked} app-path document(s) served as their own bytes by the apex router, not the app shell, across ${routerRoots} router root(s)`,
