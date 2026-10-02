@@ -177,7 +177,7 @@
     9,
 
   "boxes.test.mjs":
-    47,
+    50,
 
   "brick-audience.test.mjs":
     5,
@@ -411,7 +411,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    33,
+    36,
 
   "ensure-monitors.test.mjs":
     24,
@@ -1018,6 +1018,9 @@
 
   "snapcraft-generable.test.mjs":
     92,
+
+  "spawn-ceiling-cwd.test.mjs":
+    4,
 
   "spawn-ceiling.test.mjs":
     11,
