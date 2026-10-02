@@ -1,0 +1,15 @@
+{
+  "_why": [
+    "THE OLDEST BUILD EACH UNIT MAY BE ROLLED BACK TO. tooling/ops/rollback.mjs refuses to re-promote a ledger Deployment whose commit is not this floor or a descendant of it, asked of GitHub's compare API (rollback.yml checks out one commit, so local git cannot answer). A floor exists where the DATA changed shape under the code: the build before it misreads what the build after it wrote, so going back is not a revert, it is a different bug.",
+    "One row per floor: the unit (a ledger environment), the full commit SHA of the first build that writes the new shape, the date, the register row that owns it, and why. A unit can carry several; every one applies. Lowering a floor is its own reviewed change that says why the older build is safe again."
+  ],
+  "floors": [
+    {
+      "unit": "platform",
+      "sha": "117bd66ecb846decb743426d80f5124b59131601",
+      "since": "2026-10-01",
+      "row": "O-PROVIDER-REFRESH-TOKENS-STORED-PLAIN",
+      "why": "#1104 encrypts provider refresh tokens at rest: rows hold refresh_token = '' and the token in token_ct. A build before 117bd66e reads '' as a token (only null meant none), so after a rollback new sign-ins store plain text again, the 02:30 R2 export carries it (dump.ts loses CREDENTIAL_COLUMNS), and an erasure revokes with an empty token; if Google settles that as none, the row and the user's un-revoked grant are deleted (#1104 post-merge review, finding 1)."
+    }
+  ]
+}
