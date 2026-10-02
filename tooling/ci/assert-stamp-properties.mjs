@@ -299,14 +299,23 @@ const EXEMPT_APPS = new Map([
       // (StatefulNavigationShellState, under `_FabBand`) during the route walk —
       // a lib/ defect in this app's shell, outside that row. The theme fix
       // reaches this app regardless: its a11y sweep runs all five platforms.
-      floor: 14,
-      floorAsOf: '2026-09-28',
+      //
+      // RE-MEASURED 2026-10-01: THIRTEEN, and from now on the floor counts only
+      // what the exemption covers. `ui-invariants-inherited` holds on this app
+      // (its LIMB 2 runs under the five-platform variant; the duplicate GlobalKey
+      // above did not reproduce at 2cb56ac3 on any of the five) and it is
+      // DoD-BOUND — items C and F rest on it — so limb (4) grades it as a real
+      // FAIL rather than counting it here. So do the two theme properties item D
+      // rests on. None of the three can come back as slack under this floor.
+      floor: 13,
+      floorAsOf: '2026-10-01',
       floorNote:
         'The prose above records 9 with the anchors read RAW and 10 with them COMMENT-STRIPPED (2026-08-21); ' +
         'the strip is on, so that is the read this number comes from. Getting the RAW number back means the stripping was undone. ' +
         '2026-09-25: 11 — ui-invariants-inherited gained a PROP_TEST anchor on LIMB 2\'s five-platform variant, and this app\'s own LIMB 2 stays on android (its shell throws a duplicate GlobalKey on iOS and macOS). ' +
         '2026-09-27: 13 — ST-U1 (audit C22/D4) took the chassis DAILY reminder out of this app on purpose (it tracks renewals; "keeps your streak going" was a habit app\'s nudge), so reminder-intent-persisted (the Settings toggle) and reminders-resync-on-start (app.dart now re-asserts it OFF) lose their implementations here. The brick keeps both, behind AppConfig.offersDailyReminder. ' +
-        '2026-09-28: 14 — ST-T1b (audit A-5) retired this app\'s SignUpScreen: /sign-up renders LoginScreen on its sign-up arm, the one sign-up surface. store-age-gate-refuses anchors lib/features/auth/sign_up_screen.dart, a file this app no longer has; the property itself holds on login_screen.dart, which reads ageSignalSourceProvider before either arm creates an account, and age_gate_sign_up_test drives it.',
+        '2026-09-28: 14 — ST-T1b (audit A-5) retired this app\'s SignUpScreen: /sign-up renders LoginScreen on its sign-up arm, the one sign-up surface. store-age-gate-refuses anchors lib/features/auth/sign_up_screen.dart, a file this app no longer has; the property itself holds on login_screen.dart, which reads ageSignalSourceProvider before either arm creates an account, and age_gate_sign_up_test drives it. ' +
+        '2026-10-01: 13 — ui-invariants-inherited holds (this app\'s LIMB 2 now runs under the five-platform variant, green on all five) and is DoD-bound (items C, F), so limb (4) grades it and the floor no longer counts it.',
     },
   ],
 ]);
@@ -2575,7 +2584,11 @@ let rootsAudited = 0;
 // COUNT what it would have said. The alternative was a second extraction of the
 // property/anchor logic, which is the shape this file already fails on at the
 // `COVERAGE LOST` beside the workspace read: a rival reader agrees with itself.
-/** @param {{fail:(m:string)=>void, ok:(m:string)=>void, audited:()=>void, gap:(g:string)=>void}} sink */
+// ⏱ 2026-10-01 · `fail`'s SECOND ARGUMENT is the property key the verdict is
+// about, or `null` for a verdict about the whole root (the property test missing
+// or gutted). Nothing here reads it; the DoD-bound limb below the ratchet does,
+// to tell a property a DoD row rests on from one the exemption covers.
+/** @param {{fail:(m:string, key:(string|null))=>void, ok:(m:string)=>void, audited:()=>void, gap:(g:string)=>void}} sink */
 function auditPropertyRoot(root, sink) {
   const testPath = `${root}/${PROP_TEST}`;
   let test;
@@ -2586,6 +2599,7 @@ function auditPropertyRoot(root, sink) {
       `${testPath} is MISSING. A stamped app that deletes its inherited property test drops all ` +
         `${REQUIRED_COVERAGE.length} assertions with ONE rm — no lint suppression, no skip:, and until ` +
         'this guard read apps/ as well as the brick, every other guard in the tree stayed green.',
+      null,
     );
     return;
   }
@@ -2597,14 +2611,14 @@ function auditPropertyRoot(root, sink) {
   // Counted over the COMMENT-STRIPPED source: `// testWidgets(` is not a test.
   const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
   if (blocks < MIN_BLOCKS) {
-    sink.fail(`COVERAGE LOST — ${testPath} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
+    sink.fail(`COVERAGE LOST — ${testPath} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`, null);
   } else {
     sink.ok(`${root} — property test declares ${blocks} assertion block(s)`);
   }
 
   for (const p of REQUIRED_COVERAGE) {
     if (!p.group.test(test)) {
-      sink.fail(`${root}: property '${p.key}' is NOT asserted in ${testPath} — ${p.why}`);
+      sink.fail(`${root}: property '${p.key}' is NOT asserted in ${testPath} — ${p.why}`, p.key);
       continue;
     }
     const sources = p.sources ?? [];
@@ -2656,6 +2670,7 @@ function auditPropertyRoot(root, sink) {
           sink.fail(
             `COVERAGE LOST — ${root}: property '${p.key}' anchor on ${path} could not be resolved: ` +
               `${resolved.lost}`,
+            p.key,
           );
           anchored = false;
           break;
@@ -2665,7 +2680,7 @@ function auditPropertyRoot(root, sink) {
           .map((f) => stripAnchorComments(f, readFileSync(join(repo, f), 'utf8')))
           .join('\n');
       } catch {
-        sink.fail(`${root}: property '${p.key}': ${path} could not be read`);
+        sink.fail(`${root}: property '${p.key}': ${path} could not be read`, p.key);
         anchored = false;
         break;
       }
@@ -2679,6 +2694,7 @@ function auditPropertyRoot(root, sink) {
           s.absent
             ? `${root}: property '${p.key}' — ${path} still does what it must not: ${s.what}`
             : `${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}${domain.length > 1 ? ` (searched the whole spine: ${domain.length} file(s))` : ''}`,
+          p.key,
         );
         anchored = false;
         break;
@@ -2688,7 +2704,7 @@ function auditPropertyRoot(root, sink) {
     if (sources.length === 0) {
       // Refused deliberately: an unanchored property is a test heading that
       // survives its own feature's deletion. That was hole 1.
-      sink.fail(`${root}: property '${p.key}' has NO source anchor — it would still pass with the feature deleted`);
+      sink.fail(`${root}: property '${p.key}' has NO source anchor — it would still pass with the feature deleted`, p.key);
       continue;
     }
     sink.ok(`${root} — property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
@@ -2727,6 +2743,100 @@ if (workspaceRead) {
   }
 }
 
+// LIMB (4), DoD-BOUND · AN EXEMPTION FROM THE CHASSIS IS NOT AN EXEMPTION FROM THE DoD
+// (2026-10-01, SYN-X1 / C-10).
+//
+// 🔴 THE DEFECT. `tooling/dod-register.json` items C (five window classes), D
+// (dark mode, persisted) and F (the mechanical WCAG limbs) each name THIS guard
+// as their enforcement, and `apps/subscriptiontracker/dod.json` claims all three
+// "held" — while this guard's own output said `NOT GRADED: apps/subscriptiontracker`.
+// The ratchet above only COUNTS: an app that broke the 48 px limb in the same
+// commit that fixed some other chassis property kept the count on the floor, and
+// the DoD row that rests on that limb stayed "held" with nothing failing.
+//
+// THE RULE. A register row that names this guard must say WHICH property keys it
+// rests on (`restsOn`). On every exempted app that is the real package (the same
+// measurability gate as the ratchet), a FAIL on one of those keys is a real
+// FAIL — never counted, never absorbed by the floor. The exemption keeps the
+// rest: it excuses an app from the CHASSIS, and the DoD is a different claim.
+//
+// Read lazily, once: a tree whose exempted app is not the package (every fixture
+// in guards.test.mjs) has nothing here to grade and does not need the register.
+const DOD_REGISTER = 'tooling/dod-register.json';
+const THIS_GUARD = 'assert-stamp-properties.mjs';
+/** @type {Map<string, string[]> | null | undefined} property key -> the DoD item ids resting on it */
+let dodBoundCache;
+/** Every names-this-guard row in the register, by the property keys it rests on. */
+function dodBoundProperties() {
+  if (dodBoundCache !== undefined) return dodBoundCache;
+  dodBoundCache = null;
+  let reg;
+  try {
+    reg = JSON.parse(readFileSync(join(repo, DOD_REGISTER), 'utf8'));
+  } catch (e) {
+    fail(
+      `COVERAGE LOST — ${DOD_REGISTER} could not be read (${e.message}). It says which properties the DoD ` +
+        'rests on; without it an exempted app would be graded on nothing and the DoD rows naming this guard ' +
+        'would read "held" over an app it never looked at.',
+    );
+    return null;
+  }
+  const items = Array.isArray(reg.items) ? reg.items : [];
+  if (items.length === 0) {
+    fail(`COVERAGE LOST — ${DOD_REGISTER} declares no items, so "which properties does the DoD rest on" has the answer ∅.`);
+    return null;
+  }
+  const known = new Set(REQUIRED_COVERAGE.map((p) => p.key));
+  const bound = new Map();
+  for (const row of items) {
+    if (!row || row.enforcedBy !== 'guard' || row.check !== THIS_GUARD) continue;
+    const keys = row.restsOn;
+    if (!Array.isArray(keys) || keys.length === 0) {
+      fail(
+        `${DOD_REGISTER} item ${row.id} (${row.title}) names ${THIS_GUARD} as its enforcement and carries no ` +
+          '`restsOn` property keys. This guard exempts apps; a DoD row that does not say which properties it ' +
+          'rests on cannot be graded on them, and an exempted app would claim it "held" ungraded.',
+      );
+      continue;
+    }
+    for (const k of keys) {
+      if (!known.has(k)) {
+        fail(
+          `${DOD_REGISTER} item ${row.id} rests on property '${k}', which is not a key of REQUIRED_COVERAGE ` +
+            `[${[...known].join(', ')}]. A key nothing audits grades nothing.`,
+        );
+        continue;
+      }
+      if (!bound.has(k)) bound.set(k, []);
+      bound.get(k).push(row.id);
+    }
+  }
+  dodBoundCache = bound;
+  return bound;
+}
+/** Exempted apps graded by limb (4), for the verdict line. */
+const dodGraded = [];
+/** Limb (4)'s verdicts for one exempted app. */
+function gradeDodBound(app, bound, graded) {
+  if (bound.size === 0) {
+    console.log(`⬜ ${app}: no row of ${DOD_REGISTER} names ${THIS_GUARD}, so no property is DoD-bound and the exemption covers all of them.`);
+    return;
+  }
+  const label = (key) => (key === null ? 'every DoD-bound property' : `'${key}' (DoD item ${bound.get(key).join(', ')})`);
+  for (const { m, key } of graded) {
+    fail(
+      `${m} — and ${app} is EXEMPT FROM THE CHASSIS, NOT FROM THE DoD: ${label(key)} rests on this, ` +
+        `${app}/dod.json claims it, and ${DOD_REGISTER} names this guard as its enforcement. Fix the app; ` +
+        'the floor does not absorb a DoD-bound property.',
+    );
+  }
+  const desc = [...bound].map(([k, ids]) => `${k} (${ids.join(', ')})`).join(', ');
+  if (graded.length === 0) {
+    ok(`${app} — GRADED, though exempt, on the ${bound.size} property/properties DoD rows rest on: ${desc}`);
+  }
+  dodGraded.push(`${app} on ${desc}`);
+}
+
 // LIMB (3), THE RATCHET. The exempted app is audited by the SAME
 // `auditPropertyRoot` the graded roots run through - same property groups, same
 // source anchors, same comment-stripped anchor read - with the verdicts counted
@@ -2742,14 +2852,31 @@ if (workspaceRead) {
 // down becomes permission.
 for (const [app, ex] of EXEMPT_APPS) {
   if (!bootRoots.includes(app)) continue; // limb (2) already failed this entry
+  // Read BEFORE the audit now, because the DoD-bound limb (4) below decides per
+  // verdict where it goes. The reasoning for the gate itself is unchanged; it is
+  // the paragraph after the audit.
+  const measurable = existsSync(join(repo, app, 'pubspec.yaml'));
+  const bound = measurable ? dodBoundProperties() : null;
   let would = 0;
   const witness = [];
+  const graded = [];
   auditPropertyRoot(app, {
-    fail: (m) => { would++; witness.push(m); },
+    // A verdict on a property a DoD row rests on — or on the whole root, which
+    // takes every such property with it — is GRADED (limb 4) and stays out of
+    // the count. Everything else is the exemption's, exactly as before.
+    fail: (m, key) => {
+      if (bound && (key === null || bound.has(key))) {
+        graded.push({ m, key });
+        return;
+      }
+      would++;
+      witness.push(m);
+    },
     ok: () => {},
     audited: () => {},
     gap: () => {},
   });
+  if (bound) gradeDodBound(app, bound, graded);
   // IS THIS THE PACKAGE THE FLOOR WAS MEASURED OVER? A tree can NAME `apps/subscriptiontracker`
   // on its workspace list without being the app — every fixture that exercises
   // this guard does exactly that, seeding two files under `apps/subscriptiontracker/lib` so the
@@ -2762,7 +2889,6 @@ for (const [app, ex] of EXEMPT_APPS) {
   // ratchet takes the whole repository's dependency resolution — and the app's
   // build, its test lane and assert-app-dod — down with it. That is the opposite
   // of a quiet move. THE COUNT IS PRINTED EITHER WAY; only the comparison is held.
-  const measurable = existsSync(join(repo, app, 'pubspec.yaml'));
   console.log(
     `\u2b1c ${app} is NOT GRADED, and this is the size of that: the same audit run over it produces ` +
       `${would} FAIL line(s)` +
@@ -3478,7 +3604,9 @@ if (failed) {
   console.log(
     `\nassert-stamp-properties: ok — ${REQUIRED_COVERAGE.length} property/properties enforced across ` +
       `${rootsAudited} root(s): ${roots.join(', ')} — and ${EXEMPT_APPS.size} app root(s) NOT GRADED ` +
-      `(EXEMPT_APPS: ${[...EXEMPT_APPS.keys()].join(', ')})`,
+      `(EXEMPT_APPS: ${[...EXEMPT_APPS.keys()].join(', ')})` +
+      // ⏱ 2026-10-01 · limb (4): the exemption stops at the DoD, and the ok line says so.
+      (dodGraded.length ? `, except on the properties the DoD rests on: ${dodGraded.join('; ')}` : ''),
   );
 }
 

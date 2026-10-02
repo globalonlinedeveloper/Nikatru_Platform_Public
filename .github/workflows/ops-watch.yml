@@ -724,6 +724,31 @@ jobs:
           fi
           exit "$code"
 
+      # why (2026-10-01, lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED): the rest of the
+      # edge is declared in tooling/edge/zone.json - the proxied flag of every record, the
+      # WAF custom rules, the Access apps - and this reads it back. Every Access-gated host
+      # is also asked GET / from outside for the 302 to the Access login (PB-19: beszel and
+      # logs were unwatched). A READ. CLOUDFLARE_READ_TOKEN ONLY, no fallback: the deploy
+      # token is not known to hold Access read, and #1095's read token is the one the owner
+      # mints with it. Until then the API limbs print UNREADABLE inside the same
+      # pending-until date ci.yml gives #1095's own deferral, and exit 2 the day after.
+      - name: The edge zone is the one tooling/edge/zone.json declares
+        if: always()
+        env:
+          CLOUDFLARE_READ_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-edge-zone.mjs --cloudflare-read-pending-until 2026-10-21
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The edge zone is UNKNOWN::The declaration did not validate, a Cloudflare read was refused, an Access-gate probe never answered, or CLOUDFLARE_READ_TOKEN is still unset past its pending-until date. Nothing about those parts is known from this run, and that is never a pass. The step log names each one."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=The edge zone drifted from tooling/edge/zone.json::A proxiable record is DNS-only outside the declared list, a declared record or Access app is gone, an undeclared Access app or WAF rule appeared, or a gated host no longer answers the Access 302. The step log names each finding. Restore it in the dashboard, or change the file in a reviewed PR if the live zone is right."
+          fi
+          exit "$code"
+
       # why (2026-09-30, lane fix-auth-jwks-504): every ES256 verification rests on
       # the JWKS read the shield caches, and nothing counted how often a CLIENT got
       # it as a 5xx. Per UTC day over the week since the last run; over 1% on any

@@ -135,7 +135,7 @@
     "message": "தொகுதி"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "FullShot Pro-க்கு மேம்படுத்து"
   },
   "popupLinkOptions": {
     "message": "விருப்பங்கள்"
@@ -441,10 +441,10 @@
     "message": "நேரடியாகக் குறிப்பிடும் பணிக்குச் செல்லும் (ஒரே பகுதிப் பிடிப்புகளுக்கு மட்டும்)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "எடிட்டரில் ஒற்றை-விசைக் குறுக்குவழிகள்"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "எழுத்து விசைகள் ஒரு கருவியைத் தேர்ந்தெடுக்கும், + மற்றும் - பெரிதாக்கும் அல்லது சிறிதாக்கும், ? விசைகளைப் பட்டியலிடும். முடக்கப்பட்டிருந்தால், படத்தில் ஃபோகஸ் இருக்கும்போது மட்டுமே அவை வேலை செய்யும்."
   },
   "optionsTheme": {
     "message": "தோற்றம்"
@@ -1247,7 +1247,7 @@
     "message": "பொருத்து"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ பெரிதாக்கம்",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "சிவப்பு"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "அம்பர்"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "பச்சை"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "நீலம்"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "ஊதா"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "இளஞ்சிவப்பு"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "கருப்பு"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "வெள்ளை"
   },
   "editorZoomTipToHundred": {
     "message": "சாளரத்திற்குப் பொருத்தப்பட்டது — 100%க்குச் சொடுக்கு"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ தெரியும் முழுப் பகுதியையும் பிடிக்கும்",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store தன் பக்கங்களை நீட்டிப்புகள் படிப்பதைத் தடுக்கிறது, எனவே இதைப் பிடிக்க முடியாது."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons தன் பக்கங்களை நீட்டிப்புகள் படிப்பதைத் தடுக்கிறது, எனவே இதைப் பிடிக்க முடியாது."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) தன் பக்கங்களை நீட்டிப்புகள் படிப்பதைத் தடுக்கிறது, எனவே இதைப் பிடிக்க முடியாது."
   },
   "errRestrictedGeneric": {
     "message": "இந்தப் பக்கம் உலாவியால் பாதுகாக்கப்படுகிறது; இதைப் பிடிக்க முடியாது."

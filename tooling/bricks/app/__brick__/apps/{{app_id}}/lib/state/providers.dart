@@ -1195,8 +1195,8 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     // in a DIFFERENT app. ⏱ 2026-09-23 — one derivation for all five
     // link-sending calls: the running origin on web (a preview and a local run
     // each get their own users back); off web
-    // `com.nikatru.<appId>://auth-callback`, which a stamped app does NOT
-    // register yet (O-BRICK-STAMPS-WEB-ONLY): gotrue replaces the unlisted
+    // `com.nikatru.<appId>://auth-callback`, which a stamped app's native folders
+    // do NOT register yet (O-BRICK-STAMPS-WEB-ONLY): gotrue replaces the unlisted
     // redirect with the Site URL, and `authCapabilitiesProvider` below keeps
     // the OAuth door closed off web.
     redirects: AuthRedirects.current(appId: AppConfig.appId),
@@ -1670,8 +1670,8 @@ Future<void> signOutAndForgetUser(
 /// Ask before promising the user something the platform cannot deliver.
 ///
 /// ⏱ 2026-09-23 — NO registered callback targets, and that is the truth: the
-/// brick stamps web only (O-BRICK-STAMPS-WEB-ONLY), so no native manifest of a
-/// stamped app registers `com.nikatru.<appId>`, and every native row reports
+/// native folders a stamp gets (O-BRICK-STAMPS-WEB-ONLY) register no
+/// `com.nikatru.<appId>`, so every native row reports
 /// `oauthRedirect: false`. Web needs no registration — the page is the callback.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());

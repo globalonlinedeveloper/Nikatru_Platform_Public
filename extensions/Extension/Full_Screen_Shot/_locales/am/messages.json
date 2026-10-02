@@ -135,7 +135,7 @@
     "message": "ጥቅል"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "ወደ FullShot Pro ያሻሽሉ"
   },
   "popupLinkOptions": {
     "message": "አማራጮች"
@@ -441,10 +441,10 @@
     "message": "በቀጥታ ወደ ማብራሪያ መጨመር ይሂዱ (ለአንድ ክፍል ቀረጻዎች ብቻ)።"
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "በአርታዒው ውስጥ ባለአንድ ቁልፍ አቋራጮች"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "የፊደል ቁልፎች መሣሪያ ይመርጣሉ፣ + እና - ያጎላሉ ወይም ያሳንሳሉ፣ ? ቁልፎቹን ይዘረዝራል። ሲጠፋ የሚሰሩት ምስሉ ትኩረት ሲኖረው ብቻ ነው።"
   },
   "optionsTheme": {
     "message": "ገጽታ"
@@ -1247,7 +1247,7 @@
     "message": "አስማማ"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ ማጉላት",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "ቀይ"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "ቢጫ-ብርቱካናማ"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "አረንጓዴ"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "ሰማያዊ"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "ወይን ጠጅ"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "ሮዝ"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "ጥቁር"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "ነጭ"
   },
   "editorZoomTipToHundred": {
     "message": "ከመስኮቱ ጋር ተስማምቷል — ለ100% ጠቅ ያድርጉ"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ የሚታየውን አካባቢ በሙሉ ይቀርጻል",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store ቅጥያዎች ገጾቹን እንዲያነቡ አይፈቅድም፣ ስለዚህ ይህ ገጽ ሊቀረጽ አይችልም።"
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons ቅጥያዎች ገጾቹን እንዲያነቡ አይፈቅድም፣ ስለዚህ ይህ ገጽ ሊቀረጽ አይችልም።"
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) ቅጥያዎች ገጾቹን እንዲያነቡ አይፈቅድም፣ ስለዚህ ይህ ገጽ ሊቀረጽ አይችልም።"
   },
   "errRestrictedGeneric": {
     "message": "ይህ ገጽ በአሳሹ የተጠበቀ ስለሆነ ሊቀረጽ አይችልም።"

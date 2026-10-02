@@ -1,0 +1,148 @@
+{
+  "_why": [
+    "THE EDGE, DECLARED AS CODE (lane fix-edge-as-code, train P30; ADR draft `edge-declared-as-code`, recorded by",
+    "the next Private pass; row NEW O-EDGE-CONFIG-NOT-DECLARED). Before this file only the zone's rate-limit rule was",
+    "declared and drift-read (tooling/edge-ratelimit-rule.json). That every served host was proxied was a one-off",
+    "fact (PB-05); the two WAF custom rules, the Access apps, the proxied flag of every DNS record and the tunnel",
+    "ingress were dashboard state with nothing reading them. A dashboard edit to any of them left every box",
+    "answering exactly as before.",
+    "",
+    "READ BY tooling/ops/check-edge-zone.mjs, in ops-watch.yml's weekly `edge-shield` job (and on any dispatch):",
+    "  0 the live zone is what this file declares · 1 drift (a proxiable record DNS-only outside `dns.dnsOnly`, a",
+    "  declared record or Access app missing, a live Access app nobody declared, a policy-id set or a WAF rule that",
+    "  moved, or a gated host whose GET / no longer answers 302 to *.cloudflareaccess.com) · 2 COULD NOT LOOK.",
+    "  Offline, tooling/ci/test/edge-zone.test.mjs holds this file's shape and its cross-file joins.",
+    "",
+    "PROVIDER-NEUTRAL WHERE A NEUTRAL FORM EXISTS (the plan-portability addendum). The provider is ONE field,",
+    "`provider`; the zone id is never written here, it is resolved by name at read time. Every DNS record is",
+    "`{ name, type, content, ttl, proxied }` and `proxied` is the one Cloudflare-specific flag in it. The WAF rules,",
+    "the rate-limit rule, the Access apps and the tunnel ingress have no neutral form and live under `cloudflare`.",
+    "So a DNS-provider move is `node tooling/ops/check-edge-zone.mjs --export <file>` (local only): the records in this",
+    "shape plus the list of what has no equivalent, written to <file> and never to a log. tooling/ports/_non-port.json names the zone as declared, not ported.",
+    "",
+    "🔴 `null` MEANS NOT YET MEASURED, NEVER 'ANY VALUE'. A field written null is noted on every run (a record's",
+    "content as an 8-char sha256 only: the ops-watch log is public) and is not compared; a field with a value is compared and its drift is exit 1. Nothing in this file",
+    "was read from the live zone in the lane that wrote it (it had no Cloudflare credential), so every value below",
+    "is one the repository already asserts elsewhere, cited per row, and every other value is null. The first local",
+    "`--export <file>` with CLOUDFLARE_READ_TOKEN fills them in a reviewed change; it never writes this file itself.",
+    "",
+    "⚠️ RECORDS NOT DECLARED ARE PRINTED, NOT FAILED, unless they break the one rule PB-05 is about: a proxiable",
+    "record (A, AAAA, CNAME) that is DNS-only and is not in `dns.dnsOnly` is exit 1, declared or not. That is the",
+    "'100% of served hosts are proxied' fact made standing rather than one-off. Worker custom domains and routes",
+    "(services/*/wrangler.jsonc) are owned by those files and their deploys, and are not repeated here."
+  ],
+  "provider": "cloudflare",
+  "zone": "nikatru.com",
+  "zoneId": "by name: GET /zones?name=nikatru.com must resolve to exactly one zone; its id is never written here",
+  "dns": {
+    "dnsOnly": [],
+    "_dnsOnlyWhy": "The names that may hold a DNS-only PROXIABLE record (A, AAAA or CNAME). EMPTY ON PURPOSE: every proxiable record on the zone is proxied (PB-05), and the mail records below are TXT and MX, which Cloudflare never proxies, so none of them needs a name here. A proxiable record that is DNS-only and named nowhere in this list is exit 1. A provider CNAME that must stay DNS-only (a DKIM or return-path CNAME) is added here, with its why, in the same change that creates it.",
+    "records": [
+      { "name": "nikatru.com", "type": null, "content": null, "ttl": 1, "proxied": true, "why": "The hub site (Cloudflare Pages, sites/nikatru). tooling/monitor-register.json host row." },
+      { "name": "www.nikatru.com", "type": null, "content": null, "ttl": 1, "proxied": true, "why": "tooling/monitor-register.json host row." },
+      { "name": "glitchtip.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Box B, through the tunnel. Its /api/* is an edge-shield zone route (services/edge-shield/wrangler.jsonc), which only a proxied record can carry." },
+      { "name": "auth-api.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Box C's GoTrue, through the tunnel. Its /auth/v1/* is an edge-shield zone route (services/edge-shield/wrangler.jsonc)." },
+      { "name": "studio.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Supabase Studio, behind Access (GlitchTip monitor 18 `Studio Access gate`)." },
+      { "name": "vault.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Vaultwarden on Box B, through the tunnel (tooling/monitor-register.json host row)." },
+      { "name": "ntfy.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "ntfy on Box B, through the tunnel (tooling/monitor-register.json host row)." },
+      { "name": "beszel.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Beszel on Box B, through the tunnel, behind Access (tooling/monitor-register.json host row)." },
+      { "name": "logs.nikatru.com", "type": "CNAME", "content": null, "ttl": 1, "proxied": true, "why": "Dozzle on Box B, through the tunnel, behind Access (tooling/monitor-register.json host row)." },
+      { "name": "nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "spf-google" },
+      { "name": "google._domainkey.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dkim-google" },
+      { "name": "_dmarc.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dmarc" },
+      { "name": "send.mail.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "spf-resend" },
+      { "name": "send.mail.nikatru.com", "type": "MX", "content": null, "ttl": null, "proxied": false, "mailAuth": "mx-resend" },
+      { "name": "resend._domainkey.mail.nikatru.com", "type": "TXT", "content": null, "ttl": null, "proxied": false, "mailAuth": "dkim-resend" }
+    ],
+    "_mailWhy": "THE MAIL DNS, DECLARED HERE AS RECORDS (portability item E-03, L1 -> L2; lane port-mail's dry run reads them from this file). `mailAuth` is the id of the row in tooling/mail-transport.json `authRecords` that says what the record must CONTAIN; that block stays the one authority on content (tooling/ops/check-mail-auth-dns.mjs reads it over DoH), so `content` here is null on purpose rather than a second copy. The two files are joined both ways by tooling/ci/test/edge-zone.test.mjs: every authRecords row has exactly one record here, with the same name."
+  },
+  "cloudflare": {
+    "_why": "What has no provider-neutral form. A DNS-provider move carries none of this; `--export` lists it as the work a move has to redo.",
+    "rateLimit": {
+      "file": "tooling/edge-ratelimit-rule.json",
+      "phase": "http_ratelimit",
+      "readBy": "tooling/ops/edge-ratelimit-rule.mjs (written only by deploy-workers.yml's edge-shield job). check-edge-zone.mjs checks only that the file is there and names this zone; the comparison stays with its own reader."
+    },
+    "wafCustom": {
+      "phase": "http_request_firewall_custom",
+      "count": 2,
+      "rules": [
+        { "ref": null, "description": null, "action": null, "enabled": true },
+        { "ref": null, "description": null, "action": null, "enabled": true }
+      ],
+      "_why": "The zone's two WAF custom rules (PB-05), by ref. The count is the review's measurement; each ref, description and action is null until the first live read with CLOUDFLARE_READ_TOKEN (Zone WAF Read) notes them. A live phase with a different number of rules, a declared ref that is gone, or a declared field that moved is exit 1."
+    },
+    "access": {
+      "_why": [
+        "Every Access app on the account that fronts a nikatru.com host, by domain and policy id. A declared app that is",
+        "gone, a live app nobody declared, or a policy-id set that moved is exit 1. `policyIds: null` is not yet",
+        "measured: the live ids are printed and not compared. `probe` asks GET <domain>/ from outside with no",
+        "credential and requires HTTP 302 to a *.cloudflareaccess.com login (PB-19): the API says the app exists, the",
+        "probe says it is in front of the host.",
+        "",
+        "`status`: `applied` is judged. `prepared` is a decided app whose apply belongs to the owner's apply run",
+        "(cf-shieldfollow.mjs, the PB-15 plan, applied with a read-back). Until its `until` date a prepared app that is",
+        "absent is a note; after it, absent is exit 1. A prepared app that IS live is reported so this file is",
+        "flipped to `applied` with its policy ids in the same change that records the read-back."
+      ],
+      "apps": [
+        {
+          "domain": "studio.nikatru.com",
+          "status": "applied",
+          "policyIds": null,
+          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
+          "why": "Supabase Studio. Watched from outside by GlitchTip monitor 18 `Studio Access gate` (tooling/ops/alarm-chains.json)."
+        },
+        {
+          "domain": "beszel.nikatru.com",
+          "status": "applied",
+          "policyIds": null,
+          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
+          "why": "Beszel host metrics for both boxes (PB-19: unwatched until this file). tooling/monitor-register.json: 302 from outside, measured 2026-09-07."
+        },
+        {
+          "domain": "logs.nikatru.com",
+          "status": "applied",
+          "policyIds": null,
+          "probe": { "path": "/", "expectStatus": 302, "expectLocationHostSuffix": ".cloudflareaccess.com" },
+          "why": "Dozzle container logs (PB-19: unwatched until this file). tooling/monitor-register.json: 302 from outside, measured 2026-09-07."
+        },
+        {
+          "domain": "vault.nikatru.com/admin",
+          "status": "prepared",
+          "until": "2026-10-21",
+          "policyIds": null,
+          "why": "PB-15: the Vaultwarden admin panel is public behind one token. Path-scoped to /admin, so every Bitwarden client keeps working (tooling/monitor-register.json: an Access 302 at / breaks every client that is not the web vault). Prepared and self-tested as cf-shieldfollow.mjs; applied by the owner's run with --verify read-back."
+        },
+        {
+          "domain": "ntfy.nikatru.com",
+          "status": "prepared",
+          "until": "2026-10-21",
+          "policyIds": null,
+          "why": "PB-15: ntfy's web app, stats and docs are open. The prepared app gates the web surface on an ALLOWLIST of paths and leaves the publish and subscribe API ungated, because a 302 there kills the phone's long-lived subscription stream (tooling/monitor-register.json: 'No Access, ever, at any path' was written about that stream; the allowlist keeps it). Its exact destinations are the plan's (cf-shieldfollow.mjs) and are recorded here from the apply read-back."
+        },
+        {
+          "domain": "glitchtip.nikatru.com",
+          "status": "prepared",
+          "until": "2026-10-21",
+          "policyIds": null,
+          "bypass": ["/api/*", "/_health/", "the MCP endpoint path(s), measured on the instance at apply time"],
+          "why": "PB-22, DECIDED: path-scoped Access on the GlitchTip UI, owner-only, excluding /api/* (every SDK envelope, the monitor API ensure-monitors.mjs uses, the heartbeat check-ins) and the MCP endpoints. RECOMMENDED because the UI is owner-only — one person reads it — while its login is today the only thing in front of every crash, every monitor and every recipient, so a stolen GlitchTip password is the whole ops half; Access puts the owner's identity provider in front of that at no cost on the Free plan. 🔴 PRECONDITION: GlitchTip monitor 1 GETs / and expects 200 with `<title>GlitchTip</title>` (tooling/monitor-register.json); behind Access it would answer 302 and page. Repoint monitor 1 to /_health/ (bypassed here) in the SAME apply, or monitor 1 goes red on the first check. Runbook line for the Private pass: 'glitchtip: the UI is behind Access (owner-only); /api/*, /_health/ and MCP bypass it; monitor 1 reads /_health/'."
+        }
+      ]
+    },
+    "tunnelIngress": {
+      "hostnames": [
+        "glitchtip.nikatru.com",
+        "auth-api.nikatru.com",
+        "studio.nikatru.com",
+        "vault.nikatru.com",
+        "ntfy.nikatru.com",
+        "beszel.nikatru.com",
+        "logs.nikatru.com"
+      ],
+      "read": false,
+      "_why": "The hostnames the boxes' tunnels publish (each origin's service:port lives in the box's cloudflared config, not here). NOT YET READ LIVE: the tunnel configuration needs Account → Cloudflare Tunnel → Read, which is not on #1095's CLOUDFLARE_READ_TOKEN scope list; it is on the owner's mint list. Until then the offline test holds that every hostname here is a declared, proxied DNS record."
+    }
+  }
+}
