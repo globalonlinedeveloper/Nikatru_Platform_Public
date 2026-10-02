@@ -406,6 +406,10 @@
   "@languageTamil": {
     "description": "Tamil, written in Tamil — see languageEnglish."
   },
+  "languageHindi": "हिन्दी",
+  "@languageHindi": {
+    "description": "Hindi, written in Hindi — see languageEnglish (train T20, XP-06)."
+  },
   "profile": "Profile",
   "@profile": {
     "description": "Settings section for the user's own account details."

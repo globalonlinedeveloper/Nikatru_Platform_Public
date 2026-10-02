@@ -1,6 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WIDTH — ADD-SUBSCRIPTION SHEET (modal)
 //
+// ⏱ ST-T9 (AD-09, D6-6): from 600 px up the form is a DIALOG capped at 600,
+// not M3's 640-wide bottom sheet, and the POPULAR grid lives on the add's
+// catalogue pick step. The 375 row below is unchanged in what it pins (4
+// columns of 78 px); the 768 / 1280 / EDIT rows now measure the dialog. Both
+// LAYOUT and `MediaQuery` are pinned ([_pin]) because the sheet-or-dialog
+// choice reads `MediaQuery` — `setSurface` alone would leave it at 800×600 and
+// open a dialog at every surface, which is the trap its doc names.
+//
 // The POPULAR grid shipped as `GridView.count(crossAxisCount: 4)`. Four columns
 // is a PHONE decision baked in: the sheet itself is width-governed (M3 caps a
 // modal sheet at 640), so at every window from a small tablet up the same four
@@ -22,12 +30,12 @@
 // the `BottomSheet` widget, so `BottomSheet`'s own render box is FULL-BLEED —
 // measured 768.0 at 768 and 1280.0 at 1280, cap present and working. A width
 // assertion written against `find.byType(BottomSheet)` is therefore not merely
-// wrong, it is measuring the window rather than the sheet. [_surface] finds the
-// node the cap actually lands on; [surfaceCapWidth] reads its incoming
-// constraint rather than its size, so the assertion cannot be quietly disarmed
-// by content that happens to shrink-wrap narrower (the harness header's rule).
+// wrong, it is measuring the window rather than the sheet. The rows below
+// therefore measure the chassis `AppFormSheet` itself — the surface the user
+// sees, in the sheet and in the dialog alike.
 //
-// ⚠️ `setSurface` pins LAYOUT CONSTRAINTS, NOT `MediaQuery` — see its doc. Every
+// ⚠️ (Before ST-T9; [_pin] now pins `MediaQuery` too.) `setSurface` pins
+// LAYOUT CONSTRAINTS, NOT `MediaQuery` — see its doc. Every
 // assertion below is layout-constraint-derived (sheet width, tile geometry), so
 // that is sufficient. The sheet's `maxHeight: …size.height * 0.86` reads
 // `MediaQuery` and therefore stays at 516 (86% of the untouched 800×600 view) at
@@ -35,14 +43,18 @@
 // also pinning `tester.view.physicalSize`.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/theme/app_theme.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
-import 'package:subscriptiontracker/data/seed/demo_data.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 /// The sheet is opened by a button, not routed to — so it needs its own host
@@ -64,7 +76,7 @@ import 'support/width_harness.dart';
 /// carries the same two lines for the same reason.
 Widget _host({bool edit = false}) {
   return ProviderScope(
-    overrides: defaultWidthOverrides(),
+    overrides: <Override>[...defaultWidthOverrides(), ...catalogueOverrides()],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -95,26 +107,31 @@ Widget _host({bool edit = false}) {
   );
 }
 
-Future<void> _openSheetAt(WidgetTester tester, Size size) async {
+/// Pins the window — layout AND `MediaQuery` — to [size]; see the header.
+Future<void> _pin(WidgetTester tester, Size size) async {
   await setSurface(tester, size);
-  await tester.pumpWidget(_host());
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
+Future<void> _openAt(
+  WidgetTester tester,
+  Size size, {
+  bool edit = false,
+}) async {
+  await _pin(tester, size);
+  await tester.pumpWidget(_host(edit: edit));
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
 }
 
-/// The sheet's own surface — the `Material` the M3 `ConstrainedBox` wraps. See
-/// the header for why this and not `find.byType(BottomSheet)`.
-Finder _surface() => find
-    .descendant(of: find.byType(BottomSheet), matching: find.byType(Material))
-    .first;
+/// The form's own surface, sheet or dialog: the chassis [AppFormSheet].
+Finder _form() => find.byType(AppFormSheet);
 
-/// The width the sheet surface was OFFERED, i.e. the M3 cap as applied at this
-/// window: `min(640, windowWidth)`.
-double surfaceCapWidth(WidgetTester tester) => offeredWidth(tester, _surface());
-
-/// Every POPULAR tile, in grid order. The tile root is the `GestureDetector`
-/// that fills one cell, and a grid cell is laid out with TIGHT constraints, so
-/// its size is the cell size exactly.
+/// Every POPULAR tile on the pick step, in grid order. The tile root is the
+/// `GestureDetector` that fills one cell, and a grid cell is laid out with
+/// TIGHT constraints, so its size is the cell size exactly.
 Finder _tiles() => find.descendant(
   of: find.byType(GridView),
   matching: find.byType(GestureDetector),
@@ -122,26 +139,22 @@ Finder _tiles() => find.descendant(
 
 void main() {
   testWidgets(
-    '375 — the phone layout is pixel-identical: 4 columns of exactly 78 px',
+    '375 — a bottom sheet, and the phone grid is 4 columns of exactly 78 px',
     (WidgetTester tester) async {
-      await _openSheetAt(tester, kPhone);
+      await _openAt(tester, kPhone);
 
-      // Below 640 there is nothing to cap, so the sheet is the full window.
-      expect(surfaceCapWidth(tester), 375.0);
-      expect(tester.getSize(_surface()).width, 375.0);
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(tester.getSize(_form()).width, 375.0);
 
       final Finder tiles = _tiles();
-      expect(tiles, findsNWidgets(DemoData.popular.length));
+      expect(tiles, findsNWidgets(8));
 
       // 🔴 THE PROPERTY THE PORT EXISTS TO PROTECT. Content width is
       // 375 − 18 − 18 = 339; `maxCrossAxisExtent: 96` with `crossAxisSpacing: 9`
-      // yields ceil(339 / 105) = 4 columns of (339 − 27) / 4 = 78.0 — the same
-      // number `crossAxisCount: 4` produced. This row goes red for any extent
-      // outside (84.75, 113]: 80 would give 5 columns, 120 would give 3.
+      // yields ceil(339 / 105) = 4 columns of (339 − 27) / 4 = 78.0. This row
+      // goes red for any extent outside (84.75, 113].
       expect(tester.getSize(tiles.first).width, closeTo(78, 1.0));
-
-      // Four columns, asserted by row membership rather than by re-deriving the
-      // arithmetic: tiles 0-3 share a row, tile 4 opens the next one.
       final double firstRowDy = tester.getTopLeft(tiles.at(0)).dy;
       for (int i = 1; i <= 3; i++) {
         expect(
@@ -155,85 +168,68 @@ void main() {
         isNot(firstRowDy),
         reason: 'tile 4 should wrap to the second row — not 5+ columns',
       );
-
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('768 — the sheet surface is capped at the M3 default 640', (
-    WidgetTester tester,
-  ) async {
-    await _openSheetAt(tester, kTablet);
-
-    // `buildAppTheme` sets `useMaterial3: true` and no `bottomSheetTheme`
-    // override exists anywhere in the design system, so `_BottomSheetDefaultsM3`
-    // supplies `BoxConstraints(maxWidth: 640)`. VERIFIED here rather than taken
-    // on the framework's word.
-    expect(surfaceCapWidth(tester), 640.0);
-    expect(tester.getSize(_surface()).width, 640.0);
-    // Centred: (768 − 640) / 2.
-    expect(tester.getTopLeft(_surface()).dx, 64.0);
-
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-    '1280 — capped at 640 and no POPULAR tile exceeds maxCrossAxisExtent 96',
-    (WidgetTester tester) async {
-      await _openSheetAt(tester, kDesktop);
-
-      expect(surfaceCapWidth(tester), 640.0);
-      expect(tester.getSize(_surface()).width, 640.0);
-      expect(tester.getTopLeft(_surface()).dx, 320.0);
-
-      final Finder tiles = _tiles();
-      expect(tiles, findsNWidgets(DemoData.popular.length));
-
-      // 🔴 THE DEFECT REGRESSION TEST. Under the shipped
-      // `GridView.count(crossAxisCount: 4)` these tiles measured 144.3 px wide —
-      // a 78 px chip drawn at nearly double size. With the column count derived
-      // from `maxCrossAxisExtent: 96` the same 604 px of content gives 6 columns
-      // of 93.2. Asserted per tile, not on the first one, so a delegate that
-      // sized only the leading cell correctly could not slip through.
-      for (int i = 0; i < tiles.evaluate().length; i++) {
-        expect(
-          tester.getSize(tiles.at(i)).width,
-          lessThanOrEqualTo(96.0),
-          reason:
-              'tile $i is wider than maxCrossAxisExtent — the grid is back on '
-              'a fixed column count',
-        );
-      }
-
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  // ⏱ train ST-D6: THE SAME SHEET AS AN EDIT. `showEditSubscriptionSheet` is a
-  // second entry point onto the one surface, so it gets the same width
-  // decision measured rather than inherited: the full window below 640, M3's
-  // 640 cap centred above it, at every window class including the 1920 one.
-  for (final (Size window, double width, double dx) in <(Size, double, double)>[
-    (kPhone, 375, 0),
-    (kTablet, 640, 64),
-    (kDesktop, 640, 320),
-    (kWide, 640, 640),
+  for (final (Size window, double dx) in <(Size, double)>[
+    (kTablet, 84),
+    (kDesktop, 340),
   ]) {
     testWidgets(
-      '${window.width.toInt()} — the EDIT sheet is capped the same way',
+      '${window.width.toInt()} — a 600 dialog, centred, tiles chip-sized',
       (WidgetTester tester) async {
-        await setSurface(tester, window);
-        await tester.pumpWidget(_host(edit: true));
-        await tester.tap(find.text('open'));
-        await tester.pumpAndSettle();
+        await _openAt(tester, window);
 
-        expect(surfaceCapWidth(tester), width);
-        expect(tester.getSize(_surface()).width, width);
-        expect(tester.getTopLeft(_surface()).dx, dx);
-        // An edit offers no POPULAR shortcuts: they name a NEW service.
-        expect(find.byType(GridView), findsNothing);
+        expect(find.byType(Dialog), findsOneWidget);
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(tester.getSize(_form()).width, AppFormSheet.dialogMaxWidth);
+        expect(tester.getTopLeft(_form()).dx, dx);
+
+        // THE DEFECT REGRESSION TEST, kept: no tile is drawn wider than
+        // `maxCrossAxisExtent` at a wide window (it was 144.3 px under a fixed
+        // 4-column grid). Asserted per tile.
+        final Finder tiles = _tiles();
+        expect(tiles, findsNWidgets(8));
+        for (int i = 0; i < tiles.evaluate().length; i++) {
+          expect(tester.getSize(tiles.at(i)).width, lessThanOrEqualTo(96.0));
+        }
         expect(tester.takeException(), isNull);
       },
     );
+  }
+
+  testWidgets('the dialog keeps the keyboard contract: Esc closes it', (
+    WidgetTester tester,
+  ) async {
+    await _openAt(tester, kDesktop);
+    expect(find.byType(Dialog), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  // ⏱ train ST-D6, ST-T9: THE SAME SURFACE AS AN EDIT — the full window below
+  // 600, the 600 dialog centred above it, at every window class.
+  for (final (Size window, double width, double dx, bool dialog)
+      in <(Size, double, double, bool)>[
+        (kPhone, 375, 0, false),
+        (kTablet, 600, 84, true),
+        (kDesktop, 600, 340, true),
+        (kWide, 600, 660, true),
+      ]) {
+    testWidgets('${window.width.toInt()} — the EDIT form is the same surface', (
+      WidgetTester tester,
+    ) async {
+      await _openAt(tester, window, edit: true);
+
+      expect(find.byType(Dialog), dialog ? findsOneWidget : findsNothing);
+      expect(tester.getSize(_form()).width, width);
+      expect(tester.getTopLeft(_form()).dx, dx);
+      // An edit opens on the form: no pick step, no POPULAR shortcuts.
+      expect(find.byKey(E2EKeys.addSearch), findsNothing);
+      expect(find.byType(GridView), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   }
 }

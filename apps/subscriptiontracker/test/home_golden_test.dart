@@ -16,12 +16,15 @@
 // foundation_golden_test.dart` gives: glyph anti-aliasing differs by a few
 // pixels on macOS and Windows, and CI — the only gate — is Linux.
 
+import 'dart:async' show Completer;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/shell/app_shell.dart'
+    show OfflineBannerHost;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
@@ -36,19 +39,46 @@ import 'support/width_harness.dart';
 const Color kSublySeed = Color(0xFF6459F5);
 
 class _Fixed implements SubscriptionRepository {
+  _Fixed([this.fetch]);
+
+  /// The list read; the fixture when null.
+  final Future<List<Subscription>> Function()? fetch;
+
   @override
-  Future<List<Subscription>> fetchAll() async => homeFixture();
+  Future<List<Subscription>> fetchAll() async =>
+      fetch == null ? homeFixture() : await fetch!();
 
   @override
   dynamic noSuchMethod(Invocation i) =>
       throw UnimplementedError('${i.memberName} is not under test');
 }
 
+/// HO-07: the states other than POPULATED, each photographed. OFFLINE is the
+/// cached list under the shell's ONE offline notice (home adds none).
+enum _Photo { empty, loading, error, offline }
+
+class _Unreachable extends NetworkReachabilityController {
+  @override
+  bool build() => true;
+}
+
+class _OfflineHome extends ConsumerWidget {
+  const _OfflineHome();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => OfflineBannerHost(
+    unreachable: ref.watch(networkUnreachableProvider),
+    onRetry: () {},
+    child: const HomeScreen(),
+  );
+}
+
 Future<void> _pumpHome(
   WidgetTester tester,
   Size size,
-  Brightness brightness,
-) async {
+  Brightness brightness, {
+  _Photo? photo,
+}) async {
   // HALF density, as the foundation goldens: the layout is decided in logical
   // pixels, so every class lays out as it does at 1x, at a quarter of the
   // pixels. Layout goldens, not type specimens.
@@ -58,9 +88,21 @@ Future<void> _pumpHome(
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
-      subscriptionRepositoryProvider.overrideWithValue(_Fixed()),
+      subscriptionRepositoryProvider.overrideWithValue(
+        _Fixed(switch (photo) {
+          _Photo.empty => () async => const <Subscription>[],
+          // Never answers: the list's own outline, held.
+          _Photo.loading => () => Completer<List<Subscription>>().future,
+          _Photo.error => () async => throw StateError('the server is down'),
+          _Photo.offline || null => null,
+        }),
+      ),
       nowProvider.overrideWithValue(() => kHomeFixtureNow),
+      if (photo == _Photo.offline)
+        networkUnreachableProvider.overrideWith(_Unreachable.new),
     ],
+    // As the app's root ProviderScope: no automatic retry, so ERROR holds.
+    retry: (int retryCount, Object error) => null,
   );
   addTearDown(c.dispose);
   await tester.pumpWidget(
@@ -92,7 +134,9 @@ Future<void> _pumpHome(
             label: 'Add subscription',
             onPressed: () {},
           ),
-          body: const HomeScreen(),
+          body: photo == _Photo.offline
+              ? const _OfflineHome()
+              : const HomeScreen(),
         ),
       ),
     ),
@@ -132,6 +176,33 @@ void main() {
           matchesGoldenFile('goldens/home_${c.key}_${b.name}.png'),
         );
       }, skip: !Platform.isLinux);
+    }
+  }
+
+  // HO-07 · every state photographed, at the two ends of the size range.
+  for (final _Photo photo in _Photo.values) {
+    for (final String size in <String>['compact', 'large']) {
+      for (final Brightness b in Brightness.values) {
+        testWidgets('home · ${photo.name} · $size · ${b.name}', (
+          WidgetTester tester,
+        ) async {
+          await _pumpHome(tester, classes[size]!, b, photo: photo);
+          final Finder marker = switch (photo) {
+            _Photo.empty => find.byKey(DataStateView.emptyKey),
+            _Photo.loading => find.byKey(SkeletonList.skeletonKey),
+            _Photo.error => find.byKey(DataStateView.failedKey),
+            _Photo.offline => find.byType(OfflineNotice),
+          };
+          expect(marker, findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile(
+              'goldens/home_${photo.name}_${size}_${b.name}.png',
+            ),
+          );
+        }, skip: !Platform.isLinux);
+      }
     }
   }
 }

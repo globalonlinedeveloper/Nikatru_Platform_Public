@@ -23,12 +23,14 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 const Color kSublySeed = Color(0xFF6459F5);
@@ -49,13 +51,19 @@ Future<void> _pump(
   Size size,
   Brightness brightness, {
   required bool edit,
+  bool pick = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: defaultWidthOverrides(),
+      overrides: <Override>[
+        ...defaultWidthOverrides(),
+        // ST-T9: the pick step photographs the fixture catalogue, region
+        // pinned, so the tiles do not follow the host's locale.
+        ...catalogueOverrides(),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -69,6 +77,7 @@ Future<void> _pump(
                   context,
                   builder: (_) => SubscriptionFormSheet(
                     initial: edit ? _row() : null,
+                    pickFirst: pick,
                     now: _today,
                   ),
                 ),
@@ -99,17 +108,29 @@ void main() {
     expect(windowClassFor(classes['large']!.width), WindowClass.large);
   });
 
-  for (final String screen in <String>['add', 'edit']) {
+  // ST-T9: `add_pick` is the catalogue pick step an add opens on; `add` is
+  // the form after "Add by hand"; `edit` the same form prefilled.
+  for (final String screen in <String>['add_pick', 'add', 'edit']) {
     for (final MapEntry<String, Size> c in classes.entries) {
       for (final Brightness b in Brightness.values) {
         testWidgets('$screen sheet · ${c.key} · ${b.name}', (
           WidgetTester tester,
         ) async {
-          await _pump(tester, c.value, b, edit: screen == 'edit');
+          await _pump(
+            tester,
+            c.value,
+            b,
+            edit: screen == 'edit',
+            pick: screen == 'add_pick',
+          );
           expect(tester.takeException(), isNull);
           await expectLater(
             find.byType(MaterialApp),
-            matchesGoldenFile('goldens/${screen}_sheet_${c.key}_${b.name}.png'),
+            matchesGoldenFile(
+              screen == 'add_pick'
+                  ? 'goldens/add_pick_${c.key}_${b.name}.png'
+                  : 'goldens/${screen}_sheet_${c.key}_${b.name}.png',
+            ),
           );
         }, skip: !Platform.isLinux);
       }

@@ -3,6 +3,13 @@ import 'package:nikatru_core/nikatru_core.dart' show Money, MoneyBag;
 import '../../data/models/subscription.dart';
 import 'monthly_share.dart';
 
+/// One PROJECTED charge: [sub] charges its price [on] this date.
+class ProjectedCharge {
+  const ProjectedCharge(this.sub, this.on);
+  final Subscription sub;
+  final DateTime on;
+}
+
 class CategoryTotal {
   const CategoryTotal(this.name, this.value);
   final String name;
@@ -62,36 +69,63 @@ class SubMath {
   /// weekly plan takes its price four or five times in a month.
   static MoneyBag chargedInMonth(List<Subscription> s, int year, int month) =>
       MoneyBag.sum(
-        chargesInMonth(
-          s,
-          year,
-          month,
-        ).map((({Subscription sub, DateTime date}) c) => c.sub.price),
+        chargesInMonth(s, year, month).map((ProjectedCharge c) => c.sub.price),
       );
 
-  /// Every charge in [month] of [year], one entry per charge, soonest first —
-  /// CHARGING rows only, so a paused plan dated this month is neither drawn
-  /// nor counted. The calendar's dots, its list and [chargedInMonth] all read
-  /// this one list, so the three cannot disagree.
-  static List<({Subscription sub, DateTime date})> chargesInMonth(
+  /// Every charge the CHARGING rows will take from [from] to [to] (both
+  /// inclusive), soonest first — each row's stored next charge walked forward
+  /// by its cadence (`RecurrenceSchedule.occurrencesBetween`), so a monthly
+  /// plan shows in every month a calendar pages to, not only in the one its
+  /// stored date falls in. A row with no cadence is its one stored date.
+  ///
+  /// ⏱ T12 (CA-04), on the ST truth pass (CA-01): the per-row walk is the
+  /// model's [Subscription.chargesBetween]; the calendar pages through this,
+  /// and [chargedInMonth] sums the same list.
+  static List<ProjectedCharge> chargesBetween(
+    List<Subscription> s,
+    DateTime from,
+    DateTime to,
+  ) {
+    final List<ProjectedCharge> out = <ProjectedCharge>[
+      for (final Subscription x in charging(s))
+        for (final DateTime d in x.chargesBetween(from, to))
+          ProjectedCharge(x, d),
+    ];
+    out.sort((ProjectedCharge p, ProjectedCharge q) {
+      final int byDate = p.on.compareTo(q.on);
+      return byDate != 0 ? byDate : _tieBreak(p.sub, q.sub);
+    });
+    return out;
+  }
+
+  /// The charges in [month] of [year] — [chargesBetween] over that month.
+  static List<ProjectedCharge> chargesInMonth(
     List<Subscription> s,
     int year,
     int month,
-  ) {
-    final List<({Subscription sub, DateTime date})> out =
-        <({Subscription sub, DateTime date})>[
-          for (final Subscription x in charging(s))
-            for (final DateTime d in x.chargesIn(year, month))
-              (sub: x, date: d),
-        ];
-    out.sort((
-      ({Subscription sub, DateTime date}) a,
-      ({Subscription sub, DateTime date}) b,
-    ) {
-      final int byDate = a.date.compareTo(b.date);
-      return byDate != 0 ? byDate : _tieBreak(a.sub, b.sub);
-    });
-    return out;
+  ) => chargesBetween(s, DateTime(year, month), DateTime(year, month + 1, 0));
+
+  /// What a cancelled plan has NOT taken since the user cancelled it: per
+  /// cancelled row with a `cancelled_on`, its monthly share times the WHOLE
+  /// months from that date to [now]. ₹499 a month cancelled three months ago
+  /// is ₹1,497. A row cancelled this month has saved nothing yet, and a
+  /// deleted row is gone from every figure.
+  static MoneyBag savedSinceCancelled(List<Subscription> s, DateTime now) =>
+      MoneyBag.sum(<Money>[
+        for (final Subscription x in s)
+          if (x.deletedAt == null &&
+              x.status == SubscriptionStatus.cancelled &&
+              x.cancelledOn != null &&
+              wholeMonthsBetween(x.cancelledOn!, now) > 0)
+            x.monthlyShare.accruedOver(wholeMonthsBetween(x.cancelledOn!, now)),
+      ]);
+
+  /// Whole calendar months from [from] to [to]: Jan 15 → Apr 15 is 3,
+  /// Jan 15 → Apr 14 is 2. Never negative.
+  static int wholeMonthsBetween(DateTime from, DateTime to) {
+    int months = (to.year - from.year) * 12 + (to.month - from.month);
+    if (to.day < from.day) months--;
+    return months < 0 ? 0 : months;
   }
 
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
@@ -218,12 +252,18 @@ class SubMath {
   /// The next [take] charges, soonest first — by the ROLLED date
   /// ([Subscription.daysUntil]), so a row whose stored date passed yesterday
   /// sorts by its next real charge, not to the top as "due".
+  ///
+  /// [withinDays] bounds the horizon (HO-04: Home's "Upcoming" is the next
+  /// 30 days, not the nearest four whenever they fall); null is no bound.
   static List<Subscription> upcoming(
     List<Subscription> s,
     DateTime now, {
     int take = 4,
+    int? withinDays,
   }) {
-    final List<Subscription> l = charging(s);
+    final List<Subscription> l = withinDays == null
+        ? charging(s)
+        : dueWithinRows(s, now, withinDays);
     l.sort((Subscription a, Subscription b) {
       final int byDate = a.daysUntil(now).compareTo(b.daysUntil(now));
       return byDate != 0 ? byDate : _tieBreak(a, b);
@@ -293,4 +333,23 @@ class SubMath {
     final int d = x.daysUntil(now);
     return d >= 0 && d <= days;
   }).toList();
+
+  /// Every tag on [s] once — the first spelling met, case ignored — sorted
+  /// without case (ST-AD12). The home list's tag filter offers exactly these,
+  /// so it never offers a tag that would show nothing.
+  static List<String> tagsOf(List<Subscription> s) {
+    final Map<String, String> byKey = <String, String>{};
+    for (final Subscription x in s) {
+      for (final String t in x.tags) {
+        byKey.putIfAbsent(t.toLowerCase(), () => t);
+      }
+    }
+    final List<String> keys = byKey.keys.toList()..sort();
+    return <String>[for (final String k in keys) byKey[k]!];
+  }
+
+  /// The rows of [s] that carry [tag] (case ignored), in [s]'s order — or
+  /// [s] itself when [tag] is null, which is "no filter".
+  static List<Subscription> taggedWith(List<Subscription> s, String? tag) =>
+      tag == null ? s : s.where((Subscription x) => x.hasTag(tag)).toList();
 }

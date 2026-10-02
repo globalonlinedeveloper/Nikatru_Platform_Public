@@ -40,6 +40,43 @@ enum SubscriptionStatus {
       );
 }
 
+/// HOW a row is paid — the API's `rail` (0003, `RAILS` in
+/// services/subscriptiontracker-api `routes/subscriptions.ts`). The stop flow
+/// picks its walkthrough by it, the detail's India rail panel shows for the
+/// three mandate rails, and "How to cancel" offers the store's manage page
+/// for the two store rails (DE-06..08).
+enum PaymentRail {
+  upiAutopay('upi_autopay'),
+  cardEmandate('card_emandate'),
+  nach('nach'),
+  appStore('app_store'),
+  play('play'),
+  paypal('paypal'),
+  manual('manual'),
+  unknown('unknown');
+
+  const PaymentRail(this.wire);
+
+  /// The value on the wire.
+  final String wire;
+
+  /// The rail for [raw], or null for none or a value this build does not
+  /// know — never a guess, because the walkthrough a guess picks is wrong.
+  static PaymentRail? tryParse(Object? raw) {
+    for (final PaymentRail r in PaymentRail.values) {
+      if (r.wire == raw) return r;
+    }
+    return null;
+  }
+
+  /// A standing instruction the user's bank, card or UPI app holds, which
+  /// keeps charging until it is revoked THERE (the India rail panel, R3).
+  bool get isMandate =>
+      this == PaymentRail.upiAutopay ||
+      this == PaymentRail.cardEmandate ||
+      this == PaymentRail.nach;
+}
+
 /// A single tracked subscription. JSON is snake_case to match the Worker/D1 API.
 ///
 /// Subly-domain model — lives in the app, not the shared spine (de-Subly-fy
@@ -67,7 +104,56 @@ class Subscription {
     this.reminderDays,
     this.noticeDays,
     this.noticeDaysSupported = false,
+    this.serviceId,
+    this.previousPrice,
+    this.categoryId,
+    this.rail,
+    this.railHolder,
+    this.priceAfterTrial,
+    this.priceAfterTrialSupported = false,
+    this.tags = const <String>[],
   });
+
+  /// The catalogue service this row was picked from (ST-T9, AD-03) — the
+  /// pack's id, e.g. `netflix` — or null for a row added by hand
+  /// (`service_id`, 0003). Home shows the catalogue's logo for it (HO-06).
+  final String? serviceId;
+
+  /// The category BY ID (ST-T9, AD-05) — the API's `category_id` (0005): a
+  /// built-in's id (`streaming`) or one of the user's own. [category] stays
+  /// the stored name beside it, which the server resolves from this.
+  final String? categoryId;
+
+  /// How it is paid (ST-T9, AD-06) — the API's closed `rail` set
+  /// ([kRails]) — or null when the user did not say (or the wire carried a
+  /// value this build does not know). The stop flow picks its walkthrough by
+  /// it and the detail's India rail panel shows for a mandate (DE-07, DE-08).
+  final PaymentRail? rail;
+
+  /// Whose card / which UPI handle, as a label the user typed — the API's
+  /// `rail_holder`. Never a number: a label like "HDFC card" or "Mum's UPI".
+  final String? railHolder;
+
+  /// What a trial turns into (ST-T9, AD-08): the API's
+  /// `price_after_trial_minor`, in [price]'s currency. Null when unknown.
+  final Money? priceAfterTrial;
+
+  /// Whether the wire CARRIED `price_after_trial_minor` (train T11's column):
+  /// the sheet offers the "Then" field only then, as [noticeDaysSupported]
+  /// does for notice — a server without the column would drop the value.
+  final bool priceAfterTrialSupported;
+
+  /// The rails the sheet offers, in its order — every [PaymentRail] but
+  /// `unknown`, which is a reading, not a choice.
+  static const List<PaymentRail> kRails = <PaymentRail>[
+    PaymentRail.upiAutopay,
+    PaymentRail.cardEmandate,
+    PaymentRail.nach,
+    PaymentRail.appStore,
+    PaymentRail.play,
+    PaymentRail.paypal,
+    PaymentRail.manual,
+  ];
 
   final String id;
   final String name;
@@ -127,6 +213,47 @@ class Subscription {
   /// Where to cancel it — an http(s) URL the API validated.
   final String? cancelUrl;
 
+  /// The user's own free-text labels ("family", "work") — the API's `tags`
+  /// (0009_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
+  /// blank, one spelling per tag whatever its case, at most [maxTags] of at
+  /// most [maxTagLength] characters each — the bounds the route enforces, so
+  /// a list this model holds is a list the server accepts.
+  final List<String> tags;
+
+  /// The route's bounds on [tags] (`MAX_TAGS`, `MAX_TAG` in
+  /// services/subscriptiontracker-api/src/routes/subscriptions.ts).
+  static const int maxTags = 10;
+  static const int maxTagLength = 32;
+
+  /// Whether this row carries [tag], compared without case: "Family" and
+  /// "family" are one label, and a filter must not split them.
+  bool hasTag(String tag) {
+    final String want = tag.trim().toLowerCase();
+    return tags.any((String t) => t.toLowerCase() == want);
+  }
+
+  /// [raw] as a tag list: strings only, trimmed, blanks dropped, the first
+  /// spelling of each case-insensitive duplicate kept, capped at [maxTags]
+  /// tags of at most [maxTagLength] characters. Anything that is not a list
+  /// is no tags — never a guess.
+  static List<String> normaliseTags(Object? raw) {
+    if (raw is! List) return const <String>[];
+    final List<String> out = <String>[];
+    final Set<String> seen = <String>{};
+    for (final Object? t in raw) {
+      if (t is! String) continue;
+      final String trimmed = t.trim();
+      if (trimmed.isEmpty) continue;
+      final String tag = trimmed.length > maxTagLength
+          ? trimmed.substring(0, maxTagLength).trim()
+          : trimmed;
+      if (!seen.add(tag.toLowerCase())) continue;
+      out.add(tag);
+      if (out.length == maxTags) break;
+    }
+    return List<String>.unmodifiable(out);
+  }
+
   /// The cadence every MONEY figure is computed with: [cycle], or monthly for
   /// a row that has none (see [cycle] on why the date does not do the same).
   Cadence get billingCadence => cycle ?? Cadence.monthly;
@@ -164,6 +291,12 @@ class Subscription {
   /// the field only then: an API that predates 0004 would drop the value and
   /// answer with a row that no longer has it. Deploy order is the API first.
   final bool noticeDaysSupported;
+
+  /// The price before the newest price change, when the row carries its
+  /// `price_history` (`GET /v1/subscriptions/:id` serves it, newest first;
+  /// ST-I4). Null when there is no history on this row. Home's price-rise
+  /// decision reads it (HO-05).
+  final Money? previousPrice;
 
   /// The last day to cancel before the charge on or after [now]
   /// ([nextCharge]), or null when the plan names no notice period.
@@ -282,7 +415,49 @@ class Subscription {
     reminderDays: readReminderDays(j['reminder_days']),
     noticeDays: readNoticeDays(j['notice_days']),
     noticeDaysSupported: j.containsKey('notice_days'),
+    serviceId: _textOrNull(j['service_id']),
+    categoryId: _textOrNull(j['category_id']),
+    rail: PaymentRail.tryParse(j['rail']),
+    railHolder: _textOrNull(j['rail_holder']),
+    priceAfterTrial: j['price_after_trial_minor'] is int
+        ? Money(
+            j['price_after_trial_minor'] as int,
+            readPrice(
+              j,
+              fallbackCurrencyCode: fallbackCurrencyCode,
+            ).currencyCode,
+          )
+        : null,
+    priceAfterTrialSupported: j.containsKey('price_after_trial_minor'),
+    previousPrice: readPreviousPrice(
+      j['price_history'],
+      fallbackCurrencyCode: fallbackCurrencyCode,
+    ),
+    tags: normaliseTags(j['tags']),
   );
+
+  static String? _textOrNull(Object? raw) =>
+      raw is String && raw.isNotEmpty ? raw : null;
+
+  /// The OLD price of the newest entry in a `price_history` list, or null for
+  /// no history or a shape this cannot read — never a guess.
+  static Money? readPreviousPrice(
+    Object? raw, {
+    String fallbackCurrencyCode = Money.fallbackCurrencyCode,
+  }) {
+    if (raw is! List || raw.isEmpty) return null;
+    final Object? newest = raw.first;
+    if (newest is! Map) return null;
+    final Object? code = newest['old_currency'];
+    final String currency = code is String && code.length == 3
+        ? code.toUpperCase()
+        : fallbackCurrencyCode;
+    final Object? minor = newest['old_price_minor'];
+    if (minor is int) return Money(minor, currency);
+    final Object? major = newest['old_price'];
+    if (major is num) return Money.fromMajorUnits(major, currency);
+    return null;
+  }
 
   /// `reminder_days` off the wire: a list of whole days, deduplicated and
   /// nearest-to-the-charge LAST (the order the reminders fire in), or null
@@ -392,6 +567,19 @@ class Subscription {
     // The cache round-trips this row through toJson, so the capability rides
     // with it: a cached row must not lose the field the API had emitted.
     if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
+    // ST-T9: the server has stored these three since 0003 and the client never
+    // sent them. Sent only when set, so an edit that does not touch them
+    // cannot clear a value another device wrote.
+    if (serviceId != null) 'service_id': serviceId,
+    if (categoryId != null) 'category_id': categoryId,
+    if (rail != null) 'rail': rail!.wire,
+    if (railHolder != null) 'rail_holder': railHolder,
+    // Train T11's column, behind its capability exactly like `notice_days`.
+    if (priceAfterTrialSupported)
+      'price_after_trial_minor': priceAfterTrial?.minorUnits,
+    // ST-AD12 (0009_tags.sql). Always sent: an API before 0009 ignores a key
+    // its validator does not name, and `[]` is how a PATCH clears them.
+    'tags': tags,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -414,6 +602,7 @@ class Subscription {
     bool? unused,
     SubscriptionStatus? status,
     String? notes,
+    List<String>? tags,
   }) => _with(
     name: name ?? this.name,
     category: category ?? this.category,
@@ -427,6 +616,7 @@ class Subscription {
     unused: unused ?? this.unused,
     status: status ?? this.status,
     notes: notes ?? this.notes,
+    tags: tags == null ? null : normaliseTags(tags),
   );
 
   /// Replaces the AMOUNT, currency and all — for a caller that really does
@@ -481,7 +671,7 @@ class Subscription {
     final Map<String, dynamic> out = <String, dynamic>{};
     for (final String k in b.keys) {
       if (k == 'id') continue;
-      if (a[k] != b[k]) out[k] = b[k];
+      if (!_sameWireValue(a[k], b[k])) out[k] = b[k];
     }
     for (final List<String> group in _togetherKeys) {
       if (group.any(out.containsKey)) {
@@ -491,6 +681,20 @@ class Subscription {
       }
     }
     return out;
+  }
+
+  /// Wire equality: a list (`tags`, `reminder_days`) is compared by its
+  /// elements, since two decodes of one list are two objects and `!=` would
+  /// send every list on every edit.
+  static bool _sameWireValue(Object? a, Object? b) {
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (int i = 0; i < a.length; i++) {
+        if (a[i] != b[i]) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   static const List<List<String>> _togetherKeys = <List<String>>[
@@ -509,6 +713,7 @@ class Subscription {
     bool? unused,
     SubscriptionStatus? status,
     String? notes,
+    List<String>? tags,
   }) => Subscription(
     id: id,
     name: name ?? this.name,
@@ -531,6 +736,16 @@ class Subscription {
     reminderDays: reminderDays,
     noticeDays: noticeDays,
     noticeDaysSupported: noticeDaysSupported,
+    serviceId: serviceId,
+    previousPrice: previousPrice,
+    categoryId: category == null || category == this.category
+        ? categoryId
+        : null,
+    rail: rail,
+    railHolder: railHolder,
+    priceAfterTrial: priceAfterTrial,
+    priceAfterTrialSupported: priceAfterTrialSupported,
+    tags: tags ?? this.tags,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

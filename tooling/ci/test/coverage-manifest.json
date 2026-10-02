@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    80,
+    83,
 
   "analytics-liveness.test.mjs":
     28,
@@ -982,6 +982,9 @@
 
   "start-here.test.mjs":
     9,
+
+  "stop-copy.test.mjs":
+    10,
 
   "store-audience.test.mjs":
     18,
