@@ -1,0 +1,47 @@
+{
+  "_readme": [
+    "THE STORE-VITALS THRESHOLDS — crash-rates (lead 7185eb, 2026-10-02; gate R11-05). Read by",
+    "tooling/ops/check-store-vitals.mjs, which grades every store-aggregated rate against the row for its",
+    "metric and EXITS 1 when the row it needs is missing (an ungraded rate is not a passing one).",
+    "",
+    "One row per graded metric, `{value, asOf, verify, source}`: `value` is the LIMIT as a fraction of users",
+    "(0.005 is 0.5 %), `redWhen` says whether the limit itself is red (`atOrAbove`, 'below 0.47 %') or still",
+    "inside (`above`, 'at most 0.5 %'), and `amberFraction` is the share of the limit from which a rate is",
+    "amber ('amber inside 80 % of either limit'). Play's OWN published bad-behaviour threshold sits beside",
+    "each row in `play`, for comparison only: the grade is ours, and it is stricter.",
+    "",
+    "The owner delegated these numbers ('i Approve, you always should do'); they settle gate R11-05, which",
+    "goes green on the first REAL reading, not on this file."
+  ],
+  "amberFraction": 0.8,
+  "metrics": {
+    "crash": {
+      "label": "user-perceived crash rate",
+      "value": 0.005,
+      "redWhen": "above",
+      "asOf": "2026-10-02",
+      "source": "lead 7185eb thresholds, 2026-10-02: crash-free users at least 99.5 % (a user-perceived crash rate of at most 0.5 %)",
+      "verify": "node tooling/ops/check-store-vitals.mjs --explain crash",
+      "play": {
+        "value": 0.0109,
+        "source": "https://developer.android.com/topic/performance/vitals",
+        "readAt": "2026-10-02",
+        "quote": "User-perceived crash rate 1.09% 8% 4%"
+      }
+    },
+    "anr": {
+      "label": "user-perceived ANR rate",
+      "value": 0.0047,
+      "redWhen": "atOrAbove",
+      "asOf": "2026-10-02",
+      "source": "lead 7185eb thresholds, 2026-10-02: user-perceived ANR rate below 0.47 %",
+      "verify": "node tooling/ops/check-store-vitals.mjs --explain anr",
+      "play": {
+        "value": 0.0047,
+        "source": "https://developer.android.com/topic/performance/vitals",
+        "readAt": "2026-10-02",
+        "quote": "User-perceived ANR rate 0.47% 8% 5%"
+      }
+    }
+  }
+}
