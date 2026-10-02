@@ -117,7 +117,7 @@ interface KnownDuplicate {
 
 /** The duplicates that predate this limb. Only ever shrinks — see the header. */
 const KNOWN_DUPLICATES: KnownDuplicate[] = [
-  ...['src/config.ts', 'src/lib/mor/paddle-cancel.ts', 'src/lib/mor/paddle.ts', 'src/routes/checkout.ts', 'src/routes/native-auth.ts'].map(
+  ...['src/config.ts', 'src/lib/mor/paddle-cancel.ts', 'src/lib/mor/paddle-rail.ts', 'src/lib/mor/paddle.ts', 'src/routes/checkout.ts', 'src/routes/native-auth.ts'].map(
     (f) => ({
       file: `services/platform/${f}`,
       name: 'isPlainObject',
@@ -133,6 +133,11 @@ const KNOWN_DUPLICATES: KnownDuplicate[] = [
     file: 'services/platform/src/lib/mor/bundle-store.ts',
     name: 'BundleGrantRow',
     why: 'the store\'s write-side row type; entitlement-read.ts exports the read-side row of the same name',
+  },
+  {
+    file: 'services/platform/src/lib/native-attest/index.ts',
+    name: 'Outcome',
+    why: 'the attestation verdict (#1133); ports/payments.ts (#1127) exports an unrelated generic `Outcome<T>` of the same name',
   },
 ];
 

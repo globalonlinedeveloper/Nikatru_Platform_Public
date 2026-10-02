@@ -137,6 +137,16 @@ const DEPENDENT_MODULES: Readonly<Record<string, readonly string[]>> = {
   'auth-middleware.ts': ['jose'],
 };
 
+/** The specifiers that climb out of the home and PREDATE this limb: named, not
+ *  forgiven. Each row is checked in both directions (a row whose import is gone
+ *  fails as stale), so the list can only shrink; a new escape is never a new row. */
+const KNOWN_ESCAPES: Readonly<Record<string, readonly string[]>> = {
+  // #1127 (port-pay-core) re-exports the normalized MoR vocabulary from the
+  // platform carrier, whose lib/mor/contract.ts its header names as that
+  // vocabulary's home. Moving it is a payments change, not a kit move.
+  'ports/payments.ts': ['../../../platform/src/lib/mor/contract'],
+};
+
 /** `dependencies` of services/_shared/package.json — what `npm ci --prefix ../_shared` installs. */
 const declaredDependencies: string[] = Object.keys(
   (JSON.parse(fs.readFileSync(`${ROOT}/services/_shared/package.json`, 'utf8')) as { dependencies?: Record<string, string> })
@@ -201,6 +211,7 @@ describe('services/_shared is dependency-free except where it declares otherwise
         const dir = m.includes('/') ? m.slice(0, m.lastIndexOf('/') + 1) : '';
         const resolved = within(`${dir}${spec}`);
         if (resolved === null) {
+          if ((KNOWN_ESCAPES[m] ?? []).includes(spec)) continue;
           broken.push(
             `services/_shared/src/${m} imports \`${spec}\`, which leaves the shared home. The one home cannot ` +
               'depend on one carrier.',
@@ -214,5 +225,18 @@ describe('services/_shared is dependency-free except where it declares otherwise
       }
     }
     expect(broken, broken.join('\n\n')).toEqual([]);
+  });
+
+  it('every KNOWN_ESCAPES row still names a real escape (the list can only shrink)', () => {
+    const stale: string[] = [];
+    for (const [m, specs] of Object.entries(KNOWN_ESCAPES)) {
+      const imported = modules.includes(m) ? specifiersOf(fs.readFileSync(`${SHARED_SRC}/${m}`, 'utf8')) : [];
+      for (const spec of specs) {
+        if (!imported.includes(spec)) {
+          stale.push(`KNOWN_ESCAPES names ${m} importing \`${spec}\`, which it no longer does — delete the row.`);
+        }
+      }
+    }
+    expect(stale, stale.join('\n\n')).toEqual([]);
   });
 });
