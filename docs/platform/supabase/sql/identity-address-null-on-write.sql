@@ -62,6 +62,11 @@
 --
 --   Expect 0 and at least 1.
 --
+-- THE VALUES STORED BEFORE THIS FILE WAS APPLIED are not touched by it: the
+-- one-time purge is docs/platform/supabase/sql/syn-p2-purge.sql, written and
+-- NOT run (lead decision 2026-10-01: no manual purge; the values age out, and
+-- the notices say so until they do).
+--
 -- ROLLBACK:
 --
 --   DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.sessions;
