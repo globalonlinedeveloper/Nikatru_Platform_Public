@@ -277,7 +277,6 @@ function ownerEvents(comments, owner) {
   return comments.filter((c) => isOwner(c, owner)).map(parseEvent).filter(Boolean).sort((a, b) => a.id - b.id);
 }
 
-const isClaim = (e) => e.verb === 'CLAIM' || e.verb === 'RECLAIM';
 const msOf = (t) => (t === null || t === undefined ? NaN : Date.parse(t));
 
 /**
