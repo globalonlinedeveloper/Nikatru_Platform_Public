@@ -132,22 +132,22 @@
     5,
 
   "autopilot-heartbeat.test.mjs":
-    19,
+    20,
 
   "autopilot-issue-queue.test.mjs":
     18,
 
   "autopilot-land-gate.test.mjs":
-    24,
+    28,
 
   "autopilot-ledger.test.mjs":
-    21,
+    28,
 
   "autopilot-outage.test.mjs":
     14,
 
   "autopilot-post-verdict.test.mjs":
-    10,
+    11,
 
   "autopilot-prompts.test.mjs":
     2,
@@ -159,7 +159,7 @@
     11,
 
   "autopilot-review-gate.test.mjs":
-    14,
+    16,
 
   "autopilot-runner.test.mjs":
     16,
