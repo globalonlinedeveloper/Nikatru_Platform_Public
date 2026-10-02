@@ -14,19 +14,25 @@ void main() {
     l10n = await ChassisLocalizations.delegate.load(const Locale('en'));
   });
 
-  test('every contract reason has its own sentence, in the state it describes', () {
-    final List<String> sentences = revocationReasonSentences(l10n);
-    for (int i = 0; i < kRevocationReasons.length; i++) {
-      final EntitlementRevocationReason r = kRevocationReasons[i];
-      expect(
-        endedReasonText(l10n, r.reason, isPro: r.restoresAccess),
-        sentences[i],
-        reason: r.reason,
-      );
-      // The state contradicts the reason: say nothing.
-      expect(endedReasonText(l10n, r.reason, isPro: !r.restoresAccess), isNull);
-    }
-  });
+  test(
+    'every contract reason has its own sentence, in the state it describes',
+    () {
+      final List<String> sentences = revocationReasonSentences(l10n);
+      for (int i = 0; i < kRevocationReasons.length; i++) {
+        final EntitlementRevocationReason r = kRevocationReasons[i];
+        expect(
+          endedReasonText(l10n, r.reason, isPro: r.restoresAccess),
+          sentences[i],
+          reason: r.reason,
+        );
+        // The state contradicts the reason: say nothing.
+        expect(
+          endedReasonText(l10n, r.reason, isPro: !r.restoresAccess),
+          isNull,
+        );
+      }
+    },
+  );
 
   test('a refund reads as a refund, never as another reason', () {
     expect(

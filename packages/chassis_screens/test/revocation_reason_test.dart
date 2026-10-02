@@ -34,7 +34,8 @@ void main() {
   // Test code may name the contract's codes; the chassis' lib code may not.
   const Map<String, String> english = <String, String>{
     'refund_approved': 'Your plan ended because the payment was refunded.',
-    'chargeback': 'Your plan ended because the payment was disputed with your bank.',
+    'chargeback':
+        'Your plan ended because the payment was disputed with your bank.',
     'chargeback_reversed':
         'Your plan was restored: the payment dispute was resolved.',
     'subscription_expired': 'Your plan ended when its paid period ran out.',
@@ -46,35 +47,41 @@ void main() {
     'subscription_paused': 'Your plan is paused.',
   };
 
-  testWidgets('🔴 one sentence per contract reason, in its order, in every locale',
-      (WidgetTester tester) async {
-    for (final Locale locale in ChassisLocalizations.supportedLocales) {
-      final ChassisLocalizations l10n =
-          await ChassisLocalizations.delegate.load(locale);
-      final List<String> sentences = revocationReasonSentences(l10n);
-      expect(sentences, hasLength(contractReasons.length), reason: '$locale');
-      for (final String s in sentences) {
-        expect(s.trim(), isNotEmpty, reason: '$locale');
-      }
-      if (locale.languageCode == 'en') {
-        for (int i = 0; i < contractReasons.length; i++) {
-          expect(
-            sentences[i],
-            english[contractReasons[i]],
-            reason: 'position $i is ${contractReasons[i]}',
+  testWidgets(
+    '🔴 one sentence per contract reason, in its order, in every locale',
+    (WidgetTester tester) async {
+      for (final Locale locale in ChassisLocalizations.supportedLocales) {
+        final ChassisLocalizations l10n = await ChassisLocalizations.delegate
+            .load(locale);
+        final List<String> sentences = revocationReasonSentences(l10n);
+        expect(sentences, hasLength(contractReasons.length), reason: '$locale');
+        for (final String s in sentences) {
+          expect(s.trim(), isNotEmpty, reason: '$locale');
+        }
+        if (locale.languageCode == 'en') {
+          for (int i = 0; i < contractReasons.length; i++) {
+            expect(
+              sentences[i],
+              english[contractReasons[i]],
+              reason: 'position $i is ${contractReasons[i]}',
+            );
+          }
+        } else {
+          // A translation, not the English left in place.
+          final List<String> en = revocationReasonSentences(
+            await ChassisLocalizations.delegate.load(const Locale('en')),
           );
-        }
-      } else {
-        // A translation, not the English left in place.
-        final List<String> en = revocationReasonSentences(
-          await ChassisLocalizations.delegate.load(const Locale('en')),
-        );
-        for (int i = 0; i < sentences.length; i++) {
-          expect(sentences[i], isNot(en[i]), reason: '$locale ${contractReasons[i]}');
+          for (int i = 0; i < sentences.length; i++) {
+            expect(
+              sentences[i],
+              isNot(en[i]),
+              reason: '$locale ${contractReasons[i]}',
+            );
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   Widget view(String? text, {bool isPro = false, DateTime? endedOn}) =>
       ManagePlanView(
@@ -92,7 +99,9 @@ void main() {
       );
 
   for (final MapEntry<String, String> e in english.entries) {
-    testWidgets('the status card says why: ${e.key}', (WidgetTester tester) async {
+    testWidgets('the status card says why: ${e.key}', (
+      WidgetTester tester,
+    ) async {
       final bool restores = e.key == 'chargeback_reversed';
       await pumpChassis(
         tester,
@@ -107,11 +116,16 @@ void main() {
         findsOneWidget,
       );
       // When it ended: only while the plan is not active.
-      expect(find.text('On Sep 30, 2026'), restores ? findsNothing : findsOneWidget);
+      expect(
+        find.text('On Sep 30, 2026'),
+        restores ? findsNothing : findsOneWidget,
+      );
     });
   }
 
-  testWidgets('no reason, no sentence and no date', (WidgetTester tester) async {
+  testWidgets('no reason, no sentence and no date', (
+    WidgetTester tester,
+  ) async {
     await pumpChassis(
       tester,
       kDesktop,

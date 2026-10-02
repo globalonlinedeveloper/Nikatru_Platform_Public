@@ -924,7 +924,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   test('the item literal is DERIVED from the route — found in the one reader, and the place is printed', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /wire entitlements — body pinned: .*item 10 sent \/ 5 read \(item literal in services\/_shared\/src\/entitlement-read\.ts\)/);
+    // ⏱ 2026-10-02 · refund-finish (MF-7): 5 -> 6 read — the client reads `revocation_reason` (Entitlement.fromJson).
+    assert.match(r.out, /wire entitlements — body pinned: .*item 10 sent \/ 6 read \(item literal in services\/_shared\/src\/entitlement-read\.ts\)/);
   });
 
   test('MOVING the reader to another module is followed through the import — still pinned, not COVERAGE LOST', () => {
@@ -935,7 +936,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
         "} from '../../../_shared/src/entitlement-read';", "} from '../../../_shared/src/money/reader';");
     }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /item 10 sent \/ 5 read \(item literal in services\/_shared\/src\/money\/reader\.ts\)/);
+    assert.match(r.out, /item 10 sent \/ 6 read \(item literal in services\/_shared\/src\/money\/reader\.ts\)/);
   });
 
   // ⏱ 2026-09-11 · CodeQL js/incomplete-sanitization #304. The name the guard
@@ -957,7 +958,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
         '  readProductEntitlement,\n', `  ${escaped} as readProductEntitlement,\n`);
     }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /item 10 sent \/ 5 read \(item literal in services\/_shared\/src\/entitlement-read\.ts\)/);
+    assert.match(r.out, /item 10 sent \/ 6 read \(item literal in services\/_shared\/src\/entitlement-read\.ts\)/);
   });
 
   test('a renamed item key is still caught THROUGH the chain — the derivation compares, it does not just find', () => {

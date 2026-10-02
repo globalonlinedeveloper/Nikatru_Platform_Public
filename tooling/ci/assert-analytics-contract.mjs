@@ -459,14 +459,19 @@ const WIRE_CONTRACTS = [
         member: 'factory Entitlement.fromJson(',
         reader: 'j',
       },
-      requiredBoth: ['entitlement', 'product_id', 'store', 'is_active', 'expires_at'],
+      // ⏱ 2026-10-02 · refund-finish (MF-7): `revocation_reason` LEFT `serverOnly`.
+      // packages/core's `Entitlement.fromJson` now reads it, so the plan screen can
+      // say WHY access ended (and when). It is read for WORDS only: access is still
+      // decided on `is_active` and `expires_at`, never on the reason. Every row the
+      // shared reader renders carries it (null when nothing was recorded), so a
+      // rename now breaks an installed build's plan screen — both sides.
+      requiredBoth: ['entitlement', 'product_id', 'store', 'is_active', 'expires_at', 'revocation_reason'],
       clientOnly: {},
       serverOnly: {
         provider: 'support-visible provenance. The route returns rows that grant NOTHING so a locked-out paying user is explainable; the client models only what decides access.',
         provider_status: 'same — the row is returned inert with the provider\'s own word for why.',
         current_period_end: 'the provider\'s billing period, not our expiry. `expires_at` is the field access is decided on and the one the client reads.',
         trial_end: 'same class as current_period_end.',
-        revocation_reason: 'why a row was revoked. Its enum is pinned SQL-side by assert-entitlement-contract.mjs limb 3/4; the client fails closed on is_active alone and must not branch on the reason.',
       },
     },
   },

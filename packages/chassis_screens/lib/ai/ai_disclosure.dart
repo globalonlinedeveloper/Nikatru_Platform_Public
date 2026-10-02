@@ -48,8 +48,10 @@ class AiDisclosureDialog extends StatelessWidget {
   }) async {
     final bool? ok = await showDialog<bool>(
       context: context,
-      builder: (BuildContext _) =>
-          AiDisclosureDialog(processor: processor, onOpenPrivacy: onOpenPrivacy),
+      builder: (BuildContext _) => AiDisclosureDialog(
+        processor: processor,
+        onOpenPrivacy: onOpenPrivacy,
+      ),
     );
     return ok ?? false;
   }
@@ -100,11 +102,7 @@ enum AiOutputKind { candidate, suggestion }
 
 /// The label every AI output carries, with its report action.
 class AiOutputLabel extends StatelessWidget {
-  const AiOutputLabel({
-    required this.kind,
-    required this.onReport,
-    super.key,
-  });
+  const AiOutputLabel({required this.kind, required this.onReport, super.key});
 
   static const Key reportButton = Key('aiOutputReport');
 
