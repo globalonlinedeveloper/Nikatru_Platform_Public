@@ -5,13 +5,13 @@
 //
 // [pipeline 9]R-9, the CACHE limb. (The FLAG limb — "fail if
 // `--pwa-strategy=none` is absent" — is DROPPED and must not be re-derived:
-// [ADR 023], LOCKED 2026-07-31, records the flag as deliberate AND explicitly
+// [ADR 023], RECORDED 2026-07-31 ("LOCKED" here until 2026-10-01), records the flag as deliberate AND explicitly
 // rejects guarding it in CI as over-encoding. Its `unless` antecedent could
 // never be true either: a Flutter web template cannot contain a service
 // worker, Flutter generates one at build time.)
 //
 // ── WHY THIS MATTERS ON EXACTLY THIS CHANNEL ─────────────────────────────────
-// With no service worker there is no client-side update machinery at all, so
+// Our worker (sw.js, the limb at the end) is network-first and has no update machinery, so
 // the HTTP cache IS the update mechanism for the only channel this factory
 // serves. Nothing in the repository was choosing a policy for it: `flutter
 // build web` emits no `_headers`, and deploy-web.yml ships `build/web` straight
@@ -1297,12 +1297,520 @@ if (functionDirsFound > 0 && functionFilesChecked === 0) {
   ]);
 }
 
+// ── THE OFFLINE SHELL: OUR OWN WORKER, RUN RATHER THAN READ ─────────────────
+//
+// ⏱ 2026-10-01 · [ADR 023] as amended 2026-09-30 (row
+// O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR). Every flutter-web bundle ships
+// `web/sw.js`, registered by `web/sw-register.js`, and the amendment binds it to
+// five rules. The ones a file can be held to are held here:
+//
+//   1. OUR OWN WORKER: index.html loads sw-register.js, which registers `sw.js`,
+//      and no bundle file names Flutter's `flutter_service_worker` or hands its
+//      loader a `serviceWorkerSettings`.
+//   2. NETWORK-FIRST: with the network answering, the worker returns the
+//      NETWORK's response, never a copy it holds; with the network failing, it
+//      returns the copy it holds.
+//   3. ONE CACHE PER BUILD: installed as `sw.js?build=41` and as `?build=42`, it
+//      opens disjoint caches, each naming its build, and activating 42 deletes
+//      41's.
+//   4. THE SHARED ORIGIN: every cache (and any IndexedDB) name carries
+//      `nikatru-<id>-`; activating never deletes another app's cache; a scope
+//      other than /<id>/ is refused at install; and `Service-Worker-Allowed` is
+//      declared NOWHERE — not in any bundle's `_headers`, not in a Pages Function.
+//   It also never stores an API response, a request carrying credentials, a
+//   `no-store` response, an out-of-scope path or version.json.
+//
+// 🔴 WHY THE WORKER IS EXECUTED AND NOT GREPPED. "Network-first" is a property of
+// control flow — which of `fetch()` and `caches.match()` decides the answer — and
+// a regex over source cannot tell `try { fetch } catch { cache }` from a
+// stale-while-revalidate that reads the cache first and fetches behind it. So
+// the file is run in a `node:vm` context standing in for a
+// ServiceWorkerGlobalScope: a fake Cache Storage, a network that answers or
+// rejects on command, and the install/activate/fetch events dispatched the way a
+// browser dispatches them. Each finding is what the worker DID.
+//
+// ⚠️ WHAT THIS CANNOT SEE: a real browser's worker lifecycle (update checks,
+// clients.claim timing, what a real reload falls back to). That is
+// tooling/smoke/smoke-web-artifact.mjs's offline leg, run on the built bundle in
+// headless Chrome before every deploy — with its red control.
+// Imported HERE, not at the top: a line added above :508 would move the span
+// sites/nikatru/_headers cites (assert-web-cache-policy.mjs:508-517).
+const { runInNewContext } = await import('node:vm');
+const WORKER_FILE = 'sw.js';
+const REGISTER_FILE = 'sw-register.js';
+const SIM_ORIGIN = 'https://nikatru.com';
+const SIM_API = 'https://subscriptiontracker-api.nikatru.com/v1/subscriptions';
+const SIM_SETTLE_MS = 3000;
+const FLUTTER_WORKER_NAMES = /flutter_service_worker|serviceWorkerSettings/;
+
+/** A file's text, or null when it is absent: read, never checked-then-read (CodeQL js/file-system-race). */
+const readOrNull = (abs) => {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null;
+    throw e;
+  }
+};
+const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+
+/** A promise that rejects, naming `what`, when `p` has not settled in time. */
+function settle(p, what) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} did not settle within ${SIM_SETTLE_MS} ms`)), SIM_SETTLE_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/** One Cache: request URL -> Response. */
+class SimCache {
+  constructor(storage) {
+    this.storage = storage;
+    this.entries = new Map();
+  }
+  key(r) {
+    return typeof r === 'string' ? new URL(r, this.storage.base).href : r.url;
+  }
+  async match(r) {
+    return this.entries.get(this.key(r))?.clone();
+  }
+  async put(r, response) {
+    this.entries.set(this.key(r), response);
+  }
+  async add(r) {
+    const response = await this.storage.fetch(typeof r === 'string' ? new Request(this.key(r)) : r);
+    if (!response.ok) throw new TypeError(`cache.add: ${response.status} for ${this.key(r)}`);
+    this.entries.set(this.key(r), response);
+  }
+  async addAll(rs) {
+    for (const r of rs) await this.add(r);
+  }
+  async keys() {
+    return [...this.entries.keys()].map((u) => new Request(u));
+  }
+  async delete(r) {
+    return this.entries.delete(this.key(r));
+  }
+}
+
+/** The origin's Cache Storage — shared, like the real one, by every app on it. */
+class SimCacheStorage {
+  constructor(base, fetchImpl) {
+    this.base = base;
+    this.fetch = fetchImpl;
+    this.stores = new Map();
+    this.opened = new Set();
+  }
+  async open(name) {
+    const n = String(name);
+    this.opened.add(n);
+    if (!this.stores.has(n)) this.stores.set(n, new SimCache(this));
+    return this.stores.get(n);
+  }
+  async keys() {
+    return [...this.stores.keys()];
+  }
+  async has(name) {
+    return this.stores.has(String(name));
+  }
+  async delete(name) {
+    return this.stores.delete(String(name));
+  }
+  async match(r) {
+    for (const c of this.stores.values()) {
+      const hit = await c.match(r);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  /** Every URL any cache holds. */
+  heldUrls() {
+    return [...this.stores.values()].flatMap((c) => [...c.entries.keys()]);
+  }
+}
+
+/**
+ * Boot `src` as a worker registered at `<scope>sw.js?build=<build>`.
+ * Returns the harness, or { error } when the script does not evaluate.
+ */
+function bootWorker(src, { scope, build, storage }) {
+  const listeners = new Map();
+  const net = { online: true };
+  const fetchImpl = async (input) => {
+    const url = typeof input === 'string' ? new URL(input, scope).href : input.url;
+    if (!net.online) throw new TypeError('Failed to fetch');
+    const noStore = url.includes('no-store-probe');
+    const response = new Response(`NETWORK ${url}`, {
+      status: 200,
+      headers: { 'content-type': 'text/plain', 'cache-control': noStore ? 'no-store' : 'public, max-age=0, must-revalidate' },
+    });
+    Object.defineProperty(response, 'type', { value: new URL(url).origin === SIM_ORIGIN ? 'basic' : 'cors' });
+    return response;
+  };
+  const caches = storage ?? new SimCacheStorage(scope, fetchImpl);
+  caches.base = scope;
+  caches.fetch = fetchImpl;
+  const idbNames = [];
+  const script = new URL(`sw.js?build=${encodeURIComponent(build)}`, scope);
+  const sandbox = {
+    console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
+    URL,
+    URLSearchParams,
+    Request,
+    Response,
+    Headers,
+    TextEncoder,
+    TextDecoder,
+    setTimeout,
+    clearTimeout,
+    structuredClone,
+    caches,
+    fetch: fetchImpl,
+    indexedDB: { open: (name) => { idbNames.push(String(name)); return {}; }, deleteDatabase: (name) => { idbNames.push(String(name)); return {}; } },
+    location: script,
+    registration: { scope },
+    clients: { claim: async () => {}, matchAll: async () => [] },
+    skipWaiting: async () => {},
+    importScripts: () => {
+      throw new Error('importScripts is not part of the offline shell');
+    },
+    addEventListener: (type, fn) => {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(fn);
+    },
+  };
+  sandbox.self = sandbox;
+  sandbox.globalThis = sandbox;
+  try {
+    runInNewContext(src, sandbox, { filename: 'sw.js', timeout: 1000 });
+  } catch (e) {
+    return { error: e };
+  }
+
+  /** Dispatch an extendable event; resolves once every waitUntil settled. */
+  async function lifecycle(type) {
+    const waits = [];
+    const event = { type, waitUntil: (p) => waits.push(Promise.resolve(p)) };
+    for (const fn of listeners.get(type) ?? []) fn(event);
+    await settle(Promise.all(waits), `the ${type} event`);
+  }
+
+  /** Dispatch a fetch event. Resolves to { responded, body } — body null when no respondWith. */
+  async function request(req) {
+    const waits = [];
+    let answer = null;
+    const event = {
+      type: 'fetch',
+      request: req,
+      clientId: '',
+      waitUntil: (p) => waits.push(Promise.resolve(p)),
+      respondWith: (p) => {
+        if (answer) throw new Error('respondWith called twice');
+        answer = Promise.resolve(p);
+      },
+    };
+    for (const fn of listeners.get('fetch') ?? []) fn(event);
+    if (!answer) {
+      await settle(Promise.all(waits), 'a fetch event');
+      return { responded: false, body: null };
+    }
+    let body;
+    try {
+      const response = await settle(answer, `the answer to ${req.url}`);
+      body = await response.text();
+    } catch (e) {
+      body = null;
+      await settle(Promise.allSettled(waits), 'a fetch event');
+      return { responded: true, body, error: e };
+    }
+    await settle(Promise.all(waits), 'a fetch event');
+    return { responded: true, body };
+  }
+
+  return { listeners, caches, net, lifecycle, request, idbNames };
+}
+
+/** A navigation request, which `new Request` cannot construct (mode is forbidden). */
+const navigation = (url) => ({
+  url,
+  method: 'GET',
+  mode: 'navigate',
+  headers: new Headers({ accept: 'text/html' }),
+  clone() {
+    return this;
+  },
+});
+
+/** Run the worker through the amendment's rules. Returns findings, each a sentence. */
+async function exerciseWorker(src, appId) {
+  const found = [];
+  const scope = new URL(`/${appId}/`, SIM_ORIGIN).href;
+  const prefix = `nikatru-${appId}-`;
+
+  // ── rule 3 · one cache per build, and rule 4 · the prefix ────────────────
+  const namesFor = async (build) => {
+    const w = bootWorker(src, { scope, build });
+    if (w.error) throw new Error(`does not evaluate as a worker script: ${w.error.message}`);
+    for (const t of ['install', 'activate', 'fetch']) {
+      if (!w.listeners.has(t)) throw new Error(`registers no \`${t}\` listener, so it cannot be the offline shell`);
+    }
+    await w.lifecycle('install');
+    return [...w.caches.opened];
+  };
+  let n41;
+  let n42;
+  try {
+    n41 = await namesFor('41');
+    n42 = await namesFor('42');
+  } catch (e) {
+    return [`${e.message}.`];
+  }
+  if (n41.length === 0) {
+    found.push('opens no cache at install, so a first online visit leaves nothing to start from offline.');
+  }
+  const wrongPrefix = [...n41, ...n42].filter((n) => !n.startsWith(prefix));
+  if (wrongPrefix.length) {
+    found.push(
+      `names cache(s) ${wrongPrefix.map((n) => JSON.stringify(n)).join(', ')} without the per-app prefix ` +
+        `"${prefix}" (ADR 023 rule 4). Cache Storage is ONE list for the whole nikatru.com origin — the ` +
+        'marketing site and every other app — so an unprefixed name can collide with, or be deleted by, a neighbour.',
+    );
+  }
+  const shared = n41.filter((n) => n42.includes(n));
+  const unnamed = [...n41.filter((n) => !n.includes('41')), ...n42.filter((n) => !n.includes('42'))];
+  if (shared.length || unnamed.length) {
+    found.push(
+      `has no per-build cache name (ADR 023 rule 3): installed as build 41 it opened ${JSON.stringify(n41)}, ` +
+        `as build 42 ${JSON.stringify(n42)}. A cache that outlives its build serves one build's shell with ` +
+        "another's bundle offline, and nothing ever retires it.",
+    );
+  }
+
+  // ── rule 4 · a scope other than /<id>/ is refused ────────────────────────
+  {
+    const w = bootWorker(src, { scope: new URL('/', SIM_ORIGIN).href, build: '42' });
+    let installed = true;
+    try {
+      await w.lifecycle('install');
+    } catch {
+      installed = false;
+    }
+    if (installed) {
+      found.push(
+        `installs under the ORIGIN ROOT scope as readily as under /${appId}/ (ADR 023 rule 4). On the shared ` +
+          'origin a worker at the root would answer the marketing site and every other app; it must refuse any ' +
+          'scope but its own.',
+      );
+    }
+  }
+
+  // ── rule 3 · activate retires the older build, and nobody else's ─────────
+  const storage = new SimCacheStorage(scope, null);
+  const neighbour = `nikatru-${appId === 'otherapp' ? 'another' : 'otherapp'}-shell-7`;
+  for (const n of [...n41, neighbour, 'nikatru-site-pages']) await storage.open(n);
+  storage.opened.clear();
+  const w = bootWorker(src, { scope, build: '42', storage });
+  try {
+    await w.lifecycle('install');
+    await w.lifecycle('activate');
+  } catch (e) {
+    return [...found, `fails to install and activate as build 42 under its own scope: ${e.message}.`];
+  }
+  const left = await storage.keys();
+  const stale = n41.filter((n) => !n42.includes(n) && left.includes(n));
+  if (stale.length) {
+    found.push(
+      `leaves the previous build's cache(s) ${JSON.stringify(stale)} in place when the next build activates ` +
+        '(ADR 023 rule 3: older caches are deleted on activate).',
+    );
+  }
+  const trampled = [neighbour, 'nikatru-site-pages'].filter((n) => !left.includes(n));
+  if (trampled.length) {
+    found.push(
+      `deleted ${JSON.stringify(trampled)} on activate — cache(s) belonging to ANOTHER tenant of the shared ` +
+        'origin. caches.keys() lists the whole origin; only names under this app\'s prefix are its to delete.',
+    );
+  }
+
+  // ── rule 2 · network-first ───────────────────────────────────────────────
+  const asset = `${scope}main.dart.js`;
+  const current = await storage.open(n42[0] ?? `${prefix}42`);
+  for (const url of [asset, scope]) {
+    await current.put(new Request(url), new Response(`CACHED ${url}`));
+  }
+  w.net.online = true;
+  for (const [what, req] of [['the bundle (main.dart.js)', new Request(asset)], ['the shell (a navigation to the scope)', navigation(scope)]]) {
+    let r;
+    try {
+      r = await w.request(req);
+    } catch (e) {
+      found.push(`does not settle a request for ${what} with the network answering: ${e.message}.`);
+      continue;
+    }
+    if (!r.responded) {
+      found.push(`does not answer ${what} at all, so it can never serve it offline.`);
+    } else if (r.body === `CACHED ${req.url}`) {
+      found.push(
+        `serves a CACHED copy of ${what} while the network answers (ADR 023 rule 2: online, the network always ` +
+          'wins). Cache-first hides a new deploy from a returning visitor, which is the one client the CFG-1 ' +
+          'kill-switch cannot see.',
+      );
+    } else if (r.body !== `NETWORK ${req.url}`) {
+      found.push(`answers ${what} with something other than the network's response while the network answers (got ${JSON.stringify(String(r.body).slice(0, 60))}).`);
+    }
+  }
+  // Offline: whatever it answers, it can only have come from what it holds.
+  w.net.online = false;
+  for (const [what, req] of [['the bundle (main.dart.js)', new Request(asset)], ['the shell (a navigation to the scope)', navigation(scope)]]) {
+    let r;
+    try {
+      r = await w.request(req);
+    } catch (e) {
+      found.push(`does not settle a request for ${what} with the network off: ${e.message}.`);
+      continue;
+    }
+    if (!r.responded || r.body === null) {
+      found.push(
+        `with the network off, does not serve the copy of ${what} it holds — the cold load is the browser's error ` +
+          'page, which is the defect this worker exists to end.',
+      );
+    }
+  }
+
+  // ── never stored: the API, credentials, no-store, out of scope, version.json
+  w.net.online = true;
+  const before = new Set(storage.heldUrls());
+  const mustNotStore = [
+    ['an API response (another origin)', new Request(SIM_API)],
+    ['a same-origin path outside its scope', new Request(`${SIM_ORIGIN}/api/subscribe`)],
+    ['version.json (the deploy marker the post-deploy probe reads)', new Request(`${scope}version.json`)],
+    ['a request carrying credentials', new Request(`${scope}assets/with-auth.json`, { headers: { authorization: 'Bearer probe' } })],
+    ['a `no-store` response', new Request(`${scope}assets/no-store-probe.json`)],
+    ['a POST', new Request(`${scope}assets/post.json`, { method: 'POST', body: 'x' })],
+  ];
+  for (const [what, req] of mustNotStore) {
+    try {
+      await w.request(req);
+    } catch {
+      // settling is not the question here; storing is
+    }
+    if (storage.heldUrls().some((u) => u === req.url && !before.has(u))) {
+      found.push(`stores ${what} (${req.url}). The offline shell holds the static bundle only; user data is #1075's cache, never this one's.`);
+    }
+  }
+  const strays = [...storage.opened].filter((n) => !n.startsWith(prefix));
+  if (strays.length && !wrongPrefix.length) {
+    found.push(`opens cache(s) ${JSON.stringify(strays)} outside its prefix "${prefix}" while answering requests (ADR 023 rule 4).`);
+  }
+  const badIdb = w.idbNames.filter((n) => !n.startsWith(prefix));
+  if (badIdb.length) {
+    found.push(`opens IndexedDB database(s) ${JSON.stringify(badIdb)} without the per-app prefix "${prefix}" (ADR 023 rule 4).`);
+  }
+  return found;
+}
+
+let workersRun = 0;
+let swAllowedScanned = 0;
+for (const b of bundles) {
+  // Rule 4: `Service-Worker-Allowed` widens a worker's scope past its own
+  // directory. On a shared origin that is how /<id>/sw.js claims the site, so it
+  // is refused on EVERY bundle, flutter-web or static.
+  const headersAbs = join(ROOT, b.dir, '_headers');
+  const headersSrc = readOrNull(headersAbs);
+  if (headersSrc !== null) {
+    swAllowedScanned++;
+    for (const [pattern, headers] of parseHeaders(headersSrc)) {
+      if (headers.has('service-worker-allowed')) {
+        problems.push(
+          `${b.dir}/_headers rule "${pattern}" declares Service-Worker-Allowed ("${headers.get('service-worker-allowed')}"). ` +
+            '[ADR 023] rule 4: NEVER. The app worker lives at /<id>/sw.js and its scope is /<id>/, which needs no ' +
+            'header; this one exists only to let a worker claim more of the shared nikatru.com origin — the ' +
+            'marketing site, the checkout return, every other app.',
+        );
+      }
+    }
+  }
+  if (b.kind !== 'flutter-web') continue;
+  const appId = b.dir === BRICK_WEB ? '{{app_id}}' : b.dir.split('/')[1];
+  const swAbs = join(ROOT, b.dir, WORKER_FILE);
+  const swSrc = readOrNull(swAbs);
+  if (swSrc === null) {
+    problems.push(
+      `${b.dir}/${WORKER_FILE} does not exist. [ADR 023] as amended 2026-09-30 gives every web app our own ` +
+        'network-first worker; without it a cold load with the network off is the browser\'s error page, while the ' +
+        'data the app could have shown is sitting in its own cache.',
+    );
+    continue;
+  }
+  // Rule 1: registered by OUR script, and Flutter's worker is named nowhere.
+  const regAbs = join(ROOT, b.dir, REGISTER_FILE);
+  const regRaw = readOrNull(regAbs);
+  const regSrc = regRaw === null ? null : stripJsComments(regRaw);
+  if (regSrc === null) {
+    problems.push(`${b.dir}/${REGISTER_FILE} does not exist, so nothing registers ${WORKER_FILE}: the worker ships and never runs.`);
+  } else if (!/serviceWorker\s*\.\s*register\s*\(/.test(regSrc) || !/['"]sw\.js['"]/.test(regSrc)) {
+    problems.push(`${b.dir}/${REGISTER_FILE} does not call navigator.serviceWorker.register on '${WORKER_FILE}'.`);
+  }
+  const indexAbs = join(ROOT, b.dir, 'index.html');
+  const html = (readOrNull(indexAbs) ?? '').replace(/<!--[\s\S]*?-->/g, ' ');
+  const regTag = html.search(/<script\s+src=["']sw-register\.js["']\s*>/);
+  const bootTag = html.search(/<script[^>]*\ssrc=["']flutter_bootstrap\.js["']/);
+  if (regTag === -1 || bootTag === -1 || regTag > bootTag) {
+    problems.push(
+      `${b.dir}/index.html does not load <script src="${REGISTER_FILE}"> (not async, not defer) ABOVE the ` +
+        'flutter_bootstrap.js tag. Below it, or async, its first-frame listener can miss the event, and the files ' +
+        'loaded before the worker took control are never held for offline.',
+    );
+  }
+  for (const f of ['index.html', 'flutter_bootstrap.js', REGISTER_FILE]) {
+    const raw = readOrNull(join(ROOT, b.dir, f));
+    if (raw === null) continue;
+    const code = f.endsWith('.html') ? raw.replace(/<!--[\s\S]*?-->/g, ' ') : stripJsComments(raw.replace(/<%![\s\S]*?%>/, ' '));
+    if (FLUTTER_WORKER_NAMES.test(code)) {
+      problems.push(
+        `${b.dir}/${f} names Flutter's own service worker (${code.match(FLUTTER_WORKER_NAMES)[0]}). [ADR 023] rule 1: ` +
+          "our own worker, never Flutter's offline-first one — it serves a cached bundle while the network answers.",
+      );
+    }
+  }
+  // Rules 2-4, by running it.
+  const findings = await exerciseWorker(swSrc, appId);
+  workersRun++;
+  for (const f of findings) problems.push(`${b.dir}/${WORKER_FILE} ${f}`);
+}
+if (sitesDirExists) {
+  for (const site of listDir(sitesDir)) {
+    const fnDir = join(sitesDir, site, 'functions');
+    if (!existsSync(fnDir)) continue;
+    const stack = [fnDir];
+    while (stack.length) {
+      const dir = stack.pop();
+      for (const e of listDir(dir, { withFileTypes: true })) {
+        const abs = join(dir, e.name);
+        if (e.isDirectory()) stack.push(abs);
+        else if (/\.(js|mjs|ts)$/i.test(e.name) && /service-worker-allowed/i.test(stripJsComments(readFileSync(abs, 'utf8')))) {
+          problems.push(
+            `${relative(ROOT, abs).split(sep).join('/')} sets Service-Worker-Allowed. The apex router proxies every ` +
+              'app, so a header it adds reaches every app path. [ADR 023] rule 4: never.',
+          );
+        }
+      }
+    }
+  }
+}
+// No floor of its own: this loop walks the same `bundles` the floors above already
+// refuse to see empty of flutter-web, and a bundle without a worker is a finding.
+// A floor here could not fire on any input, so it would only look like coverage.
+
 if (problems.length) {
   console.error(`✗ web cache policy — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
-  console.error('  [pipeline 9]R-9 (cache limb) — with no service worker ([ADR 023]) the HTTP cache IS the');
-  console.error('  update mechanism on the only served channel. See the header of');
+  console.error('  [pipeline 9]R-9 (cache limb) — our worker is network-first ([ADR 023] as amended 2026-09-30), so');
+  console.error('  online the HTTP cache is still the update mechanism on the only served channel. See the header of');
   console.error('  tooling/ci/assert-web-cache-policy.mjs.');
   process.exit(1);
 }
@@ -1323,6 +1831,11 @@ console.log(
 console.log(
   `    Permissions-Policy — ${permissionsPoliciesGraded} policy(ies) deny ${PERMISSIONS_FLOOR.join(', ')}; ` +
     `${scriptHostsGraded} third-party script-src host(s), each with a recorded no-SRI reason`,
+);
+console.log(
+  `    offline shell ([ADR 023] as amended 2026-09-30) — ${workersRun} worker(s) RUN in a simulated scope: ` +
+    `network-first, one cache per build, per-app names, nothing but the bundle stored; ` +
+    `Service-Worker-Allowed refused on ${swAllowedScanned} _headers and every Pages Function`,
 );
 console.log(`    scanned: ${bundles.map((b) => b.dir).join(', ')}`);
 console.log(
