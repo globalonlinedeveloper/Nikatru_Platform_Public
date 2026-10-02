@@ -4,7 +4,8 @@
 // would land the wrong thing, or the mutation of the real tree that breaks parity.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -25,7 +26,10 @@ import {
   performQueue,
   perform,
   workflowRunsOn,
-  reviewedHead,
+  readSnapshot,
+  parentBaseline,
+  bindingOf,
+  isUpdateCommit,
   diffPrint,
   sameDiff,
   dispatchParityProblems,
@@ -48,6 +52,10 @@ const sha = (c) => c.repeat(40);
 const MAIN = sha('a');
 const PARENT = sha('b');
 const HEAD = sha('c');
+const H8 = HEAD.slice(0, 8);
+const LABEL_AT = '2026-10-02T08:00:00Z';
+/** A PR commit as readSnapshot normalises it (GET /pulls/N/commits). */
+const commit = (s, parents = [PARENT], over = {}) => ({ sha: s, parents, committer: 'someone', verified: false, ...over });
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 const gate = (run, conclusion = 'success', status = 'completed') => ({
@@ -62,14 +70,17 @@ const pr = (over = {}) => ({
   number: 7,
   state: 'open',
   draft: false,
-  labels: [LAND_LABEL],
-  labeledAt: '2026-10-02T08:00:00Z',
+  labels: [`${LAND_LABEL}:${H8}`],
+  labeledAt: LABEL_AT,
+  labelTimes: { [`${LAND_LABEL}:${H8}`]: LABEL_AT },
+  forcePushes: [],
+  commits: [commit(HEAD)],
+  commitsComplete: true,
   baseRef: 'main',
   headSha: HEAD,
   headRef: 'feat/x',
   headRepo: R,
   headCommittedAt: '2026-10-02T07:00:00Z',
-  reviewedSha: HEAD,
   mergeable: true,
   mergeableState: 'clean',
   checks: [gate(100)],
@@ -332,37 +343,93 @@ describe('the run (one write, in queue order)', () => {
   });
 });
 
-// ── FINDING 1 (review of #1158): `land-ok` approves the head it was applied at ──
-describe('land-ok is bound to the reviewed head', () => {
-  const LABEL = '2026-10-02T08:00:00Z';
-  const prRun = (id, head, created, over = {}) => ({ id, event: 'pull_request', head_sha: head, created_at: created, head_repository: { full_name: R }, ...over });
-  test('the head is the one the newest pull_request run created at or before the label names', () => {
-    const runs = [prRun(1, sha('1'), '2026-10-02T07:00:00Z'), prRun(2, sha('2'), '2026-10-02T07:59:00Z'), prRun(3, sha('3'), '2026-10-02T08:01:00Z')];
-    assert.equal(reviewedHead(runs, { labeledAt: LABEL, headRepo: R }).sha, sha('2'));
-  });
-  test('🔴 a run after the label, another repository\'s run or a non-PR run never names the reviewed head', () => {
-    assert.equal(reviewedHead([prRun(3, sha('3'), '2026-10-02T08:01:00Z')], { labeledAt: LABEL, headRepo: R }).sha, null);
-    assert.equal(reviewedHead([prRun(1, sha('1'), '2026-10-02T07:00:00Z', { head_repository: { full_name: 'x/fork' } })], { labeledAt: LABEL, headRepo: R }).sha, null);
-    assert.equal(reviewedHead([prRun(1, sha('1'), '2026-10-02T07:00:00Z', { event: 'workflow_dispatch' })], { labeledAt: LABEL, headRepo: R }).sha, null);
-    assert.equal(reviewedHead([prRun(1, sha('1'), '2026-10-02T07:00:00Z')], { labeledAt: null, headRepo: R }).sha, null);
-  });
-  const diff = (patch) => diffPrint({ files: [{ status: 'modified', filename: 'tooling/ci/x.mjs', patch }] });
-  test('🔴 a head pushed AFTER the label with a different diff → WAIT, never MERGE', () => {
-    const d = decide({ reviewedSha: sha('d'), reviewedDiff: diff('@@ -1 +1 @@\n-a\n+b'), headDiff: diff('@@ -1 +1 @@\n-a\n+EVIL') });
-    assert.equal(d.action, 'WAIT');
-    assert.match(d.why, /moved after `land-ok` was applied at dddddddd, and its diff against main is not the reviewed one/);
-  });
-  test('an empty re-merge from main (the diff against main unchanged) is NOT a moved review → MERGE', () => {
-    const d = decide({ reviewedSha: sha('d'), reviewedDiff: diff('@@ -1 +1 @@\n-a\n+b'), headDiff: diff('@@ -1 +1 @@\n-a\n+b') });
+// ── FINDING 1 (review of #1158) + review of #1169 items 1 and 3: `land-ok:<sha8>` ──
+// approves exactly that head; a GitHub update-branch merge of it carries the approval.
+describe('land-ok:<sha8> is bound to the reviewed head, and the lander\'s update carries it', () => {
+  const A = sha('1');
+  const B = sha('2');
+  const C = sha('3');
+  const MAIN_NEW = sha('9');
+  const A8 = A.slice(0, 8);
+  const labelA = `${LAND_LABEL}:${A8}`;
+  const update = (s, firstParent, over = {}) => commit(s, [firstParent, MAIN_NEW], { committer: 'web-flow', verified: true, ...over });
+  // The PR's change to coverage-manifest.json, against old main (A) and after an update
+  // from a main that added lines above it (B): the hunk header and context moved.
+  const fileDiff = (patch) => diffPrint({ files: [{ status: 'modified', filename: 'tooling/ci/test/coverage-manifest.json', patch }] });
+  const atA = fileDiff('@@ -522,7 +522,7 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n \n   "land-rules.test.mjs":');
+  const atB = fileDiff('@@ -531,7 +531,7 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n \n   "landing.test.mjs":');
+  const bound = (over) => decide({ labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A)], headSha: A, ...over });
+  test('`land-ok:<sha8>` on the head → MERGE', () => {
+    const d = bound({});
     assert.equal(d.action, 'MERGE', d.why);
-    assert.match(d.why, /head moved from dddddddd with the reviewed diff unchanged/);
   });
-  test('🔴 an unknown reviewed head, or a diff that could not be compared, → WAIT (fail closed)', () => {
-    assert.equal(decide({ reviewedSha: null }).action, 'WAIT');
-    assert.equal(decide({ reviewedSha: sha('d'), reviewedDiff: null, headDiff: diff('x') }).action, 'WAIT');
-    assert.equal(decide({ reviewedSha: sha('d'), reviewedDiff: diff('x'), headDiff: null }).action, 'WAIT');
+  test('🔴 label at A → the lander updates to B, whose diff changed (hunk shift) → B is MERGE-able WITHOUT a re-label', () => {
+    assert.equal(sameDiff(atA, atB), true, 'only hunk headers and context differ');
+    const d = bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: atA, headDiff: atB });
+    assert.equal(d.action, 'MERGE', d.why);
+    assert.match(d.why, /`land-ok:11111111` carried across 1 update-branch merge\(s\) from main with the approved changes unchanged/);
   });
-  test('🔴 the fingerprint: a cut list is unreadable; a patchless file is its blob; order does not matter', () => {
+  test('two update-branch merges in a row still carry it', () => {
+    const D = sha('4');
+    const d = bound({ headSha: D, commits: [commit(A), update(B, A), update(D, B)], reviewedDiff: atA, headDiff: atB });
+    assert.equal(d.action, 'MERGE', d.why);
+  });
+  test('🔴 a person\'s push C after the label → WAIT naming `land-ok:<C8>`', () => {
+    const d = bound({ headSha: C, commits: [commit(A), commit(C, [A])] });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /head 33333333 is not `land-ok:11111111` nor a GitHub update-branch merge of it: apply `land-ok:33333333`/);
+    const onUpdate = bound({ headSha: C, commits: [commit(A), update(B, A), commit(C, [B])] });
+    assert.equal(onUpdate.action, 'WAIT', 'a push on top of the lander\'s update is a person\'s head too');
+    assert.match(onUpdate.why, /apply `land-ok:33333333`/);
+  });
+  test('…and re-labelling `land-ok:<C8>` releases it: the remedy the WAIT names works', () => {
+    const labelC = `${LAND_LABEL}:${C.slice(0, 8)}`;
+    const d = bound({ headSha: C, labels: [labelA, labelC], labelTimes: { [labelA]: LABEL_AT, [labelC]: '2026-10-02T08:30:00Z' }, commits: [commit(A), commit(C, [A])] });
+    assert.equal(d.action, 'MERGE', d.why);
+  });
+  test('🔴 what is NOT an update-branch merge never carries the binding', () => {
+    const cases = {
+      'not GitHub\'s committer': update(B, A, { committer: 'someone' }),
+      'not verified': update(B, A, { verified: false }),
+      'one parent': commit(B, [A], { committer: 'web-flow', verified: true }),
+      'second parent a PR commit (a merge of another branch)': update(B, A, { parents: [A, C] }),
+      'first parent not the bound head': update(B, C),
+    };
+    for (const [why, c] of Object.entries(cases)) {
+      const d = bound({ headSha: B, commits: [commit(A), commit(C, [A]), c], reviewedDiff: atA, headDiff: atA });
+      assert.equal(d.action, 'WAIT', why);
+      assert.match(d.why, /apply `land-ok:22222222`/, why);
+    }
+    assert.equal(isUpdateCommit(update(B, A), new Map([[A, commit(A)]])), true);
+  });
+  test('🔴 an update-branch merge whose changes against main are NOT the approved ones (a web conflict edit) → WAIT', () => {
+    const injected = fileDiff('@@ -531,7 +531,8 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n+  "evil": 1,\n \n');
+    const d = bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: atA, headDiff: injected });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /changes against main are not the approved ones: review 22222222 and apply `land-ok:22222222`/);
+    assert.equal(bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: null, headDiff: atB }).action, 'WAIT', 'uncomparable fails closed');
+  });
+  test('🔴 a bare `land-ok` binds to no head: WAIT with the label that would', () => {
+    const d = decide({ labels: [LAND_LABEL] });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /a bare `land-ok` binds to no head: apply `land-ok:cccccccc`/);
+  });
+  test('🔴 8 hex naming two commits, a force-push after the label, or an unreadable commit list → WAIT', () => {
+    const twin = A8 + 'f'.repeat(32);
+    assert.match(bound({ commits: [commit(A), commit(twin, [A])] }).why, /names 2 commits of this PR/);
+    assert.match(bound({ forcePushes: ['2026-10-02T08:10:00Z'] }).why, /force-pushed after/);
+    assert.equal(bound({ forcePushes: ['2026-10-02T07:10:00Z'] }).action, 'MERGE', 'a force-push BEFORE the label is what was reviewed');
+    assert.equal(bound({ commitsComplete: false }).action, 'WAIT');
+    assert.equal(bound({ commits: null }).action, 'WAIT');
+    assert.equal(bound({ labelTimes: {} }).action, 'WAIT');
+  });
+  test('the binding names its label and hops', () => {
+    assert.deepEqual(bindingOf({ headSha: B, labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A), update(B, A)] }).sha, A);
+    assert.equal(bindingOf({ headSha: B, labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A), update(B, A)] }).hops, 1);
+  });
+  test('🔴 the fingerprint: changed lines only; a cut list is unreadable; a patchless file is its blob; order does not matter', () => {
+    assert.equal(sameDiff(fileDiff('@@ -1 +1 @@\n-a\n+b'), fileDiff('@@ -1 +1 @@\n-a\n+EVIL')), false);
+    assert.equal(sameDiff(fileDiff('@@ -1,2 +1,2 @@\n x\n-a\n+b'), fileDiff('@@ -9,2 +9,2 @@\n y\n-a\n+b')), true);
     assert.equal(diffPrint({ files: Array.from({ length: 300 }, (_, i) => ({ status: 'added', filename: `f${i}`, patch: '+' })) }), null);
     assert.equal(diffPrint({}), null);
     assert.notDeepEqual(diffPrint({ files: [{ status: 'modified', filename: 'a.png', sha: '1' }] }), diffPrint({ files: [{ status: 'modified', filename: 'a.png', sha: '2' }] }));
@@ -423,6 +490,94 @@ describe("main's runs come from each workflow's own listing", () => {
   test('🔴 a row on another sha, or no run array, is COULD NOT LOOK — never a verdict', async () => {
     await assert.rejects(on(async () => ({ workflow_runs: [fresh(2, PARENT)] })), /answered run 2 on bbbb/);
     await assert.rejects(on(async () => ({})), /without a workflow_runs array/);
+  });
+});
+
+// ── review of #1169 item 5 (X7): a stale page is COULD NOT LOOK, never read as current ──
+describe('a run listing proven stale is refused', () => {
+  test('🔴 X7: the page ends at an old run while the cross-read holds a newer one → COULD NOT LOOK', async () => {
+    const at = (h) => new Date(NOW - h * 3_600_000).toISOString();
+    const read = async (u) => ({ workflow_runs: /created=/.test(u) || !/branch=/.test(u) ? [{ id: 2, head_sha: MAIN, created_at: at(5), updated_at: at(5) }] : [{ id: 1, head_sha: MAIN, created_at: at(10), updated_at: at(10) }] });
+    await assert.rejects(workflowRunsOn(read, { repo: R, workflowPath: '.github/workflows/ci.yml', sha: MAIN, branch: 'main', nowMs: NOW }), /stale page/);
+  });
+});
+
+// ── review of #1169 items 2, 4 and 5 (X5): readSnapshot, through a stubbed fetch ──
+describe('readSnapshot, against a stubbed GitHub', () => {
+  const fresh = (iso = new Date(NOW - 60_000).toISOString()) => ({ created_at: iso, updated_at: iso });
+  const stub = async (routes, fn) => {
+    const asked = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = new URL(String(url));
+      const path = u.pathname.replace(`/repos/${R}`, '') + u.search;
+      asked.push(path);
+      const hit = routes.find(([re]) => re.test(path));
+      if (!hit) return new Response('{"message":"Not Found"}', { status: 404 });
+      return new Response(JSON.stringify(hit[1]), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    try {
+      return { r: await fn(), asked };
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const labelC = `${LAND_LABEL}:${H8}`;
+  const openPr = (labels) => ({ number: 7, title: 't', state: 'open', draft: false, labels: labels.map((name) => ({ name })), base: { ref: 'main' }, head: { sha: HEAD, ref: 'feat/x', repo: { full_name: R } } });
+  const job = (name, conclusion) => ({ name, conclusion });
+  const routes = ({ parentRuns }) => [
+    [/^\/pulls\?state=open/, [openPr([labelC])]],
+    [/^\/commits\/main$/, { sha: MAIN, parents: [{ sha: PARENT }], commit: { committer: { date: OLD } } }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${MAIN}`), { workflow_runs: [{ ...mainCi(9, { conclusion: 'cancelled' }), ...fresh() }] }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${PARENT}`), { workflow_runs: parentRuns }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${HEAD}`), { workflow_runs: [{ ...ciRun(100), ...fresh() }] }],
+    [/^\/actions\/workflows\/(codeql|e2e)\.yml\/runs/, { workflow_runs: [] }],
+    [/^\/actions\/runs\/9\/jobs/, { jobs: [job('guards-legal', 'failure'), job('deploy', 'cancelled')] }],
+    [/^\/actions\/runs\/5\/jobs/, { jobs: [job('guards-legal', 'failure'), job('deploy', 'cancelled')] }],
+    [/^\/actions\/runs\/4\/jobs/, { jobs: [job('guards-legal', 'success')] }],
+    [/^\/issues\?labels=land-freeze/, []],
+    [/^\/pulls\/7$/, { mergeable: true, mergeable_state: 'clean' }],
+    [/^\/issues\/7\/events/, [{ event: 'labeled', label: { name: labelC }, created_at: LABEL_AT }]],
+    [/^\/commits\/c+\/check-runs/, { check_runs: [gate(100)] }],
+    [/^\/pulls\/7\/commits/, [{ sha: HEAD, parents: [{ sha: PARENT }], committer: { login: 'someone' }, commit: { committer: { date: OLD }, verification: { verified: false } } }]],
+    [/^\/pulls\/7\/files/, [{ filename: 'tooling/ci/x.mjs' }]],
+    [/^\/compare\//, { ahead_by: 0, files: [] }],
+  ];
+  const parentRed = [
+    { ...mainCi(5, { head_sha: PARENT, conclusion: 'cancelled' }), ...fresh() },
+    { ...mainCi(4, { head_sha: PARENT, conclusion: 'success' }), ...fresh() },
+  ];
+  test('🔴 item 2 / X5: main cancelled with a failed job, its PARENT cancelled with the same failed job → RED, merges continue (not FREEZE)', async () => {
+    const { r: snap } = await stub(routes({ parentRuns: parentRed }), () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.deepEqual(snap.failedJobs, { 9: ['guards-legal'] }, "X5: a cancelled main run's jobs are read");
+    assert.deepEqual(snap.baseline, { '.github/workflows/ci.yml': ['guards-legal'] }, "the parent's cancelled red run is the baseline, not its older green one");
+    const p = plan(snap);
+    assert.equal(p.watch.state, 'RED', p.watch.why);
+    assert.equal(p.act?.kind, 'merge', JSON.stringify(p.act));
+  });
+  test('…a new failing job against that baseline still FREEZEs', async () => {
+    const r = routes({ parentRuns: parentRed });
+    r.unshift([/^\/actions\/runs\/9\/jobs/, { jobs: [job('guards-legal', 'failure'), job('guards-platform', 'failure')] }]);
+    const { r: snap } = await stub(r, () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.equal(plan(snap).watch.state, 'FREEZE');
+  });
+  test('parentBaseline passes over a cancel with no failed job, and is null with no verdict at all', async () => {
+    const jobs = { 5: [], 4: ['x'] };
+    const runs = [{ id: 5, status: 'completed', conclusion: 'cancelled' }, { id: 4, status: 'completed', conclusion: 'failure' }];
+    assert.deepEqual(await parentBaseline(runs, async (r) => jobs[r.id]), ['x']);
+    assert.equal(await parentBaseline([{ id: 5, status: 'completed', conclusion: 'cancelled' }], async () => []), null);
+    assert.equal(await parentBaseline([], async () => []), null);
+  });
+  test('🔴 item 4: no open PR carries land-ok → it stops after the PR list: main\'s runs are never read', async () => {
+    const r = routes({ parentRuns: parentRed });
+    r.unshift([/^\/pulls\?state=open/, [openPr(['other']), { ...openPr([labelC]), number: 8, draft: true }]]);
+    const { r: snap, asked } = await stub(r, () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.equal(snap.idle, true);
+    assert.deepEqual(asked, ['/pulls?state=open&base=main&per_page=100&page=1']);
+    const p = plan(snap);
+    assert.equal(p.watch.state, 'IDLE');
+    assert.equal(p.act, null);
+    assert.deepEqual(p.decisions.map((d) => d.action), ['SKIP', 'SKIP']);
   });
 });
 
@@ -529,6 +684,33 @@ describe('the CLI', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  test('🔴 item 4: a live (dry) run with no land-ok PR prints its API budget lines and reads nothing of main', async () => {
+    const asked = [];
+    const server = createServer((req, res) => {
+      asked.push(req.url);
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('x-ratelimit-remaining', '897');
+      if (req.url === '/rate_limit') return res.end(JSON.stringify({ resources: { core: { remaining: 900, limit: 1000, reset: 0 } } }));
+      if (req.url.startsWith(`/repos/${R}/pulls?state=open`)) return res.end('[]');
+      res.statusCode = 404;
+      return res.end('{}');
+    });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    try {
+      const child = spawn(process.execPath, [SCRIPT], { cwd: REPO, env: { PATH: process.env.PATH, GITHUB_REPOSITORY: R, GITHUB_TOKEN: 't', GITHUB_API_URL: `http://127.0.0.1:${server.address().port}` } });
+      let out = '';
+      child.stdout.on('data', (d) => (out += d));
+      child.stderr.on('data', (d) => (out += d));
+      const code = await new Promise((ok) => child.on('close', ok));
+      assert.equal(code, 0, out);
+      assert.match(out, /^API budget: 900\/1000 remaining at the start \(floor 200\)$/m);
+      assert.match(out, /^main: IDLE — no open pull request carries `land-ok`/m);
+      assert.match(out, /^API budget: this run made 2 request\(s\); 897 remaining$/m);
+      assert.deepEqual(asked, ['/rate_limit', `/repos/${R}/pulls?state=open&base=main&per_page=100&page=1`]);
+    } finally {
+      server.close();
+    }
+  });
   test('🔴 an unreadable snapshot, or no token, is COULD NOT LOOK (exit 2)', () => {
     assert.equal(runCli(['--snapshot', join(tmpdir(), 'no-such-land-snapshot.json')]).status, 2);
     const r = runCli([], { GITHUB_REPOSITORY: R });
@@ -633,8 +815,8 @@ describe('.github/workflows/land.yml is a thin, least-privilege shell with one a
     assert.match(text, /^ {10}LAND_DISPATCH_DRY_RUN: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('\{0\}', inputs\.dry_run\) \|\| '' \}\}$/m);
     assert.match(text, /run: node tooling\/ci\/land-next\.mjs$/m);
   });
-  test('the job runs only main\'s copy, and a labeled wake only for land-ok', () => {
-    assert.match(text, /if: github\.ref == 'refs\/heads\/main' && \(github\.event_name != 'pull_request_target' \|\| github\.event\.label\.name == 'land-ok'\)/);
+  test('the job runs only main\'s copy, and a labeled wake only for land-ok or land-ok:<sha8>', () => {
+    assert.match(text, /if: github\.ref == 'refs\/heads\/main' && \(github\.event_name != 'pull_request_target' \|\| startsWith\(github\.event\.label\.name, 'land-ok'\)\)/);
   });
   test('the labels it reads are the ones it names', () => {
     assert.equal(LAND_LABEL, 'land-ok');

@@ -22,7 +22,7 @@ on:
     workflows: [CI, E2E live]
     types: [completed]
   # zizmor: ignore[dangerous-triggers]
-  # why: `labeled` ONLY, and only to WAKE: the lead's `land-ok` is a decision the
+  # why: `labeled` ONLY, and only to WAKE: the lead's `land-ok:<sha8>` is a decision the
   # queue should see now. The PR's code is never checked out here (the checkout
   # names main) and nothing from the event reaches a `run:`; the job-level `if:`
   # reads the label name and nothing else.
@@ -48,8 +48,8 @@ jobs:
   land:
     name: Land the next pull request (one write per run)
     # why: main's own copy only (a dispatch from a branch would run that branch's
-    # lander with write scopes), and a `labeled` wake for `land-ok` only.
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'pull_request_target' || github.event.label.name == 'land-ok')
+    # lander with write scopes), and a `labeled` wake for `land-ok` or `land-ok:<sha8>` only.
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'pull_request_target' || startsWith(github.event.label.name, 'land-ok'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

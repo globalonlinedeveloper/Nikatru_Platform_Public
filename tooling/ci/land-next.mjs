@@ -22,13 +22,15 @@
 // takes a dispatch of main too: POST_GATE_IF / POST_GATE_EVENTS in workflow-scan.mjs.
 //
 // ── WHAT IT PORTS (land-v23.sh, the laptop lander; not in this repository) ──
-//   eligible  open, not draft, base main, label `land-ok`, the NEWEST ci-gate run
+//   eligible  open, not draft, base main, label `land-ok:<sha8>`, the NEWEST ci-gate run
 //             on the head GREEN (land-rules.mjs rule a — the newest RUN decides,
 //             never the first rollup entry), mergeable.
-//   bound     `land-ok` approves the head it was APPLIED at (the newest
-//             pull_request run created before the label names it). A head that
-//             moved after it waits, unless its diff against main is the reviewed
-//             diff exactly (a merge-from-main, the lander's own update-branch).
+//   bound     `land-ok:<sha8>` approves exactly the head whose sha starts with those
+//             8 hex. A GitHub update-branch merge of it (committer web-flow,
+//             verified, FIRST PARENT the bound sha, second parent on main) carries
+//             the binding forward when its changes against main are the approved
+//             ones; any other new head WAITS naming `land-ok:<its sha8>`. A bare
+//             `land-ok` binds to nothing and WAITS (`bindingOf`).
 //   freeze    an OPEN issue labelled `land-freeze` stops every merge.
 //   skew      a head behind main is updated (update-branch) and re-tested, UNLESS
 //             its changes are disjoint from main's new changes (`skewVerdict`).
@@ -88,6 +90,17 @@ import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 export const LAND_LABEL = 'land-ok';
+/** The approval: `land-ok:<sha8>`, bound to the ONE head whose sha starts with those 8 hex. */
+export const BOUND_LABEL = /^land-ok:([0-9a-f]{8})$/;
+/** Either form wakes and queues a PR; only the bound form can approve a head. */
+export const isLandLabel = (name) => name === LAND_LABEL || BOUND_LABEL.test(String(name ?? ''));
+export const boundLabelFor = (sha) => `${LAND_LABEL}:${String(sha ?? '').slice(0, 8)}`;
+/** GitHub's own committer on an update-branch (and web-UI) commit. */
+export const UPDATE_COMMITTER = 'web-flow';
+/** Update-branch merges the binding is carried across, at most. */
+export const UPDATE_HOPS_CAP = 5;
+/** GitHub's pull-request commits API returns at most this many commits. */
+export const PR_COMMIT_CAP = 250;
 export const FREEZE_LABEL = 'land-freeze';
 export const BASE_BRANCH = 'main';
 export const E2E_WORKFLOW_PATH = '.github/workflows/e2e.yml';
@@ -105,9 +118,11 @@ export const MAIN_DISPATCH_CAP = 2;
 /** CI runs on ONE PR head that never reported a ci-gate, beyond which the lander stops
  *  dispatching ci.yml on it: the head is SKIPPED for a person (or the laptop) to re-run. */
 export const HEAD_DISPATCH_CAP = 2;
-/** The API requests a run must have left before it starts. A run reads about 8 + 12
- *  per `land-ok` pull request, and GITHUB_TOKEN's budget is 1,000 an hour per
- *  repository; below this floor a run could be cut off between its reads and its write. */
+/** The API requests a run must have left before it starts. A run reads 2 when no open
+ *  PR carries `land-ok` (it stops there), else about 8 + 12 per `land-ok` pull request.
+ *  GITHUB_TOKEN's budget is 1,000 an hour per REPOSITORY, shared with CI's own
+ *  API-reading guards; below this floor a run could be cut off between its reads and
+ *  its write. The floor protects this run only, never CI's share (docs/ci/land.md). */
 export const API_BUDGET_FLOOR = 200;
 /** GitHub's compare API returns at most this many files; a list that long may be cut. */
 export const COMPARE_FILE_CAP = 300;
@@ -299,38 +314,75 @@ function freezeBody({ sha, fresh, marker }) {
   return lines.join('\n');
 }
 
-// ── PURE: which head `land-ok` approved ─────────────────────────────────────
+// ── PURE: which head `land-ok:<sha8>` approved ──────────────────────────────
 
 /**
- * The head `land-ok` was APPLIED at: the head_sha of the newest `pull_request` run of
- * the PR's branch (from its own repository) created at or before the label. A push
- * starts that run within seconds, so a run created after the label is a head the
- * label never saw. `runs` are the branch's pull_request runs, newest page.
- * Returns { sha, why }; sha is null when no run predates the label (fail closed).
+ * Is this PR commit a GitHub update-branch merge from main? Committer `web-flow` and
+ * `verified` are server-stamped; two parents; the SECOND parent is not a commit of this
+ * PR, so (the list being complete) it is reachable from main. `bySha` maps the PR's
+ * commits (GET /pulls/N/commits, normalised) by sha.
  */
-export function reviewedHead(runs, { labeledAt, headRepo }) {
-  const at = Date.parse(labeledAt ?? '');
-  if (!Number.isFinite(at)) return { sha: null, why: `the \`${LAND_LABEL}\` label time is unreadable` };
-  const before = (runs ?? [])
-    .filter((r) => r?.event === 'pull_request' && r?.head_repository?.full_name === headRepo && /^[0-9a-f]{40}$/.test(String(r?.head_sha ?? '')))
-    .filter((r) => Date.parse(r.created_at ?? '') <= at)
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || Number(b.id) - Number(a.id));
-  if (!before.length) return { sha: null, why: `no pull_request run of this branch predates the \`${LAND_LABEL}\` label, so the head it approved is unknown` };
-  return { sha: before[0].head_sha, why: `run ${before[0].id} (created ${before[0].created_at}) names the head the label was applied at` };
+export function isUpdateCommit(c, bySha) {
+  const parents = Array.isArray(c?.parents) ? c.parents : [];
+  return c?.committer === UPDATE_COMMITTER && c?.verified === true && parents.length === 2 && bySha.has(parents[0]) && !bySha.has(parents[1]);
 }
 
 /**
- * A diff's fingerprint, from a compare `main...<sha>` answer: one line per changed
- * file (status, old name, name, and its patch — or its blob when GitHub sends no
- * patch). null when the answer is unreadable or cut at the cap (fail closed).
+ * THE BINDING. Which head the PR's `land-ok:<sha8>` label(s) approved, walking from the
+ * current head back across GitHub update-branch merges (isUpdateCommit) by FIRST parent.
+ *   pr.labels        label names; pr.labelTimes { name: newest labeled time }
+ *   pr.forcePushes   times of `head_ref_force_pushed` events
+ *   pr.commits       [{ sha, parents: [sha], committer: login, verified }], complete
+ * Returns { sha, hops, label, why }: sha null → no approved head (the PR waits, and
+ * `why` names the `land-ok:<sha8>` that would approve the current head). A bare
+ * `land-ok` binds to nothing: the head at label time is not the reviewed head.
+ */
+export function bindingOf(pr) {
+  const head = String(pr?.headSha ?? '');
+  const want = `apply \`${boundLabelFor(head)}\` once ${head.slice(0, 8)} is the reviewed head`;
+  const labels = pr?.labels ?? [];
+  const bound = labels.map((n) => BOUND_LABEL.exec(String(n))?.[1]).filter(Boolean);
+  const none = (why) => ({ sha: null, hops: 0, label: null, why });
+  if (!bound.length) return none(labels.includes(LAND_LABEL) ? `a bare \`${LAND_LABEL}\` binds to no head: ${want}` : `no \`${LAND_LABEL}:<sha8>\` label: ${want}`);
+  const commits = Array.isArray(pr?.commits) ? pr.commits : null;
+  if (!commits || pr?.commitsComplete === false || commits.length >= PR_COMMIT_CAP) return none(`the PR's commit list is unreadable or cut at the API's cap, so no head can be bound: land it by hand`);
+  const bySha = new Map(commits.map((c) => [c.sha, c]));
+  let cur = head;
+  for (let hops = 0; ; hops++) {
+    const b8 = bound.find((b) => cur.startsWith(b));
+    if (b8) {
+      const label = `${LAND_LABEL}:${b8}`;
+      // 8 hex is a prefix: it must name ONE commit of this PR, and no force-push may
+      // have replaced the history since the label (a crafted commit with that prefix).
+      const named = commits.filter((c) => String(c.sha).startsWith(b8)).length;
+      if (named !== 1) return none(`\`${label}\` names ${named} commits of this PR, not one: ${want}`);
+      const at = Date.parse(pr?.labelTimes?.[label] ?? '');
+      if (!Number.isFinite(at)) return none(`the time \`${label}\` was applied is unreadable: ${want}`);
+      if ((pr?.forcePushes ?? []).some((t) => !(Date.parse(t) < at))) return none(`the branch was force-pushed after \`${label}\` was applied: ${want}`);
+      return { sha: cur, hops, label, why: hops ? `\`${label}\` carried across ${hops} update-branch merge(s) from main` : `\`${label}\` names this head` };
+    }
+    const c = bySha.get(cur);
+    if (hops >= UPDATE_HOPS_CAP || !isUpdateCommit(c, bySha)) break;
+    cur = c.parents[0];
+  }
+  return none(`head ${head.slice(0, 8)} is not ${bound.map((b) => `\`${LAND_LABEL}:${b}\``).join(', ')} nor a GitHub update-branch merge of it: ${want}`);
+}
+
+/**
+ * The CHANGES' fingerprint, from a compare `main...<sha>` answer: one entry per changed
+ * file (status, old name, name, and only its added/removed lines — or its blob when
+ * GitHub sends no patch). Hunk headers and context lines are left out: an update from
+ * main moves them (a coverage-manifest.json hunk shifted by main's lines) without
+ * changing what the PR changes. null when unreadable or cut at the cap (fail closed).
  */
 export function diffPrint(cmp) {
   const files = cmp?.files;
   if (!Array.isArray(files) || files.length >= COMPARE_FILE_CAP) return null;
-  return files.map((f) => [f.status, f.previous_filename ?? '', f.filename, f.patch ?? `blob:${f.sha ?? '?'}`].join('\t')).sort();
+  const changes = (patch) => String(patch).split('\n').filter((l) => /^[-+\\]/.test(l)).join('\n');
+  return files.map((f) => [f.status, f.previous_filename ?? '', f.filename, f.patch === undefined || f.patch === null ? `blob:${f.sha ?? '?'}` : changes(f.patch)].join('\t')).sort();
 }
 
-/** Is the moved head's diff against main the reviewed one, exactly? Unreadable → no. */
+/** Are the moved head's changes against main the approved ones, exactly? Unreadable → no. */
 export function sameDiff(reviewed, head) {
   if (!Array.isArray(reviewed) || !Array.isArray(head)) return false;
   return reviewed.length === head.length && reviewed.every((l, i) => l === head[i]);
@@ -351,22 +403,23 @@ export function decidePr(pr, { repo, units, now = Date.now() }) {
   const wait = (why) => ({ action: 'WAIT', why });
   if (pr.state !== 'open') return skip(`state ${pr.state}`);
   if (pr.draft) return skip('draft');
-  if (!(pr.labels ?? []).includes(LAND_LABEL)) return skip(`no \`${LAND_LABEL}\` label`);
+  if (!(pr.labels ?? []).some(isLandLabel)) return skip(`no \`${LAND_LABEL}\` label`);
   if (pr.baseRef !== BASE_BRANCH) return skip(`base is ${pr.baseRef}, not ${BASE_BRANCH}`);
   if (!/^[0-9a-f]{40}$/.test(String(pr.headSha ?? ''))) return skip('no readable head sha');
-  // BOUND TO THE REVIEWED HEAD: a push after `land-ok` is content nobody approved. A
-  // moved head is accepted only when its diff against main IS the reviewed diff (a
-  // person's merge-from-main, or this lander's own update-branch).
+  // BOUND TO THE REVIEWED HEAD: `land-ok:<sha8>` approves that head, and a GitHub
+  // update-branch merge of it (the lander's own) carries the approval forward when the
+  // changes against main are the approved ones. Any other head is content nobody approved.
   const head8 = pr.headSha.slice(0, 8);
-  if (!/^[0-9a-f]{40}$/.test(String(pr.reviewedSha ?? ''))) return wait(`cannot tell which head \`${LAND_LABEL}\` approved${pr.reviewedWhy ? ` (${pr.reviewedWhy})` : ''}: re-apply the label`);
+  const bind = bindingOf(pr);
+  if (!bind.sha) return wait(bind.why);
   let moved = '';
-  if (pr.reviewedSha !== pr.headSha) {
-    const rev8 = pr.reviewedSha.slice(0, 8);
+  if (bind.sha !== pr.headSha) {
+    const rev8 = bind.sha.slice(0, 8);
     if (!sameDiff(pr.reviewedDiff, pr.headDiff)) {
       const unread = !Array.isArray(pr.reviewedDiff) || !Array.isArray(pr.headDiff);
-      return wait(`head ${head8} moved after \`${LAND_LABEL}\` was applied at ${rev8}, and its diff against main ${unread ? 'could not be compared' : 'is not the reviewed one'}: review the new head and re-apply the label`);
+      return wait(`head ${head8} is an update-branch merge of the approved ${rev8}, but its changes against main ${unread ? 'could not be compared' : 'are not the approved ones'}: review ${head8} and apply \`${boundLabelFor(pr.headSha)}\``);
     }
-    moved = `, head moved from ${rev8} with the reviewed diff unchanged`;
+    moved = `, ${bind.why} with the approved changes unchanged`;
   }
   const g = gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) });
   if (g.verdict === 'RED') return skip(`ci-gate RED — ${g.why}`);
@@ -429,6 +482,12 @@ export function queueOrder(prs) {
  * and the next is tried (performQueue). A dry run prints `act` and does nothing else.
  */
 export function plan(snap) {
+  // IDLE: no open PR carries `land-ok`, so main was not read (readSnapshot stops early to
+  // spare the repository's shared API budget); nothing can be merged, nothing is written.
+  if (snap.idle) {
+    const decisions = queueOrder(snap.prs).map((pr) => ({ number: pr.number, title: pr.title ?? '', ...decidePr(pr, { repo: snap.repo, units: {} }) }));
+    return { watch: { state: 'IDLE', why: `no open pull request carries \`${LAND_LABEL}\`: main's runs were not read` }, freezes: [], decisions, act: null, candidates: [], blocked: null };
+  }
   const units = snap.units ?? {};
   const watch = mainWatch({ main: snap.main, runs: snap.mainRuns, failedJobs: snap.failedJobs, baseline: snap.baseline, now: Date.parse(snap.now ?? '') || Date.now() });
   const freezes = (snap.freezes ?? []).filter((i) => i?.state === 'open');
@@ -658,27 +717,52 @@ export async function workflowRunsOn(read, { repo, workflowPath, sha, branch = n
   return r.union.map((x) => ({ ...x, path: x.path ?? workflowPath }));
 }
 
-/** Read everything one decision needs. Reads only; throws on any unreadable answer. */
+/**
+ * The baseline a red on main is judged against: the failed jobs of the parent's newest
+ * COMPLETED run that is a verdict, by mainWatch's own rule — a cancelled run counts when
+ * a job in it failed (fail-fast cancels a red run), and is passed over only when none
+ * did. null when no such run exists (then every red is new: fail closed).
+ * `jobsOf(run)` returns its failed job names.
+ */
+export async function parentBaseline(runs, jobsOf, cap = 5) {
+  const done = (runs ?? []).filter((x) => x.status === 'completed' && x.conclusion !== 'skipped').sort(newestFirst).slice(0, cap);
+  for (const r of done) {
+    const failed = await jobsOf(r);
+    if (r.conclusion !== 'cancelled' || failed.length) return failed;
+  }
+  return null;
+}
+
+const prCommitOf = (c) => ({
+  sha: String(c?.sha ?? ''),
+  parents: (c?.parents ?? []).map((x) => String(x?.sha ?? '')),
+  committer: c?.committer?.login ?? null,
+  verified: c?.commit?.verification?.verified === true,
+});
+
+/** Read everything one decision needs. Reads only; throws on any unreadable answer.
+ *  When no open PR carries `land-ok`, it stops after the PR list (`idle`): main's runs,
+ *  the freeze issues and every per-PR read are spared from the shared API budget. */
 export async function readSnapshot({ repo, token, now = new Date() }) {
   const { get, readUrl } = client(repo, token);
   const runsOn = (workflowPath, sha, branch = null) => workflowRunsOn(readUrl, { repo, workflowPath, sha, branch, nowMs: now.getTime() });
+  const open = (await paged(get, `/pulls?state=open&base=${BASE_BRANCH}`)).rows;
+  const entryOf = (p) => ({ number: p.number, title: p.title, state: p.state, draft: Boolean(p.draft), labels: (p.labels ?? []).map((l) => l.name), baseRef: p.base?.ref, headSha: p.head?.sha, headRef: p.head?.ref, headRepo: p.head?.repo?.full_name ?? null });
+  const queued = (e) => !e.draft && e.labels.some(isLandLabel);
+  if (!open.map(entryOf).some(queued)) return { repo, now: now.toISOString(), idle: true, prs: open.map(entryOf) };
   const head = await get(`/commits/${BASE_BRANCH}`);
   const main = { sha: head.sha, parentSha: head.parents?.[0]?.sha ?? null, committedAt: head.commit?.committer?.date ?? null };
   const mainRuns = [];
   for (const wf of WATCHED_PATHS) mainRuns.push(...(await runsOn(wf, main.sha, BASE_BRANCH)));
   const failedJobs = {};
   const baseline = {};
+  const jobsOf = async (r) => failedJobNames((await get(`/actions/runs/${r.id}/jobs?filter=latest&per_page=100`)).jobs);
   for (const r of mainRuns) {
     // A cancelled run's jobs are read too: fail-fast cancels a red run (mainWatch).
     if (r.status === 'completed' && WATCHED_PATHS.includes(pathOf(r)) && !['success', 'skipped', 'neutral'].includes(String(r.conclusion))) {
-      failedJobs[String(r.id)] = failedJobNames((await get(`/actions/runs/${r.id}/jobs?filter=latest&per_page=100`)).jobs);
+      failedJobs[String(r.id)] = await jobsOf(r);
       const wf = pathOf(r);
-      if (main.parentSha && !(wf in baseline)) {
-        const prev = (await runsOn(wf, main.parentSha, BASE_BRANCH))
-          .filter((x) => x.status === 'completed' && x.conclusion !== 'cancelled')
-          .sort(newestFirst)[0];
-        baseline[wf] = prev ? failedJobNames((await get(`/actions/runs/${prev.id}/jobs?filter=latest&per_page=100`)).jobs) : null;
-      }
+      if (main.parentSha && !(wf in baseline)) baseline[wf] = await parentBaseline(await runsOn(wf, main.parentSha, BASE_BRANCH), jobsOf);
     }
   }
   const issues = (await paged(get, `/issues?labels=${FREEZE_LABEL}&state=all`)).rows.filter((i) => !i.pull_request);
@@ -686,32 +770,36 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
   const freezeMarkers = issues.map((i) => (/<!-- land-freeze run=\d+ -->/.exec(String(i.body ?? '')) ?? [null])[0]).filter(Boolean);
   const units = JSON.parse(readFileSync(join(ROOT, 'tooling/ci/lane-map.json'), 'utf8')).deployUnits ?? {};
   if (!Object.keys(units).length) throw new Error(`${NO_UNITS}: the skew rule cannot tell one deploy unit from another`);
-  const open = (await paged(get, `/pulls?state=open&base=${BASE_BRANCH}`)).rows;
   const prs = [];
   for (const p of open) {
-    const labels = (p.labels ?? []).map((l) => l.name);
-    const entry = { number: p.number, title: p.title, state: p.state, draft: Boolean(p.draft), labels, baseRef: p.base?.ref, headSha: p.head?.sha, headRef: p.head?.ref, headRepo: p.head?.repo?.full_name ?? null };
-    if (!labels.includes(LAND_LABEL) || p.draft) {
+    const entry = entryOf(p);
+    if (!queued(entry)) {
       prs.push(entry);
       continue;
     }
     const full = await get(`/pulls/${p.number}`);
     const events = (await paged(get, `/issues/${p.number}/events`)).rows;
-    const labeled = events.filter((e) => e.event === 'labeled' && e.label?.name === LAND_LABEL).map((e) => e.created_at).sort();
+    const labelTimes = {};
+    for (const e of events) if (e.event === 'labeled' && isLandLabel(e.label?.name) && !(labelTimes[e.label.name] >= e.created_at)) labelTimes[e.label.name] = e.created_at;
+    const forcePushes = events.filter((e) => e.event === 'head_ref_force_pushed').map((e) => e.created_at);
     const checks = (await get(`/commits/${p.head.sha}/check-runs?check_name=ci-gate&per_page=100`)).check_runs ?? [];
-    const headCommit = await get(`/commits/${p.head.sha}`);
+    const commitList = await paged(get, `/pulls/${p.number}/commits`, null, Math.ceil(PR_COMMIT_CAP / 100));
+    const commits = commitList.rows.map(prCommitOf);
+    const headCommit = commits.find((c) => c.sha === p.head.sha);
+    const headRaw = commitList.rows.find((c) => c?.sha === p.head.sha);
     const runs = [...(await runsOn(MAIN_WORKFLOW_PATH, p.head.sha)), ...(await runsOn(E2E_WORKFLOW_PATH, p.head.sha))];
     const files = await paged(get, `/pulls/${p.number}/files`, null, PR_FILE_CAP / 100);
     const cmp = await get(`/compare/${p.head.sha}...${BASE_BRANCH}`);
-    const labeledAt = labeled.at(-1) ?? null;
-    // Which head the label approved, and — when the head has moved since — whether
-    // the diff against main is still the reviewed one. A diff that cannot be read
-    // is null, and the PR waits (decidePr); it never blocks the rest of the queue.
-    const branchRuns = (await get(`/actions/runs?branch=${encodeURIComponent(p.head.ref)}&event=pull_request&per_page=100`)).workflow_runs ?? [];
-    const reviewed = reviewedHead(branchRuns, { labeledAt, headRepo: entry.headRepo });
+    // Queue order: the newest land-ok label currently on the PR.
+    const labeledAt = entry.labels.filter(isLandLabel).map((n) => labelTimes[n]).filter(Boolean).sort().at(-1) ?? null;
+    const snapPr = { ...entry, labeledAt, labelTimes, forcePushes, commits, commitsComplete: commitList.complete && commits.length < PR_COMMIT_CAP && Boolean(headCommit) };
+    // Which head the label approved, and — when an update-branch moved the head since —
+    // whether the changes against main are still the approved ones. A compare that
+    // cannot be read is null, and the PR waits (decidePr); it never blocks the queue.
+    const bind = bindingOf(snapPr);
     let reviewedDiff = null;
     let headDiff = null;
-    if (reviewed.sha && reviewed.sha !== p.head.sha) {
+    if (bind.sha && bind.sha !== p.head.sha) {
       const print = async (sha) => {
         try {
           return diffPrint(await get(`/compare/${BASE_BRANCH}...${sha}`));
@@ -719,15 +807,15 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
           return null;
         }
       };
-      reviewedDiff = await print(reviewed.sha);
+      reviewedDiff = await print(bind.sha);
       headDiff = await print(p.head.sha);
     }
     prs.push({
-      ...entry,
-      labeledAt,
-      headCommittedAt: headCommit.commit?.committer?.date ?? null,
-      reviewedSha: reviewed.sha,
-      reviewedWhy: reviewed.why,
+      ...snapPr,
+      // The head's age is its COMMITTER date: author-controlled, not the push time. An
+      // old-dated push is dispatched at once beside its own pull_request run (one wasted
+      // run toward HEAD_DISPATCH_CAP), never merged on it (docs/ci/land.md).
+      headCommittedAt: headRaw?.commit?.committer?.date ?? null,
       reviewedDiff,
       headDiff,
       mergeable: full.mergeable,
