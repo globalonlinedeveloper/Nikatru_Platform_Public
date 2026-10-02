@@ -362,6 +362,17 @@ export interface Env {
   /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
   RAZORPAY_WEBHOOK_SECRET?: string;
   /**
+   * ⏱ 2026-10-01 · PB-27. The secrets POST /v1/ops/box-manifest
+   * (src/routes/box-manifest.ts) authenticates each box's config-hash report
+   * with — ONE PER BOX, so a box can write only its own row. The same value sits
+   * on that box only, in a root-only file the cron reads
+   * (tooling/ops/boxes/post-config-manifest.sh). Absent, that box's posts answer
+   * 503 before the body is read. `wrangler secret put`, NEVER a var.
+   */
+  BOX_MANIFEST_SECRET_BOXB?: string;
+  /** Box C's half of the pair above. `wrangler secret put`, NEVER a var. */
+  BOX_MANIFEST_SECRET_BOXC?: string;
+  /**
    * The fake rail's webhook HMAC key (services/_shared/src/ports/fakes/payments.ts).
    * 🔴 SET ON NO DEPLOY. The fake is registered for `test` only, so the door answers
    * 404 for `/v1/money/fake` on every deployed environment, and the fake's `verify`

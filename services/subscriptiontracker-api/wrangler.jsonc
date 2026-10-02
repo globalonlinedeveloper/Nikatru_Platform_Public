@@ -225,7 +225,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:17 (the kit's warmJwksCache checks for it since
-        // 2026-10-01, _shared/src/auth-middleware.ts:109). Its own namespace: production's holds
+        // 2026-10-01, _shared/src/auth-middleware.ts:119). Its own namespace: production's holds
         // the same public keys and would work, but a production id in a
         // sandbox block is the shape this block exists to keep out.
         { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }

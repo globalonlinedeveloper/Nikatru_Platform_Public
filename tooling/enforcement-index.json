@@ -3693,6 +3693,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-box-config-drift.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/e2e.yml#e2e"
     ],
     "kind": "script",

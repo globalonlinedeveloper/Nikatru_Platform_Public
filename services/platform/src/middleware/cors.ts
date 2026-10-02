@@ -26,8 +26,10 @@ export * from '../../../_shared/src/cors';
 // (routes/native-auth.ts, POST /v1/auth/native/<app>/<op>). Every browser request
 // there, and every preflight, is a 403 with no CORS header; services/_shared/src/cors.ts
 // says why. test/cors.test.ts declares those endpoints no-CORS, with the reason.
+// ⏱ 2026-10-01 · PB-27: `/v1/ops/` too — POST /v1/ops/box-manifest is a box's
+// cron reporting config hashes (routes/box-manifest.ts); no browser calls it.
 export const corsMiddleware = cors({
   scope: 'every-app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  refuseBrowsersOn: ['/v1/auth/native/'],
+  refuseBrowsersOn: ['/v1/auth/native/', '/v1/ops/'],
 });
