@@ -10,6 +10,7 @@
 // 36`, because 720 < 768 — so stripping the pane out of `import_screen.dart`
 // reddens the tablet case on its own, and the desktop case with it.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -62,6 +63,23 @@ void main() {
       );
       expect(AppBreakpoints.reading, 720);
     });
+
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): expanded and extra-large.
+    for (final (Size window, String _) in <(Size, String)>[
+      (kExpanded, 'expanded'),
+      (kWide, 'extra-large'),
+    ]) {
+      testWidgets('at ${window.width.toInt()} the reading cap still binds', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, window, const ImportScreen(), overrides: _inr);
+        expect(
+          offeredWidth(tester, find.byKey(E2EKeys.importPaste)),
+          AppBreakpoints.reading - _gutters,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     // The other subtree: a CSV's review list, reached only after a paste and
     // the mapping step.

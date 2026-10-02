@@ -1085,6 +1085,9 @@
   "walks-bounded.test.mjs":
     42,
 
+  "web-a11y-tree.test.mjs":
+    9,
+
   "web-cache-policy.test.mjs":
     86,
 

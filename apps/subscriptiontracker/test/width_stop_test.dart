@@ -172,6 +172,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): expanded and extra-large.
+  for (final (Size window, String _) in <(Size, String)>[
+    (kExpanded, 'expanded'),
+    (kWide, 'extra-large'),
+  ]) {
+    testWidgets(
+      '${window.width.toInt()} · still 640, nothing narrower inside',
+      (WidgetTester tester) async {
+        await setSurface(tester, window);
+        await _open(tester, _host());
+
+        expect(tester.getSize(_sheetSurface()).width, kM3SheetMaxWidth);
+        expect(tester.getSize(_modalLayer()).width, window.width);
+        expect(
+          tester.getSize(_choicesCard()).width,
+          kM3SheetMaxWidth - kSheetHPadding,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     '🔴 the sheet mounts on the ROOT navigator, not the branch it was opened from',
     (WidgetTester tester) async {
@@ -209,7 +231,10 @@ void main() {
   for (final ({Size size, double pane}) c in <({Size size, double pane})>[
     (size: kPhone, pane: kPhone.width),
     (size: kTablet, pane: AppBreakpoints.reading),
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): expanded and extra-large.
+    (size: kExpanded, pane: AppBreakpoints.reading),
     (size: kDesktop, pane: AppBreakpoints.reading),
+    (size: kWide, pane: AppBreakpoints.reading),
   ]) {
     testWidgets('${c.size.width.toInt()} · /sub/:id/stop is a reading pane', (
       WidgetTester tester,

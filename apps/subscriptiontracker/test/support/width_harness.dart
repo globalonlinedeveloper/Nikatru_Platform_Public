@@ -89,6 +89,12 @@ class SilentNotifications extends RenewalReminders {
 /// of numbers.
 const Size kPhone = Size(375, 812);
 const Size kTablet = Size(768, 1024);
+
+/// Material's EXPANDED window class (840–1199): a landscape tablet. Until
+/// 2026-10-01 no width was declared for it, so the class every two-pane and
+/// grid layout first branches at was measured by no required case (SYN-X1
+/// C-17, train P39). 1024 sits inside the class, clear of both its edges.
+const Size kExpanded = Size(1024, 768);
 const Size kDesktop = Size(1280, 900);
 
 /// Wider than every cap in [AppBreakpoints], so a screen capped at

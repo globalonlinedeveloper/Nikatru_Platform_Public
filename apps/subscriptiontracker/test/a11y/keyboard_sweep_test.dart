@@ -535,18 +535,21 @@ kExpected = <String, ({int controls, int reachable})>{
 /// routes and misses all five shell branches, which are the app's whole
 /// signed-in surface. That is the reason this is a function and not a
 /// `configuration.routes.whereType<GoRoute>()`.
-List<GoRoute> _everyGoRoute(List<RouteBase> routes) {
+///
+/// Public since 2026-10-01 (train P39): `text_scale_sweep_test.dart` walks the
+/// same router with this same function rather than a second copy of it.
+List<GoRoute> everyGoRoute(List<RouteBase> routes) {
   final List<GoRoute> out = <GoRoute>[];
   for (final RouteBase r in routes) {
     if (r is GoRoute) {
       out.add(r);
-      out.addAll(_everyGoRoute(r.routes));
+      out.addAll(everyGoRoute(r.routes));
     } else if (r is StatefulShellRoute) {
       for (final StatefulShellBranch b in r.branches) {
-        out.addAll(_everyGoRoute(b.routes));
+        out.addAll(everyGoRoute(b.routes));
       }
     } else {
-      out.addAll(_everyGoRoute(r.routes));
+      out.addAll(everyGoRoute(r.routes));
     }
   }
   return out;
@@ -765,7 +768,7 @@ void main() {
   tearDownAll(container.dispose);
   final GoRouter router = container.read(routerProvider);
 
-  final List<GoRoute> declared = _everyGoRoute(router.configuration.routes);
+  final List<GoRoute> declared = everyGoRoute(router.configuration.routes);
   final List<GoRoute> screenBearing = declared
       .where((GoRoute r) => r.builder != null)
       .toList();

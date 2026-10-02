@@ -399,6 +399,26 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class. Two
+    // panes, not three: the hero column starts at 1261, so at 1024 there is no
+    // aside, and the list is held by its caps rather than donated the window.
+    testWidgets('at 1024 (expanded) two panes and no hero column yet', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, const HomeScreen());
+      expect(kAside, findsNothing);
+      expect(kPlaceholder, findsOneWidget);
+      expect(
+        offeredWidth(tester, inPaneOf(kListPane, ListView)),
+        lessThanOrEqualTo(AppBreakpoints.reading),
+      );
+      expect(
+        offeredWidth(tester, kPlaceholder),
+        lessThanOrEqualTo(AppBreakpoints.reading),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1920 every cap is the binding one', (
       WidgetTester tester,
     ) async {

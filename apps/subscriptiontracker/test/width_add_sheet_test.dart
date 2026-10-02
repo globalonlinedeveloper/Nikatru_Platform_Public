@@ -174,7 +174,11 @@ void main() {
 
   for (final (Size window, double dx) in <(Size, double)>[
     (kTablet, 84),
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): the EXPANDED class, centred
+    // (1024 − 600) / 2, and the extra-large one.
+    (kExpanded, 212),
     (kDesktop, 340),
+    (kWide, 660),
   ]) {
     testWidgets(
       '${window.width.toInt()} — a 600 dialog, centred, tiles chip-sized',
@@ -215,6 +219,7 @@ void main() {
       in <(Size, double, double, bool)>[
         (kPhone, 375, 0, false),
         (kTablet, 600, 84, true),
+        (kExpanded, 600, 212, true),
         (kDesktop, 600, 340, true),
         (kWide, 600, 660, true),
       ]) {

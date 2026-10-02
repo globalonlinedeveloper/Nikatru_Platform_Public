@@ -170,6 +170,54 @@ void main() {
       });
     }
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class proper
+    // (1024, not only its 1199 edge) has no split and keeps the 420 form; the
+    // EXTRA-LARGE class (1920) splits exactly as 1440 does, with the panel
+    // capped at its own maximum rather than donated the extra 480 px.
+    for (final bool signUp in <bool>[false, true]) {
+      final String arm = signUp ? 'sign-up' : 'sign-in';
+      testWidgets('$arm at 1024 (expanded): no split, the form at 420', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, kExpanded, LoginScreen(startInSignUp: signUp));
+        expect(find.byKey(AuthFrame.panelKey), findsNothing);
+        expect(offeredWidth(tester, inPane(Column)), AppBreakpoints.form);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('$arm at 1920 (extra-large): the split, both sides capped', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, kWide, LoginScreen(startInSignUp: signUp));
+        final Rect panel = tester.getRect(find.byKey(AuthFrame.panelKey));
+        expect(panel.width, AuthFrame.panelMaxWidth);
+        final Rect heading = tester.getRect(find.byKey(E2EKeys.loginHeading));
+        expect(heading.left, greaterThanOrEqualTo(panel.right));
+        expect(heading.width, lessThanOrEqualTo(AppBreakpoints.form));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final (Size window, bool split) in <(Size, bool)>[
+      (kExpanded, false),
+      (kWide, true),
+    ]) {
+      testWidgets('check-inbox at ${window.width.toInt()}: split is $split', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(
+          tester,
+          window,
+          const CheckInboxScreen(email: 'asha@example.test'),
+        );
+        expect(
+          find.byKey(AuthFrame.panelKey),
+          split ? findsOneWidget : findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('check-inbox takes the same split at 1440', (
       WidgetTester tester,
     ) async {

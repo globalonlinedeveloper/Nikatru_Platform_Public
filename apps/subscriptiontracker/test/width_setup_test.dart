@@ -22,7 +22,10 @@ void main() {
   for (final (Size window, double width) in <(Size, double)>[
     (kPhone, 375),
     (kTablet, AppBreakpoints.medium),
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): expanded and extra-large.
+    (kExpanded, AppBreakpoints.medium),
     (kDesktop, AppBreakpoints.medium),
+    (kWide, AppBreakpoints.medium),
   ]) {
     testWidgets(
       '${window.width.toInt()} — setup reads in a $width column, centred',

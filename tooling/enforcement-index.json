@@ -4426,6 +4426,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts"
+    ],
+    "kind": "script",
+    "ref": "tooling/smoke/web-a11y-tree.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/store-screenshots.yml#capture",

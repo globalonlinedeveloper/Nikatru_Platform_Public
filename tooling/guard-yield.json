@@ -3989,6 +3989,11 @@
       "firstSeen": "2026-08-03",
       "evidence": []
     },
+    "tooling/smoke/web-a11y-tree.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/store/capture-backend.mjs": {
       "catches": 1,
       "firstSeen": "2026-09-25",

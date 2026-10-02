@@ -99,6 +99,15 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class.
+    testWidgets('at 1024 (expanded) the list is at 720', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, const NotificationsScreen());
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.reading);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1280 the list is still at 720, not at the window', (
       WidgetTester tester,
     ) async {

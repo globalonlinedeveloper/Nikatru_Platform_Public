@@ -119,6 +119,25 @@ void main() {
       );
       expect(AppBreakpoints.form, 420);
     });
+
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): expanded and extra-large.
+    for (final (Size window, String _) in <(Size, String)>[
+      (kExpanded, 'expanded'),
+      (kWide, 'extra-large'),
+    ]) {
+      testWidgets('at ${window.width.toInt()} the form cap still binds', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(
+          tester,
+          window,
+          const ResetPasswordScreen(),
+          overrides: await signedIn(),
+        );
+        expect(offeredWidth(tester, inPane(Column)), AppBreakpoints.form);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   // The other state is a routed surface too, and it is the one a user reaches

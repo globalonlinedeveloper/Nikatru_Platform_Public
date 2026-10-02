@@ -116,6 +116,15 @@ void main() {
       expect(offeredWidth(tester, inPane(ListView)), 720);
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class.
+    testWidgets('at 1024 (expanded) the cap binds — 720, not the window', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, const ManagePlanScreen());
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.reading);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, const ManagePlanScreen());
       expect(
