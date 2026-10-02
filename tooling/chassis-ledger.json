@@ -976,9 +976,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/types.ts",
-      "lines": 86,
+      "lines": 90,
       "verdict": "STAYS",
-      "why": "Per-app Env bindings - APP_DB and this app's own vars."
+      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

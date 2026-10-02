@@ -65,6 +65,7 @@ import {
   verifyOptions,
   type AuthRecency,
 } from './auth';
+import type { KvStore } from './ports/kv';
 
 /** How a token was verified. 'symmetric' exists ONLY on an app Worker's
  *  permissive boundary bound with a legacy secret, and every erasure route
@@ -114,7 +115,7 @@ export function remoteJwks(supabaseUrl: string): JWTVerifyGetKey {
  * never a verification: only `verifyAsymmetric`'s outage branch verifies
  * against it.
  */
-export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace | undefined): Promise<void> {
+export async function warmJwksCache(supabaseUrl: string, jwksCache: KvStore | undefined): Promise<void> {
   try {
     if (!jwksCache) return;
     if (await jwksCache.get(JWKS_KV_KEY)) return; // still warm
@@ -155,7 +156,7 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace 
  * last-known-good one ([JWKS_LKG_KV_KEY]) — the same parse, the same refusals.
  */
 export async function localSetFromCache(
-  jwksCache: KVNamespace | undefined,
+  jwksCache: KvStore | undefined,
   kvKey: typeof JWKS_KV_KEY | typeof JWKS_LKG_KV_KEY = JWKS_KV_KEY,
 ): Promise<JWTVerifyGetKey | null> {
   try {
@@ -178,7 +179,7 @@ export async function localSetFromCache(
  * property of the SIGNATURE — checkable by reading four lines — rather than a
  * claim about the body that a later edit could quietly falsify.
  */
-export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KVNamespace): Promise<JWTPayload> {
+export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KvStore): Promise<JWTPayload> {
   const opts = verifyOptions(supabaseUrl);
   try {
     const { payload } = await jwtVerify(token, remoteJwks(supabaseUrl), opts);
@@ -226,7 +227,7 @@ export const NO_SYMMETRIC_FALLBACK: SymmetricFallback = Object.freeze({ legacyHs
 export async function verifySupabaseToken(
   token: string,
   supabaseUrl: string,
-  jwksCache: KVNamespace | undefined,
+  jwksCache: KvStore | undefined,
   fallback: SymmetricFallback,
 ): Promise<{ payload: JWTPayload; assurance: TokenAssurance }> {
   try {
@@ -268,7 +269,7 @@ export async function verifySupabaseToken(
  * Takes the ONE binding it needs, not `Env` — the `localSetFromCache` rule.
  */
 export async function sessionRevoked(
-  revoked: KVNamespace | undefined,
+  revoked: KvStore | undefined,
   sub: string,
   payload: Record<string, unknown>,
   logPrefix: string,
@@ -296,8 +297,8 @@ export async function sessionRevoked(
 /** The bindings the two boundaries read. Each carrier's `Env` satisfies it. */
 export interface AuthBindings {
   readonly SUPABASE_URL: string;
-  readonly JWKS_CACHE?: KVNamespace;
-  readonly SESSION_REVOKED?: KVNamespace;
+  readonly JWKS_CACHE?: KvStore;
+  readonly SESSION_REVOKED?: KvStore;
   readonly APP_ID?: string;
 }
 

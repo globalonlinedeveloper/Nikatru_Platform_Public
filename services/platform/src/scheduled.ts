@@ -15,6 +15,7 @@
 // it as a choice, so nobody re-derives a constraint that has been paid off.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
+import type { KvStore } from '../../_shared/src/ports/kv';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
@@ -2767,7 +2768,7 @@ export async function backupRerunJob(
   nowMs: number = Date.now(),
   backup: typeof runBackup = runBackup,
 ): Promise<'none' | 'ran' | 'expired' | 'malformed' | 'failed'> {
-  const kv = env.CONFIG_KV as KVNamespace | undefined;
+  const kv: KvStore | undefined = env.CONFIG_KV;
   if (!kv) return 'none';
   let raw: string | null;
   try {

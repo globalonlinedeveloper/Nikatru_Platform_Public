@@ -99,6 +99,24 @@
 //               is the positive control: absent, or not matched, is COVERAGE LOST.
 //               Declared exceptions (MONITOR_API_EXCEPTIONS) print on every run,
 //               and one that no longer calls the API is a stale row.
+//  12 bindings  ⏱ 2026-10-02 · port-storage. No module under services/*/src names
+//               a Cloudflare binding TYPE (`KVNamespace`, `R2Bucket` and its R2
+//               types, `RateLimit`) outside a Worker's composition root
+//               (src/ports.ts), its `types.ts`, or services/_shared/src/ports/
+//               (the ports, their fakes and adapters) — every handler takes the
+//               PORT type. The pattern must still match SOMETHING in the tree
+//               (the adapters name the types), else COVERAGE LOST.
+//  13 geo       no module under services/*/src reads `.cf` (or names
+//               `IncomingRequestCfProperties`) except services/_shared/src/
+//               geo.ts, whose `requestGeo` is the one reader. geo.ts must itself
+//               still match the pattern, else COVERAGE LOST.
+//
+// ⏱ 2026-10-02 · port-storage, in limbs 1 and 8: a `draft` adapter (declared, not
+// built) may have an empty impl and, while its vendor is not chosen, `vendor: null`.
+// ONE vendor may back adapters of SEVERAL ports (Cloudflare is KV, R2 and the rate
+// limiters) only beside one _non-port row that names what is LEFT (`remaining`) and
+// the train that ports it (`until`); without such a row, two ports are two
+// placements, as before. A row with `remaining` for a vendor no adapter names is stale.
 //
 // ⏱ 2026-10-02 · port-telemetry, beside limbs 6, 7 and 8: a port with a ts AND a
 // dart interface may grade each apart (`level.byInterface`): each half over the
@@ -119,7 +137,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stripSourceComments } from './text-reductions.mjs';
+import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { renderCheck } from '../ports/render.mjs';
 import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
@@ -147,7 +165,34 @@ export const LIMB_NAMES = Object.freeze({
   9: 'literals',
   10: 'client',
   11: 'monitor-api',
+  12: 'bindings',
+  13: 'geo',
 });
+
+/** Limb 12: a Cloudflare binding TYPE, named in code (comments and strings stripped). */
+export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?)\b/;
+/** Limb 13: a read of the runtime's per-request `cf` object, or its type. Matched on
+ *  comment- AND string-stripped code for the dot and destructuring forms, and on
+ *  comment-stripped code for the bracket form (whose name IS a string). */
+export const CF_READ_RE = /(?:\?\.|\.)\s*cf(?![\w$-])|\{[^{}]*(?<![\w$.-])cf(?![\w$-])[^{}]*\}\s*=(?!=)|\bIncomingRequestCfProperties\b/;
+export const CF_BRACKET_RE = /\[\s*(['"`])cf\1\s*\]/;
+/**
+ * The limb 12 and limb 13 matches in one TS module's text: the binding type it names and
+ * the `cf` read it makes, each null when absent. Comments never count; strings never
+ * count except the bracket form's own name. affected-guards.mjs selects this guard with
+ * it, so the selector and the guard cannot disagree about what a shape is.
+ */
+export function workerSourceShapes(text) {
+  const code = stripSourceComments(text, '.ts');
+  const bare = stripStringLiterals(code);
+  const binding = BINDING_TYPE_RE.exec(bare);
+  const cf = CF_READ_RE.exec(bare) ?? CF_BRACKET_RE.exec(code);
+  return { binding: binding ? binding[0] : null, cf: cf ? cf[0].trim() : null };
+}
+/** Limb 13's one permitted reader. */
+export const GEO_HOME = 'services/_shared/src/geo.ts';
+/** Limb 12's permitted homes under services/_shared. */
+export const PORTS_HOME = 'services/_shared/src/ports/';
 
 /** The ops monitor API (limb 11): the directory every ops script reaches GlitchTip's
  *  uptime-monitor API through, and its adapter — the positive control. */
@@ -398,7 +443,7 @@ export function evaluate(root) {
   const notes = [];
   const find = (limb, msg) => findings.push({ limb, msg, lost: false });
   const lost = (limb, msg) => findings.push({ limb, msg: `COVERAGE LOST — ${msg}`, lost: true });
-  const result = { findings, waivers, notes, table: [], ports: [], vendorPort: new Map(), nonPort: new Map() };
+  const result = { findings, waivers, notes, table: [], ports: [], vendorPort: new Map(), vendorPorts: new Map(), nonPort: new Map() };
 
   // ── limb 1 · schema and the set ──
   let schema;
@@ -433,11 +478,13 @@ export function evaluate(root) {
       ids.add(a?.id);
       if (a?.status === 'fake' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` is a fake with vendor ${JSON.stringify(a.vendor)}; a fake has none.`);
       // A per-channel adapter names its tooling/channel-register.json row instead of a vendor (limb 8 resolves it).
-      if (a?.status !== 'fake' && a?.vendor === null && typeof a?.channel !== 'string') find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake and names no \`channel\`.`);
+      if (a?.status !== 'fake' && a?.status !== 'draft' && a?.vendor === null && typeof a?.channel !== 'string') find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake and names no \`channel\`.`);
       if (typeof a?.channel === 'string' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` names both a vendor and a channel; a channel adapter's store is its register row's.`);
       const impl = a?.impl ?? {};
-      if (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol)) {
-        find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
+      // A draft is declared and not built: an EMPTY impl is honest for it, a half one is not.
+      const unbuiltDraft = a?.status === 'draft' && isObj(impl) && Object.keys(impl).length === 0;
+      if (!unbuiltDraft && (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol))) {
+        find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : a?.status === 'draft' ? '{file, symbol}, or {} while unbuilt,' : '{file, symbol}'} for status ${a?.status}.`);
       }
     }
     for (const a of doc?.adapters ?? []) {
@@ -479,6 +526,7 @@ export function evaluate(root) {
     for (const v of forbiddenValues(nonPortDoc)) find(1, `${NON_PORT_REL} ${v.at} carries ${v.what}.`);
     for (const r of nonPortDoc?.rows ?? []) {
       if (('until' in r) === ('nonPort' in r)) find(1, `${NON_PORT_REL} row \`${r.vendor}\` must carry exactly one of \`until\` and \`nonPort\`.`);
+      if ('remaining' in r && !('until' in r)) find(1, `${NON_PORT_REL} row \`${r.vendor}\` names \`remaining\` surfaces without \`until\`: what is left of a ported vendor is waiting for a train, not deliberately never ported.`);
     }
   } catch (e) {
     lost(8, `${NON_PORT_REL} could not be read or parsed (${e.message}); the cross-register limb has no non-port side.`);
@@ -583,6 +631,31 @@ export function evaluate(root) {
       }
     }
     notes.push(`limb 4 walked ${tsFiles.length} TS module(s), ${edges} relative import(s)`);
+  }
+
+  // ── limbs 12 and 13 · Cloudflare binding types and `.cf`, over the same walk ──
+  if (!tsFiles.length) {
+    lost(12, 'the walk read no TypeScript module under services/*/src, so "no handler names a binding type" would hold of nothing.');
+    lost(13, 'the walk read no TypeScript module under services/*/src, so "only geo.ts reads .cf" would hold of nothing.');
+  } else {
+    let bindingHomesMatched = 0;
+    let geoHomeMatched = false;
+    for (const f of tsFiles) {
+      const shape = workerSourceShapes(readFileSync(join(root, f), 'utf8'));
+      const worker = f.split('/')[1];
+      const bindingHome = f === `services/${worker}/${COMPOSITION_ROOT}` || f === `services/${worker}/src/types.ts` || f.startsWith(PORTS_HOME);
+      if (shape.binding) {
+        if (bindingHome) bindingHomesMatched++;
+        else find(12, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
+      }
+      if (shape.cf) {
+        if (f === GEO_HOME) geoHomeMatched = true;
+        else find(13, `\`${f}\` reads the runtime's \`cf\` object (\`${shape.cf}\`). Request geography is \`requestGeo\` in ${GEO_HOME}, the one reader.`);
+      }
+    }
+    if (!bindingHomesMatched) lost(12, `the binding-type pattern matched nothing in ${tsFiles.length} module(s), not even in a types.ts or ${PORTS_HOME} — a pattern that matches nothing refuses nothing.`);
+    if (!geoHomeMatched) lost(13, `${GEO_HOME} ${tsFiles.includes(GEO_HOME) ? 'no longer matches the `.cf` pattern' : 'was not walked (moved or deleted)'}; with the one reader unseen, "nothing else reads .cf" is evidence of nothing.`);
+    notes.push(`limbs 12/13 read ${tsFiles.length} TS module(s): binding types in ${bindingHomesMatched} permitted home(s), .cf only in ${GEO_HOME}`);
   }
 
   // ── limb 5 · secrets ──
@@ -715,7 +788,8 @@ export function evaluate(root) {
     const all = new Map();
     for (const id of capIds) all.set(id, new Set(['capability-register']));
     for (const id of provIds) all.set(id, new Set([...(all.get(id) ?? []), 'provider-register']));
-    const placed = new Map(); // vendor -> [where]
+    // vendor -> [where]: one entry per PORT (two adapters of one port are one placement) and one per _non-port row
+    const placed = new Map();
     const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
     // ⏱ 2026-10-02 · port-telemetry: a `draft` adapter whose vendor ANOTHER port (or a
     // _non-port row) already places is not a second placement — telemetry's `mail`
@@ -733,7 +807,9 @@ export function evaluate(root) {
         if (inPort.has(a.vendor)) { result.vendorPort.get(a.vendor).adapter += `, ${a.id}`; continue; }
         inPort.add(a.vendor);
         place(a.vendor, `${doc.port}/${a.id}`);
-        result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
+        const entry = { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 };
+        if (!result.vendorPort.has(a.vendor)) result.vendorPort.set(a.vendor, entry);
+        result.vendorPorts.set(a.vendor, [...(result.vendorPorts.get(a.vendor) ?? []), entry]);
       }
     }
     for (const r of nonPortDoc.rows ?? []) {
@@ -747,13 +823,32 @@ export function evaluate(root) {
       else if (here) result.vendorPort.get(a.vendor).adapter += `, ${a.id}`;
       else {
         place(a.vendor, `${doc.port}/${a.id}`);
-        result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
+        const entry = { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 };
+        result.vendorPort.set(a.vendor, entry);
+        result.vendorPorts.set(a.vendor, [entry]);
       }
     }
     for (const [id, regs] of all) {
       const at = placed.get(id) ?? [];
+      const rows = at.filter((w) => w === '_non-port');
+      const portsAt = at.filter((w) => w !== '_non-port');
+      const row = result.nonPort.get(id);
       if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
-      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one port's adapters or one non-port row.`);
+      else if (at.length === 1) continue;
+      // ⏱ 2026-10-02 · port-storage: ONE vendor of SEVERAL capabilities (Cloudflare is KV, R2
+      // and the rate limiters) is one adapter per port beside ONE _non-port row naming what
+      // is LEFT (`remaining`) and the train that ports it (`until`). Without that row, two
+      // ports are two placements.
+      else if (rows.length === 1 && Array.isArray(row?.remaining) && row.remaining.length && row.until) {
+        notes.push(`limb 8: vendor ${id} is the adapter of ${portsAt.map((w) => w.split('/')[0]).join(', ')}; what is left (${row.remaining.join(', ')}) until ${row.until}`);
+      } else if (rows.length === 1 && portsAt.length) {
+        find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); a non-port row beside a vendor's adapters must name what is LEFT (\`remaining\`) and the train that ports it (\`until\`).`);
+      } else find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one port's adapters or one non-port row.`);
+    }
+    for (const r of nonPortDoc.rows ?? []) {
+      if ('remaining' in r && !(placed.get(r.vendor) ?? []).some((w) => w !== '_non-port')) {
+        find(8, `${NON_PORT_REL} row \`${r.vendor}\` names \`remaining\` surfaces, but \`${r.vendor}\` is no adapter of any port: the row is the whole answer. Drop \`remaining\`.`);
+      }
     }
     for (const v of placed.keys()) {
       if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);
@@ -1003,7 +1098,13 @@ function walkMjs(root, relDir, out) {
 
 /** One printable line per vendor for C-8: its port and earned level, or why it has none. */
 export function portLineFor(result, vendor) {
+  const many = result.vendorPorts?.get(vendor) ?? [];
   const p = result.vendorPort.get(vendor);
+  if (many.length > 1 || (p && result.nonPort.get(vendor)?.remaining)) {
+    const rest = result.nonPort.get(vendor);
+    const lines = many.map((x) => `${x.port} (adapter ${x.adapter}, earned L${x.earned})`).join('; ');
+    return `port: ${lines}${rest?.remaining ? ` — the rest (${rest.remaining.join(', ')}) none yet, until ${rest.until}` : ''}`;
+  }
   if (p) return `port: ${p.port} (adapter ${p.adapter}, earned L${p.earned})`;
   const n = result.nonPort.get(vendor);
   if (n) return n.nonPort ? 'port: none — deliberately not ported' : `port: none yet — until ${n.until}`;

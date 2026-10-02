@@ -14,7 +14,9 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (both 
 `AuthRepository`) and `tooling/ports/telemetry.json`, each claiming L2 with target L3; every other vendor is placed in
 `tooling/ports/_non-port.json`. Since port-telemetry, `telemetry.json` grades two interfaces apart: the Dart
 `TelemetryClient` at L3 (conformance suite `packages/telemetry/lib/testing.dart`) and the Worker half (`ErrorSink`,
-`Notifier` in `services/_shared/src/ports/telemetry.ts`) at L2. Payments also carries its CLIENT half (`client`: the Dart
+`Notifier` in `services/_shared/src/ports/telemetry.ts`) at L2. port-storage added `kv.json` (`KvStore`), `objects.json`
+(`ObjectStore`) and `ratelimit.json` (`RateLimiter`), each claiming and targeting L2: Cloudflare's KV, R2 and Rate
+Limiting bindings behind ports, with their conformance suites run against the fakes. Payments also carries its CLIENT half (`client`: the Dart
 `PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped.
@@ -62,9 +64,9 @@ wherever the shape can hold it).
 | `level.byInterface` | Optional `{ts?, dart?}`, each `{claimed, target}`: each interface graded over its own adapters (by impl.file language); the port claims and earns the lowest. |
 | `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
+| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake, or a `draft` whose vendor is not chosen yet (e.g. `objects.json`'s `s3`, the S3-API exit). Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not, unless the vendor's `_non-port.json` row names what is left (`remaining`, beside `until`) — Cloudflare backs `kv`, `objects` and `ratelimit`. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
-| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
+| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`; for an unbuilt `draft`, `{}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
@@ -95,7 +97,9 @@ wherever the shape can hold it).
 | `_why` | Prose: the honest state and its reasons. |
 
 `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
-`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`.
+`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`. One vendor may
+be the adapter of **several** ports (one adapter per port — Cloudflare is `kv`, `objects` and `ratelimit`); such a vendor
+keeps a row only for what is LEFT, naming those surfaces in `remaining` beside `until` (limb 8).
 
 ### The rules
 
@@ -114,6 +118,13 @@ wherever the shape can hold it).
 ### TypeScript ports (Workers)
 
 - The port lives in `services/_shared/src/ports/<port>.ts`: types and pure helpers only, **no vendor import**.
+- **A binding that already satisfies its port structurally is not wrapped.** Its adapter is the identity function in
+  `services/_shared/src/ports/adapters/<vendor>.ts` — the compile-time proof that the binding IS the port — and every
+  `Env` declares the binding as the PORT type. Outside a composition root, a `types.ts` and `services/_shared/src/ports/`,
+  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`) — limb 9.
+- **Request geography is `requestGeo(req)`** (`services/_shared/src/geo.ts`), the one reader of `request.cf` — limb 10.
+  It is used only where it was used (the edge-ceiling key, the events row, the request log): never to choose a payment
+  rail, and never `country` for money.
 - Capability verbs, never vendor nouns. **Outcomes, never throws across the port:**
   `{ ok: true, ... } | { ok: false, kind: 'refused' | 'unavailable' | 'invalid' | 'timeout', retryable, detail }`.
 - Capabilities are declared; secrets are named; **a missing secret fails closed** on money and auth.
@@ -208,7 +219,9 @@ Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level �
 10 client (a port's Dart half: each adapter's conformance test CALLS its seam's runner; every class in `packages/*/lib`
 implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`) ·
 11 monitor-api (no `tooling/ops` script outside `tooling/ops/monitor-api/` calls GlitchTip's uptime-monitor API itself;
-declared exceptions print).
+declared exceptions print) · 12 bindings (no `services/*/src` module outside a composition root, a `types.ts` or
+`services/_shared/src/ports/` names a Cloudflare binding type) · 13 geo (only `services/_shared/src/geo.ts` reads `.cf`);
+limbs 12 and 13 are COVERAGE LOST when their pattern no longer matches its own permitted home.
 Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`. Limb 8 places a vendor once per port: mail's
 Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port, and a `draft` adapter whose vendor another port
 already places (telemetry's `mail` notifier, resend) is not a second placement: the pairing prints.

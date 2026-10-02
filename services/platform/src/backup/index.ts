@@ -25,6 +25,8 @@
 import { dumpD1Database, dumpKvNamespace, gzipAndDigest } from './dump';
 import type { D1QueryPool } from './dump';
 import { APP_KV, APP_TARGETS } from '../generated/app-targets';
+import type { KvStore } from '../../../_shared/src/ports/kv';
+import type { ObjectListPage, ObjectStore } from '../../../_shared/src/ports/objects';
 
 /**
  * The per-invocation D1 query budget this export may spend: ONE pool, shared by
@@ -120,10 +122,10 @@ export const MAX_R2_DELETES_PER_RUN = 200;
 export interface BackupEnv {
   PLATFORM_DB: D1Database;
   SUBSCRIPTIONTRACKER_DB: D1Database;
-  CONFIG_KV: KVNamespace;
-  JWKS_CACHE?: KVNamespace;
-  SIGNUPS?: KVNamespace;
-  BACKUPS_R2?: R2Bucket;
+  CONFIG_KV: KvStore;
+  JWKS_CACHE?: KvStore;
+  SIGNUPS?: KvStore;
+  BACKUPS_R2?: ObjectStore;
 }
 
 /** One line of the heartbeat this run writes. Same shape the other limbs use. */
@@ -279,13 +281,13 @@ export async function runBackup(
   }
 
   // ── KV ────────────────────────────────────────────────────────────────────
-  const namespaces: { name: string; ns: KVNamespace | undefined }[] = [
+  const namespaces: { name: string; ns: KvStore | undefined }[] = [
     { name: 'platform-config', ns: env.CONFIG_KV },
     { name: 'platform-jwks', ns: env.JWKS_CACHE },
     { name: 'nikatru-signups', ns: env.SIGNUPS },
     // Every app Worker's KV namespace the platform does not already bind (deduplicated by id; empty
     // while every app shares the platform's JWKS_CACHE and SESSION_REVOKED) — GENERATED, as above.
-    ...APP_KV.map((k) => ({ name: k.name, ns: (env as unknown as Record<string, KVNamespace | undefined>)[k.binding] })),
+    ...APP_KV.map((k) => ({ name: k.name, ns: (env as unknown as Record<string, KvStore | undefined>)[k.binding] })),
   ];
   for (const { name, ns } of namespaces) {
     const key = `${prefix}kv/${name}/${date}.json.gz`;
@@ -375,7 +377,7 @@ export async function runBackup(
     let cursor: string | undefined;
     const doomed: string[] = [];
     for (;;) {
-      const listed: R2Objects = await bucket.list({ cursor, limit: 1000 });
+      const listed: ObjectListPage = await bucket.list({ cursor, limit: 1000 });
       for (const o of listed.objects) {
         if (o.key === 'manifests/latest.json') continue;
         if (doomed.length >= MAX_R2_DELETES_PER_RUN) break;

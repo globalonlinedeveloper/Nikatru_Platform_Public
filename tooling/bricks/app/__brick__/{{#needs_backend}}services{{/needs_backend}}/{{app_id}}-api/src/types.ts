@@ -1,4 +1,8 @@
 import type { AuthRecency } from '../../_shared/src/auth';
+/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the KV
+ *  bindings are declared as the KV PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts). */
+import type { KvStore } from '../../_shared/src/ports/kv';
 import type { Context } from 'hono';
 
 // Bindings from wrangler.jsonc. APP_DB is the ONLY per-app resource;
@@ -8,12 +12,12 @@ import type { Context } from 'hono';
 export interface Env {
   APP_DB: D1Database;
   PLATFORM_DB: D1Database;
-  JWKS_CACHE: KVNamespace;
+  JWKS_CACHE: KvStore;
   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The shared revocation list
   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
   // writes it. Optional: absence fails OPEN, and
   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
-  SESSION_REVOKED?: KVNamespace;
+  SESSION_REVOKED?: KvStore;
   APP_ID: string;
   SUPABASE_URL: string;
   API_VERSION: string;

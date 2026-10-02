@@ -6,6 +6,15 @@
  *  limiter that reads it (services/_shared/src/rate-limit.ts). */
 import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
 export type { RateLimiterBinding };
+/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): every KV and
+ *  R2 binding is declared as its PORT, so no handler sees more of the binding
+ *  than the port carries. The Cloudflare binding satisfies each structurally —
+ *  services/_shared/src/ports/adapters/cloudflare.ts is the compile-time proof,
+ *  and assert-ports limb 9 refuses a `KVNamespace` / `R2Bucket` / `RateLimit`
+ *  type anywhere else. */
+import type { KvStore } from '../../_shared/src/ports/kv';
+import type { ObjectStore } from '../../_shared/src/ports/objects';
+export type { KvStore, ObjectStore };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
@@ -15,7 +24,7 @@ export interface Env {
   SUBSCRIPTIONTRACKER_DB: D1Database;
 
   // Edge-cached per-app config overrides (key: `config:<app>`).
-  CONFIG_KV: KVNamespace;
+  CONFIG_KV: KvStore;
 
   /**
    * Warm cache for the Supabase JWKS document, so an ES256 verify does not fetch
@@ -27,7 +36,7 @@ export interface Env {
    * Verification never degrades to a weaker check — there is no fallback path
    * (see middleware/auth.ts for why the HS256 one was deliberately not ported).
    */
-  JWKS_CACHE?: KVNamespace;
+  JWKS_CACHE?: KvStore;
 
   /**
    * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The revocation list: key
@@ -42,7 +51,7 @@ export interface Env {
    * hole; tooling/ci/assert-session-revocation.mjs reds a carrier whose config
    * does not bind it.
    */
-  SESSION_REVOKED?: KVNamespace;
+  SESSION_REVOKED?: KvStore;
 
   /**
    * The signups namespace, bound for ONE reason: the nightly export
@@ -58,7 +67,7 @@ export interface Env {
    * Optional so a deploy without it still runs; the export then records the
    * namespace as FAILED rather than skipping it silently.
    */
-  SIGNUPS?: KVNamespace;
+  SIGNUPS?: KvStore;
 
   /**
    * The one portfolio backup bucket. Written by the 02:30 cron only.
@@ -66,7 +75,7 @@ export interface Env {
    * Optional for the same reason as the KV bindings above: absence must produce a
    * RED heartbeat row, not a build failure and not a green run that wrote nothing.
    */
-  BACKUPS_R2?: R2Bucket;
+  BACKUPS_R2?: ObjectStore;
 
   /**
    * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT

@@ -1,0 +1,116 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "kv",
+  "level": {
+    "claimed": 2,
+    "target": 2
+  },
+  "interface": {
+    "ts": {
+      "file": "services/_shared/src/ports/kv.ts",
+      "symbols": [
+        "KvStore"
+      ]
+    }
+  },
+  "adapters": [
+    {
+      "id": "cloudflare-kv",
+      "vendor": "cloudflare",
+      "status": "live",
+      "impl": {
+        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
+        "symbol": "cloudflareKv"
+      },
+      "capabilities": [
+        "get",
+        "put",
+        "delete",
+        "list",
+        "ttl"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "Nothing durable lives in KV: last-good app config, the public JWKS document, short-lived session-revocation records and rate counters — every one rebuildable from its source (the config documents, the identity server, a fresh sign-out). The nightly export still copies each namespace to R2 (services/platform/src/backup/index.ts). Cannot move: nothing that matters — KV has no bulk export, so a switch REBUILDS on the target rather than copying.",
+      "readAt": null,
+      "c8Seam": {
+        "file": "packages/core/lib/src/config/config_loader.dart",
+        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). KV is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
+        "until": "port-sql"
+      }
+    },
+    {
+      "id": "memory",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/kv.ts",
+        "symbol": "memoryKv"
+      },
+      "capabilities": [
+        "get",
+        "put",
+        "delete",
+        "list",
+        "ttl"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/ports-kv.test.ts"
+      },
+      "exportDuty": "A test double: a Map with TTL that lives for one test. Nothing to export.",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "environment",
+    "source": null,
+    "default": {
+      "live": "cloudflare-kv",
+      "sandbox": "cloudflare-kv",
+      "test": "memory"
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": {
+    "suite": {
+      "file": "services/_shared/test/conformance/kv.ts",
+      "runner": "runKvConformance"
+    },
+    "pending": [
+      {
+        "adapter": "cloudflare-kv",
+        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      }
+    ]
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#kv",
+    "dryRun": "node tooling/ops/port-switch.mjs kv --to <adapter> --dry-run"
+  },
+  "_why": [
+    "CONFIG_KV, JWKS_CACHE, SESSION_REVOKED and SIGNUPS are declared as KvStore in every Worker's `interface Env`, and every handler — the auth plumbing in services/_shared/src/auth-middleware.ts included — takes a KvStore. The binding satisfies it STRUCTURALLY; cloudflareKv is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 9 refuses a KVNamespace type anywhere else under services/*/src.",
+    "L2 claimed, L2 target: the selection is by environment (wrangler binds the namespace in live and sandbox; the memory fake serves tests), no caller imports an adapter, and one non-fake adapter is live. L3 would need a second REAL store and a switch runbook, and nothing durable lives here to justify one (tooling/capability-register.json cloudflare.exitPlan: \"Deliberately kept: nothing durable lives in KV\").",
+    "The conformance suite runs against the memory fake; against the binding it is PENDING, because no Worker suite runs on workerd. A missing key is null, not a throw; list pages; a TTL expires."
+  ]
+}

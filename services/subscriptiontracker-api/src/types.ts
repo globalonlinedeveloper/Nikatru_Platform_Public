@@ -1,4 +1,8 @@
 import type { AuthRecency } from '../../_shared/src/auth';
+/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the KV
+ *  bindings are declared as the KV PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts). */
+import type { KvStore } from '../../_shared/src/ports/kv';
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types for the Worker. Keep the Env interface in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,13 +18,13 @@ export interface Env {
   PLATFORM_DB: D1Database; // shared entitlements across the portfolio
 
   // KV — caches the Supabase JWKS document
-  JWKS_CACHE: KVNamespace;
+  JWKS_CACHE: KvStore;
 
   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. KV — the shared revocation list
   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
   // writes it. Optional: absence fails OPEN, and
   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
-  SESSION_REVOKED?: KVNamespace;
+  SESSION_REVOKED?: KvStore;
 
   // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
   // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:

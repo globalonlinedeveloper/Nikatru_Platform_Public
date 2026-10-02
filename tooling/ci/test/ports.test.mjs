@@ -67,7 +67,10 @@ function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other'
   w('tooling/capability-register.json', JSON.stringify({ vendors: { _why: [], acme: { seam: { file: 'services/w/src/lib/contract.ts', symbol: 'WidgetPort' } } } }));
   w('tooling/legal/provider-register.json', JSON.stringify({ providers: [{ id: 'acme' }, { id: 'other' }] }));
   w('tooling/house-identity.json', JSON.stringify({ ownerDomain: { value: 'acme.test', why: 'fixture' } }));
-  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n');
+  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n  CACHE?: KVNamespace;\n}\n');
+  // limb 13's one reader, and limb 12's binding type in a permitted home (types.ts above): each
+  // limb's pattern must still match SOMETHING, or it is coverage lost.
+  w('services/_shared/src/geo.ts', 'export function requestGeo(req: Request) {\n  return (req as Request & { cf?: { colo?: string } }).cf?.colo;\n}\n');
   w('services/w/src/lib/contract.ts', 'export interface WidgetPort {\n  verify(): boolean;\n}\n');
   w('services/w/src/lib/acme.ts', "import type { WidgetPort } from './contract';\nexport const acmeVerifier: WidgetPort = { verify: () => true };\n");
   w('services/w/src/lib/fake.ts', "import type { WidgetPort } from './contract';\nexport const fakeWidget: WidgetPort = { verify: () => false };\n");
@@ -224,7 +227,8 @@ describe('assert-ports — every limb reddens', () => {
     assert.match(r.out, /no row of tooling\/worker-secrets\.json/);
   });
   it('limb 5: no interface Env anywhere is COVERAGE LOST', () => {
-    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = 1;\n' } }));
+    // (a binding type stays in types.ts, so limb 12's own coverage holds and limb 5 is the one that decides)
+    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = KVNamespace;\n' } }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.first, /^assert-ports: COVERAGE LOST — limb 5 \(secrets\): no `interface Env` member/);
   });
@@ -307,6 +311,90 @@ describe('assert-ports — every limb reddens', () => {
     const stale = run(fixture({ ports: { widgets: declared } }));
     assert.equal(stale.code, 1, stale.out);
     assert.match(stale.out, /Remove the stale waiver/);
+  });
+  it('limb 1: a DRAFT adapter may be unbuilt (empty impl) and vendorless; anything else may not', () => {
+    const draft = { ...adapter({ id: 'next', vendor: null, status: 'draft', impl: {} }) };
+    const ok = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, draft] }) } }));
+    assert.equal(ok.code, 0, ok.out);
+    const built = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, status: 'built' }] }) } }));
+    assert.equal(built.code, 1, built.out);
+    assert.match(built.first, /limb 1 \(schema\).*adapter `next` has vendor null but is not a fake and names no `channel`/);
+    const half = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, impl: { file: 'services/w/src/lib/next.ts' } }] }) } }));
+    assert.equal(half.code, 1, half.out);
+    assert.match(half.out, /impl must be \{file, symbol\}, or \{\} while unbuilt/);
+  });
+  it('limb 8: ONE vendor may be the adapter of SEVERAL ports, with a non-port row for what is LEFT', () => {
+    const gizmos = port({
+      port: 'gizmos',
+      handTables: [],
+      adapters: [adapter({ id: 'acme-gizmo', impl: { file: 'services/w/src/lib/gizmo.ts', symbol: 'acmeGizmo' } }), port().adapters[1]],
+      selection: { by: 'single', source: null, default: { live: 'acme-gizmo', sandbox: 'acme-gizmo', test: 'fake' }, canary: null },
+    });
+    const files = { 'services/w/src/lib/gizmo.ts': "import type { WidgetPort } from './contract';\nexport const acmeGizmo: WidgetPort = { verify: () => true };\n" };
+    const rest = { vendor: 'acme', registers: ['provider-register'], reason: 'the rest of acme waits for its own train', until: 'port-x', remaining: ['the sql binding'] };
+    const nonPortRows = [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true }, rest];
+    const ok = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files }));
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /vendor acme is the adapter of gizmos, widgets; what is left \(the sql binding\) until port-x/);
+    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files })), 'acme'),
+      'port: gizmos (adapter acme-gizmo, earned L2); widgets (adapter acme, earned L2) — the rest (the sql binding) none yet, until port-x');
+    // red: the same row without `remaining` is a vendor placed three times
+    const { remaining: _r, ...bare } = rest;
+    const noRest = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows: [nonPortRows[0], bare], files }));
+    assert.equal(noRest.code, 1, noRest.out);
+    assert.match(noRest.first, /limb 8 \(cross-register\): vendor `acme` is placed 3 times .*must name what is LEFT/);
+    // red: `remaining` on a vendor no port has an adapter for
+    const stale = run(fixture({ nonPortRows: [{ ...nonPortRows[0], nonPort: undefined, until: 'port-x', remaining: ['x'] }].map(({ nonPort: _n, ...r }) => r) }));
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /row `other` names `remaining` surfaces, but `other` is no adapter of any port/);
+  });
+  it('limb 12: a handler typed with a Cloudflare binding type exits 1 and the first line names limb 12', () => {
+    const r = run(fixture({ files: { 'services/w/src/routes/h.ts': 'export async function h(kv: KVNamespace) {\n  return kv.get("k");\n}\n' } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 12 \(bindings\): `services\/w\/src\/routes\/h\.ts` names the Cloudflare binding type `KVNamespace`/);
+    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit']) {
+      const x = run(fixture({ files: { 'services/w/src/routes/h.ts': `export const h = (b: ${t}) => b;\n` } }));
+      assert.equal(x.code, 1, `${t}: ${x.out}`);
+      assert.match(x.first, new RegExp(`limb 12 .*\`${t}\``));
+    }
+  });
+  it('limb 12: the composition root, a types.ts and services/_shared/src/ports/ may name it; a comment or a string is not a type', () => {
+    for (const rel of ['services/w/src/ports.ts', 'services/_shared/src/ports/adapters/cf.ts', 'services/v/src/types.ts']) {
+      const r = run(fixture({ files: { [rel]: 'export const adapt = (b: KVNamespace) => b;\n' } }));
+      assert.equal(r.code, 0, `${rel}: ${r.out}`);
+    }
+    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\n' } }));
+    assert.equal(prose.code, 0, prose.out);
+  });
+  it('limb 12: a pattern that matches NOTHING in the tree is COVERAGE LOST (exit 2)', () => {
+    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n' } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /COVERAGE LOST — limb 12 \(bindings\): the binding-type pattern matched nothing/);
+  });
+  it('limb 13: a `.cf` read outside geo.ts exits 1 — dot, optional chain, bracket and destructuring alike', () => {
+    for (const body of [
+      'export const c = (r: Request) => (r as any).cf?.colo;\n',
+      'export const c = (r: any) => r?.cf;\n',
+      "export const c = (r: any) => r['cf'];\n",
+      'export function c(r: any) {\n  const { cf } = r;\n  return cf;\n}\n',
+      'export type G = IncomingRequestCfProperties;\n',
+    ]) {
+      const r = run(fixture({ files: { 'services/w/src/routes/e.ts': body } }));
+      assert.equal(r.code, 1, `${body}${r.out}`);
+      assert.match(r.first, /limb 13 \(geo\): `services\/w\/src\/routes\/e\.ts` reads the runtime's `cf` object/);
+    }
+  });
+  it("limb 13: prose about request.cf, a 'cf-' header and a cf-named local are not reads", () => {
+    const r = run(fixture({ files: { 'services/w/src/routes/e.ts': "// keyed on request.cf\nexport const h = (n: string) => n.startsWith('cf-') || n === 'x.cf';\nexport const cf = 1;\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('limb 13: geo.ts gone (or no longer reading cf) is COVERAGE LOST (exit 2)', () => {
+    const gone = run(fixture({ files: { 'services/_shared/src/geo.ts': null } }));
+    assert.equal(gone.code, 2, gone.out);
+    assert.match(gone.first, /COVERAGE LOST — limb 13 \(geo\): services\/_shared\/src\/geo\.ts was not walked/);
+    const blind = run(fixture({ files: { 'services/_shared/src/geo.ts': 'export const requestGeo = () => ({});\n' } }));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.first, /no longer matches the `\.cf` pattern/);
   });
   it('the exported reader gives C-8 its one line per vendor', () => {
     const r = evaluate(fixture());
@@ -525,6 +613,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
     for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
     assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
+    for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L2`, 'm')); // port-storage
+    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit; what is left \(D1/);
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
@@ -700,6 +790,40 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.doesNotMatch(r.out, /`services\/platform\/src\/ports\.ts` imports the adapter/);
     } finally { writeFileSync(rel, before); }
   });
+  it('red: a REAL handler re-typed KVNamespace reddens limb 12 (routes/sessions.ts)', () => {
+    const rel = join(root, 'services/platform/src/routes/sessions.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /kv: KvStore \| undefined/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('kv: KvStore | undefined', 'kv: KVNamespace | undefined'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 12 \(bindings\): `services\/platform\/src\/routes\/sessions\.ts` names the Cloudflare binding type `KVNamespace`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: the REAL events route reading request.cf directly again reddens limb 13', () => {
+    const rel = join(root, 'services/platform/src/routes/events.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /requestGeo\(c\.req\.raw\)/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('requestGeo(c.req.raw)', '((c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf ?? {})'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 13 \(geo\): `services\/platform\/src\/routes\/events\.ts` reads the runtime's `cf` object/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it("red: Cloudflare's non-port row without `remaining` reddens limb 8", () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      delete doc.rows.find((x) => x.vendor === 'cloudflare').remaining;
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 4 times/);
+    } finally { writeFileSync(rel, before); }
+  });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');
     const before = readFileSync(rel, 'utf8');
@@ -854,7 +978,7 @@ describe('assert-ports — limb 10, the client half, reddens', () => {
 });
 
 describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
-  it('a registry-named impl file, a registry, and a shared port module select it; an unnamed route does not', async () => {
+  it('a registry-named impl file, a registry, a shared port module and geo.ts select it; an unnamed route does not', async () => {
     const { buildChecks, select, trackedTree } = await import('../../scripts/affected-guards.mjs');
     const { checks, contentLost } = buildChecks(REPO, trackedTree(REPO));
     assert.deepEqual(contentLost, []);
@@ -863,7 +987,18 @@ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
     assert.equal(picks('packages/telemetry/lib/src/noop_telemetry_client.dart'), true, 'named by telemetry.json impl.file');
     assert.equal(picks('tooling/ports/payments.json'), true);
     assert.equal(picks('services/_shared/src/ports/payments.ts'), true);
-    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it');
+    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it, and it names no binding type and reads no .cf');
+    // limbs 9/10: the one .cf reader, and a module whose TEXT carries the shape
+    assert.equal(picks('services/_shared/src/geo.ts'), true, "limb 10's one reader");
+    assert.equal(picks('services/_shared/src/ports/adapters/cloudflare.ts'), true, 'a registry impl file that names the binding types');
+    assert.equal(picks('services/platform/src/routes/events.ts'), false, 'reads geography only through requestGeo');
+    // the content branch itself: a binding type or a `.cf` read in Worker source selects; prose and tests do not
+    const content = checks.find((c) => c.id === 'guard:assert-ports').subjects.find((x) => x.kind === 'content');
+    const route = 'services/platform/src/routes/x.ts';
+    assert.equal(content.test(route, 'export const f = (k: KVNamespace) => k;\n'), true);
+    assert.equal(content.test(route, 'export const f = (r: any) => r.cf?.country;\n'), true);
+    assert.equal(content.test(route, '// keyed on request.cf, never a KVNamespace\nexport const x = 1;\n'), false);
+    assert.equal(content.test('services/platform/test/x.test.ts', 'export const f = (r: any) => r.cf;\n'), false, 'a test is not Worker source');
     assert.equal(picks('services/platform/src/lib/mor/paddle-cancel.ts'), true, 'named by payments.json outbound.modules');
     assert.equal(picks('services/platform/src/lib/mor/paddle-rail.ts'), true, 'named by payments.json outbound.file');
     assert.equal(picks('services/platform/src/generated/ports.ts'), true, 'the rendered table limb 3 checks');
