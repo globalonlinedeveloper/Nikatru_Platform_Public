@@ -408,6 +408,7 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
       'razorpay-subscription-add-on': { rail: 'razorpay', value: { percentBps: 50 } },
       'india-gst': { rail: 'razorpay', value: { percentBps: 1800 } },
     },
+    taxRegions: { rows: { IN: { value: { percentBps: 1800 } }, HU: { value: { percentBps: 2700 } } } },
   };
   const CHANNELS = {
     channels: [
@@ -429,7 +430,7 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
         adapter({ id: 'fake', vendor: null, status: 'fake', secrets: [], identity: [], environments: ['test'], conformance: { file: 'test/fake.test.ts' } }),
       ],
       features: {
-        import: { adapter: 'acme', model: featureModel, effort: null, candidates: ['claude-haiku-4-5', 'claude-opus-5-5'], tokensPerCall: tokens, why: 'the fixture import feature' },
+        import: { adapter: 'acme', model: featureModel, effort: null, maxInputTokens: 8000, candidates: ['claude-haiku-4-5', 'claude-opus-5-5'], tokensPerCall: tokens, why: 'the fixture import feature' },
       },
       selection: { by: 'per-call', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
       switch: { runbook: 'Private/runbooks/switch-vendor.md#ai', dryRun: 'node tooling/ops/port-switch.mjs ai --to <adapter> --dry-run' },
@@ -437,17 +438,19 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
   const aiFixture = (doc, fees = FEES) => fixture(doc, { 'tooling/catalog/fee-register.json': JSON.stringify(fees), 'tooling/channel-register.json': JSON.stringify(CHANNELS) });
 
   it('🔴 Opus 5.5 at 3,000 in and 500 out: the floor per channel is the hand computation', () => {
-    // C = 3000 × 4 / 1e6 + 500 × 20 / 1e6 = 0.012 + 0.010 = 0.022 USD per call; 4C = 0.088.
-    //   paddle      0.088 / (1 − 0.05)          = 0.092631… → 0.0927 per unit, + 0.50 / 0.95 = 0.526315… → 0.5264 per pack
-    //   razorpay    0.088 / (1/1.18 − 0.02)     = 0.088 / 0.827457… = 0.106349… → 0.1064
-    //   apple-iap   0.088 × 1.18 / (1 − 0.30)   = 0.148342… → 0.1484 (the 30% cell, not the 15% one)
+    // C = 3000 × max(4, 5 cache-write) / 1e6 + 500 × 20 / 1e6 = 0.015 + 0.010 = 0.025 USD per call; 4C = 0.1.
+    // The tax is the HIGHEST region's (HU 27%) everywhere but the India web book (IN 18%):
+    //   paddle      0.1 / (1/1.27 − 0.05)       = 0.1 / 0.737401… = 0.135612… → 0.1357 per unit,
+    //               + 0.50 / 0.737401…          = 0.678060… → 0.6781 per pack
+    //   razorpay    0.1 / (1/1.18 − 0.02)       = 0.1 / 0.827457… = 0.120852… → 0.1209
+    //   apple-iap   0.1 × 1.27 / (1 − 0.30)     = 0.181428… → 0.1815 (the 30% cell, not the 15% one)
     //   play        its only cell is subscription-only → LOST, never 15% guessed for a one-time pack
     const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort())]);
-    assert.match(r.out, /PASS  C16 features: import on claude-opus-5-5: 3000 in \+ 500 out \(declared\) = USD 0\.022000 per call/);
-    assert.match(r.out, /import — claude-opus-5-5, cost USD 0\.022000 per call, 4× = 0\.088000/);
-    assert.match(r.out, /web\s+paddle\s+≥ 0\.0927 per unit \+ 0\.5264 per pack/);
-    assert.match(r.out, /web\/IN\s+razorpay\s+≥ 0\.1064 per unit/);
-    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1484 per unit\s+\(4C × \(1 \+ 18% GST\) \/ \(1 − 30% apple-iap-standard\)\)/);
+    assert.match(r.out, /PASS  C16 features: import on claude-opus-5-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.025000 per call/);
+    assert.match(r.out, /import — claude-opus-5-5, cost USD 0\.025000 per call, 4× = 0\.100000/);
+    assert.match(r.out, /web\s+paddle\s+≥ 0\.1357 per unit \+ 0\.6781 per pack/);
+    assert.match(r.out, /web\/IN\s+razorpay\s+≥ 0\.1209 per unit/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1815 per unit\s+\(4C × \(1 \+ 27% tax, HU\) \/ \(1 − 30% apple-iap-standard\)\)/);
     assert.match(r.out, /android-play\s+play-billing\s+LOST — .*no cell for a one-time pack on `play-billing` \(play-billing-subscription is subscription-only/);
     assert.doesNotMatch(r.out, /apps-gov-in/);
     // A LOST floor is exit 2, never a pass.
@@ -460,7 +463,7 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
     fees.cells['play-billing-one-time'] = { rail: 'play-billing', value: { percentBps: 3000 } };
     const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort(), fees)]);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /android-play\s+play-billing\s+≥ 0\.1484 per unit/);
+    assert.match(r.out, /android-play\s+play-billing\s+≥ 0\.1815 per unit/);
     assert.match(r.out, /PASS  C7 standby: a model switch keeps `acme`; the rollback is each feature's previous model \(import: unset\)/);
     assert.match(r.out, /PASS  C17 floor: 1 feature\(s\) × 4 channel row\(s\) floored at 4× cost/);
   });
@@ -475,9 +478,10 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
 
   it('naming a cheaper model floors lower', () => {
     const r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run', '--root', aiFixture(aiPort('claude-opus-5-5'))]);
-    // Haiku: 3000 × 1 / 1e6 + 500 × 5 / 1e6 = 0.0055; ×4 = 0.022; Apple: 0.022 × 1.18 / 0.7 = 0.037085… → 0.0371.
-    assert.match(r.out, /import on claude-haiku-4-5: 3000 in \+ 500 out \(declared\) = USD 0\.005500 per call/);
-    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.0371 per unit/);
+    // Haiku: 3000 × max(1, 1.25) / 1e6 + 500 × 5 / 1e6 = 0.00375 + 0.0025 = 0.00625; ×4 = 0.025;
+    // Apple: 0.025 × 1.27 / 0.7 = 0.045357… → 0.0454.
+    assert.match(r.out, /import on claude-haiku-4-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.006250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.0454 per unit/);
   });
 
   it("a bring-your-own-key adapter prices nothing of ours: the user's key pays", () => {
@@ -486,17 +490,27 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
   });
 
   it('creditFloor and callCostUsd are the formulas the table prints', () => {
-    assert.equal(callCostUsd(OPUS, { input: 3000, output: 500 }), 0.022);
-    const apple = creditFloor('apple-iap', 0.022, FEES.cells);
-    assert.ok(Math.abs(apple.perUnit - (0.088 * 1.18) / 0.7) < 1e-12);
-    assert.match(creditFloor('play-billing', 0.022, FEES.cells).lost, /subscription-only/);
+    assert.equal(callCostUsd(OPUS, { input: 3000, output: 500 }), 0.025);
+    const apple = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows);
+    assert.ok(Math.abs(apple.perUnit - (0.1 * 1.27) / 0.7) < 1e-12);
+    assert.match(creditFloor('play-billing', 0.025, FEES.cells, FEES.taxRegions.rows).lost, /subscription-only/);
+  });
+
+  it('🔴 the floor takes the HIGHEST region tax, and with no tax table it is LOST — never India for every region', () => {
+    const india = { IN: FEES.taxRegions.rows.IN };
+    const low = creditFloor('apple-iap', 0.025, FEES.cells, india).perUnit;
+    const high = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows).perUnit;
+    assert.ok(high > low, 'adding a 27% region raises the store floor');
+    assert.match(creditFloor('apple-iap', 0.025, FEES.cells, undefined).lost, /no taxRegions\.rows/);
+    assert.match(creditFloor('razorpay', 0.025, FEES.cells, { HU: FEES.taxRegions.rows.HU }).lost, /no taxRegions\.rows\.IN/);
   });
 
   it("on the REAL registry: the AI dry run names T17's gaps — no tokens for review yet, and Play has no one-time cell", () => {
     const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run']);
     assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /import on claude-opus-5-5: 3000 in \+ 500 out \(declared\) = USD 0\.022000 per call/);
+    assert.match(r.out, /import on claude-opus-5-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.025000 per call/);
     assert.match(r.out, /review: no tokens per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1815 per unit/);
     assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
 });

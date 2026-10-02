@@ -1,48 +1,65 @@
 // ai-port.test.ts — the composition root's AI tables (src/ports.ts) are the
-// registry's (tooling/ports/ai.json `features` and the anthropic row's
-// `cost.models`), and `aiFor` builds no provider the customer has not paid for:
-// no model yet, no meter, or no key — each refused, with nothing sent.
+// registry's (tooling/ports/ai.json `features`, and the anthropic row's
+// `cost.models` and their `fallbacks`), the server adapters declare the
+// capabilities the registry lists, and `aiFor` builds no provider the customer
+// has not paid for: no model yet, no input cap, no meter, or no key — each
+// refused, with nothing sent.
 import { describe, expect, it } from 'vitest';
 import AI_RAW from '../../../tooling/ports/ai.json?raw';
 import { AI_FEATURES, AI_MODEL_CANDIDATES, costUsd } from '../../_shared/src/ports/ai';
+import { createStubAi } from '../../_shared/src/ports/fakes/ai';
 import { GRANT, conformanceRequest, CONFORMANCE_ROWS_TEXT } from '../../_shared/test/conformance/ai';
-import { AI_COST_MODEL, AI_FEATURE_TABLE, aiFor } from '../src/ports';
+import { createAnthropicAi } from '../src/adapters/ai/anthropic';
+import { AI_COST_MODEL, AI_FALLBACKS, AI_FEATURE_TABLE, AI_LIMITS, aiFor } from '../src/ports';
 
 const AI = JSON.parse(AI_RAW) as {
-  adapters: Array<{ id: string; half?: string; cost: { models?: Record<string, Record<string, unknown>> } }>;
-  features: Record<string, { adapter: string; model: string | null; effort: string | null; candidates: string[] }>;
+  adapters: Array<{ id: string; half?: string; capabilities: string[]; cost: { models?: Record<string, Record<string, unknown> & { fallbacks?: string[] }> } }>;
+  features: Record<string, { adapter: string; model: string | null; effort: string | null; maxInputTokens: number | null; candidates: string[] }>;
 };
 const SENTINEL = 'sentinel-never-logged-sentinel-never-logged';
+const models = AI.adapters.find((a) => a.id === 'anthropic')?.cost.models ?? {};
 
 describe('src/ports.ts is tooling/ports/ai.json', () => {
-  it('every feature, its adapter, its model and its effort — and nothing else', () => {
-    const want = Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, { adapter: ft.adapter, model: ft.model, effort: ft.effort }]));
+  it('every feature, its adapter, its model, its effort and its INPUT CAP — and nothing else', () => {
+    const want = Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, { adapter: ft.adapter, model: ft.model, effort: ft.effort, maxInputTokens: ft.maxInputTokens }]));
     expect(AI_FEATURE_TABLE).toEqual(want);
     expect([...AI_FEATURES].sort()).toEqual(Object.keys(AI.features).sort());
+    expect(AI_LIMITS.maxInputTokens).toEqual(Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, ft.maxInputTokens])));
   });
 
   it("the candidate list is the registry's, for every feature", () => {
     for (const ft of Object.values(AI.features)) expect(ft.candidates).toEqual([...AI_MODEL_CANDIDATES]);
   });
 
-  it("every model's price is the anthropic row's (asOf included); the verify command lives in the registry", () => {
-    const models = AI.adapters.find((a) => a.id === 'anthropic')?.cost.models ?? {};
+  it("every model's price is the anthropic row's (asOf included) — the candidates AND every model a fallback reaches", () => {
     expect(Object.keys(AI_COST_MODEL).sort()).toEqual(Object.keys(models).sort());
     for (const [id, p] of Object.entries(models)) {
-      const { source: _s, verify: _v, ...prices } = p;
+      const { source: _s, verify: _v, fallbacks: _f, ...prices } = p;
       const { verify: _mine, ...ours } = AI_COST_MODEL[id];
       expect(ours).toEqual(prices);
     }
   });
 
-  it("costUsd prices a call from the table: Opus 5.5 at 3,000 in and 500 out is 0.022 USD", () => {
+  it("each model's fallback chain is the registry's, and every model in it is priced", () => {
+    const want = Object.fromEntries(Object.entries(models).filter(([, p]) => Array.isArray(p.fallbacks) && p.fallbacks.length).map(([id, p]) => [id, p.fallbacks]));
+    expect(AI_FALLBACKS).toEqual(want);
+    for (const chain of Object.values(AI_FALLBACKS)) for (const m of chain) expect(AI_COST_MODEL[m]).toBeDefined();
+  });
+
+  it('the server adapters declare the capabilities the registry lists (one source: this assertion)', () => {
+    const declared = (id: string) => [...(AI.adapters.find((a) => a.id === id)?.capabilities ?? [])].sort();
+    expect([...createAnthropicAi({ apiKey: SENTINEL, limits: AI_LIMITS }).capabilities].sort()).toEqual(declared('anthropic'));
+    expect([...createStubAi({ limits: AI_LIMITS }).capabilities].sort()).toEqual(declared('stub'));
+  });
+
+  it('costUsd prices a call from the table: Opus 5.5 at 3,000 in and 500 out is 0.022 USD', () => {
     expect(costUsd(AI_COST_MODEL, 'claude-opus-5-5', { inputTokens: 3000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBeCloseTo(0.022, 12);
     expect(costUsd(AI_COST_MODEL, 'claude-opus-5-5', { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 0 })).toBeCloseTo(0.2, 12);
     expect(costUsd(AI_COST_MODEL, 'not-a-model', { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBeNull();
   });
 });
 
-describe('aiFor — CUSTOMER-PAYS: no provider without a model, a meter and a key', () => {
+describe('aiFor — CUSTOMER-PAYS: no provider without a model, an input cap, a meter and a key', () => {
   it('today every feature has no model yet, so nothing can call a model even with a meter and a key', () => {
     for (const f of AI_FEATURES) {
       const sel = aiFor(f, { NIKATRU_ANTHROPIC_API_KEY: SENTINEL }, { beforeCall: GRANT });
@@ -51,7 +68,7 @@ describe('aiFor — CUSTOMER-PAYS: no provider without a model, a meter and a ke
   });
 
   it('🔴 with a model set, no meter still means no provider — and with a meter, the provider calls through it', async () => {
-    const row = AI_FEATURE_TABLE.import as { adapter: 'anthropic'; model: string | null; effort: string | null };
+    const row = AI_FEATURE_TABLE.import as { adapter: 'anthropic'; model: string | null; effort: string | null; maxInputTokens: number | null };
     const saved = row.model;
     let calls = 0;
     const fetchImpl = (async () => {
@@ -71,6 +88,21 @@ describe('aiFor — CUSTOMER-PAYS: no provider without a model, a meter and a ke
       expect(calls).toBe(1);
       // No selection ever carries the key.
       expect(JSON.stringify({ ...sel, provider: sel.provider.id }).includes(SENTINEL) ? 'match' : 'no match').toBe('no match');
+    } finally {
+      row.model = saved;
+    }
+  }, 20_000);
+
+  it('🔴 a feature with a model but NO input cap builds no provider: a call could not be reserved at its worst case', () => {
+    const row = AI_FEATURE_TABLE.review as { adapter: 'anthropic'; model: string | null; effort: string | null; maxInputTokens: number | null };
+    const saved = row.model;
+    try {
+      row.model = 'claude-haiku-4-5';
+      expect(row.maxInputTokens).toBeNull();
+      expect(aiFor('review', { NIKATRU_ANTHROPIC_API_KEY: SENTINEL }, { beforeCall: GRANT })).toEqual({
+        ok: false,
+        detail: 'ai: feature review has no input cap (tooling/ports/ai.json features.review.maxInputTokens), so no provider is built',
+      });
     } finally {
       row.model = saved;
     }

@@ -15,9 +15,11 @@
 // every real adapter (services/_shared/test/ai-stub.conformance.test.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import {
+  type AiAttempt,
   type AiBeforeCall,
   type AiCallOptions,
   type AiCapability,
+  type AiLimits,
   type AiOutcome,
   type AiProvider,
   type AiRequest,
@@ -31,7 +33,15 @@ import {
 
 /** One scripted answer. */
 export type StubAiAnswer =
-  | { readonly kind: 'stop'; readonly stopReason: AiStopReason; readonly text: string | null; readonly usage?: AiUsage; readonly servedModel?: string }
+  | {
+      readonly kind: 'stop';
+      readonly stopReason: AiStopReason;
+      readonly text: string | null;
+      readonly usage?: AiUsage;
+      readonly servedModel?: string;
+      /** Every attempt the provider ran (a fallback chain is several); default: one, the served model's. */
+      readonly attempts?: readonly AiAttempt[];
+    }
   | { readonly kind: 'status'; readonly status: number }
   | { readonly kind: 'hang' };
 
@@ -46,6 +56,8 @@ export interface StubAiProvider extends AiProvider {
 
 export interface StubAiDeps {
   readonly beforeCall?: AiBeforeCall;
+  /** The same spend limits a real adapter is built with: prices, input caps, fallback chains. */
+  readonly limits: AiLimits;
   /** The text an unscripted call ends with. */
   readonly defaultText?: string;
   /** How long a `hang` waits before it gives up, when no signal aborts it first. */
@@ -55,7 +67,7 @@ export interface StubAiDeps {
 const CARRIER = 'stub ai';
 export const STUB_AI_USAGE: AiUsage = { inputTokens: 120, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
-export function createStubAi(deps: StubAiDeps = {}): StubAiProvider {
+export function createStubAi(deps: StubAiDeps): StubAiProvider {
   const queue: StubAiAnswer[] = [];
   const requests: AiRequest[] = [];
   const capabilities: ReadonlySet<AiCapability> = new Set<AiCapability>(['structured', 'vision', 'cache']);
@@ -72,20 +84,22 @@ export function createStubAi(deps: StubAiDeps = {}): StubAiProvider {
       queue.push(next);
     },
     async complete(request: AiRequest, options?: AiCallOptions): Promise<AiOutcome> {
-      const reserved = await reserveOrRefuse(CARRIER, deps.beforeCall, request);
+      const reserved = await reserveOrRefuse(CARRIER, deps.beforeCall, request, deps.limits);
       if (!('id' in reserved)) return reserved;
       requests.push(request);
       const next = queue.shift() ?? { kind: 'stop', stopReason: 'end_turn', text: deps.defaultText ?? '{}' };
-      if (next.kind === 'status') return aiAnsweredOutcome(CARRIER, next.status, reserved.id);
+      if (next.kind === 'status') return aiAnsweredOutcome(CARRIER, next.status, reserved.id, reserved.reserveUsd);
       if (next.kind === 'hang') {
         const err = await new Promise<Error>((resolve) => {
           const done = () => resolve(Object.assign(new Error('aborted'), { name: 'TimeoutError' }));
           options?.signal?.addEventListener('abort', done, { once: true });
           setTimeout(done, deps.timeoutMs ?? 20);
         });
-        return aiNoAnswerOutcome(CARRIER, err, reserved.id);
+        return aiNoAnswerOutcome(CARRIER, err, reserved.id, reserved.reserveUsd);
       }
-      return stoppedOutcome(CARRIER, next.stopReason, next.text, request.schema, next.usage ?? STUB_AI_USAGE, next.servedModel ?? request.model, reserved.id);
+      const usage = next.usage ?? STUB_AI_USAGE;
+      const served = next.servedModel ?? request.model;
+      return stoppedOutcome(CARRIER, next.stopReason, next.text, request.schema, usage, served, next.attempts ?? [{ model: served, usage }], reserved);
     },
   };
 }

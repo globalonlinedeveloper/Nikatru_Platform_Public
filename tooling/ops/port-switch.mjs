@@ -86,16 +86,18 @@
 //   C17 floor     per feature and per selling channel: the MINIMUM credit-pack
 //                 price per unit, so the money the channel leaves us is at least
 //                 AI_COST_MULTIPLE (4) times the cost (owner lock, 2026-10-01).
-//                 From tooling/catalog/fee-register.json, for a ONE-TIME pack:
-//                   store rail      4C × (1 + GST) / (1 − commission) — the
+//                 From tooling/catalog/fee-register.json, for a ONE-TIME pack,
+//                 C priced with input as cache writes, and the tax the HIGHEST
+//                 in `taxRegions` so the floor holds in every region:
+//                   store rail      4C × (1 + top tax) / (1 − commission) — the
 //                                   highest commission cell of the rail (30%
 //                                   on the App Store where it applies), the
-//                                   store remitting the GST inside the price;
-//                   razorpay        4C / (1/(1 + GST) − fee) — we are the
-//                                   seller of record and remit the GST;
-//                   paddle          4C / (1 − fee) per unit, plus the fixed
-//                                   fee / (1 − fee) once per pack — Paddle,
-//                                   the merchant of record, handles the tax.
+//                                   store remitting the tax inside the price;
+//                   razorpay        4C / (1/(1 + IN tax) − fee) — the India web
+//                                   book, where we are the seller of record;
+//                   paddle          4C / (1/(1 + top tax) − fee) per unit, plus
+//                                   the fixed fee over the same once per pack —
+//                                   a tax-inclusive price is assumed.
 //                 A subscription-only cell does not apply to a pack, so a rail
 //                 whose only cell is one (Play today) is LOST, never guessed.
 //                 Rounded UP at four decimals: a minimum never rounds down.
@@ -468,40 +470,53 @@ const STORE_RAILS = new Set(['apple-iap', 'play-billing']);
 const ceil4 = (x) => Math.ceil(x * 1e4 - 1e-9) / 1e4;
 const usd4 = (x) => ceil4(x).toFixed(4);
 
-/** The USD one call costs at `price` (a cost.models row), for `tokens` in and out. */
+/**
+ * The USD one call costs at `price` (a cost.models row), for `tokens` in and out.
+ * Input is priced at the DEARER of input and cache write: the adapter caches the
+ * system prefix, and a user's calls are usually more than the cache's minutes
+ * apart, so the prefix is written, not read (review 1 of #1136).
+ */
 export function callCostUsd(price, tokens) {
-  return (tokens.input * price.inputUsdPerMTok + tokens.output * price.outputUsdPerMTok) / 1_000_000;
+  return (tokens.input * Math.max(price.inputUsdPerMTok, price.cacheWriteUsdPerMTok ?? 0) + tokens.output * price.outputUsdPerMTok) / 1_000_000;
 }
 
 /**
  * The minimum price per unit of a ONE-TIME credit pack on a rail, so that what
- * the rail leaves us is at least AI_COST_MULTIPLE × `costUsd`; or {lost}.
- * Returns {perUnit, perPack, how} — `perPack` is the fixed fee carried once per pack.
+ * the rail leaves us is at least AI_COST_MULTIPLE × `costUsd` IN EVERY REGION; or
+ * {lost}. `taxRegions` is fee-register.json `taxRegions.rows`: a buyer's price can
+ * carry its region's tax, so the floor takes the HIGHEST rate there — except on
+ * razorpay, which sells only on the India web book, at IN's.
+ *   store rail  4C × (1 + top tax) / (1 − the rail's highest commission cell)
+ *   razorpay    4C / (1/(1 + IN tax) − fee)
+ *   paddle      4C / (1/(1 + top tax) − fee) per unit, plus the fixed fee over the
+ *               same divisor once per pack — whether a Paddle price is tax-inclusive
+ *               is recorded nowhere, so the floor assumes it is (the safe side).
+ * Returns {perUnit, perPack, how}.
  */
-export function creditFloor(rail, costUsd, cells) {
+export function creditFloor(rail, costUsd, cells, taxRegions) {
   const all = Object.entries(cells).filter(([, c]) => isObj(c) && c.rail === rail);
-  const usable = all.filter(([id, c]) => !SUBSCRIPTION_ONLY.test(id) && isObj(c.value) && Number.isInteger(c.value.percentBps));
-  const gstCell = cells['india-gst'];
-  const gstBps = isObj(gstCell?.value) && Number.isInteger(gstCell.value.percentBps) ? gstCell.value.percentBps : null;
-  const gst = gstBps === null ? null : gstBps / 10_000;
-  const fees = usable.filter(([id]) => id !== 'india-gst');
+  const fees = all.filter(([id, c]) => id !== 'india-gst' && !SUBSCRIPTION_ONLY.test(id) && isObj(c.value) && Number.isInteger(c.value.percentBps));
   if (!fees.length) {
     const skipped = all.map(([id]) => id).filter((id) => id !== 'india-gst');
     return { lost: `${FEE_REGISTER} carries no cell for a one-time pack on \`${rail}\`${skipped.length ? ` (${skipped.join(', ')} ${skipped.length === 1 ? 'is' : 'are'} subscription-only or valueless)` : ''}` };
   }
+  const rates = Object.entries(isObj(taxRegions) ? taxRegions : {}).filter(([, r]) => isObj(r?.value) && Number.isInteger(r.value.percentBps));
+  if (!rates.length) return { lost: `${FEE_REGISTER} has no taxRegions.rows: the floor cannot hold in every region without the regions' tax` };
+  const [topRegion, topRow] = rates.reduce((x, y) => (y[1].value.percentBps > x[1].value.percentBps ? y : x));
+  const tax = (row) => row.value.percentBps / 10_000;
   const floor = AI_COST_MULTIPLE * costUsd;
-  const top = fees.reduce((a, b) => (b[1].value.percentBps > a[1].value.percentBps ? b : a));
+  const top = fees.reduce((x, y) => (y[1].value.percentBps > x[1].value.percentBps ? y : x));
   const pct = top[1].value.percentBps / 10_000;
   const pctText = `${top[1].value.percentBps / 100}%`;
-  const gstText = `${gstBps === null ? '?' : gstBps / 100}% GST`;
+  const taxText = (region, row) => `${row.value.percentBps / 100}% tax, ${region}`;
   if (STORE_RAILS.has(rail)) {
-    if (gst === null) return { lost: `${FEE_REGISTER} has no india-gst value; the store remits GST from the price` };
-    return { perUnit: (floor * (1 + gst)) / (1 - pct), perPack: 0, how: `4C × (1 + ${gstText}) / (1 − ${pctText} ${top[0]})` };
+    return { perUnit: (floor * (1 + tax(topRow))) / (1 - pct), perPack: 0, how: `4C × (1 + ${taxText(topRegion, topRow)}) / (1 − ${pctText} ${top[0]})` };
   }
   if (rail === 'razorpay') {
-    if (gst === null) return { lost: `${FEE_REGISTER} has no india-gst value; on the India web book we remit it` };
-    const net = 1 / (1 + gst) - pct;
-    return { perUnit: floor / net, perPack: 0, how: `4C / (1/(1 + ${gstText}) − ${pctText} ${top[0]})` };
+    const inRow = isObj(taxRegions?.IN) ? taxRegions.IN : null;
+    if (!inRow || !Number.isInteger(inRow.value?.percentBps)) return { lost: `${FEE_REGISTER} has no taxRegions.rows.IN; on the India web book we remit it` };
+    const net = 1 / (1 + tax(inRow)) - pct;
+    return { perUnit: floor / net, perPack: 0, how: `4C / (1/(1 + ${taxText('IN', inRow)}) − ${pctText} ${top[0]})` };
   }
   const fixedCells = fees.filter(([, c]) => Number.isInteger(c.value.fixedMinor) && c.value.fixedMinor > 0);
   for (const [id, c] of fixedCells) {
@@ -509,7 +524,8 @@ export function creditFloor(rail, costUsd, cells) {
     if (problem) return { lost: `${FEE_REGISTER} cell \`${id}\` ${problem}` };
   }
   const fixed = fixedCells.reduce((m, [, c]) => Math.max(m, c.value.fixedMinor), 0) / 100;
-  return { perUnit: floor / (1 - pct), perPack: fixed / (1 - pct), how: `4C / (1 − ${pctText} ${top[0]})${fixed ? ` + ${fixed.toFixed(2)} fixed / (1 − ${pctText}) per pack` : ''}` };
+  const net = 1 / (1 + tax(topRow)) - pct;
+  return { perUnit: floor / net, perPack: fixed / net, how: `4C / (1/(1 + ${taxText(topRegion, topRow)}) − ${pctText} ${top[0]})${fixed ? ` + ${fixed.toFixed(2)} fixed over the same, per pack` : ''}` };
 }
 
 /** C15–C17 · what an AI switch costs, per feature and per channel. Returns the floor lines. */
@@ -543,12 +559,17 @@ export function aiChecks(root, doc, target, model, add) {
     const c = callCostUsd(priced[m], ft.tokensPerCall);
     costs.push({ feature: f, model: m, tokens: ft.tokensPerCall, cost: c });
   }
-  const costText = costs.map((c) => `${c.feature} on ${c.model}: ${c.tokens.input} in + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
+  const costText = costs.map((c) => `${c.feature} on ${c.model}: ${c.tokens.input} in (priced as cache writes) + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
   if (lost16.length) add(16, 'features', 'LOST', `${lost16.join('; ')}${costText ? ` — priced: ${costText}` : ''}`);
   else add(16, 'features', 'PASS', costText);
   // C17
   let cells;
-  try { cells = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8'))?.cells; } catch (e) { add(17, 'floor', 'LOST', `${FEE_REGISTER} could not be read (${e.message})`); return lines; }
+  let taxRegions;
+  try {
+    const feeDoc = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8'));
+    cells = feeDoc?.cells;
+    taxRegions = feeDoc?.taxRegions?.rows;
+  } catch (e) { add(17, 'floor', 'LOST', `${FEE_REGISTER} could not be read (${e.message})`); return lines; }
   let channels;
   try { channels = (JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')).channels ?? []).filter((c) => c?.surface === 'app' && c?.purchaseRail?.rail && c.purchaseRail.rail !== 'none'); } catch (e) {
     add(17, 'floor', 'LOST', `${CHANNEL_REGISTER} could not be read (${e.message})`);
@@ -569,7 +590,7 @@ export function aiChecks(root, doc, target, model, add) {
   for (const c of costs) {
     lines.push(`      ${c.feature} — ${c.model}, cost USD ${c.cost.toFixed(6)} per call, ${AI_COST_MULTIPLE}× = ${(AI_COST_MULTIPLE * c.cost).toFixed(6)}`);
     for (const row of rows) {
-      const fl = creditFloor(row.rail, c.cost, isObj(cells) ? cells : {});
+      const fl = creditFloor(row.rail, c.cost, isObj(cells) ? cells : {}, taxRegions);
       if (fl.lost) { lost17.push(`${c.feature}/${row.id}: ${fl.lost}`); lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} LOST — ${fl.lost}`); continue; }
       lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} ≥ ${usd4(fl.perUnit)} per unit${fl.perPack ? ` + ${usd4(fl.perPack)} per pack` : ''}   (${fl.how})`);
     }

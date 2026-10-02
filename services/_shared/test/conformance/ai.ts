@@ -36,8 +36,20 @@
 //   bad-request         a 400 is `invalid`, not retryable
 //   model-from-config   two requests naming two models put two different
 //                       `model` values on the wire
+//   unpriced-model      a model with no price (or a fallback with none) is refused
+//                       BEFORE the reservation and the wire
+//   no-input-cap        a feature with no input cap in config is refused
+//   input-over-cap      an input over its feature's cap is refused before the
+//                       reservation and the wire
+//   fallback-metered    a declined attempt and the fallback that answered are BOTH
+//                       billed, each at its own model's prices (a hand computation)
+//   reservation-covers-charge  the reservation is the worst case: never below the
+//                       charge, and settling releases the difference
+//   timeout-settles-at-reservation  no answer is usage UNKNOWN: it settles at the
+//                       reservation, never at zero
 // ─────────────────────────────────────────────────────────────────────────────
-import type { AiBeforeCall, AiModelId, AiOutcome, AiProvider, AiRequest, AiUsage } from '../../src/ports/ai';
+import type { AiAttempt, AiBeforeCall, AiCostModel, AiLimits, AiModelId, AiOutcome, AiProvider, AiRequest, AiReservationRequest, AiUsage } from '../../src/ports/ai';
+import { attemptsUsd, settle } from '../../src/ports/ai';
 import { buildEnvelope } from '../../src/error-sink';
 
 export const AI_SCENARIOS = [
@@ -52,6 +64,12 @@ export const AI_SCENARIOS = [
   'server-error',
   'bad-request',
   'model-from-config',
+  'unpriced-model',
+  'no-input-cap',
+  'input-over-cap',
+  'fallback-metered',
+  'reservation-covers-charge',
+  'timeout-settles-at-reservation',
 ] as const;
 export type AiScenario = (typeof AI_SCENARIOS)[number];
 
@@ -107,8 +125,46 @@ export const conformanceRequest = (model: AiModelId = 'claude-haiku-4-5'): AiReq
   maxOutputTokens: 512,
 });
 
-/** The meter's three answers. */
+/**
+ * The limits every harness is built with — the prices of tooling/ports/ai.json
+ * (read 2026-10-02), an import cap, NO cap for review, and Opus 5.5's priced
+ * fallback chain.
+ */
+const price = (input: number, output: number, cacheRead: number, cacheWrite: number) =>
+  ({ inputUsdPerMTok: input, outputUsdPerMTok: output, cacheReadUsdPerMTok: cacheRead, cacheWriteUsdPerMTok: cacheWrite, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' });
+export const CONFORMANCE_PRICES: AiCostModel = {
+  'claude-haiku-4-5': price(1, 5, 0.1, 1.25),
+  'claude-sonnet-5-5': price(2, 10, 0.2, 2.5),
+  'claude-opus-5-5': price(4, 20, 0.2, 5),
+  'claude-opus-4-8': price(5, 25, 0.5, 6.25),
+  'claude-opus-5': price(5, 25, 0.5, 6.25),
+};
+export const CONFORMANCE_INPUT_CAP = 8000;
+export const CONFORMANCE_LIMITS: AiLimits = {
+  prices: CONFORMANCE_PRICES,
+  maxInputTokens: { import: CONFORMANCE_INPUT_CAP, review: null },
+  fallbacks: { 'claude-opus-5-5': ['claude-opus-4-8', 'claude-opus-5'] },
+};
+
+/**
+ * The fallback-metered fixture: Opus 5.5 declines mid-output, Opus 4.8 answers.
+ * By hand, at the prices above:
+ *   Opus 5.5  1000 in × 4 + 200 out × 20 + 1500 cache-write × 5 = 15,500 / 1e6 = 0.0155
+ *   Opus 4.8  2500 in × 5 + 400 out × 25                          = 22,500 / 1e6 = 0.0225
+ *   charge                                                                       0.0380 USD
+ */
+export const FALLBACK_ATTEMPTS: readonly AiAttempt[] = [
+  { model: 'claude-opus-5-5', usage: { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 1500 } },
+  { model: 'claude-opus-4-8', usage: { inputTokens: 2500, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+];
+export const FALLBACK_CHARGE_USD = 0.038;
+
+/** The meter's answers. GRANT grants; `recordingGrant` grants and keeps every request it was asked. */
 export const GRANT: AiBeforeCall = async () => ({ ok: true, id: 'reservation-1' });
+export const recordingGrant = (into: AiReservationRequest[]): AiBeforeCall => async (r) => {
+  into.push(r);
+  return { ok: true, id: `reservation-${into.length}` };
+};
 export const REFUSE: AiBeforeCall = async () => ({ ok: false, detail: 'no credits' });
 
 const fail = (scenario: string, what: string): never => {
@@ -122,12 +178,8 @@ function expectFailure(scenario: string, out: AiOutcome, kind: string, retryable
   if ('output' in out) fail(scenario, `a ${kind} outcome carries output`);
 }
 
-/** The meter each scenario runs under. */
-export const scenarioMeter = (scenario: AiScenario): AiBeforeCall | undefined =>
-  scenario === 'reservation-refused' ? REFUSE : scenario === 'no-meter' ? undefined : GRANT;
-
 /** Run ONE scenario against one harness; throws (with the reason) when the adapter does not conform. */
-export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret: string): Promise<void> {
+export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret: string, reservations: readonly AiReservationRequest[] = []): Promise<void> {
   const p = h.provider;
   switch (scenario) {
     case 'structured-rows': {
@@ -228,6 +280,58 @@ export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret
       }
       return;
     }
+    case 'unpriced-model': {
+      const out = await p.complete(conformanceRequest('claude-unpriced-fixture' as AiModelId));
+      expectFailure(scenario, out, 'invalid', false);
+      if (h.calls() !== 0 || reservations.length !== 0) fail(scenario, `an unpriced model reached the meter (${reservations.length}) or the wire (${h.calls()})`);
+      return;
+    }
+    case 'no-input-cap': {
+      const out = await p.complete({ ...conformanceRequest(), feature: 'review' });
+      expectFailure(scenario, out, 'invalid', false);
+      if (h.calls() !== 0 || reservations.length !== 0) fail(scenario, 'a feature with no input cap reached the meter or the wire');
+      return;
+    }
+    case 'input-over-cap': {
+      const out = await p.complete({ ...conformanceRequest(), input: 'x'.repeat(CONFORMANCE_INPUT_CAP + 1) });
+      expectFailure(scenario, out, 'invalid', false);
+      if (h.calls() !== 0 || reservations.length !== 0) fail(scenario, 'an input over its cap reached the meter or the wire');
+      return;
+    }
+    case 'fallback-metered': {
+      const out = await p.complete(conformanceRequest('claude-opus-5-5'));
+      if (!out.ok) return fail(scenario, `expected ok, got ${out.kind} (${out.detail})`);
+      if (!out.billing.known) return fail(scenario, 'a call that answered reported its usage as unknown');
+      const models = out.billing.attempts.map((a) => a.model);
+      if (JSON.stringify(models) !== JSON.stringify(FALLBACK_ATTEMPTS.map((a) => a.model))) fail(scenario, `attempts ${JSON.stringify(models)}: every attempt is billed, the declined one too`);
+      const r = reservations[0] ?? fail(scenario, 'no reservation was asked for');
+      if (JSON.stringify(r.attemptModels) !== JSON.stringify(['claude-opus-5-5', 'claude-opus-4-8', 'claude-opus-5'])) fail(scenario, `the reservation covered ${JSON.stringify(r.attemptModels)}, not the whole chain`);
+      const st = settle(CONFORMANCE_PRICES, r.reserveUsd, out);
+      if (Math.abs(st.chargeUsd - FALLBACK_CHARGE_USD) > 1e-12) fail(scenario, `charged ${st.chargeUsd}, the hand computation is ${FALLBACK_CHARGE_USD}`);
+      if (st.chargeUsd > r.reserveUsd) fail(scenario, 'the charge is above the reservation');
+      return;
+    }
+    case 'reservation-covers-charge': {
+      const out = await p.complete(conformanceRequest('claude-sonnet-5-5'));
+      if (!out.ok) return fail(scenario, `expected ok, got ${out.kind}`);
+      const r = reservations[0] ?? fail(scenario, 'no reservation was asked for');
+      if (r.maxInputTokens !== CONFORMANCE_INPUT_CAP || r.estimatedInputTokens > r.maxInputTokens) fail(scenario, 'the reservation does not carry the input cap and an estimate within it');
+      if (out.billing.known !== true) return fail(scenario, 'usage unknown on an answered call');
+      const charge = attemptsUsd(CONFORMANCE_PRICES, out.billing.attempts) ?? fail(scenario, 'an attempt is unpriced');
+      if (!(r.reserveUsd >= charge)) fail(scenario, `reserved ${r.reserveUsd} below the charge ${charge}`);
+      const st = settle(CONFORMANCE_PRICES, r.reserveUsd, out);
+      if (st.basis !== 'attempts' || Math.abs(st.releaseUsd - (r.reserveUsd - charge)) > 1e-12) fail(scenario, 'settling did not release the difference');
+      return;
+    }
+    case 'timeout-settles-at-reservation': {
+      const out = await p.complete(conformanceRequest());
+      expectFailure(scenario, out, 'timeout', false);
+      if (out.billing.known) fail(scenario, 'no answer was reported as known usage: it may still have been billed');
+      const r = reservations[0] ?? fail(scenario, 'no reservation was asked for');
+      const st = settle(CONFORMANCE_PRICES, r.reserveUsd, out);
+      if (st.chargeUsd !== r.reserveUsd || st.releaseUsd !== 0 || st.basis !== 'reservation') fail(scenario, `a timeout settled at ${st.chargeUsd}, not its reservation ${r.reserveUsd}`);
+      return;
+    }
   }
 }
 
@@ -250,8 +354,10 @@ export function runAiConformance(subject: AiConformanceSubject, t: AiTestApi): v
     for (const s of AI_SCENARIOS) {
       t.it(s, async () => {
         const build = subject.fixtures[s] as (b: AiBeforeCall | undefined) => AiHarness | Promise<AiHarness>;
-        const h = await build(scenarioMeter(s));
-        await checkAiScenario(s, h, subject.secret);
+        const reservations: AiReservationRequest[] = [];
+        const meter = s === 'reservation-refused' ? REFUSE : s === 'no-meter' ? undefined : recordingGrant(reservations);
+        const h = await build(meter);
+        await checkAiScenario(s, h, subject.secret, reservations);
       });
     }
   });

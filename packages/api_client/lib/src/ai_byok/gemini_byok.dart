@@ -24,15 +24,18 @@ import 'ai_byok_capabilities.dart';
 import 'byok_call.dart';
 
 class GeminiByok implements AiProvider {
+  /// [transport] is the socket layer only, for tests; the adapter builds its OWN
+  /// [Dio] around it, so no interceptor, header or logger of the app's can reach
+  /// a request carrying the user's key. It never takes the app's Dio or RestClient.
   GeminiByok({
     required this.keys,
-    required this.dio,
     required this.platform,
+    HttpClientAdapter? transport,
     this.timeout = byokCallTimeout,
-  });
+  }) : _dio = byokDio(transport);
 
   final SecureStore keys;
-  final Dio dio;
+  final Dio _dio;
   final HttpPlatform platform;
   final Duration timeout;
 
@@ -85,7 +88,7 @@ class GeminiByok implements AiProvider {
     if (key == null || key.isEmpty) return byokNoKey(_carrier);
     return byokPost(
       carrier: _carrier,
-      dio: dio,
+      dio: _dio,
       uri: endpointFor(request.model),
       timeout: timeout,
       headers: <String, String>{'x-goog-api-key': key},

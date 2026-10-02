@@ -38,11 +38,14 @@
 //   · 🔴 NO METER, NO PROVIDER: without T17's `beforeCall` (the reservation) no
 //     provider is built, and the adapter refuses on its own as well — two locks
 //     on the one rule that no call is made that the customer has not paid for;
-//   · AI_COST_MODEL is the price of every candidate model, mirroring ai.json
-//     `adapters[anthropic].cost.models`, for the meter to price `servedModel`.
+//   · AI_COST_MODEL is the price of every model a call may reach (the candidates
+//     and their fallbacks), AI_FALLBACKS each model's priced fallback chain, and
+//     each feature's maxInputTokens its input cap — together AI_LIMITS, which
+//     the adapter checks BEFORE the wire and the meter settles with
+//     (ports/ai.ts reserveOrRefuse, settle). All mirror ai.json.
 // The stub (services/_shared/src/ports/fakes/ai.ts) is never selected here.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
+import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiLimits, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
 import type { MailSenders, MailStream, MailTransport } from '../../_shared/src/ports/mail';
 import { createAnthropicAi } from './adapters/ai/anthropic';
 import { createResendMail } from './adapters/mail/resend';
@@ -161,17 +164,31 @@ export function portFor(port: 'payments', environment: PortEnvironment): readonl
   return PAYMENTS_ADAPTERS.filter((a) => a.environments.includes(environment)).map((a) => a.id);
 }
 
-/** Per feature: the adapter, the model (null until T17 measures) and its effort. */
-export const AI_FEATURE_TABLE: Readonly<Record<AiFeature, { adapter: 'anthropic'; model: AiModelId | null; effort: AiEffort | null }>> = {
-  import: { adapter: 'anthropic', model: null, effort: null },
-  review: { adapter: 'anthropic', model: null, effort: null },
+/** Per feature: the adapter, the model (null until T17 measures), its effort, and its INPUT CAP (null: every call refused). */
+export const AI_FEATURE_TABLE: Readonly<Record<AiFeature, { adapter: 'anthropic'; model: AiModelId | null; effort: AiEffort | null; maxInputTokens: number | null }>> = {
+  import: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: 8000 },
+  review: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: null },
 };
 
-/** The price per million tokens of every candidate model (ai.json, `asOf` and `verify` there). */
+/** The price per million tokens of every model a call may reach — the candidates and their fallbacks (ai.json, `asOf` and `verify` there). */
 export const AI_COST_MODEL: AiCostModel = {
   'claude-haiku-4-5': { inputUsdPerMTok: 1, outputUsdPerMTok: 5, cacheReadUsdPerMTok: 0.1, cacheWriteUsdPerMTok: 1.25, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
   'claude-sonnet-5-5': { inputUsdPerMTok: 2, outputUsdPerMTok: 10, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 2.5, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
   'claude-opus-5-5': { inputUsdPerMTok: 4, outputUsdPerMTok: 20, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 5, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+  'claude-opus-4-8': { inputUsdPerMTok: 5, outputUsdPerMTok: 25, cacheReadUsdPerMTok: 0.5, cacheWriteUsdPerMTok: 6.25, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+  'claude-opus-5': { inputUsdPerMTok: 5, outputUsdPerMTok: 25, cacheReadUsdPerMTok: 0.5, cacheWriteUsdPerMTok: 6.25, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+};
+
+/** Per model, the refusal-fallback chain sent with it — every model in it priced above (ai.json `cost.models.<m>.fallbacks`). */
+export const AI_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
+  'claude-opus-5-5': ['claude-opus-4-8', 'claude-opus-5'],
+};
+
+/** The spend limits every AI provider is built with, from the three tables above. */
+export const AI_LIMITS: AiLimits = {
+  prices: AI_COST_MODEL,
+  maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens },
+  fallbacks: AI_FALLBACKS,
 };
 
 export type AiSelection =
@@ -186,9 +203,10 @@ export function aiFor(
 ): AiSelection {
   const row = AI_FEATURE_TABLE[feature];
   if (!row.model) return { ok: false, detail: `ai: feature ${feature} has no model yet (tooling/ports/ai.json features.${feature}.model)` };
+  if (row.maxInputTokens === null) return { ok: false, detail: `ai: feature ${feature} has no input cap (tooling/ports/ai.json features.${feature}.maxInputTokens), so no provider is built` };
   if (!wiring.beforeCall) return { ok: false, detail: 'ai: no meter is wired (beforeCall), so no provider is built' };
   const apiKey = env.NIKATRU_ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, detail: 'ai: NIKATRU_ANTHROPIC_API_KEY is not set on this Worker' };
-  const provider = createAnthropicAi({ apiKey, beforeCall: wiring.beforeCall, ...(wiring.fetchImpl ? { fetchImpl: wiring.fetchImpl } : {}) });
+  const provider = createAnthropicAi({ apiKey, beforeCall: wiring.beforeCall, limits: AI_LIMITS, ...(wiring.fetchImpl ? { fetchImpl: wiring.fetchImpl } : {}) });
   return { ok: true, feature, model: row.model, effort: row.effort, provider };
 }

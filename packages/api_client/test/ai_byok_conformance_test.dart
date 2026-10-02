@@ -114,6 +114,28 @@ class _Carrier implements HttpClientAdapter {
   }
 }
 
+/// A transport that sends every request to [to] instead — the mutation the
+/// noNikatruHost red control needs, now that an adapter takes no Dio to bend.
+class _Redirect implements HttpClientAdapter {
+  _Redirect(this.inner, this.to);
+  final HttpClientAdapter inner;
+  final Uri to;
+
+  @override
+  void close({bool force = false}) => inner.close(force: force);
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) => inner.fetch(
+    options.copyWith(path: to.toString()),
+    requestStream,
+    cancelFuture,
+  );
+}
+
 // ── recorded bodies ────────────────────────────────────────────────────────────
 
 Map<String, Object?> _anthropicMessage(
@@ -236,7 +258,8 @@ Map<String, Object?> _geminiError(int code, String status) => <String, Object?>{
 
 // ── harnesses ──────────────────────────────────────────────────────────────────
 
-typedef _Build = AiProvider Function(SecureStore keys, Dio dio);
+typedef _Build =
+    AiProvider Function(SecureStore keys, HttpClientAdapter transport);
 
 AiProviderHarness _over(
   _Build build,
@@ -246,9 +269,8 @@ AiProviderHarness _over(
   required bool modelInPath,
 }) {
   final _Carrier carrier = _Carrier(answers);
-  final Dio dio = Dio()..httpClientAdapter = carrier;
   return AiProviderHarness(
-    provider: build(keys, dio),
+    provider: build(keys, carrier),
     calls: () => carrier.seen.length,
     models: () => carrier.seen
         .map(
@@ -301,8 +323,11 @@ void main() {
       modelA: 'claude-haiku-4-5',
       modelB: 'claude-opus-5-5',
       modelInPath: false,
-      build: (SecureStore keys, Dio dio) =>
-          AnthropicByok(keys: keys, dio: dio, platform: HttpPlatform.android),
+      build: (SecureStore keys, HttpClientAdapter transport) => AnthropicByok(
+        keys: keys,
+        transport: transport,
+        platform: HttpPlatform.android,
+      ),
       expectedUsage: _cached,
       answers: <AiProviderScenario, List<_Answer>>{
         AiProviderScenario.structuredRows: <_Answer>[
@@ -360,8 +385,11 @@ void main() {
       modelA: 'fixture-model-a',
       modelB: 'fixture-model-b',
       modelInPath: false,
-      build: (SecureStore keys, Dio dio) =>
-          OpenAiByok(keys: keys, dio: dio, platform: HttpPlatform.iOS),
+      build: (SecureStore keys, HttpClientAdapter transport) => OpenAiByok(
+        keys: keys,
+        transport: transport,
+        platform: HttpPlatform.iOS,
+      ),
       expectedUsage: const AiUsage(
         inputTokens: 42,
         outputTokens: 17,
@@ -434,8 +462,11 @@ void main() {
       modelA: 'fixture-model-a',
       modelB: 'fixture-model-b',
       modelInPath: true,
-      build: (SecureStore keys, Dio dio) =>
-          GeminiByok(keys: keys, dio: dio, platform: HttpPlatform.linux),
+      build: (SecureStore keys, HttpClientAdapter transport) => GeminiByok(
+        keys: keys,
+        transport: transport,
+        platform: HttpPlatform.linux,
+      ),
       expectedUsage: const AiUsage(
         inputTokens: 42,
         outputTokens: 17,
@@ -566,30 +597,28 @@ void main() {
           'openai-byok': 'api.openai.com',
           'gemini-byok': 'generativelanguage.googleapis.com',
         };
-        final Map<String, AiProvider Function(Dio)> adapters =
-            <String, AiProvider Function(Dio)>{
-              'anthropic-byok': (Dio d) => AnthropicByok(
+        final Map<String, AiProvider Function(HttpClientAdapter)> adapters =
+            <String, AiProvider Function(HttpClientAdapter)>{
+              'anthropic-byok': (HttpClientAdapter d) => AnthropicByok(
                 keys: keyed('anthropic'),
-                dio: d,
+                transport: d,
                 platform: HttpPlatform.macOS,
               ),
-              'openai-byok': (Dio d) => OpenAiByok(
+              'openai-byok': (HttpClientAdapter d) => OpenAiByok(
                 keys: keyed('openai'),
-                dio: d,
+                transport: d,
                 platform: HttpPlatform.macOS,
               ),
-              'gemini-byok': (Dio d) => GeminiByok(
+              'gemini-byok': (HttpClientAdapter d) => GeminiByok(
                 keys: keyed('gemini'),
-                dio: d,
+                transport: d,
                 platform: HttpPlatform.macOS,
               ),
             };
-        for (final MapEntry<String, AiProvider Function(Dio)> e
+        for (final MapEntry<String, AiProvider Function(HttpClientAdapter)> e
             in adapters.entries) {
           final _Carrier c = _Carrier(ok);
-          await e
-              .value(Dio()..httpClientAdapter = c)
-              .complete(aiConformanceRequest('fixture-model-a'));
+          await e.value(c).complete(aiConformanceRequest('fixture-model-a'));
           expect(c.seen.map((_Seen s) => s.uri.host), <String>[
             want[e.key]!,
           ], reason: e.key);
@@ -610,7 +639,7 @@ void main() {
         final _Carrier c = _Carrier(ok);
         final AnthropicByok ai = AnthropicByok(
           keys: keys,
-          dio: Dio()..httpClientAdapter = c,
+          transport: c,
           platform: HttpPlatform.windows,
         );
         expect(
@@ -646,28 +675,29 @@ void main() {
         final _Carrier a = _Carrier(ok);
         await AnthropicByok(
           keys: keyed('anthropic'),
-          dio: Dio()..httpClientAdapter = a,
+          transport: a,
           platform: HttpPlatform.web,
         ).complete(aiConformanceRequest('claude-haiku-4-5'));
         expect(
           a.seen.single.headers['anthropic-dangerous-direct-browser-access'],
           'true',
         );
-        for (final AiProvider Function(Dio) build in <AiProvider Function(Dio)>[
-          (Dio d) => OpenAiByok(
-            keys: keyed('openai'),
-            dio: d,
-            platform: HttpPlatform.web,
-          ),
-          (Dio d) => GeminiByok(
-            keys: keyed('gemini'),
-            dio: d,
-            platform: HttpPlatform.web,
-          ),
-        ]) {
+        for (final AiProvider Function(HttpClientAdapter) build
+            in <AiProvider Function(HttpClientAdapter)>[
+              (HttpClientAdapter d) => OpenAiByok(
+                keys: keyed('openai'),
+                transport: d,
+                platform: HttpPlatform.web,
+              ),
+              (HttpClientAdapter d) => GeminiByok(
+                keys: keyed('gemini'),
+                transport: d,
+                platform: HttpPlatform.web,
+              ),
+            ]) {
           final _Carrier c = _Carrier(ok);
           final AiOutcome out = await build(
-            Dio()..httpClientAdapter = c,
+            c,
           ).complete(aiConformanceRequest('fixture-model-a'));
           expect(
             out,
@@ -688,7 +718,7 @@ void main() {
         final _Carrier opus = _Carrier(ok);
         await AnthropicByok(
           keys: keyed('anthropic'),
-          dio: Dio()..httpClientAdapter = opus,
+          transport: opus,
           platform: HttpPlatform.linux,
         ).complete(aiConformanceRequest('claude-opus-5-5'));
         expect(
@@ -704,7 +734,7 @@ void main() {
         final _Carrier haiku = _Carrier(ok);
         await AnthropicByok(
           keys: keyed('anthropic'),
-          dio: Dio()..httpClientAdapter = haiku,
+          transport: haiku,
           platform: HttpPlatform.linux,
         ).complete(aiConformanceRequest('claude-haiku-4-5'));
         expect(
@@ -727,7 +757,7 @@ void main() {
         ]);
         await OpenAiByok(
           keys: keyed('openai'),
-          dio: Dio()..httpClientAdapter = o,
+          transport: o,
           platform: HttpPlatform.android,
         ).complete(aiConformanceRequest('fixture-model-a'));
         expect(o.seen.single.body['store'], isFalse);
@@ -736,7 +766,7 @@ void main() {
         ]);
         await GeminiByok(
           keys: keyed('gemini'),
-          dio: Dio()..httpClientAdapter = g,
+          transport: g,
           platform: HttpPlatform.android,
         ).complete(aiConformanceRequest('fixture-model-a'));
         expect(
@@ -757,21 +787,15 @@ void main() {
         final _Carrier c = _Carrier(<_Answer>[
           _Answer(200, _anthropicMessage('end_turn', aiConformanceRowsText)),
         ]);
-        final Dio dio = Dio()
-          ..httpClientAdapter = c
-          ..interceptors.add(
-            InterceptorsWrapper(
-              onRequest: (RequestOptions o, RequestInterceptorHandler h) =>
-                  h.next(
-                    o.copyWith(path: 'https://api.$_ownerDomain/v1/messages'),
-                  ),
-            ),
-          );
+        final _Redirect redirect = _Redirect(
+          c,
+          Uri.parse('https://api.$_ownerDomain/v1/messages'),
+        );
         final AnthropicByok ai = AnthropicByok(
           keys: InMemorySecureStore(<String, String>{
             byokKeyName('anthropic'): _sentinel,
           }),
-          dio: dio,
+          transport: redirect,
           platform: HttpPlatform.android,
         );
         final AiProviderHarness h = AiProviderHarness(

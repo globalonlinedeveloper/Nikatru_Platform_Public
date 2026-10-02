@@ -362,6 +362,16 @@ export function evaluate(root) {
       for (const m of ft.candidates ?? []) if (!isObj(priced[m])) find(1, `${rel} feature \`${name}\` lists candidate \`${m}\`, which adapter \`${a.id}\` does not price in cost.models.`);
       if (typeof ft.model === 'string' && !(ft.candidates ?? []).includes(ft.model)) find(1, `${rel} feature \`${name}\` runs on \`${ft.model}\`, which is not one of its candidates.`);
     }
+    // A fallback chain is sent with a model, so every model in it can be billed:
+    // each must be priced by the same adapter (review 1 of #1136).
+    for (const a of doc?.adapters ?? []) {
+      const priced = isObj(a?.cost?.models) ? a.cost.models : {};
+      for (const [m, row] of Object.entries(priced)) {
+        for (const f of Array.isArray(row?.fallbacks) ? row.fallbacks : []) {
+          if (!isObj(priced[f])) find(1, `${rel} adapter \`${a.id}\` model \`${m}\` falls back to \`${f}\`, which it does not price in cost.models.`);
+        }
+      }
+    }
     for (const env of ['live', 'sandbox', 'test']) {
       const sel = doc?.selection?.default?.[env];
       if (sel !== null && sel !== undefined && !ids.has(sel)) find(1, `${rel} selection.default.${env} names \`${sel}\`, which is no adapter of this port.`);

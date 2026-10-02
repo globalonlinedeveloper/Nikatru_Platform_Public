@@ -17,6 +17,18 @@ import 'package:nikatru_core/nikatru_core.dart';
 /// The [SecureStore] key holding the user's key for one provider.
 String byokKeyName(String provider) => 'ai.byok.$provider.key';
 
+/// The [Dio] a bring-your-own-key adapter OWNS: bare options, no interceptor
+/// beyond dio's own, and no base URL or header of anyone else's. Review 1 of
+/// #1136: an app's shared Dio carries its session interceptor, which would set
+/// `Authorization: Bearer <Nikatru session>` on a provider call — overwriting
+/// OpenAI's user key, and handing every provider our session token. [transport]
+/// swaps only the socket layer, for tests.
+Dio byokDio([HttpClientAdapter? transport]) {
+  final Dio dio = Dio(BaseOptions());
+  if (transport != null) dio.httpClientAdapter = transport;
+  return dio;
+}
+
 /// How long one call may take before it is a timeout.
 const Duration byokCallTimeout = Duration(seconds: 60);
 

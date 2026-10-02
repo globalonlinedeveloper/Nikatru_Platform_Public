@@ -326,8 +326,13 @@ describe('assert-ports — every limb reddens', () => {
       selection: { by: 'per-call', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
       ...(features ? { features } : {}),
     });
-    const feature = (over = {}) => ({ adapter: 'acme', model: null, effort: null, candidates: ['m-1'], tokensPerCall: null, why: 'a fixture feature on acme', ...over });
+    const feature = (over = {}) => ({ adapter: 'acme', model: null, effort: null, maxInputTokens: 8000, candidates: ['m-1'], tokensPerCall: null, why: 'a fixture feature on acme', ...over });
     assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature() }) } })).code, 0);
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature({ maxInputTokens: null }) }) } })).code, 0, 'no cap is allowed: every call for the feature is refused');
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ maxInputTokens: undefined }) }) } })).first, /limb 1 .*missing required `maxInputTokens`/);
+    // A fallback is billable, so it is priced by the same adapter (review 1 of #1136).
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature() }, { 'm-1': { ...price, fallbacks: ['m-2'] }, 'm-2': price }) } })).code, 0);
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature() }, { 'm-1': { ...price, fallbacks: ['m-2'] } }) } })).first, /limb 1 .*model `m-1` falls back to `m-2`, which it does not price/);
     assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature({ model: 'm-1' }) }) } })).code, 0);
     assert.match(run(fixture({ ports: { widgets: perCall(null) } })).first, /limb 1 .*selected per call but declares no `features`/);
     assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ adapter: 'nope' }) }) } })).first, /limb 1 .*feature `f` names adapter `nope`/);

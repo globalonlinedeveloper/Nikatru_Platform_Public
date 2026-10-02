@@ -21,14 +21,24 @@
 //     explicitly (Opus 5.5 defaults to `medium`); Claude Haiku 4.5 refuses the
 //     field, so it is never sent there. No `thinking` field is sent: Opus 5.5
 //     cannot disable it and Sonnet 5.5 runs adaptive by default;
-//   · on Opus 5.5 and Sonnet 5.5 the server-side refusal fallback is on by
-//     default (`betas: ["server-side-fallback-2026-07-01"]`, `fallbacks:
-//     "default"` — the "default" form, on the Claude API). A rescued call is
-//     served by another model, so the outcome names `servedModel` and the meter
-//     prices by it.
+//   · the server-side refusal fallback is sent as an EXPLICIT, PRICED chain from
+//     config (AiLimits.fallbacks, from tooling/ports/ai.json `cost.models.<m>.
+//     fallbacks`): `betas: ["server-side-fallback-2026-07-01"]`, `fallbacks:
+//     [{model}, …]`. Never `"default"`: its routing is server-side and "not
+//     published per model" (refusals-and-fallback, read 2026-10-02), so the
+//     models it reaches could not be priced before the call. A model whose chain
+//     is empty sends no fallback;
+//   · "`usage.iterations` is the per-attempt record of what you're billed. The
+//     top-level `usage` counts describe only the attempt that produced the
+//     returned message" (same page): the outcome's `billing` is every iteration,
+//     each with its own model, and the top-level usage only when there are none.
 //
-// 🔴 NO CALL WITHOUT A RESERVATION. `beforeCall` is asked first; without one the
-// adapter refuses every call (`unavailable`) and the SDK is never invoked.
+// 🔴 NO CALL WITHOUT A RESERVATION OF THE WORST CASE. Before the wire
+// (ports/ai.ts reserveOrRefuse): the feature has an input cap, every model the
+// chain can reach is priced, the input's bound is within the cap, and
+// `beforeCall` grants every attempt at the input and output caps. Without one
+// the adapter refuses every call and the SDK is never invoked. A call that gets
+// no answer is billing-unknown and settles at that reservation.
 // 🔴 THE KEY NEVER LEAVES THIS FILE. It is the SDK's credential and nothing
 // else: `logLevel: 'off'` (the SDK's debug level prints headers), and no detail
 // carries an SDK message or a response body. The conformance suite feeds a
@@ -44,7 +54,9 @@ import type Anthropic from '@anthropic-ai/sdk';
 import {
   type AiBeforeCall,
   type AiCallOptions,
+  type AiAttempt,
   type AiCapability,
+  type AiLimits,
   type AiModelId,
   type AiOutcome,
   type AiProvider,
@@ -60,8 +72,6 @@ import {
 export const ANTHROPIC_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 /** The models that take `output_config.effort` (Haiku 4.5 refuses the field). */
 export const EFFORT_MODELS: ReadonlySet<AiModelId> = new Set<AiModelId>(['claude-sonnet-5-5', 'claude-opus-5-5']);
-/** The models the refusal fallback is sent for, in its "default" form. */
-export const FALLBACK_MODELS: ReadonlySet<AiModelId> = new Set<AiModelId>(['claude-sonnet-5-5', 'claude-opus-5-5']);
 
 /**
  * How long one call may take before it is `timeout`.
@@ -74,6 +84,8 @@ export interface AnthropicAiDeps {
   readonly apiKey: string;
   /** T17's meter. Absent: every call is refused, and nothing is sent. */
   readonly beforeCall?: AiBeforeCall;
+  /** Prices, per-feature input caps and the fallback chains — config, never constants here. */
+  readonly limits: AiLimits;
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
 }
@@ -108,9 +120,9 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
     id: 'anthropic',
     capabilities,
     async complete(request: AiRequest, options?: AiCallOptions): Promise<AiOutcome> {
-      const reserved = await reserveOrRefuse(CARRIER, deps.beforeCall, request);
+      const reserved = await reserveOrRefuse(CARRIER, deps.beforeCall, request, deps.limits);
       if (!('id' in reserved)) return reserved;
-      const fallback = FALLBACK_MODELS.has(request.model);
+      const chain = reserved.attemptModels.slice(1);
       let message: Anthropic.Beta.BetaMessage;
       let errors: Sdk['default'] | null = null;
       try {
@@ -144,12 +156,12 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
               format: { type: 'json_schema', schema: request.schema as Record<string, unknown> },
               ...(EFFORT_MODELS.has(request.model) ? { effort: request.effort ?? 'medium' } : {}),
             },
-            ...(fallback ? { betas: [ANTHROPIC_FALLBACK_BETA], fallbacks: 'default' as const } : {}),
+            ...(chain.length ? { betas: [ANTHROPIC_FALLBACK_BETA], fallbacks: chain.map((model) => ({ model })) } : {}),
           },
           options?.signal ? { signal: options.signal } : undefined,
         );
       } catch (err) {
-        return failureOf(errors, err, reserved.id);
+        return failureOf(errors, err, reserved);
       }
       const usage = {
         inputTokens: message.usage.input_tokens,
@@ -165,16 +177,50 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
         request.schema,
         usage,
         message.model,
-        reserved.id,
+        attemptsOf(message, request.model, usage),
+        reserved,
       );
     },
   };
 }
 
-/** A thrown SDK error, as an outcome: by its TYPED class, never by its message. */
-function failureOf(sdkClass: Sdk['default'] | null, err: unknown, reservationId: string): AiOutcome {
-  if (sdkClass && (err instanceof sdkClass.APIUserAbortError || err instanceof sdkClass.APIConnectionError)) return aiNoAnswerOutcome(CARRIER, err, reservationId);
-  if (sdkClass && err instanceof sdkClass.APIError && typeof err.status === 'number') return aiAnsweredOutcome(CARRIER, err.status, reservationId);
+/**
+ * Every attempt the provider billed, each with its OWN model: one per
+ * `usage.iterations` entry (a declined attempt is a `message` entry, the
+ * fallback that answered a `fallback_message` entry; an entry with no model is
+ * the requested one). With no iterations, the one attempt is the top-level usage.
+ */
+function attemptsOf(message: Anthropic.Beta.BetaMessage, requested: string, topLevel: AiAttempt['usage']): AiAttempt[] {
+  const its = message.usage.iterations ?? [];
+  if (!its.length) return [{ model: message.model, usage: topLevel }];
+  return its.map((it) => ({
+    model: ('model' in it && typeof it.model === 'string' && it.model) || requested,
+    usage: {
+      inputTokens: it.input_tokens ?? 0,
+      outputTokens: ('output_tokens' in it ? it.output_tokens : 0) ?? 0,
+      cacheReadTokens: it.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: it.cache_creation_input_tokens ?? 0,
+    },
+  }));
+}
+
+/**
+ * A thrown SDK error, as an outcome: by its TYPED class, never by its message.
+ * An error the provider ANSWERED is not billed; no answer, or an error of no
+ * known class after the reservation, is billing-unknown and settles at the
+ * reservation.
+ */
+function failureOf(sdkClass: Sdk['default'] | null, err: unknown, reserved: { readonly id: string; readonly reserveUsd: number }): AiOutcome {
+  if (sdkClass && (err instanceof sdkClass.APIUserAbortError || err instanceof sdkClass.APIConnectionError)) return aiNoAnswerOutcome(CARRIER, err, reserved.id, reserved.reserveUsd);
+  if (sdkClass && err instanceof sdkClass.APIError && typeof err.status === 'number') return aiAnsweredOutcome(CARRIER, err.status, reserved.id, reserved.reserveUsd);
   const name = typeof err === 'object' && err !== null && 'name' in err ? String((err as { name: unknown }).name) : 'Error';
-  return { ok: false, kind: 'invalid', retryable: false, reservationId, detail: `${CARRIER}: the call could not be made (${name})` };
+  return {
+    ok: false,
+    kind: 'invalid',
+    retryable: false,
+    billing: { known: false },
+    reservationId: reserved.id,
+    reservedUsd: reserved.reserveUsd,
+    detail: `${CARRIER}: the call could not be made (${name})`,
+  };
 }

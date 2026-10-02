@@ -22,16 +22,19 @@ import 'ai_byok_capabilities.dart';
 import 'byok_call.dart';
 
 class AnthropicByok implements AiProvider {
+  /// [transport] is the socket layer only, for tests; the adapter builds its OWN
+  /// [Dio] around it, so no interceptor, header or logger of the app's can reach
+  /// a request carrying the user's key. It never takes the app's Dio or RestClient.
   AnthropicByok({
     required this.keys,
-    required this.dio,
     required this.platform,
+    HttpClientAdapter? transport,
     this.timeout = byokCallTimeout,
-  });
+  }) : _dio = byokDio(transport);
 
   /// Where the user's key lives. Read on every call.
   final SecureStore keys;
-  final Dio dio;
+  final Dio _dio;
   final HttpPlatform platform;
   final Duration timeout;
 
@@ -76,7 +79,7 @@ class AnthropicByok implements AiProvider {
     final bool rich = effortModels.contains(request.model);
     return byokPost(
       carrier: _carrier,
-      dio: dio,
+      dio: _dio,
       uri: endpoint,
       timeout: timeout,
       headers: <String, String>{

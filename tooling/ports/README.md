@@ -51,14 +51,14 @@ wherever the shape can hold it).
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
 | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
-| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null; `models` — for a port billed per token, each model's price per million tokens (input, output, cache read, cache write) with `asOf`, `source` and `verify`. |
+| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null; `models` — for a port billed per token, each model's price per million tokens (input, output, cache read, cache write) with `asOf`, `source` and `verify`, and its refusal-fallback chain (`fallbacks`), every model of which limb 1 requires priced in the same `models`. |
 | `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
-| `features` | For `selection.by: per-call`: `{<feature>: {adapter, model, effort, candidates, tokensPerCall, why}}` — the adapter and the model a feature runs on (null until measured), the models it may be set to (each priced in its adapter's `cost.models`), and the tokens one call takes (`{input, output, basis: declared | measured, asOf, why}`, or null). Limb 1 holds each to its adapter and its candidates; the AI dry run (C15–C17) prices it. |
+| `features` | For `selection.by: per-call`: `{<feature>: {adapter, model, effort, maxInputTokens, candidates, tokensPerCall, why}}` — the adapter and the model a feature runs on (null until measured), its input cap (every call is reserved at it, and an input over it is refused before the wire; null refuses every call), the models it may be set to (each priced in its adapter's `cost.models`), and the tokens one call takes (`{input, output, basis: declared | measured, asOf, why}`, or null). Limb 1 holds each to its adapter and its candidates; the AI dry run (C15–C17) prices it. |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
@@ -187,9 +187,10 @@ For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
 `purchaseRails` would change (a store-billed channel never moves to a web rail, and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
 A port with `features` (ai) takes a MODEL as `--to` as well as an adapter, and adds C15 the target's model prices, C16
-each feature's tokens per call × price (LOST while a feature has no model or no tokens — never a guess), and C17 the
-MINIMUM credit-pack price per unit per selling channel: at least 4× the cost (owner lock, 2026-10-01) after the store
-commission (the rail's highest cell, 30% on the App Store), the GST and the rail fee, from `fee-register.json` — a
+each feature's tokens per call × price, input priced as cache writes (LOST while a feature has no model or no tokens —
+never a guess), and C17 the MINIMUM credit-pack price per unit per selling channel: at least 4× the cost (owner lock,
+2026-10-01) after the store commission (the rail's highest cell, 30% on the App Store), the tax — the HIGHEST rate in
+`fee-register.json` `taxRegions`, so the floor holds in every region (IN's on the India web book) — and the rail fee; a
 subscription-only cell never prices a one-time pack.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today

@@ -16,6 +16,17 @@
 // meter exists: `reserveOrRefuse` below is that rule, and the suite holds every
 // adapter to it with a counting carrier that must see zero calls.
 //
+// 🔴 HARD-CAPPED: THE RESERVATION IS THE WORST CASE (review 1 of #1136). Before
+// the wire, every adapter checks (reserveOrRefuse): the feature has an input cap
+// (AiLimits.maxInputTokens, config), the requested model AND every fallback it
+// may reach is priced (a model with no price can never be called), and the
+// input's conservative bound (estimateInputTokens) is within the cap. It then
+// reserves every attempt at the input and output caps (worstCaseUsd). The meter
+// settles to what ran (`billing.attempts`, each attempt at its OWN model's
+// prices — a declined attempt and the fallback that answered are both billed),
+// and a call with no answer is `billing: {known: false}`: it settles AT ITS
+// RESERVATION, never at zero (settle).
+//
 // 🔴 THE MODEL IS CONFIG, NEVER A CONSTANT IN AN ADAPTER. A request names its
 // model (`AiRequest.model`), chosen per FEATURE by the composition root from the
 // registry (`features.<f>.model`, null until T17 measures the cheapest model
@@ -97,11 +108,37 @@ export interface AiUsage {
 
 export type AiStopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'pause_turn' | 'other';
 
-/** What the meter is asked before a call. The reservation covers at most this. */
+/** One attempt the provider ran for a call, and what it used — billed at ITS model's prices. */
+export interface AiAttempt {
+  readonly model: string;
+  readonly usage: AiUsage;
+}
+
+/**
+ * What the provider bills for one call, for the meter to settle.
+ *   · known: true  — every attempt that ran: a declined attempt AND the fallback
+ *                    that answered are two entries, each priced by its own
+ *                    model. No entries when nothing ran (a refusal before the
+ *                    wire, or an error answer the provider does not bill).
+ *   · known: false — NO ANSWER (a timeout, an abort, a lost connection). The
+ *                    provider may still have run the call and billed it, so it
+ *                    settles AT ITS RESERVATION — the worst case — never at zero.
+ */
+export type AiBilling = { readonly known: true; readonly attempts: readonly AiAttempt[] } | { readonly known: false };
+
+/** What the meter is asked before a call: the WORST CASE the call can cost. */
 export interface AiReservationRequest {
   readonly feature: AiFeature;
   readonly model: AiModelId;
+  /** The requested model, then every fallback the call may reach — each priced. */
+  readonly attemptModels: readonly string[];
+  /** The feature's input cap (config): the bound the input was checked against. */
+  readonly maxInputTokens: number;
+  /** This request's conservative input estimate (estimateInputTokens): never above the cap. */
+  readonly estimatedInputTokens: number;
   readonly maxOutputTokens: number;
+  /** Every attempt at the input cap and the output cap, input priced at the dearer of input and cache write. */
+  readonly reserveUsd: number;
 }
 
 export type AiReservation = { readonly ok: true; readonly id: string } | { readonly ok: false; readonly detail: string };
@@ -116,10 +153,13 @@ export type AiOutcome =
       readonly ok: true;
       readonly output: unknown;
       readonly stopReason: 'end_turn';
+      /** The attempt that produced the output (the meter reads `billing`, which has every attempt). */
       readonly usage: AiUsage;
       /** The model that served the call (a refusal fallback may differ from the one asked). */
       readonly servedModel: string;
+      readonly billing: AiBilling;
       readonly reservationId: string;
+      readonly reservedUsd: number;
     }
   | {
       readonly ok: false;
@@ -129,7 +169,9 @@ export type AiOutcome =
       readonly stopReason?: AiStopReason;
       readonly usage?: AiUsage;
       readonly status?: number;
+      readonly billing: AiBilling;
       readonly reservationId?: string;
+      readonly reservedUsd?: number;
       /** Printable: the provider and what happened. Never a key, never content. */
       readonly detail: string;
     };
@@ -158,6 +200,22 @@ export interface AiModelPrice {
 /** Every priced model of an adapter (ai.json `adapters[].cost.models`). */
 export type AiCostModel = Readonly<Record<string, AiModelPrice>>;
 
+/**
+ * The spend limits a server adapter is built with — all config, from
+ * tooling/ports/ai.json through the composition root, never constants in an
+ * adapter:
+ *   · prices          every model a call may reach;
+ *   · maxInputTokens  per FEATURE, the input cap; null means no cap was set, and
+ *                     every call for that feature is refused;
+ *   · fallbacks       per model, the refusal-fallback chain the adapter sends
+ *                     (each model priced; an empty chain sends none).
+ */
+export interface AiLimits {
+  readonly prices: AiCostModel;
+  readonly maxInputTokens: Readonly<Record<AiFeature, number | null>>;
+  readonly fallbacks: Readonly<Record<string, readonly string[]>>;
+}
+
 /** The USD a call cost, or null when the model is not priced (never a guess). */
 export function costUsd(costModel: AiCostModel, model: string, usage: AiUsage): number | null {
   const p = costModel[model];
@@ -174,45 +232,142 @@ export function costUsd(costModel: AiCostModel, model: string, usage: AiUsage): 
 export const ZERO_USAGE: AiUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
 /**
- * The reservation every adapter asks for before the wire: the reservation id,
- * or the `unavailable` outcome that sends nothing. No `beforeCall` is a refusal,
- * never a free call.
+ * The input bound, conservatively. The SDK's own count (messages.countTokens) is
+ * a network call, not an offline one, so the bound is taken from bytes: a
+ * tokenizer token always covers AT LEAST ONE byte, so the UTF-8 byte length of
+ * the text is never below its token count (a ratio of 1 token per byte — real
+ * text runs nearer 3-4 bytes per token, so this over-states by 3-4×, the safe
+ * side). The schema rides in the request too, so its bytes count; each image is
+ * bounded by the high-resolution tier's ceiling (IMAGE_TOKEN_CEILING); and
+ * REQUEST_OVERHEAD_TOKENS covers the framing a request adds around its text.
+ */
+export const IMAGE_TOKEN_CEILING = 4784;
+export const REQUEST_OVERHEAD_TOKENS = 2048;
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
+export function estimateInputTokens(request: AiRequest): number {
+  return (
+    utf8Bytes(request.system) +
+    utf8Bytes(request.input) +
+    utf8Bytes(JSON.stringify(request.schema)) +
+    (request.images?.length ?? 0) * IMAGE_TOKEN_CEILING +
+    REQUEST_OVERHEAD_TOKENS
+  );
+}
+
+/** The most a call can cost: every attempt in `models` at the input and output caps; null when one is not priced. */
+export function worstCaseUsd(prices: AiCostModel, models: readonly string[], maxInputTokens: number, maxOutputTokens: number): number | null {
+  let total = 0;
+  for (const m of models) {
+    const p = prices[m];
+    if (!p) return null;
+    total += (maxInputTokens * Math.max(p.inputUsdPerMTok, p.cacheWriteUsdPerMTok) + maxOutputTokens * p.outputUsdPerMTok) / 1_000_000;
+  }
+  return total;
+}
+
+/** What the attempts cost, each at its own model's prices; null when an attempt's model is not priced. */
+export function attemptsUsd(prices: AiCostModel, attempts: readonly AiAttempt[]): number | null {
+  let total = 0;
+  for (const a of attempts) {
+    const c = costUsd(prices, a.model, a.usage);
+    if (c === null) return null;
+    total += c;
+  }
+  return total;
+}
+
+export interface AiSettlement {
+  /** What the customer is charged for the call. */
+  readonly chargeUsd: number;
+  /** What goes back to the customer's balance from the reservation. */
+  readonly releaseUsd: number;
+  /** `attempts`: priced from what ran. `reservation`: usage unknown (or unpriced), charged at the worst case. */
+  readonly basis: 'attempts' | 'reservation';
+}
+
+/**
+ * Settle one call against its reservation. Usage known → charge every attempt at
+ * its own model's prices and release the rest. Usage unknown (no answer), or an
+ * attempt on a model the table does not price → charge the reservation, release
+ * nothing: a call we cannot measure is billed at its worst case, never at zero.
+ */
+export function settle(prices: AiCostModel, reservedUsd: number, outcome: AiOutcome): AiSettlement {
+  if (!outcome.billing.known) return { chargeUsd: reservedUsd, releaseUsd: 0, basis: 'reservation' };
+  const charge = attemptsUsd(prices, outcome.billing.attempts);
+  if (charge === null) return { chargeUsd: reservedUsd, releaseUsd: 0, basis: 'reservation' };
+  return { chargeUsd: charge, releaseUsd: Math.max(0, reservedUsd - charge), basis: 'attempts' };
+}
+
+const NOTHING_RAN: AiBilling = { known: true, attempts: [] };
+
+/**
+ * Everything checked before the wire, then the reservation: the reservation id
+ * and its USD, or the outcome that sends nothing. In order:
+ *   1. the feature has an input cap (none: refused);
+ *   2. the requested model AND every fallback it may reach is priced (else refused —
+ *      a model with no price can never be called);
+ *   3. the input's conservative estimate is within the cap (else refused);
+ *   4. a meter is wired (none is a refusal, never a free call), and it grants the
+ *      worst case.
  */
 export async function reserveOrRefuse(
   carrier: string,
   beforeCall: AiBeforeCall | undefined,
   request: AiRequest,
-): Promise<{ readonly id: string } | AiOutcome> {
-  if (!beforeCall) {
-    return { ok: false, kind: 'unavailable', retryable: false, detail: `${carrier}: no meter is wired (beforeCall), so no call is made` };
-  }
+  limits: AiLimits,
+): Promise<{ readonly id: string; readonly reserveUsd: number; readonly attemptModels: readonly string[] } | AiOutcome> {
+  const refuse = (kind: AiFailureKind, detail: string): AiOutcome => ({ ok: false, kind, retryable: false, billing: NOTHING_RAN, detail: `${carrier}: ${detail}` });
+  const cap = limits.maxInputTokens[request.feature];
+  if (typeof cap !== 'number' || !(cap > 0)) return refuse('invalid', `feature ${request.feature} has no input cap, so no call is made`);
+  const attemptModels = [request.model, ...(limits.fallbacks[request.model] ?? [])];
+  const unpriced = attemptModels.filter((m) => !limits.prices[m]);
+  if (unpriced.length) return refuse('invalid', `no price for ${unpriced.join(', ')}, so no call is made`);
+  const estimated = estimateInputTokens(request);
+  if (estimated > cap) return refuse('invalid', `the input (about ${estimated} tokens, bounded) is over the ${request.feature} cap of ${cap}, so no call is made`);
+  if (!beforeCall) return refuse('unavailable', 'no meter is wired (beforeCall), so no call is made');
+  const reserveUsd = worstCaseUsd(limits.prices, attemptModels, cap, request.maxOutputTokens) as number;
   let r: AiReservation;
   try {
-    r = await beforeCall({ feature: request.feature, model: request.model, maxOutputTokens: request.maxOutputTokens });
+    r = await beforeCall({
+      feature: request.feature,
+      model: request.model,
+      attemptModels,
+      maxInputTokens: cap,
+      estimatedInputTokens: estimated,
+      maxOutputTokens: request.maxOutputTokens,
+      reserveUsd,
+    });
   } catch {
-    return { ok: false, kind: 'unavailable', retryable: false, detail: `${carrier}: the reservation failed, so no call is made` };
+    return refuse('unavailable', 'the reservation failed, so no call is made');
   }
-  if (!r.ok) return { ok: false, kind: 'unavailable', retryable: false, detail: `${carrier}: reservation refused (${r.detail})` };
-  return { id: r.id };
+  if (!r.ok) return refuse('unavailable', `reservation refused (${r.detail})`);
+  return { id: r.id, reserveUsd, attemptModels };
 }
 
-/** The outcome of a provider that ANSWERED with a non-2xx `status`. */
-export function aiAnsweredOutcome(carrier: string, status: number, reservationId?: string): AiOutcome {
-  const base = { status, ...(reservationId === undefined ? {} : { reservationId }) };
+/** The outcome of a provider that ANSWERED with a non-2xx `status`: an error answer is not billed. */
+export function aiAnsweredOutcome(carrier: string, status: number, reservationId?: string, reservedUsd?: number): AiOutcome {
+  const base = {
+    status,
+    billing: NOTHING_RAN,
+    ...(reservationId === undefined ? {} : { reservationId }),
+    ...(reservedUsd === undefined ? {} : { reservedUsd }),
+  };
   if (status === 429 || status >= 500) return { ok: false, kind: 'retryable', retryable: true, ...base, detail: `${carrier} answered ${status}` };
   if (status === 401 || status === 403) return { ok: false, kind: 'unavailable', retryable: false, ...base, detail: `${carrier} answered ${status}: the credential was refused` };
   return { ok: false, kind: 'invalid', retryable: false, ...base, detail: `${carrier} answered ${status}` };
 }
 
-/** The outcome of a call that got NO answer. */
-export function aiNoAnswerOutcome(carrier: string, err: unknown, reservationId?: string): AiOutcome {
+/** The outcome of a call that got NO answer: it may still have run, so its usage is UNKNOWN and it settles at the reservation. */
+export function aiNoAnswerOutcome(carrier: string, err: unknown, reservationId?: string, reservedUsd?: number): AiOutcome {
   const name = typeof err === 'object' && err !== null && 'name' in err ? String((err as { name: unknown }).name) : 'Error';
   const timedOut = /Timeout|Abort/i.test(name);
   return {
     ok: false,
     kind: 'timeout',
     retryable: false,
+    billing: { known: false },
     ...(reservationId === undefined ? {} : { reservationId }),
+    ...(reservedUsd === undefined ? {} : { reservedUsd }),
     detail: `${carrier} not reached: ${timedOut ? 'no answer within the bound' : name}`,
   };
 }
@@ -220,6 +375,8 @@ export function aiNoAnswerOutcome(carrier: string, err: unknown, reservationId?:
 /**
  * The outcome of a model that ANSWERED, from its stop reason and its text — the
  * stop reason is read FIRST, so a refusal or a truncation never yields output.
+ * `attempts` is every attempt the provider ran (and bills); `usage` is the one
+ * that produced the answer.
  */
 export function stoppedOutcome(
   carrier: string,
@@ -228,9 +385,10 @@ export function stoppedOutcome(
   schema: AiJsonSchema,
   usage: AiUsage,
   servedModel: string,
-  reservationId: string,
+  attempts: readonly AiAttempt[],
+  reservation: { readonly id: string; readonly reserveUsd: number },
 ): AiOutcome {
-  const billed = { stopReason, usage, reservationId };
+  const billed = { stopReason, usage, billing: { known: true as const, attempts }, reservationId: reservation.id, reservedUsd: reservation.reserveUsd };
   if (stopReason === 'refusal') return { ok: false, kind: 'refused', retryable: false, ...billed, detail: `${carrier}: the model declined` };
   if (stopReason !== 'end_turn') {
     return { ok: false, kind: 'incomplete', retryable: false, ...billed, detail: `${carrier}: the model stopped before finishing (${stopReason})` };
@@ -244,7 +402,16 @@ export function stoppedOutcome(
   }
   const problem = schemaProblem(schema, output);
   if (problem !== null) return { ok: false, kind: 'invalid', retryable: false, ...billed, detail: `${carrier}: the answer does not match the schema (${problem})` };
-  return { ok: true, output, stopReason: 'end_turn', usage, servedModel, reservationId };
+  return {
+    ok: true,
+    output,
+    stopReason: 'end_turn',
+    usage,
+    servedModel,
+    billing: { known: true, attempts },
+    reservationId: reservation.id,
+    reservedUsd: reservation.reserveUsd,
+  };
 }
 
 const typeOf = (v: unknown): string =>

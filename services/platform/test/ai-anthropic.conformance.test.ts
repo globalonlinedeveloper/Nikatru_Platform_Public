@@ -17,21 +17,54 @@
 // The carrier reads the request the SDK wrote, so a dropped field, a wrong model
 // or a leaked key fails here, never against the live API (this lane calls no
 // live model: fixtures and the stub only).
-import { describe, expect, it } from 'vitest';
-import { conformanceRequest, CONFORMANCE_ROWS_TEXT, CONFORMANCE_TRUNCATED_TEXT, GRANT, runAiConformance, type AiHarness } from '../../_shared/test/conformance/ai';
-import type { AiBeforeCall, AiUsage } from '../../_shared/src/ports/ai';
+import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  CONFORMANCE_LIMITS,
+  CONFORMANCE_PRICES,
+  CONFORMANCE_ROWS_TEXT,
+  CONFORMANCE_TRUNCATED_TEXT,
+  FALLBACK_ATTEMPTS,
+  FALLBACK_CHARGE_USD,
+  GRANT,
+  conformanceRequest,
+  runAiConformance,
+  type AiHarness,
+} from '../../_shared/test/conformance/ai';
+import { settle, type AiBeforeCall, type AiLimits, type AiUsage } from '../../_shared/src/ports/ai';
 import { ANTHROPIC_FALLBACK_BETA, createAnthropicAi } from '../src/adapters/ai/anthropic';
 
 /** The key every harness is built with: a sentinel, never a real key. */
 const SENTINEL = 'sentinel-never-logged-sentinel-never-logged';
 const MESSAGES_URL = /^https:\/\/api\.anthropic\.com\/v1\/messages(\?beta=true)?$/;
 
+/** One `usage.iterations` entry, as the refusals-and-fallback page records it. */
+interface Iteration {
+  readonly type: 'message' | 'fallback_message';
+  readonly model: string | null;
+  readonly usage: AiUsage;
+}
+
 type Answer =
-  | { readonly status: 200; readonly stop: 'end_turn' | 'max_tokens' | 'refusal'; readonly text: string | null; readonly usage?: AiUsage }
+  | {
+      readonly status: 200;
+      readonly stop: 'end_turn' | 'max_tokens' | 'refusal';
+      readonly text: string | null;
+      readonly usage?: AiUsage;
+      readonly servedModel?: string;
+      readonly iterations?: readonly Iteration[];
+    }
   | { readonly status: 400 | 429 | 500 | 529 }
-  | 'unreachable';
+  | 'unreachable'
+  | 'hang';
 
 const ERROR_TYPE: Record<number, string> = { 400: 'invalid_request_error', 429: 'rate_limit_error', 500: 'api_error', 529: 'overloaded_error' };
+
+const wireUsage = (u: AiUsage) => ({
+  input_tokens: u.inputTokens,
+  output_tokens: u.outputTokens,
+  cache_read_input_tokens: u.cacheReadTokens,
+  cache_creation_input_tokens: u.cacheWriteTokens,
+});
 
 /** The recorded 200 body for one stop. */
 function messageBody(model: string, a: Extract<Answer, { status: 200 }>): unknown {
@@ -40,20 +73,19 @@ function messageBody(model: string, a: Extract<Answer, { status: 200 }>): unknow
     id: 'msg_fixture',
     type: 'message',
     role: 'assistant',
-    model,
+    model: a.servedModel ?? model,
     content: [
       // Opus 5.5 always thinks: the display default is "omitted", an empty thinking block first.
       { type: 'thinking', thinking: '', signature: 'fixture-signature' },
+      ...(a.iterations ? [{ type: 'fallback', from: { model }, to: { model: a.servedModel ?? model } }] : []),
       ...(a.text === null ? [] : [{ type: 'text', text: a.text }]),
     ],
     stop_reason: a.stop,
     stop_sequence: null,
     ...(a.stop === 'refusal' ? { stop_details: { type: 'refusal', category: null, explanation: null } } : {}),
     usage: {
-      input_tokens: u.inputTokens,
-      output_tokens: u.outputTokens,
-      cache_read_input_tokens: u.cacheReadTokens,
-      cache_creation_input_tokens: u.cacheWriteTokens,
+      ...wireUsage(u),
+      ...(a.iterations ? { iterations: a.iterations.map((it) => ({ type: it.type, model: it.model, ...wireUsage(it.usage) })) } : {}),
     },
   };
 }
@@ -74,6 +106,9 @@ function carrier(answers: Answer[]) {
     seen.push({ url: req.url, headers: req.headers, body });
     const a = answers[Math.min(seen.length - 1, answers.length - 1)];
     if (a === 'unreachable') throw new TypeError('fetch failed');
+    if (a === 'hang') {
+      return new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+    }
     const json = (o: unknown, status: number) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'request-id': 'req_fixture' } });
     if (a.status !== 200) return json({ type: 'error', error: { type: ERROR_TYPE[a.status], message: 'fixture' }, request_id: 'req_fixture' }, a.status);
     return json(messageBody(String(body.model), a), 200);
@@ -81,10 +116,14 @@ function carrier(answers: Answer[]) {
   return { fetchImpl, seen };
 }
 
-function harness(beforeCall: AiBeforeCall | undefined, answers: Answer[], expectedUsage?: AiUsage): AiHarness {
+// The meter is an explicit argument with NO default: a default would turn a deliberate `undefined` (no meter) into a grant.
+const build = (fetchImpl: typeof fetch, beforeCall: AiBeforeCall | undefined, limits: AiLimits = CONFORMANCE_LIMITS, timeoutMs = 2_000) =>
+  createAnthropicAi({ apiKey: SENTINEL, beforeCall, limits, fetchImpl, timeoutMs });
+
+function harness(beforeCall: AiBeforeCall | undefined, answers: Answer[], expectedUsage?: AiUsage, timeoutMs = 2_000): AiHarness {
   const { fetchImpl, seen } = carrier(answers);
   return {
-    provider: createAnthropicAi({ apiKey: SENTINEL, beforeCall, fetchImpl, timeoutMs: 2_000 }),
+    provider: build(fetchImpl, beforeCall, CONFORMANCE_LIMITS, timeoutMs),
     calls: () => seen.length,
     models: () => seen.map((s) => String(s.body.model)),
     ...(expectedUsage ? { expectedUsage } : {}),
@@ -93,6 +132,25 @@ function harness(beforeCall: AiBeforeCall | undefined, answers: Answer[], expect
 
 const ROWS: Answer = { status: 200, stop: 'end_turn', text: CONFORMANCE_ROWS_TEXT };
 const CACHED: AiUsage = { inputTokens: 42, outputTokens: 17, cacheReadTokens: 2048, cacheWriteTokens: 512 };
+
+/** Opus 5.5 declined mid-output, Opus 4.8 answered: the recorded body of the refusals-and-fallback page's example. */
+const FALLBACK: Answer = {
+  status: 200,
+  stop: 'end_turn',
+  text: CONFORMANCE_ROWS_TEXT,
+  servedModel: 'claude-opus-4-8',
+  usage: FALLBACK_ATTEMPTS[1].usage,
+  iterations: [
+    { type: 'message', model: 'claude-opus-5-5', usage: FALLBACK_ATTEMPTS[0].usage },
+    { type: 'fallback_message', model: 'claude-opus-4-8', usage: FALLBACK_ATTEMPTS[1].usage },
+  ],
+};
+
+// The first case pays the SDK's first, lazy load: warmed here, with its own bound,
+// so no conformance case races vitest's 5 s default (review 1 of #1136, nit 8).
+beforeAll(async () => {
+  await import('@anthropic-ai/sdk');
+}, 30_000);
 
 runAiConformance({
   adapter: 'anthropic',
@@ -109,14 +167,19 @@ runAiConformance({
     'server-error': (b) => harness(b, [{ status: 529 }]),
     'bad-request': (b) => harness(b, [{ status: 400 }]),
     'model-from-config': (b) => harness(b, [ROWS]),
+    'unpriced-model': (b) => harness(b, [ROWS]),
+    'no-input-cap': (b) => harness(b, [ROWS]),
+    'input-over-cap': (b) => harness(b, [ROWS]),
+    'fallback-metered': (b) => harness(b, [FALLBACK]),
+    'reservation-covers-charge': (b) => harness(b, [{ status: 200, stop: 'end_turn', text: CONFORMANCE_ROWS_TEXT, usage: CACHED }]),
+    'timeout-settles-at-reservation': (b) => harness(b, ['hang'], undefined, 300),
   },
-}, { describe, it });
+}, { describe, it: (name, body) => it(name, body, 20_000) });
 
 describe("the Anthropic adapter's wire, as the SDK writes it", () => {
   it('structured output, the cached system prefix and the key header — and no thinking field, no prefill', async () => {
     const { fetchImpl, seen } = carrier([ROWS]);
-    const ai = createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl });
-    await ai.complete(conformanceRequest('claude-haiku-4-5'));
+    await build(fetchImpl, GRANT).complete(conformanceRequest('claude-haiku-4-5'));
     const { body, headers } = seen[0];
     expect(body.output_config).toMatchObject({ format: { type: 'json_schema' } });
     expect(body).not.toHaveProperty('output_format');
@@ -128,57 +191,83 @@ describe("the Anthropic adapter's wire, as the SDK writes it", () => {
     expect(headers.get('x-api-key') === SENTINEL ? 'match' : 'no match').toBe('match');
   });
 
-  it('Haiku 4.5 gets no effort field and no fallback (it refuses the first; the second is for Opus and Sonnet)', async () => {
+  it('Haiku 4.5 gets no effort field and no fallback (it refuses the first, and its chain is empty)', async () => {
     const { fetchImpl, seen } = carrier([ROWS]);
-    await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl }).complete(conformanceRequest('claude-haiku-4-5'));
+    await build(fetchImpl, GRANT).complete(conformanceRequest('claude-haiku-4-5'));
     expect((seen[0].body.output_config as Record<string, unknown>).effort).toBeUndefined();
     expect(seen[0].body).not.toHaveProperty('fallbacks');
     expect(seen[0].headers.get('anthropic-beta')).toBeNull();
   });
 
-  it('Opus 5.5 and Sonnet 5.5 get an EXPLICIT effort and the server-side refusal fallback, "default" form', async () => {
-    for (const model of ['claude-opus-5-5', 'claude-sonnet-5-5'] as const) {
-      const { fetchImpl, seen } = carrier([ROWS]);
-      await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl }).complete(conformanceRequest(model));
-      expect((seen[0].body.output_config as Record<string, unknown>).effort).toBe('medium');
-      expect(seen[0].body.fallbacks).toBe('default');
-      expect(seen[0].headers.get('anthropic-beta')).toBe(ANTHROPIC_FALLBACK_BETA);
-    }
+  it('Opus 5.5 sends its EXPLICIT, priced fallback chain from config — never "default" — and an explicit effort', async () => {
     const { fetchImpl, seen } = carrier([ROWS]);
-    await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl }).complete({ ...conformanceRequest('claude-opus-5-5'), effort: 'low' });
-    expect((seen[0].body.output_config as Record<string, unknown>).effort).toBe('low');
+    await build(fetchImpl, GRANT).complete(conformanceRequest('claude-opus-5-5'));
+    expect(seen[0].body.fallbacks).toEqual([{ model: 'claude-opus-4-8' }, { model: 'claude-opus-5' }]);
+    expect(seen[0].headers.get('anthropic-beta')).toBe(ANTHROPIC_FALLBACK_BETA);
+    expect((seen[0].body.output_config as Record<string, unknown>).effort).toBe('medium');
+    const low = carrier([ROWS]);
+    await build(low.fetchImpl, GRANT).complete({ ...conformanceRequest('claude-opus-5-5'), effort: 'low' });
+    expect((low.seen[0].body.output_config as Record<string, unknown>).effort).toBe('low');
   });
 
-  it('a rescued call names the model that served it, so the meter prices the right one', async () => {
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify({ ...(messageBody('claude-opus-5', { status: 200, stop: 'end_turn', text: CONFORMANCE_ROWS_TEXT }) as object) }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
-    const out = await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl }).complete(conformanceRequest('claude-opus-5-5'));
-    expect(out).toMatchObject({ ok: true, servedModel: 'claude-opus-5' });
+  it('Sonnet 5.5 sends NO fallback (its default routing is unpublished, so it cannot be priced), and an explicit effort', async () => {
+    const { fetchImpl, seen } = carrier([ROWS]);
+    await build(fetchImpl, GRANT).complete(conformanceRequest('claude-sonnet-5-5'));
+    expect(seen[0].body).not.toHaveProperty('fallbacks');
+    expect(seen[0].headers.get('anthropic-beta')).toBeNull();
+    expect((seen[0].body.output_config as Record<string, unknown>).effort).toBe('medium');
   });
 
-  it('images ride before the text, as base64 blocks', async () => {
+  it('🔴 a fallback chain is billed attempt by attempt, each at its own price: the hand computation, never the served attempt alone', async () => {
+    const { fetchImpl } = carrier([FALLBACK]);
+    const out = await build(fetchImpl, GRANT).complete(conformanceRequest('claude-opus-5-5'));
+    expect(out).toMatchObject({ ok: true, servedModel: 'claude-opus-4-8' });
+    expect(out.billing).toEqual({ known: true, attempts: FALLBACK_ATTEMPTS });
+    const st = settle(CONFORMANCE_PRICES, out.reservedUsd ?? 0, out);
+    expect(st.chargeUsd).toBeCloseTo(FALLBACK_CHARGE_USD, 12);
+    expect(st.chargeUsd).toBeLessThanOrEqual(out.reservedUsd ?? 0);
+  });
+
+  it('an iteration that names no model is the requested model', async () => {
+    const { fetchImpl } = carrier([{ ...(FALLBACK as Extract<Answer, { status: 200 }>), iterations: [{ type: 'message', model: null, usage: FALLBACK_ATTEMPTS[0].usage }, { type: 'fallback_message', model: 'claude-opus-4-8', usage: FALLBACK_ATTEMPTS[1].usage }] }]);
+    const out = await build(fetchImpl, GRANT).complete(conformanceRequest('claude-opus-5-5'));
+    expect(out.billing).toEqual({ known: true, attempts: FALLBACK_ATTEMPTS });
+  });
+
+  it('🔴 a fallback chain that reaches an UNPRICED model is refused before the meter and the wire', async () => {
     const { fetchImpl, seen } = carrier([ROWS]);
-    await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl }).complete({ ...conformanceRequest(), images: [{ mediaType: 'image/png', base64: 'iVBORw0KGgo=' }] });
+    let asked = 0;
+    const meter: AiBeforeCall = async () => {
+      asked++;
+      return { ok: true, id: 'r' };
+    };
+    const out = await build(fetchImpl, meter, { ...CONFORMANCE_LIMITS, fallbacks: { 'claude-opus-5-5': ['claude-opus-unpriced'] } }).complete(conformanceRequest('claude-opus-5-5'));
+    expect(out).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(asked).toBe(0);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('images ride before the text, as base64 blocks, and each one is bounded in the reservation', async () => {
+    const { fetchImpl, seen } = carrier([ROWS]);
+    await build(fetchImpl, GRANT).complete({ ...conformanceRequest(), images: [{ mediaType: 'image/png', base64: 'iVBORw0KGgo=' }] });
     const content = (seen[0].body.messages as Array<{ content: Array<{ type: string }> }>)[0].content;
     expect(content.map((c) => c.type)).toEqual(['image', 'text']);
   });
 
   it('🔴 CUSTOMER-PAYS: with no beforeCall wired the adapter refuses, and the SDK never reaches the carrier', async () => {
     const { fetchImpl, seen } = carrier([ROWS]);
-    const ai = createAnthropicAi({ apiKey: SENTINEL, fetchImpl });
-    const out = await ai.complete(conformanceRequest('claude-opus-5-5'));
+    const out = await build(fetchImpl, undefined).complete(conformanceRequest('claude-opus-5-5'));
     expect(out).toMatchObject({ ok: false, kind: 'unavailable', retryable: false });
     expect(seen).toHaveLength(0);
   });
 
-  it('a 401 is `unavailable` (the credential was refused) and an aborted call is `timeout`', async () => {
+  it('a 401 is `unavailable` and not billed; an aborted call is `timeout` with usage UNKNOWN', async () => {
     const unauthorized = (async () => new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'fixture' } }), { status: 401 })) as typeof fetch;
-    expect(await createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl: unauthorized }).complete(conformanceRequest())).toMatchObject({ ok: false, kind: 'unavailable', status: 401 });
-    const hanging = ((_: RequestInfo | URL, init?: RequestInit) =>
-      new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))))) as typeof fetch;
+    expect(await build(unauthorized, GRANT).complete(conformanceRequest())).toMatchObject({ ok: false, kind: 'unavailable', status: 401, billing: { known: true, attempts: [] } });
+    const { fetchImpl } = carrier(['hang']);
     const ctl = new AbortController();
-    const pending = createAnthropicAi({ apiKey: SENTINEL, beforeCall: GRANT, fetchImpl: hanging }).complete(conformanceRequest(), { signal: ctl.signal });
-    ctl.abort();
-    expect(await pending).toMatchObject({ ok: false, kind: 'timeout', retryable: false });
+    const pending = build(fetchImpl, GRANT).complete(conformanceRequest(), { signal: ctl.signal });
+    setTimeout(() => ctl.abort(), 20);
+    expect(await pending).toMatchObject({ ok: false, kind: 'timeout', retryable: false, billing: { known: false } });
   });
 });

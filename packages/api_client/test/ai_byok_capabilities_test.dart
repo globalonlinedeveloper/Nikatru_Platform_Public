@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:nikatru_api_client/ai_byok.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart' show HttpPlatform;
@@ -72,14 +74,12 @@ void main() {
           byokKeyName('openai'): 'sentinel-never-logged-sentinel-never-logged',
           byokKeyName('gemini'): 'sentinel-never-logged-sentinel-never-logged',
         });
-        // A Dio with no reachable adapter: any request would throw, so a returned
-        // `unavailable` proves none was attempted.
-        final Dio dio = Dio(
-          BaseOptions(connectTimeout: const Duration(milliseconds: 1)),
-        );
+        // A transport that fails the test if it is ever asked: a returned
+        // `unavailable` with it untouched proves no request was attempted.
+        final _Refusing never = _Refusing();
         for (final AiProvider ai in <AiProvider>[
-          OpenAiByok(keys: keys, dio: dio, platform: HttpPlatform.web),
-          GeminiByok(keys: keys, dio: dio, platform: HttpPlatform.web),
+          OpenAiByok(keys: keys, transport: never, platform: HttpPlatform.web),
+          GeminiByok(keys: keys, transport: never, platform: HttpPlatform.web),
         ]) {
           final AiOutcome out = await ai.complete(
             const AiRequest(
@@ -121,4 +121,16 @@ void main() {
       );
     }
   });
+}
+
+class _Refusing implements HttpClientAdapter {
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) => throw StateError('no request may be made from web for this provider');
 }
