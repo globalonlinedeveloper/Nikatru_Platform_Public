@@ -53,32 +53,64 @@ head, with every deploy planned from the ledger (an already-live SHA publishes n
 
 1. **Main first.** Main's newest `ci.yml` run at its head (push or dispatch):
    running → no merge; none and the commit older than 3 minutes → dispatch `ci.yml` (a merge
-   whose dispatch was lost, or a push by this token); cancelled → re-dispatch, at most twice;
-   red → the failing jobs are compared with the parent's run, and a job **new** against it opens
+   whose dispatch was lost, or a push by this token); cancelled **with no failed job** →
+   re-dispatch, at most twice; red — including a run that ended `cancelled` with any failed
+   job (fail-fast cancels a red run), or one whose jobs could not be read (fail closed) — →
+   the failing jobs are compared with the parent's run, and a job **new** against it opens
    a `land-freeze` issue naming the run and the job (once per run id, open or closed). A red
    that was already red on the parent does not freeze. Only `ci.yml` and `codeql.yml` are
-   judged, so Rollback, Native auth proof and Store submit runs never count.
+   judged, so Rollback, Native auth proof and Store submit runs never count. Each is read
+   from its own workflow's listing (`workflows/ci.yml/runs?head_sha=<sha>&branch=main`),
+   every row held to that sha: a page of all runs on the sha can be flooded by land.yml's own.
 2. **An open `land-freeze` issue stops every merge.** The lead closes it.
 3. **The queue**, in `land-ok` label time, then PR number. A PR is eligible when it is open,
    not a draft, based on main, labelled `land-ok`, its **newest** `ci-gate` run green
    (`land-rules.mjs` rule a), and mergeable. Then:
-   - **behind main** → `skewVerdict`: DISJOINT merges as it is; OVERLAP or UNKNOWN is
-     update-branched and re-tested (main changed `.github/` or a root lockfile, either side
-     changed `services/_shared`, the same path on both sides, a `packages/` change against an
-     `apps/`/`packages/` change, or one deploy unit reached from both);
+   - **bound to the reviewed head** → `land-ok` approves the head it was APPLIED at: the
+     head of the newest `pull_request` run of the PR's branch created at or before the label
+     (a push starts that run within seconds). A head that moved after the label WAITS, with
+     the reason, until the lead re-applies the label — unless its diff against `main` is the
+     reviewed diff exactly (every file's status, name and patch), which is what a person's
+     merge-from-main or this lander's own update-branch produces. No run before the label,
+     or a diff that cannot be compared, waits (fail closed);
+   - **behind main** → `skewVerdict`: DISJOINT merges as it is; OVERLAP or UNKNOWN fails
+     closed (main changed `.github/` or a root lockfile, either side changed
+     `services/_shared`, the same path on both sides, a `packages/` change against an
+     `apps/`/`packages/` change, or one deploy unit reached from both): a same-repository
+     head is update-branched; a fork's is SKIPPED for a person, because this token could
+     not start its CI;
+   - **re-tested** → an update-branch made with `GITHUB_TOKEN` starts no CI, so a head with
+     no `ci-gate` and no CI run that will report one (none, or the newest cancelled) gets
+     `ci.yml` **dispatched on its branch** once the head is 3 minutes old. At 2 CI runs on
+     that head that never reported, it is SKIPPED with the reason for a person (or the
+     laptop) to re-run — never a wait without end. A dispatched run on a branch skips the
+     pull-request-only step (`assert-pr-rows`), which the reviewed head's PR run already
+     passed, and runs every lane;
    - **E2E paths** (`apps/*/(lib|integration_test|web|assets)`, `packages/*/lib`) → a green
      `E2E live` run on that exact head; none → it dispatches `e2e.yml` on the PR's branch
-     (same repository only; a fork waits);
+     (same repository only; a fork waits). ⚠️ That dispatch is BARE: `pending_flows` takes its
+     default `skip`, so the **parked flows** (row O-E2E-CORE-FLOW-LEGS-PENDING,
+     `tooling/e2e-leg-register.json` `flows`) are skipped and said, not walked. A PR that
+     changes a parked flow needs a person's `pending_flows=run` dispatch;
    - **merge**: squash, with `sha` = the head it read (GitHub's `--match-head-commit`), then
      the post-merge dispatches.
 
-The first PR whose decision is a write gets it; a waiting PR does not block the next.
+The first PR whose decision is a write gets it; a waiting PR does not block the next, and
+neither does a REFUSED write: that PR is skipped with GitHub's answer printed and the next
+write is tried (the run still exits 1). A refused main write (the freeze issue, a dispatch of
+main) stops the run — nothing may pass it.
+
+**API budget.** A run reads `GET /rate_limit` first (it costs nothing) and refuses to start
+below 200 requests left (COULD NOT LOOK, exit 2); a run reads about 8 + 12 per `land-ok` pull
+request against `GITHUB_TOKEN`'s 1,000 an hour. It prints what it spent on its last line.
 
 ## Dry run
 
-The default. An unattended run is dry until the repository variable `LAND_DRY_RUN` is
-`false`; a dispatch uses its own `dry_run` input (default `true`). A dry run prints every open
-PR's decision and reason and the write it would make, and writes nothing.
+The default. Every run is dry until the repository variable `LAND_DRY_RUN` is `false`. A
+dispatch's own `dry_run` input (default `true`) can only make a run drier: a `dry_run=false`
+dispatch while the variable is not `false` is **refused** — the run prints its decisions dry
+and exits 1 saying so. A dry run prints every open PR's decision and reason and the write it
+would make, and writes nothing.
 
 `node tooling/ci/land-next.mjs --snapshot <file>` decides from a recorded snapshot offline.
 
@@ -90,6 +122,10 @@ PR's decision and reason and the write it would make, and writes nothing.
 3. `gh variable set LAND_DRY_RUN --body false`. The next slot acts.
 
 The row O-MERGES-DEPEND-ON-THE-LAPTOP closes at step 3, not at this merge.
+
+**What a landed merge deploys.** The post-merge `ci.yml` dispatch is main's whole pipeline: a
+merge that reaches a web app or the site republishes `<app>-web` and `nikatru-site` through
+`deploy-web`, exactly as a push to main would. A PR's `Deploys:` line names them.
 
 ## Not verified here
 

@@ -25,10 +25,19 @@
 //   eligible  open, not draft, base main, label `land-ok`, the NEWEST ci-gate run
 //             on the head GREEN (land-rules.mjs rule a — the newest RUN decides,
 //             never the first rollup entry), mergeable.
+//   bound     `land-ok` approves the head it was APPLIED at (the newest
+//             pull_request run created before the label names it). A head that
+//             moved after it waits, unless its diff against main is the reviewed
+//             diff exactly (a merge-from-main, the lander's own update-branch).
 //   freeze    an OPEN issue labelled `land-freeze` stops every merge.
 //   skew      a head behind main is updated (update-branch) and re-tested, UNLESS
 //             its changes are disjoint from main's new changes (`skewVerdict`).
-//             OVERLAP and UNKNOWN fail closed: they update.
+//             OVERLAP and UNKNOWN fail closed: a same-repository head is updated,
+//             a fork's is left to a person (this token cannot start its CI).
+//   re-test   an update-branch made with GITHUB_TOKEN starts no CI, so a head with
+//             no CI run past MAIN_RUN_GRACE_MS gets ci.yml DISPATCHED on its
+//             branch; at HEAD_DISPATCH_CAP runs that never reported, it is SKIPPED
+//             for a person to re-run — never a wait without end.
 //   E2E       a head touching apps/*/(lib|integration_test|web|assets) or
 //             packages/*/lib needs a green `E2E live` run on that head; one with
 //             none is dispatched on the PR's branch (same repository only).
@@ -36,31 +45,43 @@
 //             --match-head-commit); then main's pipeline is dispatched.
 //   watch     main's newest CI run at main's head: running → no merge; red with a
 //             failing job that was NOT failing on the parent's run → a
-//             `land-freeze` issue naming the run and the job. Only ci.yml and
+//             `land-freeze` issue naming the run and the job. A CANCELLED run with
+//             any failed job is red (fail-fast cancels a red run); one whose jobs
+//             cannot be read is red too (land-v24's v15.3 rule). Only ci.yml and
 //             codeql.yml are judged, so the attended dispatches (Rollback, Native
 //             auth proof, Store submit) never count.
-//   one       ONE write per run (a merge, an update-branch, an E2E dispatch, a
-//             main dispatch or a freeze), in order of land-ok label time, then
-//             PR number. `concurrency: land` makes the run itself the one actor.
+//   one       ONE write per run (a merge, an update-branch, an E2E or CI dispatch,
+//             a main dispatch or a freeze), in order of land-ok label time, then
+//             PR number. A pull request whose write is REFUSED is skipped with the
+//             reason and the next one is tried. `concurrency: land` makes the run
+//             itself the one actor.
+//   budget    the run reads /rate_limit first and refuses to start below
+//             API_BUDGET_FLOOR; it prints what it spent.
 //
 // ── DRY RUN IS THE DEFAULT ──────────────────────────────────────────────────
 // LAND_DRY_RUN is anything but the exact string `false` → print every open PR's
 // decision and reason, and write NOTHING. The cut-over (the lead's) runs it dry
-// beside the laptop landers for a day, then sets the repository variable.
+// beside the laptop landers for a day, then sets the repository variable. A
+// dispatch's own `dry_run` (LAND_DISPATCH_DRY_RUN) can only make a run drier: a
+// `dry_run=false` dispatch while the repository is still dry is REFUSED (exit 1).
 //
 // Usage:
 //   node tooling/ci/land-next.mjs                      live: GITHUB_TOKEN/GH_TOKEN, GITHUB_REPOSITORY
 //   node tooling/ci/land-next.mjs --snapshot <file>    decide from a recorded snapshot, write nothing
 //   env  LAND_DRY_RUN  `false` to act; anything else (or unset) is a dry run
+//   env  LAND_DISPATCH_DRY_RUN  a dispatch's `dry_run` input; empty on any other event
 // Exit 0 = decided (and, live, acted or had nothing to do).
-//      1 = a write was refused (merge, update, dispatch, issue) — the reason is printed.
-//      2 = COULD NOT LOOK: a read failed or the snapshot is unreadable. Nothing was written.
+//      1 = a write was refused (merge, update, dispatch, issue), or a live dispatch
+//          was refused during the dry-run period — the reason is printed.
+//      2 = COULD NOT LOOK: a read failed, the snapshot is unreadable, or the API
+//          budget is below its floor. Nothing was written.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gateVerdict, newReds, MAIN_WORKFLOW, MAIN_WORKFLOW_PATH } from '../ops/land-rules.mjs';
 import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
+import { anchoredRunRead, githubRead } from './anchored-run-read.mjs';
 import { globClaims } from './deploy-globs.mjs';
 import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
 
@@ -81,6 +102,13 @@ export const MAIN_RUN_GRACE_MS = 3 * 60_000;
 /** Runs of CI on ONE main sha beyond which a cancelled or missing run is not
  *  re-dispatched again: a person must read why it keeps not finishing. */
 export const MAIN_DISPATCH_CAP = 2;
+/** CI runs on ONE PR head that never reported a ci-gate, beyond which the lander stops
+ *  dispatching ci.yml on it: the head is SKIPPED for a person (or the laptop) to re-run. */
+export const HEAD_DISPATCH_CAP = 2;
+/** The API requests a run must have left before it starts. A run reads about 8 + 12
+ *  per `land-ok` pull request, and GITHUB_TOKEN's budget is 1,000 an hour per
+ *  repository; below this floor a run could be cut off between its reads and its write. */
+export const API_BUDGET_FLOOR = 200;
 /** GitHub's compare API returns at most this many files; a list that long may be cut. */
 export const COMPARE_FILE_CAP = 300;
 /** GitHub's pull-request files API returns at most this many files. */
@@ -198,7 +226,7 @@ export function gateRuns(runs) {
  *   NO_RUN   no CI run here yet; past the grace, act = dispatch ci.yml
  *   RED      a red with NO new failing job (pre-existing): merges continue
  *   FREEZE   a NEW failing job: freeze = { run, jobs, title, marker }
- *   HOLD     CI here was cancelled or missing MAIN_DISPATCH_CAP times: a person reads it
+ *   HOLD     CI here was cancelled (no failed job) or missing MAIN_DISPATCH_CAP times: a person reads it
  */
 export function mainWatch({ main, runs, failedJobs = {}, baseline = {}, now = Date.now() }) {
   const sha = String(main?.sha ?? '');
@@ -217,16 +245,27 @@ export function mainWatch({ main, runs, failedJobs = {}, baseline = {}, now = Da
   // completed and never holds the queue while it runs (a red it reports later still freezes).
   const newest = new Map();
   for (const r of onHead.filter((x) => WATCHED_PATHS.includes(pathOf(x)) && x.status === 'completed').sort(newestFirst)) if (!newest.has(pathOf(r))) newest.set(pathOf(r), r);
-  if (top.conclusion === 'cancelled' || top.conclusion === 'skipped') {
+  // A red main ends `cancelled`: fail-fast cancels the rest of the run once a job fails.
+  // So a cancelled run is a verdict when ANY job failed, and fails closed (red) when
+  // its jobs could not be read; only a cancel with no failed job is "not a verdict".
+  const failedIn = (r) => failedJobs[String(r.id)] ?? null;
+  const isRed = (r) => {
+    const c = String(r.conclusion);
+    if (['success', 'skipped', 'neutral'].includes(c)) return false;
+    if (c !== 'cancelled') return true;
+    const f = failedIn(r);
+    return f === null || f.length > 0;
+  };
+  if ((top.conclusion === 'cancelled' && !isRed(top)) || top.conclusion === 'skipped') {
     if (ci.length >= MAIN_DISPATCH_CAP) return { state: 'HOLD', why: `main ${at}: CI run ${top.id} is ${top.conclusion} and ${ci.length} CI runs here already — re-run it by hand once the cause is read` };
-    return { state: 'NO_RUN', why: `main ${at}: CI run ${top.id} is ${top.conclusion}, not a verdict`, act: { kind: 'dispatch-main' } };
+    return { state: 'NO_RUN', why: `main ${at}: CI run ${top.id} is ${top.conclusion} with no failed job, not a verdict`, act: { kind: 'dispatch-main' } };
   }
-  const reds = [...newest.values()].filter((r) => !['success', 'skipped', 'neutral', 'cancelled'].includes(String(r.conclusion)));
+  const reds = [...newest.values()].filter(isRed);
   if (!reds.length) return { state: 'GREEN', why: `main ${at}: ${[...newest.values()].map((r) => `${pathOf(r).split('/').pop()} run ${r.id} success`).join(', ')}` };
   const fresh = [];
   for (const r of reds) {
     const wf = pathOf(r);
-    const failing = (failedJobs[String(r.id)] ?? null) === null ? [`${wf.split('/').pop()} (its jobs could not be read)`] : failedJobs[String(r.id)];
+    const failing = failedIn(r) === null ? [`${wf.split('/').pop()} (its jobs could not be read)`] : failedIn(r);
     const base = baseline[wf];
     const added = base === null || base === undefined ? [...new Set(failing)].sort() : newReds(base, failing);
     if (added.length) fresh.push({ run: r, jobs: added });
@@ -260,15 +299,54 @@ function freezeBody({ sha, fresh, marker }) {
   return lines.join('\n');
 }
 
+// ── PURE: which head `land-ok` approved ─────────────────────────────────────
+
+/**
+ * The head `land-ok` was APPLIED at: the head_sha of the newest `pull_request` run of
+ * the PR's branch (from its own repository) created at or before the label. A push
+ * starts that run within seconds, so a run created after the label is a head the
+ * label never saw. `runs` are the branch's pull_request runs, newest page.
+ * Returns { sha, why }; sha is null when no run predates the label (fail closed).
+ */
+export function reviewedHead(runs, { labeledAt, headRepo }) {
+  const at = Date.parse(labeledAt ?? '');
+  if (!Number.isFinite(at)) return { sha: null, why: `the \`${LAND_LABEL}\` label time is unreadable` };
+  const before = (runs ?? [])
+    .filter((r) => r?.event === 'pull_request' && r?.head_repository?.full_name === headRepo && /^[0-9a-f]{40}$/.test(String(r?.head_sha ?? '')))
+    .filter((r) => Date.parse(r.created_at ?? '') <= at)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || Number(b.id) - Number(a.id));
+  if (!before.length) return { sha: null, why: `no pull_request run of this branch predates the \`${LAND_LABEL}\` label, so the head it approved is unknown` };
+  return { sha: before[0].head_sha, why: `run ${before[0].id} (created ${before[0].created_at}) names the head the label was applied at` };
+}
+
+/**
+ * A diff's fingerprint, from a compare `main...<sha>` answer: one line per changed
+ * file (status, old name, name, and its patch — or its blob when GitHub sends no
+ * patch). null when the answer is unreadable or cut at the cap (fail closed).
+ */
+export function diffPrint(cmp) {
+  const files = cmp?.files;
+  if (!Array.isArray(files) || files.length >= COMPARE_FILE_CAP) return null;
+  return files.map((f) => [f.status, f.previous_filename ?? '', f.filename, f.patch ?? `blob:${f.sha ?? '?'}`].join('\t')).sort();
+}
+
+/** Is the moved head's diff against main the reviewed one, exactly? Unreadable → no. */
+export function sameDiff(reviewed, head) {
+  if (!Array.isArray(reviewed) || !Array.isArray(head)) return false;
+  return reviewed.length === head.length && reviewed.every((l, i) => l === head[i]);
+}
+
 // ── PURE: one pull request ──────────────────────────────────────────────────
 
 /**
  * What to do with one open pull request. `pr` is the snapshot's PR entry; `repo`
  * the owner/name. Returns { action, why } with action one of
- *   MERGE · UPDATE · DISPATCH_E2E  (writes, in that preference)
- *   WAIT   (pending: CI, mergeability, E2E running) · SKIP (not eligible).
+ *   MERGE · UPDATE · DISPATCH_E2E · DISPATCH_CI  (writes)
+ *   WAIT   (pending: CI, mergeability, E2E running, a head moved after review)
+ *   SKIP   (not eligible, or a person must act).
+ * `now` is the decision's clock (a head's age for the CI grace).
  */
-export function decidePr(pr, { repo, units }) {
+export function decidePr(pr, { repo, units, now = Date.now() }) {
   const skip = (why) => ({ action: 'SKIP', why });
   const wait = (why) => ({ action: 'WAIT', why });
   if (pr.state !== 'open') return skip(`state ${pr.state}`);
@@ -276,15 +354,49 @@ export function decidePr(pr, { repo, units }) {
   if (!(pr.labels ?? []).includes(LAND_LABEL)) return skip(`no \`${LAND_LABEL}\` label`);
   if (pr.baseRef !== BASE_BRANCH) return skip(`base is ${pr.baseRef}, not ${BASE_BRANCH}`);
   if (!/^[0-9a-f]{40}$/.test(String(pr.headSha ?? ''))) return skip('no readable head sha');
+  // BOUND TO THE REVIEWED HEAD: a push after `land-ok` is content nobody approved. A
+  // moved head is accepted only when its diff against main IS the reviewed diff (a
+  // person's merge-from-main, or this lander's own update-branch).
+  const head8 = pr.headSha.slice(0, 8);
+  if (!/^[0-9a-f]{40}$/.test(String(pr.reviewedSha ?? ''))) return wait(`cannot tell which head \`${LAND_LABEL}\` approved${pr.reviewedWhy ? ` (${pr.reviewedWhy})` : ''}: re-apply the label`);
+  let moved = '';
+  if (pr.reviewedSha !== pr.headSha) {
+    const rev8 = pr.reviewedSha.slice(0, 8);
+    if (!sameDiff(pr.reviewedDiff, pr.headDiff)) {
+      const unread = !Array.isArray(pr.reviewedDiff) || !Array.isArray(pr.headDiff);
+      return wait(`head ${head8} moved after \`${LAND_LABEL}\` was applied at ${rev8}, and its diff against main ${unread ? 'could not be compared' : 'is not the reviewed one'}: review the new head and re-apply the label`);
+    }
+    moved = `, head moved from ${rev8} with the reviewed diff unchanged`;
+  }
   const g = gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) });
   if (g.verdict === 'RED') return skip(`ci-gate RED — ${g.why}`);
-  if (g.verdict !== 'GREEN') return wait(`ci-gate ${g.verdict} — ${g.why}`);
+  if (g.verdict !== 'GREEN') {
+    // NEVER A WAIT WITHOUT END: a head no CI run will ever grade (an update-branch made
+    // with GITHUB_TOKEN starts none, or its run was cancelled) gets ci.yml dispatched on
+    // its branch, up to HEAD_DISPATCH_CAP runs; past that a person re-runs it.
+    const ci = gateRuns(pr.runs).sort(newestFirst);
+    const idle = ci.every((r) => r.status === 'completed');
+    const noVerdictComing = idle && (g.verdict === 'NONE' || (g.verdict === 'PENDING' && ci[0]?.conclusion === 'cancelled'));
+    if (!noVerdictComing) return wait(`ci-gate ${g.verdict} — ${g.why}`);
+    if (ci.length >= HEAD_DISPATCH_CAP) return skip(`ci-gate ${g.verdict} after ${ci.length} CI run(s) on ${head8}, none of which will report: re-run its CI by hand (a person or the laptop)`);
+    if (!ci.length) {
+      const age = now - Date.parse(pr.headCommittedAt ?? '');
+      if (!(age >= MAIN_RUN_GRACE_MS)) return wait(`no CI run on ${head8} yet (${Number.isFinite(age) ? `${Math.round(age / 1000)} s old` : 'age unreadable'}): waiting for its push run`);
+    }
+    if (pr.headRepo !== repo) return skip(`ci-gate ${g.verdict} on ${head8} and a fork's branch cannot be dispatched here: a person re-runs its CI`);
+    return { action: 'DISPATCH_CI', why: `ci-gate ${g.verdict} on ${head8} and no CI run will report one (${ci.length} run(s) here): ci.yml is dispatched on its branch` };
+  }
   if (pr.mergeable === false || pr.mergeableState === 'dirty') return skip('merge conflict with main');
   if (pr.mergeable !== true) return wait('GitHub has not computed mergeability yet');
   if (!Array.isArray(pr.files) || pr.filesComplete === false) return skip("the PR's file list is unreadable or cut at the API's cap: land it by hand");
   if (Number(pr.behindBy) > 0) {
     const s = skewVerdict({ prFiles: pr.files, mainFiles: pr.mainFiles, mainComplete: pr.mainFilesComplete !== false, units });
-    if (s.verdict !== 'DISJOINT') return { action: 'UPDATE', why: `${pr.behindBy} commit(s) behind main, skew ${s.verdict}: ${s.why}` };
+    if (s.verdict !== 'DISJOINT') {
+      const why = `${pr.behindBy} commit(s) behind main, skew ${s.verdict}: ${s.why}`;
+      // An updated fork head would get no CI from this token: a person updates it.
+      if (pr.headRepo !== repo) return skip(`${why} — a fork's head cannot be re-tested by this token: update it by hand`);
+      return { action: 'UPDATE', why };
+    }
   }
   if (needsE2E(pr.files)) {
     const e = e2eVerdict(pr.e2eRuns, pr.headSha);
@@ -296,7 +408,7 @@ export function decidePr(pr, { repo, units }) {
     }
   }
   const skew = Number(pr.behindBy) > 0 ? `, ${pr.behindBy} behind but DISJOINT` : '';
-  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}` };
+  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}${moved}` };
 }
 
 /** Queue order: land-ok label time, then PR number. A PR with no label time sorts last. */
@@ -310,16 +422,18 @@ export function queueOrder(prs) {
 
 /**
  * THE RUN'S DECISION, from one snapshot. Returns
- *   { watch, freezes, decisions: [{ number, action, why }], act }
+ *   { watch, freezes, decisions: [{ number, action, why }], act, candidates }
  * `act` is the ONE write this run makes, or null: { kind: 'freeze' | 'dispatch-main'
- * | 'merge' | 'update' | 'dispatch-e2e', pr?, why }. A dry run prints it and does
- * nothing else.
+ * | 'merge' | 'update' | 'dispatch-e2e' | 'dispatch-ci', pr?, why }. `candidates`
+ * are the pull-request writes in queue order (act first): a REFUSED one is skipped
+ * and the next is tried (performQueue). A dry run prints `act` and does nothing else.
  */
 export function plan(snap) {
   const units = snap.units ?? {};
   const watch = mainWatch({ main: snap.main, runs: snap.mainRuns, failedJobs: snap.failedJobs, baseline: snap.baseline, now: Date.parse(snap.now ?? '') || Date.now() });
   const freezes = (snap.freezes ?? []).filter((i) => i?.state === 'open');
-  const decisions = queueOrder(snap.prs).map((pr) => ({ number: pr.number, title: pr.title ?? '', ...decidePr(pr, { repo: snap.repo, units }) }));
+  const now = Date.parse(snap.now ?? '') || Date.now();
+  const decisions = queueOrder(snap.prs).map((pr) => ({ number: pr.number, title: pr.title ?? '', ...decidePr(pr, { repo: snap.repo, units, now }) }));
   // A NEW red whose run already has a land-freeze issue — open, or CLOSED by the lead to
   // lift it — is not frozen again: closed means "read, and judged not to block".
   const lifted = watch.state === 'FREEZE' && (snap.freezeMarkers ?? []).includes(watch.freeze.marker);
@@ -329,23 +443,24 @@ export function plan(snap) {
     : ['FREEZE', 'RUNNING', 'NO_RUN', 'HOLD'].includes(state)
       ? `main is ${state} — no merge this run`
       : null;
-  let act = null;
+  let candidates = [];
   if (state === 'FREEZE') {
-    act = { kind: 'freeze', why: watch.why, freeze: watch.freeze };
+    candidates = [{ kind: 'freeze', why: watch.why, freeze: watch.freeze }];
   } else if (state === 'NO_RUN') {
-    act = { kind: 'dispatch-main', why: watch.why };
+    candidates = [{ kind: 'dispatch-main', why: watch.why }];
   } else {
-    // A merge needs main settled and unfrozen; an update-branch or an E2E dispatch only
-    // readies a head, so it may go ahead while main's run is still going.
-    const writes = blocked ? ['UPDATE', 'DISPATCH_E2E'] : ['MERGE', 'UPDATE', 'DISPATCH_E2E'];
-    const next = decisions.find((d) => writes.includes(d.action));
-    if (next) {
-      const pr = snap.prs.find((p) => p.number === next.number);
-      const kind = { MERGE: 'merge', UPDATE: 'update', DISPATCH_E2E: 'dispatch-e2e' }[next.action];
-      act = { kind, pr: { number: pr.number, headSha: pr.headSha, headRef: pr.headRef }, why: next.why };
-    }
+    // A merge needs main settled and unfrozen; an update-branch or a CI/E2E dispatch
+    // only readies a head, so it may go ahead while main's run is still going.
+    const writes = blocked ? ['UPDATE', 'DISPATCH_E2E', 'DISPATCH_CI'] : ['MERGE', 'UPDATE', 'DISPATCH_E2E', 'DISPATCH_CI'];
+    candidates = decisions
+      .filter((d) => writes.includes(d.action))
+      .map((d) => {
+        const pr = snap.prs.find((p) => p.number === d.number);
+        const kind = { MERGE: 'merge', UPDATE: 'update', DISPATCH_E2E: 'dispatch-e2e', DISPATCH_CI: 'dispatch-ci' }[d.action];
+        return { kind, pr: { number: pr.number, headSha: pr.headSha, headRef: pr.headRef }, why: d.why };
+      });
   }
-  return { watch, freezes, decisions, act, blocked };
+  return { watch, freezes, decisions, act: candidates[0] ?? null, candidates, blocked };
 }
 
 /** The lines a run prints: main, the freeze, every PR's decision, the act. */
@@ -359,7 +474,56 @@ export function report(p, { dryRun }) {
   return out;
 }
 
-export const isDryRun = (env = process.env) => String(env.LAND_DRY_RUN ?? '').trim() !== 'false';
+/**
+ * The run's mode. The repository variable (LAND_DRY_RUN) is the floor; a dispatch's
+ * own `dry_run` (LAND_DISPATCH_DRY_RUN, empty on every other event) can make a run
+ * drier, never wetter: a `dry_run=false` dispatch while the repository is dry is
+ * REFUSED — it runs dry and says so. Returns { dry, refusal }.
+ */
+export function runMode(env = process.env) {
+  const repoDry = String(env.LAND_DRY_RUN ?? '').trim() !== 'false';
+  const asked = String(env.LAND_DISPATCH_DRY_RUN ?? '').trim();
+  if (asked === '') return { dry: repoDry, refusal: null };
+  if (asked !== 'false') return { dry: true, refusal: null };
+  if (repoDry) {
+    return {
+      dry: true,
+      refusal: 'a `dry_run=false` dispatch is REFUSED while the repository is in its dry-run period (vars.LAND_DRY_RUN is not `false`): this run was dry. The cut-over in docs/ci/land.md ends that period.',
+    };
+  }
+  return { dry: false, refusal: null };
+}
+
+export const isDryRun = (env = process.env) => runMode(env).dry;
+
+/** The API budget a run may start with, from GET /rate_limit's `resources.core`.
+ *  null = enough; otherwise the refusal. Unreadable is a refusal (fail closed). */
+export function budgetProblem(core, floor = API_BUDGET_FLOOR) {
+  const remaining = Number(core?.remaining);
+  if (!Number.isFinite(remaining)) return 'the API budget (GET /rate_limit) is unreadable';
+  if (remaining < floor) return `the API budget is ${remaining}/${core?.limit ?? '?'} requests, below the floor of ${floor}; it resets at ${core?.reset ? new Date(Number(core.reset) * 1000).toISOString() : '?'}`;
+  return null;
+}
+
+/**
+ * Perform the run's ONE write: the candidates in order until one WRITES. A refused
+ * pull-request write (nothing written) is printed, that PR skipped, and the next tried;
+ * a refused main write (freeze, dispatch-main) stops the run — nothing may pass it.
+ * `perform(act)` returns { code, lines, wrote }. Returns { code, lines }.
+ */
+export async function performQueue(candidates, perform) {
+  const lines = [];
+  let code = 0;
+  for (const act of candidates ?? []) {
+    const r = await perform(act);
+    lines.push(...r.lines);
+    if (r.wrote) return { code: Math.max(code, r.code), lines };
+    code = 1;
+    if (!act.pr) return { code, lines };
+    lines.push(`skipped #${act.pr.number}: its ${act.kind} was refused; trying the next pull request`);
+  }
+  return { code, lines };
+}
 
 // ── PURE: is a dispatch of main the same pipeline as a push to main? ─────────
 
@@ -426,23 +590,41 @@ export function dispatchParityProblems(read) {
 
 const API = process.env.GITHUB_API_URL || 'https://api.github.com';
 
+/** Every request a run makes, and the budget GitHub last reported (x-ratelimit-remaining). */
+export const budget = { requests: 0, remaining: null };
+
 function client(repo, token) {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-land-next', 'x-github-api-version': '2022-11-28' };
-  const get = async (path) => {
-    const res = await fetchWithBoundedRetry(({ signal }) => fetch(`${API}/repos/${repo}${path}`, { headers, signal }), { describe: (s) => `GET ${path} — ${s}` });
+  const seen = (res) => {
+    budget.requests++;
+    const left = Number(res.headers?.get?.('x-ratelimit-remaining'));
+    if (Number.isFinite(left)) budget.remaining = left;
+    return res;
+  };
+  const getAt = async (url, path) => {
+    const res = await fetchWithBoundedRetry(({ signal }) => fetch(url, { headers, signal }).then(seen), { describe: (s) => `GET ${path} — ${s}` });
     if (!res.ok) throw new Error(`GET ${path} → HTTP ${res.status}`);
     return res.json();
   };
+  const get = (path) => getAt(`${API}/repos/${repo}${path}`, path);
+  // GET /rate_limit is not counted against the budget it reports.
+  const rateLimit = async () => (await getAt(`${API}/rate_limit`, '/rate_limit'))?.resources?.core ?? null;
   // A write gets ONE attempt: a re-ask after a lost answer could merge or dispatch twice.
   const write = async (method, path, body) => {
     const res = await fetchWithBoundedRetry(
-      ({ signal }) => fetch(`${API}/repos/${repo}${path}`, { method, headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body), signal }),
+      ({ signal }) => fetch(`${API}/repos/${repo}${path}`, { method, headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body), signal }).then(seen),
       { attempts: 1, describe: (s) => `${method} ${path} — ${s}` },
     );
     const text = await res.text().catch(() => '');
     return { ok: res.ok, status: res.status, text };
   };
-  return { get, write };
+  // The run-list reads go through anchoredRunRead (its ceiling, its stale-page anchor);
+  // this is the one GET it is handed, counted like every other.
+  const readUrl = (url, opts) => {
+    budget.requests++;
+    return githubRead(token, { label: url.replace(API, ''), userAgent: 'nikatru-land-next' })(url, opts);
+  };
+  return { get, write, rateLimit, readUrl };
 }
 
 async function paged(get, path, key = null, cap = 10) {
@@ -459,21 +641,41 @@ async function paged(get, path, key = null, cap = 10) {
 
 const failedJobNames = (jobs) => (jobs ?? []).filter((j) => RED_JOB.has(String(j?.conclusion))).map((j) => String(j.name));
 
+/**
+ * One workflow's runs on one sha, from THAT workflow's listing — never page 1 of every
+ * run on the sha, which land.yml's own runs (and any other workflow's) can flood. Read
+ * through anchoredRunRead (the shared ceiling and stale-page anchor; a page proven
+ * stale is COULD NOT LOOK), graded on its union. Every row must be on the sha asked
+ * for, or the read throws (COULD NOT LOOK). `read` is the one GET `(url, { signal })`.
+ */
+export async function workflowRunsOn(read, { repo, workflowPath, sha, branch = null, nowMs = Date.now() }) {
+  const file = workflowPath.split('/').pop();
+  const url = `${API}/repos/${repo}/actions/workflows/${file}/runs?head_sha=${sha}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}&per_page=100`;
+  const r = await anchoredRunRead({ workflow: file, url, read, nowMs, what: `${file} runs on ${sha.slice(0, 8)}`, label: `${file} runs on ${sha.slice(0, 8)}` });
+  if (r.stale) throw new Error(`${r.query}: ${r.verdict.why}`);
+  const off = r.union.find((x) => x?.head_sha !== sha);
+  if (off) throw new Error(`${r.query} answered run ${off.id} on ${String(off.head_sha).slice(0, 12)}, not ${sha.slice(0, 12)}`);
+  return r.union.map((x) => ({ ...x, path: x.path ?? workflowPath }));
+}
+
 /** Read everything one decision needs. Reads only; throws on any unreadable answer. */
 export async function readSnapshot({ repo, token, now = new Date() }) {
-  const { get } = client(repo, token);
+  const { get, readUrl } = client(repo, token);
+  const runsOn = (workflowPath, sha, branch = null) => workflowRunsOn(readUrl, { repo, workflowPath, sha, branch, nowMs: now.getTime() });
   const head = await get(`/commits/${BASE_BRANCH}`);
   const main = { sha: head.sha, parentSha: head.parents?.[0]?.sha ?? null, committedAt: head.commit?.committer?.date ?? null };
-  const mainRuns = (await get(`/actions/runs?head_sha=${main.sha}&per_page=100`)).workflow_runs ?? [];
+  const mainRuns = [];
+  for (const wf of WATCHED_PATHS) mainRuns.push(...(await runsOn(wf, main.sha, BASE_BRANCH)));
   const failedJobs = {};
   const baseline = {};
   for (const r of mainRuns) {
-    if (r.status === 'completed' && WATCHED_PATHS.includes(pathOf(r)) && !['success', 'skipped', 'neutral', 'cancelled'].includes(String(r.conclusion))) {
+    // A cancelled run's jobs are read too: fail-fast cancels a red run (mainWatch).
+    if (r.status === 'completed' && WATCHED_PATHS.includes(pathOf(r)) && !['success', 'skipped', 'neutral'].includes(String(r.conclusion))) {
       failedJobs[String(r.id)] = failedJobNames((await get(`/actions/runs/${r.id}/jobs?filter=latest&per_page=100`)).jobs);
       const wf = pathOf(r);
       if (main.parentSha && !(wf in baseline)) {
-        const prev = ((await get(`/actions/runs?head_sha=${main.parentSha}&per_page=100`)).workflow_runs ?? [])
-          .filter((x) => pathOf(x) === wf && x.status === 'completed' && x.conclusion !== 'cancelled')
+        const prev = (await runsOn(wf, main.parentSha, BASE_BRANCH))
+          .filter((x) => x.status === 'completed' && x.conclusion !== 'cancelled')
           .sort(newestFirst)[0];
         baseline[wf] = prev ? failedJobNames((await get(`/actions/runs/${prev.id}/jobs?filter=latest&per_page=100`)).jobs) : null;
       }
@@ -497,12 +699,37 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
     const events = (await paged(get, `/issues/${p.number}/events`)).rows;
     const labeled = events.filter((e) => e.event === 'labeled' && e.label?.name === LAND_LABEL).map((e) => e.created_at).sort();
     const checks = (await get(`/commits/${p.head.sha}/check-runs?check_name=ci-gate&per_page=100`)).check_runs ?? [];
-    const runs = (await get(`/actions/runs?head_sha=${p.head.sha}&per_page=100`)).workflow_runs ?? [];
+    const headCommit = await get(`/commits/${p.head.sha}`);
+    const runs = [...(await runsOn(MAIN_WORKFLOW_PATH, p.head.sha)), ...(await runsOn(E2E_WORKFLOW_PATH, p.head.sha))];
     const files = await paged(get, `/pulls/${p.number}/files`, null, PR_FILE_CAP / 100);
     const cmp = await get(`/compare/${p.head.sha}...${BASE_BRANCH}`);
+    const labeledAt = labeled.at(-1) ?? null;
+    // Which head the label approved, and — when the head has moved since — whether
+    // the diff against main is still the reviewed one. A diff that cannot be read
+    // is null, and the PR waits (decidePr); it never blocks the rest of the queue.
+    const branchRuns = (await get(`/actions/runs?branch=${encodeURIComponent(p.head.ref)}&event=pull_request&per_page=100`)).workflow_runs ?? [];
+    const reviewed = reviewedHead(branchRuns, { labeledAt, headRepo: entry.headRepo });
+    let reviewedDiff = null;
+    let headDiff = null;
+    if (reviewed.sha && reviewed.sha !== p.head.sha) {
+      const print = async (sha) => {
+        try {
+          return diffPrint(await get(`/compare/${BASE_BRANCH}...${sha}`));
+        } catch {
+          return null;
+        }
+      };
+      reviewedDiff = await print(reviewed.sha);
+      headDiff = await print(p.head.sha);
+    }
     prs.push({
       ...entry,
-      labeledAt: labeled.at(-1) ?? null,
+      labeledAt,
+      headCommittedAt: headCommit.commit?.committer?.date ?? null,
+      reviewedSha: reviewed.sha,
+      reviewedWhy: reviewed.why,
+      reviewedDiff,
+      headDiff,
       mergeable: full.mergeable,
       mergeableState: full.mergeable_state,
       checks,
@@ -520,8 +747,13 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
 
 const DISPATCH_REFUSED = (wf, r) => `dispatch ${wf} answered HTTP ${r.status} ${r.text.slice(0, 200)}`;
 
-/** The ONE write. Returns { code, lines }. */
+/** The ONE write. Returns { code, lines, wrote } — `wrote` false when nothing was written. */
 export async function perform(act, { repo, token }) {
+  const r = await performOne(act, { repo, token });
+  return { ...r, wrote: r.wrote ?? r.code === 0 };
+}
+
+async function performOne(act, { repo, token }) {
   const { write } = client(repo, token);
   const dispatch = async (wf, ref, inputs) => write('POST', `/actions/workflows/${wf}/dispatches`, inputs ? { ref, inputs } : { ref });
   if (act.kind === 'freeze') {
@@ -534,7 +766,15 @@ export async function perform(act, { repo, token }) {
   }
   if (act.kind === 'update') {
     const r = await write('PUT', `/pulls/${act.pr.number}/update-branch`, { expected_head_sha: act.pr.headSha });
-    return r.status === 202 ? { code: 0, lines: [`updated #${act.pr.number} from ${BASE_BRANCH}; its CI re-runs`] } : { code: 1, lines: [`update-branch #${act.pr.number} answered HTTP ${r.status} ${r.text.slice(0, 200)}`] };
+    // GITHUB_TOKEN's update starts no CI: a later run dispatches ci.yml on the new head
+    // once it is MAIN_RUN_GRACE_MS old with no run (decidePr, DISPATCH_CI).
+    return r.status === 202
+      ? { code: 0, lines: [`updated #${act.pr.number} from ${BASE_BRANCH}; a later run dispatches ci.yml on its new head`] }
+      : { code: 1, lines: [`update-branch #${act.pr.number} answered HTTP ${r.status} ${r.text.slice(0, 200)}`] };
+  }
+  if (act.kind === 'dispatch-ci') {
+    const r = await dispatch('ci.yml', act.pr.headRef);
+    return r.status === 204 ? { code: 0, lines: [`dispatched ci.yml on ${act.pr.headRef} for #${act.pr.number}`] } : { code: 1, lines: [DISPATCH_REFUSED('ci.yml', r)] };
   }
   if (act.kind === 'dispatch-e2e') {
     const r = await dispatch('e2e.yml', act.pr.headRef);
@@ -543,6 +783,8 @@ export async function perform(act, { repo, token }) {
   if (act.kind === 'merge') {
     const m = await write('PUT', `/pulls/${act.pr.number}/merge`, { merge_method: 'squash', sha: act.pr.headSha });
     if (!m.ok) return { code: 1, lines: [`merge #${act.pr.number} at ${act.pr.headSha.slice(0, 8)} answered HTTP ${m.status} ${m.text.slice(0, 200)}`] };
+    // Merged: whatever a dispatch below answers, this run has made its write.
+    const wrote = true;
     const lines = [`merged #${act.pr.number} (squash, head ${act.pr.headSha.slice(0, 8)})`];
     let code = 0;
     // A GITHUB_TOKEN merge starts no run: main's pipeline is started here, ci.yml first.
@@ -554,7 +796,7 @@ export async function perform(act, { repo, token }) {
         code = 1;
       }
     }
-    return { code, lines };
+    return { code, lines, wrote };
   }
   return { code: 1, lines: [`unknown act ${JSON.stringify(act.kind)}`] };
 }
@@ -563,7 +805,8 @@ async function main(argv) {
   const say = (lines) => {
     for (const l of lines) console.log(l);
   };
-  const dryRun = isDryRun();
+  const mode = runMode();
+  const dryRun = mode.dry;
   const at = argv.indexOf('--snapshot');
   let snap;
   if (at !== -1) {
@@ -582,17 +825,32 @@ async function main(argv) {
     say(['COULD NOT LOOK — GITHUB_REPOSITORY and GITHUB_TOKEN (or GH_TOKEN) are required']);
     return 2;
   }
+  const spent = () => `API budget: this run made ${budget.requests} request(s); ${budget.remaining ?? '?'} remaining`;
   try {
+    const core = await client(repo, token).rateLimit();
+    const low = budgetProblem(core);
+    if (low) {
+      say([`COULD NOT LOOK — ${low}. Nothing was read or written.`]);
+      return 2;
+    }
+    say([`API budget: ${core.remaining}/${core.limit} remaining at the start (floor ${API_BUDGET_FLOOR})`]);
     snap = await readSnapshot({ repo, token });
   } catch (e) {
-    say([`COULD NOT LOOK — ${e.message}. Nothing was written.`]);
+    say([`COULD NOT LOOK — ${e.message}. Nothing was written.`, spent()]);
     return 2;
   }
   const p = plan(snap);
   say(report(p, { dryRun }));
-  if (dryRun || !p.act) return 0;
-  const r = await perform(p.act, { repo, token });
-  say(r.lines);
+  if (mode.refusal) {
+    say([`REFUSED — ${mode.refusal}`, spent()]);
+    return 1;
+  }
+  if (dryRun || !p.act) {
+    say([spent()]);
+    return 0;
+  }
+  const r = await performQueue(p.candidates, (act) => perform(act, { repo, token }));
+  say([...r.lines, spent()]);
   return r.code;
 }
 
