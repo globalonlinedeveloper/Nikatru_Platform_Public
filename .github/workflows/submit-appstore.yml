@@ -79,37 +79,6 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A dry run green over a name the owner has not HELD
-      # or proven free rehearses a submission nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
-      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)
-        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. One step per channel, so a red names the store.
-      - name: Name clearance holds for macos-appstore (owner HELD or PROVEN-FREE)
-        run: node tooling/ci/assert-name-clearance.mjs --for-submission=macos-appstore
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. App Review rejects an auto-renewable with no
-      # review screenshot; under --for-submission a deferred product is a finding, not a note.
-      - name: Every auto-renewable has its review screenshot (--for-submission)
-        run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
-      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
-      # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
-      - name: The app's App Store declarations are sworn, not preview (--for-submission)
-        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
-      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
-      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
-      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
-        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
-      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
-      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
-      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
-        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
-      # why: AB-M5-02. A first-year App Store subscriber pays the standard commission until the owner enrols in the
-      # Small Business Program (A-18), and the Apple rows then net below web. A dry run prints NOT YET ENROLLED and never
-      # refuses; the job that publishes passes --real-submission (limb 3 of assert-publish-steps-guarded.mjs).
-      - name: The Small Business Program enrolment is recorded before an App Store sale (ios-appstore)
-        run: node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore
-      # why: AB-M5-02. One step per channel, so a red names the store.
-      - name: The Small Business Program enrolment is recorded before an App Store sale (macos-appstore)
-        run: node tooling/ci/assert-small-business-program.mjs --for-submission=macos-appstore
       - name: Toolchain under test
         run: |
           sw_vers
@@ -210,6 +179,51 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
         run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
+      # why: O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): the gates below run AFTER both builds and both
+      # store dry runs, so a red gate still fails this job, but only once both platforms were rehearsed.
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A dry run green over a name the owner has not HELD
+      # or proven free rehearses a submission nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. One step per channel, so a red names the store.
+      - name: Name clearance holds for macos-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=macos-appstore
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. App Review rejects an auto-renewable with no
+      # review screenshot; under --for-submission a deferred product is a finding, not a note.
+      - name: Every auto-renewable has its review screenshot (--for-submission)
+        run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
+      - name: The app's App Store declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
+      # why: AB-M5-02. A first-year App Store subscriber pays the standard commission until the owner enrols in the
+      # Small Business Program (A-18), and the Apple rows then net below web. A dry run prints NOT YET ENROLLED and never
+      # refuses; the job that publishes passes --real-submission (limb 3 of assert-publish-steps-guarded.mjs).
+      - name: The Small Business Program enrolment is recorded before an App Store sale (ios-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore
+      # why: AB-M5-02. One step per channel, so a red names the store.
+      - name: The Small Business Program enrolment is recorded before an App Store sale (macos-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=macos-appstore
+      # why: C-03. A missing screenshot set was fatal only on Play; App Review refuses a build with no set per
+      # device class. One step per channel, so a red names the store.
+      - name: The App Store screenshot sets cover their declared device types (ios-appstore)
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=ios-appstore
+      - name: The App Store screenshot sets cover their declared device types (macos-appstore)
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=macos-appstore
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. A dry run prints what a real submission of a build that cannot sign in
+      # would be refused, and never refuses; a job that submits passes --real-submission. One step per channel.
+      - name: A build that cannot sign in is not submitted for App Review (ios-appstore)
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=ios-appstore
+      - name: A build that cannot sign in is not submitted for App Review (macos-appstore)
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=macos-appstore
       # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
       # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,
       # into "<app>-ios-appstore-dry-run" and "<app>-macos-appstore-dry-run", which no reader of the

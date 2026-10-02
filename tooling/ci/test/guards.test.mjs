@@ -483,7 +483,9 @@ describe('assert-cors-allowlist', () => {
    *  Without it the guard reports COVERAGE LOST rather than checking anything,
    *  so every fixture below is a tree that has one. */
   const CATALOGUE = JSON.stringify(
-    [{ slug: 'subscriptiontracker', name: 'Subly', url: 'https://nikatru.com/subscriptiontracker', status: 'live' }],
+    // `origin` is the Pages preview origin render.mjs writes into every row; since
+    // 2026-10-01 (rv2-newproduct-010) the guard derives it, so the fixture row carries it.
+    [{ slug: 'subscriptiontracker', name: 'Subly', url: 'https://nikatru.com/subscriptiontracker', origin: PAGES_NEW, status: 'live' }],
     null,
     2,
   );
@@ -726,6 +728,27 @@ describe('assert-lane-coverage', () => {
     const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
     assert.equal(code, 1);
     assert.match(out, /sites\/nikatru/);
+  });
+
+  test('PASSES a site named nowhere when the site-set pair hands it to check-site-integrity.mjs (O-SITE-SET-HAND-LISTED)', () => {
+    const dir = build('lc-site-lane', { sites: ['sites/s'], named: [] });
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'site.yml'),
+      'name: S\njobs:\n  s:\n    steps:\n      - run: |\n          sites=$(node tooling/ci/site-set.mjs --emit)\n          node tooling/ci/check-site-integrity.mjs . $sites\n',
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a site named nowhere when the set is read but never handed to check-site-integrity.mjs', () => {
+    const dir = build('lc-site-lane-cut', { sites: ['sites/s'], named: [] });
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'site.yml'),
+      'name: S\njobs:\n  s:\n    steps:\n      - run: |\n          sites=$(node tooling/ci/site-set.mjs --emit)\n          echo $sites\n',
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /sites\/s/);
   });
 
   test('FAILS when a dart package is outside the workspace', () => {
@@ -9084,12 +9107,15 @@ describe('assert-responsive-coverage', () => {
   const harnessSrc =
     `const Size kPhone = Size(375, 812);\n` +
     `const Size kTablet = Size(768, 1024);\n` +
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the app root requires all five
+    // window classes, so its fixture declares the expanded one too.
+    `const Size kExpanded = Size(1024, 768);\n` +
     `const Size kDesktop = Size(1280, 900);\n` +
     `const Size kWide = Size(1920, 1080);\n`;
 
   /** A test file that imports feature paths and pumps the named subjects at
-   *  every required window class, plus kWide. */
-  const testSrc = (imports, uses, widths = ['kPhone', 'kTablet', 'kDesktop', 'kWide']) =>
+   *  every required window class — all five since train P39. */
+  const testSrc = (imports, uses, widths = ['kPhone', 'kTablet', 'kExpanded', 'kDesktop', 'kWide']) =>
     `${imports.map((p) => `import 'package:subscriptiontracker/${p}';`).join('\n')}\n\nimport 'support/width_harness.dart';\n\nvoid main() {\n` +
     `${uses
       .flatMap((u) => widths.map((w) => `  testWidgets('at ${w}', (t) async { await pumpAt(t, ${w}, ${u}); });`))
@@ -9141,7 +9167,8 @@ describe('assert-responsive-coverage', () => {
       [`${TEST}/width_paywall_test.dart`]: testSrc(
         ['features/monetization/paywall_screen.dart'],
         ['const PaywallScreen()'],
-        ['kPhone', 'kTablet'],
+        // kDesktop is the argued WIDTH_EXEMPT entry; the other four are required.
+        ['kPhone', 'kTablet', 'kExpanded', 'kWide'],
       ),
     };
     for (const i of ids) files[screenFile(i)] = screenSrc(i);
@@ -9176,7 +9203,11 @@ describe('assert-responsive-coverage', () => {
     assert.equal(code, 0);
     assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured/);
     assert.match(out, /the two sets are EQUAL/);
-    assert.match(out, /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): all five window classes.
+    assert.match(
+      out,
+      /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kExpanded \(1024\), kDesktop \(1280\), kWide \(1920\)/,
+    );
   });
 
   test('PRINTS its exclusions with reasons on a PASSING run, never silently', () => {

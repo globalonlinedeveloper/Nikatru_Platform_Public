@@ -55,6 +55,17 @@ void run(HookContext context) {
   // match in the file. A comment above quoting the pattern therefore BECOMES the
   // claim: written out here in prose, this block measured the claim as EMPTY and
   // failed both directions at once. Do not spell the literal in a comment.
+  //
+  // O-BRICK-STAMPS-WEB-ONLY (D30): THE CLAIM IS WHERE THE APP IS PUBLISHED, NOT
+  // WHAT IT BUILDS FOR, and it stays the template's one platform. app.yaml
+  // `platforms` is what the catalogue shows, what discovery publishes as
+  // operatingSystem, and what generate-well-known.mjs puts in the portfolio's
+  // one Apple and one Android app-association file — which refuses a store
+  // platform whose bundle id or signing certificate does not exist yet, and a
+  // stamp has neither. The first app declares the same claim and builds all
+  // six. The native BUILD targets are `_stampNativePlatforms` below;
+  // assert-stamp-platforms.mjs holds them to the platforms build-platforms.yml
+  // compiles for every workspace app.
   const Map<String, List<String>> claim = <String, List<String>>{
     'platforms': <String>['web'],
   };
@@ -136,12 +147,24 @@ void run(HookContext context) {
     displayName: (v['short_name'] ?? displayName).toString(),
   );
 
+  // O-BRICK-STAMPS-WEB-ONLY (D30). The five native folders, branded and waived,
+  // BEFORE the site chain: render.mjs writes the icon label into the native
+  // name fields and the category and export-compliance answers into both
+  // Info.plists only where those files exist, so a chain run first would leave
+  // them stock. They are build targets, not a published claim (see `claim`).
+  _stampNativePlatforms(context, id: id);
+
   // The site chain runs LAST, over the complete app: render.mjs writes
   // msix_config.display_name only into a pubspec that already has the block
   // `_writeMsixConfig` just wrote, and the chain after it reads what render wrote.
   if (wrote) _runSiteChain(context, id: id);
 
   final apiHost = apiDomain.isEmpty ? '$id-api.nikatru.com' : apiDomain;
+  // The GitHub secret holding this Worker's crash-sink DSN: the name
+  // provision-backend.mjs writes as the register row's `dsnSecret`
+  // (`GLITCHTIP_DSN_<APP>`; the app-id contract makes the upper-cased id a valid
+  // suffix), restated here because the checklist prints before that row exists.
+  final dsnSecret = 'GLITCHTIP_DSN_${id.toUpperCase()}';
 
   context.logger.info('');
   if (needsBackend) {
@@ -161,63 +184,39 @@ void run(HookContext context) {
         'copy. Editorial fields (long-description, keywords, search terms) are '
         'yours to sharpen. Replace the generated art only if you have real art.',
       )
-      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subscriptiontracker FOUR
-      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
-      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
-      // the owner ran the command that writes Flutter's default logo and had no
-      // reason to think anything else was needed. `warn` rather than `info` on
-      // purpose: this is the one line whose omission stays invisible until a
-      // store reviewer sees it.
+      // 🔴 THESE TWO STEPS USED TO BE THE NATIVE PLATFORMS THEMSELVES, PRINTED.
+      // 1a told the owner to run `flutter create` and then brand what it wrote;
+      // its absence cost the first app four platforms of the stock icon
+      // (measured 2026-08-04). 1b told them to copy two dated waivers and one
+      // manifest removal out of that app. All of it is mechanical, so since
+      // O-BRICK-STAMPS-WEB-ONLY (D30) `_stampNativePlatforms` does it and these
+      // lines say what is left. `warn` on 1b: the hand work it names stays
+      // invisible until a store build meets it.
       //
-      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // ⚠️ THE MESSAGES NAME NO APP, and that is [C-10] rather than shyness:
       // comments here are exempt from assert-no-clone-tells.mjs and STRING
       // LITERALS ARE NOT. Shared code that knows which app it is in makes every
-      // other app inherit a rule about a product it is not — caught by that
-      // guard on the first CI run of this change.
-      ..warn(
-        '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
-        '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
-        "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
-        'the first app in this portfolio came to ship the stock icon on '
-        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
+      // other app inherit a rule about a product it is not.
+      ..info(
+        '  1a. NATIVE PLATFORMS WERE STAMPED: android, ios, macos, windows and '
+        'linux, by tooling/kit/stamp-native.mjs — `flutter create` output with '
+        'the two dated waivers, the Amazon receiver removal, the splash and the '
+        'Linux packaging derived from assets/icon/app_icon_1024.png, and a '
+        'PREVIEW PrivacyInfo.xcprivacy per Apple platform. '
+        'tooling/kit/stamp-app.mjs then runs the launcher icons; if you stamped '
+        'with raw mason, run them yourself:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
-        '(config + source art are already stamped; CI fails on a stock icon). '
-        'THEN, IF YOU ADDED linux: that tool has no Linux target and the Linux '
-        'embedder has no icon slot — the icon there is a PACKAGING artefact, so '
-        'also run:  node tooling/store/render-linux-icons.mjs --app $id  '
-        '(writes linux/packaging/; CI re-derives it and fails on drift).',
+        '(CI fails on a stock icon), and check the rest with:  '
+        'node tooling/kit/stamp-native.mjs --app $id --check',
       )
       ..warn(
-        '  1b. AND THE MOMENT YOU ADD android OR windows, TWO WAIVERS COME '
-        'WITH THEM, AND ON android ONE REMOVAL. `flutter create` writes the '
-        'stock template, which carries none of the three, and the first app '
-        'in this portfolio needed both waivers the day a '
-        'transitive plugin arrived: cloudflare_turnstile pulls '
-        'flutter_inappwebview, whose Android side calls '
-        'getDefaultProguardFile(proguard-android.txt) — AGP 9 makes that '
-        'throw — and whose Windows side includes <experimental/coroutine>, '
-        'which the MSVC 14.51 STL makes a hard error. Neither plugin has a '
-        'newer release to move to. Copy the two DATED WAIVERS, comments and '
-        'all, out of the app that already carries them:  '
-        'android/gradle.properties  '
-        'android.r8.proguardAndroidTxt.disallowed=false  '
-        'windows/CMakeLists.txt  add_compile_definitions('
-        '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)  '
-        'at DIRECTORY scope, above flutter/generated_plugins.cmake.  '
-        'THE REMOVAL (2026-09-23): purchases_flutter merges in '
-        'com.amazon.device.iap.ResponseReceiver, exported and guarded only by '
-        'a permission no app here declares, so any app installed first can '
-        'hold that permission and reach it. MobSF reports it and V5 of '
-        'assert-android-vapt-manifest.mjs fails the build on it. Copy the '
-        'dated tools:node="remove" line for that receiver, and the '
-        'xmlns:tools declaration on <manifest>, out of '
-        'android/app/src/main/AndroidManifest.xml in the app that already '
-        'carries it.  '
-        'CORRECTED 2026-09-23: ci.yml builds the Android APKs of every app on '
-        'every PR, so a missing Android waiver or removal fails a required '
-        'check. Nothing on a PR builds Windows, so a missing Windows waiver '
-        'is invisible on every required check and only build-platforms.yml '
-        'ever finds out.',
+        '  1b. WHAT THE STAMP DOES NOT CARRY, before the first store build: '
+        'signing, the entitlements and plist keys each Apple capability needs, '
+        'and the manifest hardening assert-android-vapt-manifest.mjs grades on '
+        'the built APK. Review android/, ios/ and macos/ against the app that '
+        'already ships natively. build-platforms.yml builds every workspace app '
+        'on every platform, so from the commit that adds this app its native '
+        'targets are compiled weekly.',
       )
       ..info(
         '  2. ONE COMMAND provisions the backend — create the D1 in apac, '
@@ -267,21 +266,45 @@ void run(HookContext context) {
       // [pipeline 11]E-8. The stamped Worker now calls `reportWorkerError` in its
       // `app.onError` and carries `src/lib/error-sink.ts` (added 2026-09-08), so
       // limbs 2, 3 and 4 of assert-worker-error-sink.mjs pass on a fresh stamp.
-      // Limb 5 CANNOT be stamped: it wants a job named after this Worker in
-      // deploy-workers.yml, and a deploy job for an app that does not exist yet
-      // has nothing to deploy. So it is a printed step, like step 4 — the same
-      // class of genuinely manual work, named rather than left to be discovered
-      // by a red build.
+      // Limb 5 CANNOT be stamped: it wants this Worker's crash-sink SECRET
+      // delivered to deploy-workers.yml, and only the owner can create that
+      // secret (O-E1). So it is a printed step — genuinely manual work, named
+      // rather than left to be discovered by a red build.
+      //
+      // ⏱ 2026-10-01 — rv2-newproduct-004a. This step used to send the owner to
+      // add a per-Worker job to deploy-workers.yml and copy an existing one.
+      // There has been no such job since O-SERVICE-KIT-UNBUILT: the app-Worker
+      // matrix is printed by tooling/ci/worker-set.mjs from the `appWorkers` row
+      // provision-backend.mjs step [6] writes at step 2 above, `dsnSecret`
+      // included. What is left is the secret and the two lines that deliver it
+      // BY NAME (lead ruling Q1: never `secrets: inherit`) — the same two lines
+      // provision-backend.mjs prints, and assert-input-contract.mjs fails this
+      // file if either stops printing or the retired job step comes back.
       // ⚠️ NAME NO OTHER APP HERE. This string is executable shared code, and
       // [C-10] (tooling/ci/assert-no-clone-tells.mjs) fails the build on shared
       // code that knows which app it is in — it caught the first draft of this
       // line, which said "copy the `subscriptiontracker-api` job". Every stamped app would
       // have inherited an instruction naming a product it is not.
       ..info(
-        '  6. REQUIRED before this Worker deploys: add a `$id-api` job to '
-        '.github/workflows/deploy-workers.yml passing --var GLITCHTIP_DSN: and '
-        '--var RELEASE:. Copy any existing Worker job in that file. Without it '
-        'the crash sink has no DSN and every unhandled error is invisible, and '
+        '  6. REQUIRED before this Worker deploys: its crash-sink SECRET. There '
+        'is no deploy job to write — deploy-workers.yml deploys every '
+        '`appWorkers` row of tooling/platform-register.json, and step 2 wrote '
+        'this one with dsnSecret $dsnSecret. O-E1 (owner): create the GitHub '
+        'secret $dsnSecret, holding the DSN of the GlitchTip project of this '
+        'app alone, then deliver it BY NAME, never `secrets: inherit`, in the '
+        'same change:',
+      )
+      ..info(
+        '       .github/workflows/deploy-workers.yml, under '
+        'on.workflow_call.secrets:   $dsnSecret:  (with required: true)',
+      )
+      ..info(
+        '       .github/workflows/ci.yml, in the secrets of the deploy-workers: '
+        'call:   $dsnSecret: \${{ secrets.$dsnSecret }}',
+      )
+      ..info(
+        '     Without them the Worker deploys with no crash sink, so every '
+        'unhandled error is invisible, and '
         'tooling/ci/assert-worker-error-sink.mjs limb 5 fails the build.',
       )
       ..warn(
@@ -318,63 +341,39 @@ void run(HookContext context) {
         'copy. Editorial fields (long-description, keywords, search terms) are '
         'yours to sharpen. Replace the generated art only if you have real art.',
       )
-      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subscriptiontracker FOUR
-      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
-      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
-      // the owner ran the command that writes Flutter's default logo and had no
-      // reason to think anything else was needed. `warn` rather than `info` on
-      // purpose: this is the one line whose omission stays invisible until a
-      // store reviewer sees it.
+      // 🔴 THESE TWO STEPS USED TO BE THE NATIVE PLATFORMS THEMSELVES, PRINTED.
+      // 1a told the owner to run `flutter create` and then brand what it wrote;
+      // its absence cost the first app four platforms of the stock icon
+      // (measured 2026-08-04). 1b told them to copy two dated waivers and one
+      // manifest removal out of that app. All of it is mechanical, so since
+      // O-BRICK-STAMPS-WEB-ONLY (D30) `_stampNativePlatforms` does it and these
+      // lines say what is left. `warn` on 1b: the hand work it names stays
+      // invisible until a store build meets it.
       //
-      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // ⚠️ THE MESSAGES NAME NO APP, and that is [C-10] rather than shyness:
       // comments here are exempt from assert-no-clone-tells.mjs and STRING
       // LITERALS ARE NOT. Shared code that knows which app it is in makes every
-      // other app inherit a rule about a product it is not — caught by that
-      // guard on the first CI run of this change.
-      ..warn(
-        '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
-        '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
-        "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
-        'the first app in this portfolio came to ship the stock icon on '
-        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
+      // other app inherit a rule about a product it is not.
+      ..info(
+        '  1a. NATIVE PLATFORMS WERE STAMPED: android, ios, macos, windows and '
+        'linux, by tooling/kit/stamp-native.mjs — `flutter create` output with '
+        'the two dated waivers, the Amazon receiver removal, the splash and the '
+        'Linux packaging derived from assets/icon/app_icon_1024.png, and a '
+        'PREVIEW PrivacyInfo.xcprivacy per Apple platform. '
+        'tooling/kit/stamp-app.mjs then runs the launcher icons; if you stamped '
+        'with raw mason, run them yourself:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
-        '(config + source art are already stamped; CI fails on a stock icon). '
-        'THEN, IF YOU ADDED linux: that tool has no Linux target and the Linux '
-        'embedder has no icon slot — the icon there is a PACKAGING artefact, so '
-        'also run:  node tooling/store/render-linux-icons.mjs --app $id  '
-        '(writes linux/packaging/; CI re-derives it and fails on drift).',
+        '(CI fails on a stock icon), and check the rest with:  '
+        'node tooling/kit/stamp-native.mjs --app $id --check',
       )
       ..warn(
-        '  1b. AND THE MOMENT YOU ADD android OR windows, TWO WAIVERS COME '
-        'WITH THEM, AND ON android ONE REMOVAL. `flutter create` writes the '
-        'stock template, which carries none of the three, and the first app '
-        'in this portfolio needed both waivers the day a '
-        'transitive plugin arrived: cloudflare_turnstile pulls '
-        'flutter_inappwebview, whose Android side calls '
-        'getDefaultProguardFile(proguard-android.txt) — AGP 9 makes that '
-        'throw — and whose Windows side includes <experimental/coroutine>, '
-        'which the MSVC 14.51 STL makes a hard error. Neither plugin has a '
-        'newer release to move to. Copy the two DATED WAIVERS, comments and '
-        'all, out of the app that already carries them:  '
-        'android/gradle.properties  '
-        'android.r8.proguardAndroidTxt.disallowed=false  '
-        'windows/CMakeLists.txt  add_compile_definitions('
-        '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)  '
-        'at DIRECTORY scope, above flutter/generated_plugins.cmake.  '
-        'THE REMOVAL (2026-09-23): purchases_flutter merges in '
-        'com.amazon.device.iap.ResponseReceiver, exported and guarded only by '
-        'a permission no app here declares, so any app installed first can '
-        'hold that permission and reach it. MobSF reports it and V5 of '
-        'assert-android-vapt-manifest.mjs fails the build on it. Copy the '
-        'dated tools:node="remove" line for that receiver, and the '
-        'xmlns:tools declaration on <manifest>, out of '
-        'android/app/src/main/AndroidManifest.xml in the app that already '
-        'carries it.  '
-        'CORRECTED 2026-09-23: ci.yml builds the Android APKs of every app on '
-        'every PR, so a missing Android waiver or removal fails a required '
-        'check. Nothing on a PR builds Windows, so a missing Windows waiver '
-        'is invisible on every required check and only build-platforms.yml '
-        'ever finds out.',
+        '  1b. WHAT THE STAMP DOES NOT CARRY, before the first store build: '
+        'signing, the entitlements and plist keys each Apple capability needs, '
+        'and the manifest hardening assert-android-vapt-manifest.mjs grades on '
+        'the built APK. Review android/, ios/ and macos/ against the app that '
+        'already ships natively. build-platforms.yml builds every workspace app '
+        'on every platform, so from the commit that adds this app its native '
+        'targets are compiled weekly.',
       )
       // [pipeline S-1r] (absent from the frozen pipeline origin lock by construction — S-1r is a residual id, never a pipeline heading) Same correction as the backend branch above — see the
       // note there for the measurement and for the 2026-09-12 correction. DNS is
@@ -446,6 +445,39 @@ void _registerInWorkspace(HookContext context, {required String id}) {
   lines.insert(end, entry);
   file.writeAsStringSync('${lines.join('\n')}\n');
   context.logger.success('pubspec.yaml: added "apps/$id" to the workspace.');
+}
+
+/// O-BRICK-STAMPS-WEB-ONLY (D30) — the native platform folders, branded and
+/// waived, written by `tooling/kit/stamp-native.mjs`.
+///
+/// 🔴 A NODE TOOL AND NOT DART HERE, for the reason the site chain is one: the
+/// splash, the Linux packaging and the privacy manifest are DERIVED by node
+/// generators the guards import to re-derive them, and a second implementation
+/// in this hook would be a second idea of what they contain. `flutter create`
+/// runs into a temporary directory there, never into `apps/<id>`, which keeps
+/// the root `pubspec.lock` and the brick's own test/ untouched.
+///
+/// Warns rather than throws, for the reason `_writeBrandAssets` does: post_gen
+/// runs AFTER the tree is written, so throwing leaves a half-stamped app. A
+/// failure is not silent — `tooling/kit/stamp-app.mjs` runs the same tool with
+/// `--check` as a post-condition and exits non-zero, and
+/// `assert-stamp-platforms.mjs` fails a workspace app that lacks a platform
+/// folder build-platforms.yml builds.
+void _stampNativePlatforms(HookContext context, {required String id}) {
+  final args = <String>['tooling/kit/stamp-native.mjs', '--app', id];
+  final result = Process.runSync('node', args, runInShell: Platform.isWindows);
+  if (result.exitCode != 0) {
+    context.logger.warn(
+      'native platforms: `node ${args.join(' ')}` exited ${result.exitCode}, so "$id" is stamped for web '
+      'and its native folders are missing or unbranded. Re-run it from the repo root and read what it says.\n'
+      '${result.stdout}${result.stderr}',
+    );
+    return;
+  }
+  context.logger.success(
+    'native platforms: stamped android, ios, macos, windows and linux for "$id" '
+    '(tooling/kit/stamp-native.mjs).',
+  );
 }
 
 /// [ADR 067] decision 2 — WRITE THE DECLARATION, THEN RENDER FROM IT.
@@ -595,10 +627,14 @@ bool _writeAppDeclaration(
 ///
 /// `tooling/sites/regen.mjs` owns the order of the site generators, render.mjs
 /// first; the catalogue row, the listing copy, the site feed, the landing
-/// payload and the discovery pages are its output. `tooling/ci/tag-owner.mjs
-/// --write` then regenerates the release lanes' `tags:` filters from the product
-/// registers. This hook lists neither the generators nor their order: it runs
-/// the one CLI that does.
+/// payload and the discovery pages are its output. `tooling/kit/stamp-shared.mjs`
+/// then writes the app's entries in the shared files OUTSIDE apps/<id>/ — the
+/// bundle register's exclusion, the e2e leg register's `apps.<id>` legs and the
+/// generated auth allow list (⏱ 2026-10-01, train P43: each was a hand edit, and
+/// the bundle one turned ci.yml red on app #2's first commit). `tooling/ci/
+/// tag-owner.mjs --write` then regenerates the release lanes' `tags:` filters
+/// from the product registers. This hook lists neither the generators nor their
+/// order: it runs the CLIs that do.
 ///
 /// Warns rather than throws, for the reason `_writeBrandAssets` does: post_gen
 /// runs AFTER the tree is written, so throwing leaves a half-stamped app. A
@@ -609,6 +645,7 @@ bool _writeAppDeclaration(
 void _runSiteChain(HookContext context, {required String id}) {
   const commands = <List<String>>[
     <String>['tooling/sites/regen.mjs'],
+    <String>['tooling/kit/stamp-shared.mjs'],
     <String>['tooling/ci/tag-owner.mjs', '--write'],
   ];
   for (final args in commands) {
@@ -622,7 +659,8 @@ void _runSiteChain(HookContext context, {required String id}) {
       context.logger.warn(
         'site chain: `$command` exited ${result.exitCode}, so "$id" is stamped but the site surface or the '
         'release tag filter may not carry it. Re-run from the repo root:  $command  and read what it says; '
-        'then `node tooling/sites/regen.mjs --check` and `node tooling/ci/tag-owner.mjs --check` must both exit 0.\n'
+        'then `node tooling/sites/regen.mjs --check`, `node tooling/kit/stamp-shared.mjs --check` and '
+        '`node tooling/ci/tag-owner.mjs --check` must all exit 0.\n'
         '${result.stdout}${result.stderr}',
       );
       return;
@@ -630,7 +668,7 @@ void _runSiteChain(HookContext context, {required String id}) {
   }
   context.logger.success(
     'site chain: rendered "$id" (SHOW-1) from apps/$id/app.yaml through tooling/sites/regen.mjs, '
-    'then tooling/ci/tag-owner.mjs --write.',
+    'wrote its shared-file entries through tooling/kit/stamp-shared.mjs, then tooling/ci/tag-owner.mjs --write.',
   );
 }
 
@@ -960,14 +998,15 @@ void _writeBrandAssets(
     );
   }
 
-  // 🔴 THE NATIVE HALF, AND IT IS THE HALF THAT WAS MISSING. The brick stamps
-  // `web/` only; the owner adds android/ios/macos/windows/linux with
-  // `flutter create . --platforms=…`, which WRITES FLUTTER'S DEFAULT ICONS. That
-  // is exactly how apps/subscriptiontracker ended up shipping the stock logo on four platforms
-  // at once (measured 2026-08-04, 29 byte-identical files) while its web icons
-  // were correct. Without these sources the stamped `flutter_launcher_icons:`
-  // block would point at art nobody generated and fail on first use — and its
-  // failure mode is the stock icon quietly surviving.
+  // 🔴 THE NATIVE HALF, AND IT IS THE HALF THAT WAS MISSING. The native folders
+  // come from `flutter create` (`_stampNativePlatforms`), which WRITES
+  // FLUTTER'S DEFAULT ICONS. That is exactly how apps/subscriptiontracker ended
+  // up shipping the stock logo on four platforms at once (measured 2026-08-04,
+  // 29 byte-identical files) while its web icons were correct. Without these
+  // sources the stamped `flutter_launcher_icons:` block would point at art
+  // nobody generated and fail on first use — and its failure mode is the stock
+  // icon quietly surviving. The 1024 master is also what the splash and the
+  // Linux packaging derive from, so `_stampNativePlatforms` runs after this.
   // Guarded by tooling/ci/assert-launcher-icons.mjs.
   try {
     final written = writeNativeIconSources(
@@ -977,7 +1016,7 @@ void _writeBrandAssets(
     );
     context.logger.success(
       'brand assets: generated ${written.length} native icon source(s) for "$id" '
-      '(run `dart run flutter_launcher_icons` after adding platforms).',
+      '(tooling/kit/stamp-app.mjs runs `dart run flutter_launcher_icons` over them).',
     );
   } catch (e) {
     context.logger.warn(

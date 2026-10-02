@@ -320,11 +320,12 @@ void run(HookContext context) {
   // may invent a number; it may only refuse to stamp a spec that a sourced
   // number already forbids.
   // ── markets · audience ────────────────────────────────────────────────────
-  // [pipeline K-1 · K-16] Both are resolved against the SAME file — the duty
-  // matrix — so it is read once, and a matrix that cannot be read is a refusal
-  // rather than a skip, for the same reason `_sourcedListingLimits` refuses:
-  // silently skipping a check is how a rule stops being enforced with nobody
-  // noticing.
+  // [pipeline K-1] Markets are resolved against the duty matrix, so it is read
+  // once, and a matrix that cannot be read is a refusal rather than a skip, for
+  // the same reason `_sourcedListingLimits` refuses: silently skipping a check
+  // is how a rule stops being enforced with nobody noticing. (The audience
+  // [K-16] was resolved against it too until [ADR 068] made the children
+  // refusal unconditional; see `audience` below.)
   final _DutyMatrix matrix = _readDutyMatrix();
   if (matrix.error != null) {
     problems.add(matrix.error!);
@@ -395,45 +396,30 @@ void run(HookContext context) {
   // ── audience ──────────────────────────────────────────────────────────────
   // [pipeline K-16] "No kids app without the children's surface."
   //
-  // 🔴 THE VERDICT IS READ OUT OF THE DUTY MATRIX, NOT WRITTEN HERE. A bare
-  // `if (audience == 'children') throw` would be a rule that can never pass:
-  // correct once, then permanently wrong the day somebody builds the surface,
-  // and the only thing standing between the two is a person remembering to come
-  // back and delete a line. So the condition is the ROW's own state — status
-  // `implemented` AND an `artefact` that is really on disk. Both halves matter:
-  // the status alone can be flipped by anybody, and an artefact path alone
-  // proves nothing about whether the duty was discharged.
-  const List<String> audiences = <String>['general', 'children'];
+  // ⏱ 2026-10-01 — UNCONDITIONAL, BY DECISION (rv2-newproduct-007). Built
+  // 2026-08-07, this read the duty-matrix row `children-surface-before-a-kids-app`
+  // and accepted a children's audience the day that row turned `implemented`
+  // naming an artefact on disk, so that nobody had to remember to unblock it.
+  // [ADR 068] (LOCKED 2026-09-05) rules that day out: no NIKATRU app, extension
+  // or site targets children, the audience floor is 18, and age gates are never
+  // built. A refusal a register edit can lift would now be a way round a locked
+  // decision, so `children` is refused by name, citing it, and the row is
+  // `withdrawn`. tooling/ci/test/brick-audience.test.mjs holds all three.
+  const List<String> audiences = <String>['general'];
   final String audience = v('audience').toLowerCase();
-  if (!audiences.contains(audience)) {
+  if (audience == 'children') {
+    problems.add(
+      'audience "children" is refused: ADR no.068 (LOCKED 2026-09-05) — no '
+      'NIKATRU app, extension or site targets children, and the audience floor '
+      'is 18. Nothing can unblock it short of a decision superseding ADR '
+      'no.068; declare audience: general.',
+    );
+  } else if (!audiences.contains(audience)) {
     problems.add(
       'audience must be one of ${audiences.join(', ')} — got "$audience". '
       'Nothing in a repository can derive an intended audience; this is a '
       'declaration, and it decides which duties the app has taken on.',
     );
-  } else if (audience == 'children' && matrix.error == null) {
-    final Map<String, dynamic>? row = matrix.rowById(
-      'children-surface-before-a-kids-app',
-    );
-    if (row == null) {
-      problems.add(
-        'COVERAGE LOST — tooling/legal/duty-matrix.json has no '
-        '`children-surface-before-a-kids-app` row, so a children\'s audience '
-        'has nothing to be checked against. An absent row reads exactly like a '
-        'discharged one and must not be treated as a pass.',
-      );
-    } else if (!_surfaceExists(row)) {
-      problems.add(
-        'audience is "children" and the children\'s surface does not exist. '
-        'tooling/legal/duty-matrix.json row `children-surface-before-a-kids-app` '
-        '[K-16] is "${row['status']}" and names '
-        '${row['artefact'] == null ? 'no artefact' : 'artefact ${row['artefact']}'}'
-        ' — the duty is "no app is offered to children without the surface a '
-        'children\'s audience requires", and this spec would offer one. Build '
-        'the surface, set that row to `implemented` naming it, and stamp again; '
-        'until then declare audience: general.',
-      );
-    }
   }
 
   final String shortName = _shortName(displayName);
@@ -653,7 +639,7 @@ _AppIdContract _readAppIdContract() {
 }
 
 /// The duty matrix as this hook needs it: the rows, plus the market vocabulary
-/// they imply. [pipeline K-1 · K-16]
+/// they imply. [pipeline K-1]
 ///
 /// FAIL-CLOSED BY CONSTRUCTION. Every way of failing to read the file produces
 /// an [error], and the caller turns that into a refusal — it never produces an
@@ -692,13 +678,6 @@ class _DutyMatrix {
           (Object? t) => t is String && t.trim().toLowerCase() == market,
         );
       }).toList();
-
-  Map<String, dynamic>? rowById(String id) {
-    for (final Map<String, dynamic> r in rows) {
-      if (r['id'] == id) return r;
-    }
-    return null;
-  }
 }
 
 /// Read `tooling/legal/duty-matrix.json`, or say why not.
@@ -713,7 +692,7 @@ _DutyMatrix _readDutyMatrix() {
     return _DutyMatrix.failed(
       'tooling/legal/duty-matrix.json was not found from the current directory '
       '(${Directory.current.path}). Stamp from the repository root: the market '
-      'and audience declarations are resolved against that file, and a market '
+      'declarations are resolved against that file, and a market '
       'resolved against a file nobody could open is a market nobody checked.',
     );
   }
@@ -722,8 +701,8 @@ _DutyMatrix _readDutyMatrix() {
     final Object? duties = (decoded as Map)['duties'];
     if (duties is! List) {
       return _DutyMatrix.failed(
-        'tooling/legal/duty-matrix.json has no `duties` array, so no market and '
-        'no audience can be resolved against it. Nothing was stamped.',
+        'tooling/legal/duty-matrix.json has no `duties` array, so no market can '
+        'be resolved against it. Nothing was stamped.',
       );
     }
     return _DutyMatrix.of(
@@ -739,21 +718,6 @@ _DutyMatrix _readDutyMatrix() {
       'declaration nobody checked.',
     );
   }
-}
-
-/// Does [row] name a children's surface that is genuinely in the tree?
-///
-/// TWO conditions, and neither is sufficient alone. `status == 'implemented'` is
-/// a word anybody can type; an `artefact` path proves a file exists but not that
-/// the row claims to be done. Together they are the duty matrix's own definition
-/// of discharged ("an artefact in this tree discharges it, and the row names
-/// that artefact"), which is why this reads the row rather than restating it.
-bool _surfaceExists(Map<String, dynamic> row) {
-  if (row['status'] != 'implemented') return false;
-  final Object? artefact = row['artefact'];
-  if (artefact is! String || artefact.trim().isEmpty) return false;
-  final String path = artefact.trim();
-  return File(path).existsSync() || Directory(path).existsSync();
 }
 
 /// Escape [s] for use inside a Dart SINGLE-quoted string literal.

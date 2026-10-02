@@ -637,6 +637,14 @@
       "disposition": "by-design",
       "host": "api.cloudflare.com",
       "reason": "tooling/ops/check-edge-zone.mjs (#1147) passes the declared `zone` from tooling/edge/zone.json to readZoneRecords/zoneId, which GET it from the literal CF_API origin (https://api.cloudflare.com/client/v4) with the read token: comparing the declared zone with the live one is the script's purpose. The file cannot choose the host, and validateDeclaration refuses any `zone` that is not a bare lowercase DNS name (ZONE_NAME) before a request is built; the value is URL-encoded into the query. Added 2026-10-02."
+    },
+    {
+      "alert": 571,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/smoke/web-a11y-tree.mjs",
+      "disposition": "by-design",
+      "host": "127.0.0.1",
+      "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
     }
   ]
 }
