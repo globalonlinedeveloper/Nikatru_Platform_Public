@@ -393,10 +393,14 @@ const CV_CSS = `  :root{
   @media(max-width:640px){.cv{margin:0;border-radius:0;border:0;padding:28px 20px}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
   @media print{
-    :root{--bg:#FFFFFF;--card:#FFFFFF;--text:#000000;--strong:#000000;--muted:#333333;--line:#BBBBBB;--primary:#000000}
+    /* Concrete values, not :root tokens: a palette is declared once per scope across the
+       site (tooling/ci/assert-palette-consistent.mjs), and print needs black on white only. */
     @page{size:A4;margin:16mm}
-    body{background:#FFFFFF}
-    .cv{margin:0;padding:0;border:0;max-width:none}
+    body{background:#FFFFFF;color:#000000}
+    .cv{margin:0;padding:0;border:0;max-width:none;background:#FFFFFF}
+    h1,.role,.item b{color:#000000}
+    .line,h2{color:#333333}
+    a{color:#000000}
     .skip-link,.home{display:none}
     a{text-decoration:none}
     ul.links a::after{content:" (" attr(href) ")";font-size:12px}
