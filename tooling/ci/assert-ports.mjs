@@ -318,7 +318,8 @@ export function readSecretSources(root) {
     try {
       const doc = JSON.parse(readFileSync(join(root, SECRETS_MANIFEST), 'utf8'));
       const rows = Array.isArray(doc) ? doc : Array.isArray(doc?.rows) ? doc.rows : Array.isArray(doc?.secrets) ? doc.secrets : null;
-      const names = new Set((rows ?? []).map((r) => (typeof r === 'string' ? r : r?.name)).filter((n) => typeof n === 'string'));
+      // a row's NAME is `secret` (tooling/worker-secrets.json, read by assert-worker-secrets-declared.mjs); `name` is the older spelling
+      const names = new Set((rows ?? []).map((r) => (typeof r === 'string' ? r : r?.secret ?? r?.name)).filter((n) => typeof n === 'string'));
       if (!names.size) return { lost: `${SECRETS_MANIFEST} exists but yields no secret names`, source: 'manifest', names, declaredElsewhere: new Set() };
       return { lost: null, source: 'manifest', names, declaredElsewhere: new Set() };
     } catch (e) {

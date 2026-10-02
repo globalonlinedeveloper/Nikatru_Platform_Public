@@ -1007,6 +1007,36 @@ function gradeSiteCsp(where, value, globalScript) {
   return found;
 }
 
+// ⏱ 2026-10-02 · #1095 review finding 3. Rule 4 bounded an override's script-src only, so
+// `connect-src *` on /ext/connect — the page that holds a fresh GoTrue session — passed: the very
+// directive the override exists to widen was the one nobody bounded. Now EVERY directive of an
+// override is a subset of the global line's (a fetch directive the global line omits inherits its
+// default-src) plus the sources site-csp.json declares for that override under `adds`, and each
+// declared addition is one concrete https origin: no `*`, no wildcard host, no bare scheme.
+const CSP_FETCH_DIRECTIVES = new Set([
+  'child-src', 'connect-src', 'font-src', 'frame-src', 'img-src', 'manifest-src', 'media-src', 'object-src',
+  'prefetch-src', 'script-src', 'script-src-elem', 'script-src-attr', 'style-src', 'style-src-elem', 'style-src-attr', 'worker-src',
+]);
+const CSP_ADD_SOURCE = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/;
+/** Findings for an override's sources beyond the global line's plus its declared `adds`. */
+function gradeOverrideSources(where, value, globalValue, adds) {
+  const found = [];
+  const own = parseCsp(value);
+  const global = parseCsp(globalValue);
+  for (const [dir, sources] of own) {
+    const base = global.get(dir) ?? (CSP_FETCH_DIRECTIVES.has(dir) ? global.get('default-src') ?? [] : []);
+    const allowed = new Set([...base, ...(Array.isArray(adds?.[dir]) ? adds[dir] : [])]);
+    const extra = sources.filter((s) => !allowed.has(s) && !HASH_SOURCE.test(s));
+    if (extra.length) {
+      found.push(
+        `${where} ${dir} admits ${extra.join(', ')}, which neither the global /* policy nor the override's declared ` +
+          `\`adds.${dir}\` in ${SITE_CSP_DECLARATION} allows. An override widens exactly the origins it declares, nothing else.`,
+      );
+    }
+  }
+  return found;
+}
+
 let siteCspLines = 0;
 let siteCspSites = 0;
 let siteCspOverrides = 0;
@@ -1073,6 +1103,20 @@ let siteCspOverrides = 0;
           `${SITE_CSP_DECLARATION}: override ${JSON.stringify(o)} needs a "path" and a "site" that is declared in scope.`,
         );
       }
+      const adds = o?.adds ?? {};
+      if (typeof adds !== 'object' || adds === null || Array.isArray(adds)) {
+        problems.push(`${SITE_CSP_DECLARATION}: override ${o?.path} has an \`adds\` that is not a {directive: [origin, …]} object.`);
+        continue;
+      }
+      for (const [dir, list] of Object.entries(adds)) {
+        const bad = Array.isArray(list) ? list.filter((s) => typeof s !== 'string' || !CSP_ADD_SOURCE.test(s)) : [list];
+        if (bad.length) {
+          problems.push(
+            `${SITE_CSP_DECLARATION}: override ${o?.path} declares \`adds.${dir}\` ${JSON.stringify(bad)}; each addition is ONE ` +
+              'concrete https origin (https://host[:port]) — never `*`, a wildcard host or a bare scheme, which would admit every origin.',
+          );
+        }
+      }
     }
 
     for (const site of staticSites.filter((s) => inScopeSites.has(s))) {
@@ -1087,6 +1131,7 @@ let siteCspOverrides = 0;
       // 1. the global line
       const globals = blocks.filter((b) => b.pattern === '/*' && setsCsp(b));
       let globalScript = null;
+      let globalValue = null;
       if (globals.length === 0) {
         problems.push(
           `${rel} has no Content-Security-Policy on its /* rule. That is the policy every page of the nikatru.com ` +
@@ -1098,6 +1143,7 @@ let siteCspOverrides = 0;
           siteCspLines++;
           problems.push(...gradeSiteCsp(`${rel}:${s.line} (the /* policy)`, s.value, null));
           globalScript ??= parseCsp(s.value).get('script-src') ?? parseCsp(s.value).get('default-src') ?? [];
+          globalValue ??= s.value;
         }
       }
       // ⏱ 2026-10-01 · rv2-security-021 — the site's /* rule holds the same
@@ -1148,6 +1194,7 @@ let siteCspOverrides = 0;
         for (const s of lines) {
           siteCspLines++;
           problems.push(...gradeSiteCsp(`${rel}:${s.line} (the "${o.path}" override)`, s.value, globalScript));
+          if (globalValue !== null) problems.push(...gradeOverrideSources(`${rel}:${s.line} (the "${o.path}" override)`, s.value, globalValue, o.adds));
         }
       }
       if (stale.length) {

@@ -6486,18 +6486,21 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       "Judge whether the analytics rail's silence is a FAULT",
       'Every name-clearance record is inside its 30-day ceiling',
       // ⏱ 2026-09-30 [rv2-security-004] — the daily OSV scan of main, steps rather than a job (the replay's request ceiling).
+      // ⏱ 2026-10-02 (#1095 review finding 5) — DUE on any scheduled run, not one droppable slot.
+      'Is the daily OSV scan of main due on this run',
       'Install OSV-Scanner (version and digest from tooling/versions.json)',
       'Known-vulnerable dependencies on main (canary, floor, then the tree)',
     ]);
-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false]);
+    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false, false]);
     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
     // READER-SKIPPED). It now runs whatever the register concluded.
     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
     assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
-    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
-    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
+    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event_name == 'schedule'/, 'the due check runs after a red register, on every SCHEDULED run and no dispatch (trap ci-55)');
+    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osvdue\.outputs\.due == 'true'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register when the scan is due, or on a named dispatch input (trap ci-55)');
+    assert.match(named[7].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });
 
