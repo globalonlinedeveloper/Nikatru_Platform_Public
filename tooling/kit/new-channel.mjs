@@ -38,7 +38,7 @@
 // Exit: 0 printed (dry run) or written · 1 refused: the channel or a file already
 // exists · 2 usage, or COVERAGE LOST — a register it must read is absent.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -209,10 +209,6 @@ export function main(argv, { log = (s) => console.log(s), err = (s) => console.e
     log('\nnew-channel: DRY RUN — nothing was written. Pass --write to scaffold these three pieces.');
     return 0;
   }
-  if (existsSync(join(root, s.script))) {
-    err(`FAIL ${s.script} already exists; new-channel never overwrites a submitter.`);
-    return 1;
-  }
   const at = registerText.lastIndexOf(CHANNELS_END);
   if (at === -1) {
     err(`FAIL COVERAGE LOST — ${REGISTER_REL} no longer ends its channels array on ${JSON.stringify(CHANNELS_END)}; the row cannot be placed without rewriting the file.`);
@@ -228,7 +224,16 @@ export function main(argv, { log = (s) => console.log(s), err = (s) => console.e
   port.adapters = [...port.adapters, s.adapter];
   if (candidate) port.candidates = port.candidates.filter((c) => c.id !== opts.id);
   mkdirSync(dirname(join(root, s.script)), { recursive: true });
-  writeFileSync(join(root, s.script), s.submitter);
+  // The submitter is written FIRST and exclusively ('wx'): one call both checks
+  // and creates, so no check-then-write race (CodeQL js/file-system-race), and
+  // when it already exists nothing at all has been written yet.
+  try {
+    writeFileSync(join(root, s.script), s.submitter, { flag: 'wx' });
+  } catch (e) {
+    if (e?.code !== 'EEXIST') throw e;
+    err(`FAIL ${s.script} already exists; new-channel never overwrites a submitter.`);
+    return 1;
+  }
   writeFileSync(join(root, REGISTER_REL), nextRegister);
   writeFileSync(join(root, PORT_REL), `${JSON.stringify(port, null, 2)}\n`);
   log(`\nnew-channel: WROTE ${REGISTER_REL}, ${PORT_REL} and ${s.script}.`);
