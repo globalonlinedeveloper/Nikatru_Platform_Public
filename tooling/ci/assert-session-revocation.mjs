@@ -209,7 +209,9 @@ if (ttl !== jwtExp + skew) {
 //       assert-platform-register's rename check keys on too);
 //   (b) every app and brick construction of `SupabaseAuthRepository(` passes
 //       `revokeAtWorkers:` wired to that sender's function, which the adapter
-//       calls before GoTrue's global sign-out and after a new password.
+//       calls after GoTrue's global sign-out (review 1 of #1140: refresh tokens
+//       die first, so no device is issued a token after the watermark) and
+//       after a new password.
 // No construction found anywhere is COVERAGE LOST: (b) would be true of nothing.
 const PLATFORM_REGISTER = 'tooling/platform-register.json';
 const REVOKE_ALL_ID = 'sessions-revoke-all';

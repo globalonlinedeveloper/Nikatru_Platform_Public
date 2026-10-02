@@ -660,7 +660,7 @@ const WIRE_CONTRACTS = [
     // is a 204 with no body; a refusal is a status the client throws on. The ONE
     // key it reads is `d1Pending` (EXA-11: 200 {d1Pending: true} means every token
     // IS refused but the extension link floor was not written, and the client
-    // must retry) — so that key is the pin.
+    // must not read it as done) — so that key is the pin.
     id: 'sessions-revoke-all',
     kind: 'body',
     server: 'services/platform/src/routes/sessions.ts',
