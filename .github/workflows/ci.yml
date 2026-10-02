@@ -714,6 +714,12 @@ jobs:
       - name: Both of an app's names are shippable — the store title and the icon label
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-naming.mjs
+      # why: C-18/C-20 (P38). The arbs are the locale set; every native bundle, every store
+      # channel and the launcher label are held against it. A missing listing prints with
+      # its dated exemption (store/listing-locales.json) rather than failing — owner-gated.
+      - name: Every bundle, listing and launcher label declares the locales the app ships
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-bundle-locales.mjs
       # why: OFFLINE. It reads apps/<app>/name-clearance.json and never dials out —
       # the networked probe that WRITES that record takes ~14 s and is a routine, not
       # a gate. docs/name-clearance.md carries the measurement and the split.
@@ -780,9 +786,13 @@ jobs:
       - name: No shipped client overrides TLS certificate trust
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-tls-pinning.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed sites are the set tooling/ci/site-set.mjs reads off sites/, never a
+      # typed list: a new site directory is claimed on its first run. Its own assignment, so -e stops on its exit 1/2.
       - name: The web channel declares a cache policy a deploy can be seen through
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/assert-web-cache-policy.mjs . $sites
       - name: Release lanes cover every app, and no guard hides a lane
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-lane-generic.mjs
@@ -1348,7 +1358,9 @@ jobs:
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # why: 25, not 15. Since O-BRICK-STAMPS-WEB-ONLY (D30) each of the three stamps runs `flutter create`
+    # and the launcher icons, and the job installs the Linux toolchain and compiles the probe for linux.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -1380,6 +1392,19 @@ jobs:
         run: |
           SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
           node --single-threaded tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30). The stamp writes android, ios, macos, windows and linux and brands
+      # them (tooling/kit/stamp-native.mjs, then the launcher icons). The guard that graded app #1 alone above now
+      # grades the probe's native icons, splash and Linux packaging too: the log must count 2 apps with a launch screen.
+      - name: The stamped probe's native platforms carry ITS icons and splash, not Flutter's
+        run: |
+          set +e
+          node --single-threaded tooling/ci/assert-launcher-icons.mjs > "$RUNNER_TEMP/launcher-stamped.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/launcher-stamped.log"
+          echo "assert-launcher-icons exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-launcher-icons exited $code on the stamped probe"; exit 1; fi
+          if ! grep -qF '2 app(s) ship a platform with a launch screen' "$RUNNER_TEMP/launcher-stamped.log"; then echo "::error::limb 8 did not grade the stamped probe's splash beside app #1's"; exit 1; fi
       # why: O-NEW-APP-IS-NOT-ONE-COMMAND, the probe. stamp-app.mjs's own
       # post-condition is regen.mjs --check, which compares only what ORDER lists:
       # drop a generator from ORDER and the stamp stops writing its output AND the
@@ -1486,10 +1511,13 @@ jobs:
           echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
           node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/store_screenshots_test.dart "$RUNNER_TEMP/probe-boards.dart" tooling/store/capture-precheck.mjs --app probe --channel android-play
       # why: O-BRICK-STAMPS-NO-E2E-SUITE (10b), the row's red control, every run. The brick stamps the e2e suite;
-      # without apps/probe/integration_test/app_test.dart the leg guard must exit exactly 1 naming it, and restored, 0.
+      # without apps/probe/integration_test/app_test.dart the leg guard must exit exactly 2 naming it, and restored, 0.
+      # ⏱ 2026-10-02 (club apply-ci, CI red 2): 1 -> 2. The probe now has its own `apps.probe` register entry
+      # (stamp-shared.mjs), so its suite is a NAMED suite, and a named suite that is gone is COVERAGE LOST — the
+      # same verdict and sentence e2e-legs.test.mjs pins for app #1 ("the named E2E … does not exist").
       - name: RED CONTROL — the probe without its e2e suite fails the leg guard, naming the file
         run: |
-          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
+          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 2) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 2'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 2 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
           node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/app_test.dart "$RUNNER_TEMP/probe-app-test.dart" tooling/ci/assert-e2e-legs.mjs
       # why: O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). The brick declares billing.mobileIap `state: pending` and wires
       # the store bridge through StoreBridgeWiring; the log must count app #1 live and the probe pending, both wired.
@@ -1522,10 +1550,12 @@ jobs:
           if ! grep -qF 'apps/probe/lib/state/money_providers.dart:' "$RUNNER_TEMP/iap-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/lib/state/money_providers.dart"; exit 1; fi
           node tooling/ci/assert-app-yaml.mjs
       # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
-      # probe is DONE, OWNER or AFTER-LIVE except its name clearance, the one agent step a stamp cannot take (the
-      # probe dials the stores). --expect-next exits 1 on any other NEXT set, a missing one included.
-      - name: The new-product plan reads the stamped probe, and only its name clearance is the agent's
-        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance"
+      # probe is DONE, OWNER or AFTER-LIVE except the two agent steps a stamp cannot take: its name clearance (the
+      # probe dials the stores) and its price row (nothing writes apps.<id> in app-config-data.json, and an absent
+      # row is an undecided price, never "free": rv2-newproduct-002). --expect-next exits 1 on any other NEXT set,
+      # a missing one included.
+      - name: The new-product plan reads the stamped probe, and only its name clearance and price row are the agent's
+        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance,price row"
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1554,6 +1584,20 @@ jobs:
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json --overwrite
+      # why: rv2-newproduct-008. The backend probe passes through the readout too, so its backend reader's
+      # placeholder path is proven on a real stamp, not only on the fixture: APP_DB is the all-zeros placeholder
+      # (provision-backend's step), and with no register row yet its Worker names no crash-sink secret (the same
+      # step writes the row). Its name clearance and price row are the agent's, as for the client probe.
+      - name: The new-product plan reads the stamped backend probe, and only its provision steps are added
+        run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
+      # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
+      # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
+      # reads services/, so the Worker lanes below see the tree they saw before.
+      - name: A scratch service stamps from the Worker template, and the plan reads it as a service
+        run: |
+          node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
+          node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
+          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
@@ -1605,6 +1649,22 @@ jobs:
         run: node tooling/ci/assert-input-contract.mjs
       - name: A stamped app claims only platforms it is built for
         run: node tooling/ci/assert-stamp-platforms.mjs
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), limb N3's red control, every run. With apps/probe/linux moved out, the
+      # probe is a workspace app build-platforms.yml would build for linux with no folder: assert-stamp-platforms
+      # must exit exactly 1 naming apps/probe; restored, 0.
+      - name: RED CONTROL — the probe without its linux/ folder is refused, naming apps/probe
+        run: |
+          mv apps/probe/linux "$RUNNER_TEMP/probe-linux"
+          set +e
+          node tooling/ci/assert-stamp-platforms.mjs > "$RUNNER_TEMP/native-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/native-red.log"
+          echo "assert-stamp-platforms exit: $code"
+          mv "$RUNNER_TEMP/probe-linux" apps/probe/linux
+          if [ "$code" -ne 1 ]; then echo "::error::assert-stamp-platforms exited $code with apps/probe/linux removed; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe is in the workspace app set and has no `linux/` folder' "$RUNNER_TEMP/native-red.log"; then echo "::error::assert-stamp-platforms exited 1 without naming apps/probe's missing linux/"; exit 1; fi
+          node tooling/ci/assert-stamp-platforms.mjs
       - name: Stamped app asserts its own chassis properties
         run: node tooling/ci/assert-stamp-properties.mjs
       - name: The stamped app carries a done-record, and its DoD items really run
@@ -1618,6 +1678,18 @@ jobs:
       - name: A fresh stamp really builds for web
         working-directory: apps/probe
         run: flutter build web --pwa-strategy=none --no-web-resources-cdn
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), the native probe build. Without it a stamp is proven native by file
+      # presence alone. Linux because this runner compiles it; build-platforms.yml compiles all five native
+      # targets for every workspace app. assert-stamp-platforms.mjs N2 fails a ci.yml without this step.
+      - name: Linux build deps for the native probe build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: A fresh stamp really builds natively (linux)
+        working-directory: apps/probe
+        run: flutter build linux --debug
       # 🔴 A STAMPED APP MUST SATISFY THE DEPLOY'S FONTS STEP ON THE DAY IT IS
       # STAMPED. deploy-web.yml builds every app with --no-web-resources-cdn and
       # then runs tooling/web/self-host-fallback-fonts.mjs, which REFUSES a bundle
@@ -1717,8 +1789,12 @@ jobs:
       # reader below grades the bytes this writes. Needs the full history above (lastmod).
       - name: Generate the discovery surface (the sitemap is never committed)
         run: node tooling/sites/generate-discovery.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed deploy roots are the set tooling/ci/site-set.mjs reads off sites/;
+      # assert-lane-coverage.mjs claims each site through this pair of lines.
       - name: Site integrity
-        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/check-site-integrity.mjs . $sites
       - name: The published catalogue satisfies its contract
         run: node tooling/ci/assert-catalog-contract.mjs
       - name: Delete the feed so the generator has to produce it
@@ -2332,6 +2408,13 @@ jobs:
         run: >
           node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
           ${{ steps.connect.outputs.connect }}
+      # why: SYN-X1 C-16. Every a11y test runs on the Dart VM, where enableWebSemantics() is
+      # dead code (kIsWeb is false), so nothing else loads the SHIPPED bundle and reads the
+      # tree a screen reader reads. This boots it as the smoke above does and grades Chrome's
+      # own computed AX tree: flt-semantics present, no "Enable accessibility" placeholder,
+      # every interactive node named. Exit 2 is COVERAGE LOST, deliberately not a pass.
+      - name: The built bundle exposes a named accessibility tree in a real browser
+        run: node tooling/smoke/web-a11y-tree.mjs apps/${{ matrix.app }}/build/web
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs

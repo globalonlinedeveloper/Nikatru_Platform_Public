@@ -135,7 +135,7 @@
     "message": "Batch"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Uppgradera till FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Inställningar"
@@ -441,10 +441,10 @@
     "message": "Gå direkt vidare till att kommentera (endast fångster i en enda del)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Kortkommandon med en tangent i redigeraren"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Bokstavstangenter väljer ett verktyg, + och - zoomar, ? listar tangenterna. När inställningen är av fungerar de bara när bilden har fokus."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1247,7 +1247,7 @@
     "message": "Anpassa"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zoom $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Röd"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Bärnsten"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Grön"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Blå"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Violett"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rosa"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Svart"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Vit"
   },
   "editorZoomTipToHundred": {
     "message": "Anpassad till fönstret – klicka för 100 %"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ fångar hela det synliga området",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store hindrar tillägg från att läsa sina sidor, så den här går inte att fånga."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons hindrar tillägg från att läsa sina sidor, så den här går inte att fånga."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) hindrar tillägg från att läsa sina sidor, så den här går inte att fånga."
   },
   "errRestrictedGeneric": {
     "message": "Den här sidan skyddas av webbläsaren och kan inte fångas."

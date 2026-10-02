@@ -277,7 +277,7 @@ export function renderStoreSkus(skus) {
 /** JSON string BODY (no surrounding quotes) — the anchor supplies them. */
 const jsonBody = (s) => JSON.stringify(s).slice(1, -1);
 /** XML text and double-quoted attribute values. `'` needs no escape in either. */
-const xmlText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export const xmlText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** A YAML scalar. Plain when the value cannot be mistaken for anything else,
  *  double-quoted otherwise — JSON's escapes are a strict subset of YAML's. */
 const yamlScalar = (s) => (/^[A-Za-z0-9][A-Za-z0-9 ._-]*[A-Za-z0-9.]$/.test(s) ? s : JSON.stringify(s));

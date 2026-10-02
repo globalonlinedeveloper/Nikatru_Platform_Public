@@ -43,6 +43,30 @@ export function readCatalogFile(root, rel) {
   }
 }
 
+/**
+ * The first words of the `why` a STAMP writes when it excludes a new product
+ * from every bundle row (rv2-newproduct-011). A stamped product is in the
+ * catalogue the moment it is stamped, and limb F of
+ * tooling/ci/assert-bundle-availability.mjs requires every catalogue product to
+ * be a member or excluded BY NAME — so the stamp must say which, or the first
+ * commit of app #2 is red. It cannot be a member: a member is locked into a
+ * feature-set version (limb H), and a new version names only live members. So
+ * it is excluded, with a why that says it is the stamp's placeholder and not a
+ * decision. Limb F refuses the placeholder on a product that has gone LIVE, and
+ * tooling/kit/product-steps/bundle-join.mjs reads it as the step still to do.
+ */
+export const STAMPED_EXCLUSION_MARK = 'STAMPED, NOT LIVE YET:';
+
+/** The `why` the stamp writes for `slug`; it starts with STAMPED_EXCLUSION_MARK. */
+export const stampedExclusionWhy = (slug) =>
+  `${STAMPED_EXCLUSION_MARK} \`${slug}\` was stamped and has not gone live. A version's members are locked and a new ` +
+  'version names only live members, so it joins the bundle once live, in a new featureSet version (new-product step 12, ' +
+  'bundle join) — or this line is replaced by the reason it stays out.';
+
+/** True when an `excluded` entry's `why` is the stamp's placeholder, not a decision. */
+export const isStampedExclusion = (entry) =>
+  typeof entry?.why === 'string' && entry.why.startsWith(STAMPED_EXCLUSION_MARK);
+
 /** The lock key of one feature-set version. */
 export const bundleKey = (featureSet, version) => `${featureSet}@${version}`;
 
