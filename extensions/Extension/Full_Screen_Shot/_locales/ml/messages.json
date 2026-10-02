@@ -135,7 +135,7 @@
     "message": "ബാച്ച്"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "FullShot Pro-ലേക്ക് അപ്‌ഗ്രേഡ് ചെയ്യുക"
   },
   "popupLinkOptions": {
     "message": "ഓപ്ഷനുകൾ"
@@ -441,10 +441,10 @@
     "message": "നേരിട്ട് അടയാളപ്പെടുത്തലിലേക്ക് കടക്കുന്നു (ഒറ്റഭാഗ ക്യാപ്ചറുകൾക്ക് മാത്രം)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "എഡിറ്ററിലെ ഒറ്റ-കീ കുറുക്കുവഴികൾ"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "അക്ഷര കീകൾ ഒരു ടൂൾ തിരഞ്ഞെടുക്കുന്നു, + ഉം - ഉം സൂം ചെയ്യുന്നു, ? കീകളുടെ പട്ടിക കാണിക്കുന്നു. ഓഫായിരിക്കുമ്പോൾ, ചിത്രത്തിൽ ഫോക്കസ് ഉള്ളപ്പോൾ മാത്രമേ അവ പ്രവർത്തിക്കൂ."
   },
   "optionsTheme": {
     "message": "തീം"
@@ -1247,7 +1247,7 @@
     "message": "ഒതുക്കുക"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ സൂം",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "ചുവപ്പ്"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "ആംബർ"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "പച്ച"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "നീല"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "വയലറ്റ്"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "പിങ്ക്"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "കറുപ്പ്"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "വെള്ള"
   },
   "editorZoomTipToHundred": {
     "message": "വിൻഡോയ്ക്ക് ഒതുക്കി — 100% നായി ക്ലിക്ക് ചെയ്യുക"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ കാണുന്ന മുഴുവൻ ഭാഗവും ക്യാപ്ചർ ചെയ്യുന്നു",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store അതിന്റെ പേജുകൾ വിപുലീകരണങ്ങൾ വായിക്കുന്നത് തടയുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons അതിന്റെ പേജുകൾ വിപുലീകരണങ്ങൾ വായിക്കുന്നത് തടയുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) അതിന്റെ പേജുകൾ വിപുലീകരണങ്ങൾ വായിക്കുന്നത് തടയുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
   },
   "errRestrictedGeneric": {
     "message": "ഈ പേജ് ബ്രൗസർ സംരക്ഷിക്കുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
