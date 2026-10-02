@@ -898,6 +898,98 @@ class SupabaseAuthRepository implements core.AuthRepository {
         queryParams: googleQueryParams,
       );
 
+  /// ⏱ 2026-10-01 · SE-04. Refuses by the one rule before it asks — GoTrue
+  /// refuses the last identity too, and this does not lean on it — then
+  /// unlinks the provider's identity and refreshes, so the user (and the JWT's
+  /// `app_metadata.providers`) no longer carry it.
+  @override
+  Future<core.AuthUser> unlinkIdentity(core.SignInMethod method) async {
+    if (!core.mayUnlinkMethod(currentUser, method)) {
+      throw core.AuthFailure(
+        'You cannot remove your only way to sign in.',
+        code: core.AuthFailure.lastSignInMethod,
+      );
+    }
+    try {
+      final List<sb.UserIdentity> identities = await _auth.getUserIdentities();
+      final sb.UserIdentity? identity = identities
+          .where((sb.UserIdentity i) => i.provider == method.id)
+          .firstOrNull;
+      if (identity == null) {
+        throw core.AuthFailure('That sign-in method is not on this account.');
+      }
+      await _auth.unlinkIdentity(identity);
+      final sb.AuthResponse res = await _auth.refreshSession();
+      final core.AuthUser? u = _map(res.user) ?? currentUser;
+      if (u == null) throw core.AuthFailure('Sign in again to continue.');
+      return u;
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
+
+  /// ⏱ 2026-10-01 · EN-21. A code can be SENT only where the send can reach
+  /// GoTrue: the native credential route serves `token`, `signup`, `recover`
+  /// and `resend`, not `/otp`, and GoTrue captchas `/otp`. So a native build
+  /// with that route says no rather than drawing a button that always fails.
+  @override
+  bool get emailCodeAvailable => _native == null;
+
+  /// ⏱ 2026-10-01 · EN-21. `shouldCreateUser: false` — a code never makes an
+  /// account; signing up keeps its clickwrap.
+  ///
+  /// 🔴 NO ACCOUNT ORACLE. For an address with no account GoTrue refuses
+  /// (`otp_disabled`, "Signups not allowed for otp"); that refusal is swallowed
+  /// here, so the caller hears the same "sent" for every address. A captcha or
+  /// rate-limit refusal is NOT swallowed: it does not depend on the address.
+  @override
+  Future<void> sendEmailCode(String email, {String? captchaToken}) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    try {
+      await _credentials.signInWithOtp(
+        email: email,
+        shouldCreateUser: false,
+        captchaToken: _captcha(captchaToken),
+        // The mail's link, when its template carries one, lands in THIS app.
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      if (isNoAccountRefusal(e.code, e.message)) return;
+      throw _failureOf(e);
+    }
+  }
+
+  /// The refusals GoTrue gives a code request for an address it does not
+  /// hold — the answers that would make the send an account oracle.
+  @visibleForTesting
+  static bool isNoAccountRefusal(String? code, String message) =>
+      code == 'otp_disabled' ||
+      code == 'user_not_found' ||
+      message.toLowerCase().contains('signups not allowed');
+
+  /// ⏱ 2026-10-01 · EN-21. `/verify` is not captcha-gated, so this goes to
+  /// the main client on every target; the session it mints is the main
+  /// client's, and the auth stream carries the sign-in.
+  @override
+  Future<core.AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.verifyOTP(
+        email: email,
+        token: code.trim(),
+        type: sb.OtpType.email,
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+    final core.AuthUser? u = _map(res.user);
+    if (u == null) throw core.AuthFailure('Sign-in failed');
+    return u;
+  }
+
   /// The one `linkIdentity` call every provider's link goes through.
   Future<void> _linkIdentity(
     sb.OAuthProvider provider,

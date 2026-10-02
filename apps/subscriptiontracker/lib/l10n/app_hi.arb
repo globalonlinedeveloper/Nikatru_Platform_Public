@@ -789,5 +789,7 @@
   "shortcutAddSubscription": "सदस्यता जोड़ें",
   "shortcutWhatRenewsNext": "अगला नवीनीकरण किसका है?",
   "appLockWrongPin": "गलत PIN। {count, plural, =1{1 प्रयास बाकी} other{{count} प्रयास बाकी}}",
-  "appLockDelayMinutes": "{count, plural, =1{1 मिनट बाद} other{{count} मिनट बाद}}"
+  "appLockDelayMinutes": "{count, plural, =1{1 मिनट बाद} other{{count} मिनट बाद}}",
+  "emailCodeRequest": "मुझे एक कोड ईमेल करें",
+  "emailCodeTitle": "अपना ईमेल देखें"
 }

@@ -820,9 +820,6 @@ class SettingsScreen extends ConsumerWidget {
                   ref.watch(authRepositoryProvider).currentUser,
                   _LinkRow.new,
                 ),
-                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                // because deleting it is a product decision, not a merge one.
-                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
               ],
               // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
               // export. test/settings_export_test.dart parses its file back.

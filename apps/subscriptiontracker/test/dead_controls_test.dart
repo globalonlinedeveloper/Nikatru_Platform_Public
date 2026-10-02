@@ -8,6 +8,8 @@
 //   · B6  — home's notification bell carried an unread dot that was ALWAYS on.
 //   · D6/D2 — "Connected accounts" and "Export data (CSV)" are inert rows that
 //     drew the same chevron as every row that goes somewhere.
+//     ⏱ 2026-10-01 · SE-04: "Connected accounts" is WIRED too (the linked
+//     sign-in methods sheet), so no inert row is left on Settings.
 //     ⏱ 2026-09-28 · ST-X1 (audit D2/D31): "Export data (CSV)" is WIRED — it
 //     saves a real file (settings_export_test.dart) — so it moved from the
 //     inert list to the rows that keep their chevron.
@@ -78,30 +80,20 @@ void main() {
     );
   });
 
-  testWidgets('D6/D2 · an inert settings row draws no chevron and says why', (
+  // ⏱ 2026-10-01 · SE-04: "Connected accounts" is WIRED — it opens the
+  // linked sign-in methods sheet (connected_accounts_sheet_test.dart) and moved
+  // to the signed-in account rows — so the last inert row is gone, and "Not
+  // available yet" is drawn nowhere on this screen. The inert-row rendering itself is
+  // still asserted in the design system's `FocusableTap` tests.
+  testWidgets('D6/D2 · every settings row that goes somewhere says so', (
     WidgetTester tester,
   ) async {
     await pumpAt(tester, kPhone, const SettingsScreen());
     final AppLocalizations l10n = await _en();
-    for (final String inert in <String>[l10n.connectedAccounts]) {
-      await tester.scrollUntilVisible(find.text(inert), 200);
-      final Finder row = _tapFor(inert);
-      expect(tester.widget<FocusableTap>(row).onTap, isNull, reason: inert);
-      expect(
-        find.descendant(of: row, matching: find.byIcon(Icons.chevron_right)),
-        findsNothing,
-        reason: '"$inert" does nothing when tapped and still says "tap me"',
-      );
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.text(l10n.settingsNotAvailableYet),
-        ),
-        findsOneWidget,
-      );
-    }
     // A row that DOES go somewhere keeps its chevron: the rule is "only where
     // a tap leads", not "never". The export row is one since ST-X1.
+    // "Connected accounts" is an account row (AccountSecurityRows), drawn for
+    // a signed-in account only; settings_account_test.dart taps it (SE-04).
     for (final String live in <String>[
       l10n.exportDataCsv,
       l10n.helpAndSupport,

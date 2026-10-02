@@ -521,7 +521,7 @@ void main() {
       return s;
     }
 
-    testWidgets('login · 15 of 15, registration included', (
+    testWidgets('login · 16 of 16, registration included', (
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-16 — 8 BECAME 14 WHEN SIGN IN WITH APPLE WAS ENABLED, and the
@@ -557,12 +557,15 @@ void main() {
       // stacked beside the merged field, so it is ONE more control and it is
       // Tab-reachable: 12 + 1 = 13 of 14 + 1 = 15. The dead list below is
       // unchanged — the reveal is not in it.
+      // ⏱ 2026-10-01 · EN-21 — 15 BECAME 16 AND 13 BECAME 14: "Email me a
+      // code", a TextButton under "Forgot password?", drawn because the demo
+      // identity can send a code (`emailCodeAvailable`). Tab-reachable.
       final _Sweep s = await pin(
         tester,
         'login',
         const LoginScreen(),
-        controls: 15,
-        reachable: 13,
+        controls: 16,
+        reachable: 14,
       );
       // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE
       // POINT. Until 2026-08-25 it read `expect(deadLabels.where(contains
@@ -703,6 +706,9 @@ void main() {
         // 32 reachable.
         // ⏱ 2026-10-02 · club-st-singles T16 XP-03: 35 -> 36 and 32 -> 33 —
         // the Privacy card's "App lock" switch, a `_Toggle` and so in the orbit.
+        // ⏱ 2026-10-02 · club-st-singles SE-04: unchanged — the inert
+        // "Connected accounts" row (never a control) left this signed-out
+        // sweep for the signed-in account rows, where it is wired.
         controls: 36 + core.Money.symbols.length,
         reachable: 33 + core.Money.symbols.length,
       );

@@ -1221,6 +1221,14 @@
   "@forgotPasswordShort": {
     "description": "Consumed by auth/login_screen.dart:198. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
   },
+  "emailCodeRequest": "Email me a code",
+  "@emailCodeRequest": {
+    "description": "Consumed by auth/login_screen.dart (EN-21). Under the password field on the sign-in arm: sends a 6-digit sign-in code instead of using the password. Shown only where the build can reach the send (AuthRepository.emailCodeAvailable)."
+  },
+  "emailCodeTitle": "Check your email",
+  "@emailCodeTitle": {
+    "description": "Consumed by auth/login_screen.dart (EN-21). The heading while the code entry (chassis EmailCodeForm) is showing."
+  },
   "orDivider": "or",
   "@orDivider": {
     "description": "Consumed by auth/login_screen.dart:229. The word between the email form and the OAuth button."

@@ -88,6 +88,7 @@ import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/auth/connected_accounts_sheet.dart';
 import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
@@ -1788,6 +1789,62 @@ void main() {
           isTrue,
           reason: 'two identical "No cap" fields are two unnamed fields',
         );
+      });
+    });
+  });
+
+  // ⏱ 2026-10-01 · SE-04 — Settings' "Connected accounts" sheet. Opened, not
+  // routed to, so the host is a launcher button, as the budget editor's. The
+  // demo identity signs in with Apple first, so the sheet carries a Remove
+  // (Apple, with a password beside it) and a Connect (Google).
+  group('connected accounts · every action is named', () {
+    testWidgets('nothing on the connected accounts sheet is naked', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        final ProviderContainer c = await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showConnectedAccountsSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await c.read(authRepositoryProvider).signInWithApple();
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        // The modal scrim is stepped around by the property that identifies
+        // it (a dismiss action) — the budget editor's argument, unchanged.
+        final List<SemanticsNode> tappable = _nodes(tester)
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.tap),
+            )
+            .toList();
+        final List<SemanticsNode> barrier = tappable
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .toList();
+        expect(barrier, hasLength(1));
+        final List<NakedControl> naked = tappable
+            .where(
+              (SemanticsNode n) =>
+                  !n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .map(NakedControl.new)
+            .where((NakedControl n) => n.missesRole || n.missesName)
+            .toList();
+        // Drag handle, Remove (Apple) and Connect (Google): three controls.
+        expect(tappable.length - barrier.length, greaterThanOrEqualTo(3));
+        expect(naked, isEmpty, reason: naked.join(', '));
+        expect(nakedControls(tester), hasLength(1));
       });
     });
   });

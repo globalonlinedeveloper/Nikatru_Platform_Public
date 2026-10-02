@@ -1,5 +1,6 @@
 import 'auth_event.dart';
 import 'auth_models.dart';
+import 'sign_in_methods.dart';
 
 /// The auth seam. Swapping identity providers = writing one more implementation
 /// of this interface; nothing above the data layer changes.
@@ -302,6 +303,38 @@ abstract class AuthRepository {
   /// `mayLinkIdentity` refusal included.
   Future<void> linkGoogleIdentity() async {
     throw AuthFailure('Linking another sign-in method is not available here.');
+  }
+
+  /// ⏱ 2026-10-01 · SE-04. Detach the OAuth [method] from the signed-in
+  /// account. Returns the account as it is afterwards.
+  ///
+  /// 🔴 IMPLEMENTATIONS MUST REFUSE UNLESS `mayUnlinkMethod` PASSES — never the
+  /// last way in, never the password identity.
+  Future<AuthUser> unlinkIdentity(SignInMethod method) async {
+    throw AuthFailure('Removing a sign-in method is not available here.');
+  }
+
+  /// ⏱ 2026-10-01 · EN-21. Whether [sendEmailCode] can reach the server from
+  /// THIS build. False by default, so a screen never draws a button whose call
+  /// can only refuse.
+  bool get emailCodeAvailable => false;
+
+  /// ⏱ 2026-10-01 · EN-21. Mail a six-digit sign-in code to [email].
+  ///
+  /// 🔴 NEVER AN ACCOUNT ORACLE. An address with no account answers exactly as
+  /// one with an account does: the call returns, and no code arrives. It never
+  /// creates an account — signing up keeps its clickwrap.
+  Future<void> sendEmailCode(String email, {String? captchaToken}) async {
+    throw AuthFailure('Signing in with a code is not available here.');
+  }
+
+  /// ⏱ 2026-10-01 · EN-21. Sign in with the [code] [sendEmailCode] mailed to
+  /// [email]. A wrong or expired code REFUSES; it never signs anyone in.
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    throw AuthFailure('Signing in with a code is not available here.');
   }
 
   /// The bearer token attached to every API call (the JWT the Worker verifies).

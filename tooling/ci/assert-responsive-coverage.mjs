@@ -522,7 +522,12 @@ const REQUIRED_COVERAGE = [
     // this guard's own run: "18 surface(s) reachable, 18 measured", 18 files.
     // ⏱ 2026-10-01 · club apply-st on IM-01: the swap above is one for one,
     // so 21 stands.
-    surfaces: 21,
+    // ⏱ RAISED 21 → 22 (and coveredSurfaces with it) on 2026-10-02 ·
+    // club-st-singles SE-04: Settings' "Connected accounts" sheet
+    // (`showConnectedAccountsSheet`) is a new surface, measured at every window
+    // class by `width_connected_accounts_test.dart`. Read off the per-root
+    // line, `22 surface(s) reachable, 22 measured`.
+    surfaces: 22,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -545,7 +550,7 @@ const REQUIRED_COVERAGE = [
     // file(s)`), so this is still one under it: the raise is the one the note
     // above owed, not a re-measure to the tree.
     widthTestFiles: 17, // 16 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 21,
+    coveredSurfaces: 22,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {
@@ -735,9 +740,15 @@ const REQUIRED_COVERAGE = [
     // surfaces and covered, 34 → 35 width files — the chassis DevicesSection
     // at all three classes and 200 % text (test/devices_section_test.dart).
     // Read off the merged tree: `34 surface(s) reachable, 34 measured`, `— 35 file(s)`.
-    surfaces: 34,
-    widthTestFiles: 35,
-    coveredSurfaces: 34,
+    // ⏱ RAISED 2026-10-02 · club-st-singles (EN-21, SE-04): surfaces and
+    // covered 34 → 36, width files 35 → 38, IN THE CHANGE THAT EARNED THEM:
+    // `EmailCodeForm` and `ConnectedAccountsView` arrived with
+    // test/email_code_form_test.dart and test/connected_accounts_view_test.dart
+    // (all three classes each) and test/a11y_account_plus_test.dart. Read off
+    // the merged tree: `36 surface(s) reachable, 36 measured`, `— 38 file(s)`.
+    surfaces: 36,
+    widthTestFiles: 38,
+    coveredSurfaces: 36,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

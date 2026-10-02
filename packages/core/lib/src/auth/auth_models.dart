@@ -312,6 +312,15 @@ class AuthFailure implements Exception {
   static const String invalidCredentials = 'invalid_credentials';
   static const String overRequestRateLimit = 'over_request_rate_limit';
 
+  /// ⏱ 2026-10-01 · SE-04 — GoTrue's code for unlinking the one identity an
+  /// account has left. The adapters raise it themselves before asking, so the
+  /// refusal reads the same whichever side said no.
+  static const String lastSignInMethod = 'single_identity_not_deletable';
+
+  /// ⏱ 2026-10-01 · EN-21 — GoTrue's code for a one-time code that is wrong
+  /// or has expired.
+  static const String codeInvalid = 'otp_expired';
+
   /// The [weakPassword] reasons GoTrue sends (`internal/api/password.go`).
   static const String reasonLength = 'length';
   static const String reasonCharacters = 'characters';

@@ -268,6 +268,8 @@
   "notifCancellingSaves": "{count, plural, =1{அதை ரத்து செய்தால் மாதம் {amount} சேமிக்கலாம்.} other{அவற்றை ரத்து செய்தால் மாதம் {amount} சேமிக்கலாம்.}}",
   "consentReadPolicy": "தனியுரிமைக் கொள்கையைப் படிக்கவும்",
   "forgotPasswordShort": "கடவுச்சொல் மறந்துவிட்டதா?",
+  "emailCodeRequest": "எனக்கு ஒரு குறியீட்டை மின்னஞ்சல் செய்யவும்",
+  "emailCodeTitle": "உங்கள் மின்னஞ்சலைப் பார்க்கவும்",
   "orDivider": "அல்லது",
   "dismiss": "நிராகரி",
   "authEnterBoth": "உங்கள் மின்னஞ்சலையும் கடவுச்சொல்லையும் உள்ளிடவும்.",
