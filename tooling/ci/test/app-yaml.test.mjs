@@ -538,6 +538,41 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     } finally { kill(root); }
   });
 
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 3 — GoTrue reads the MFA
+  // challenge address back on verify (mfa.go), so a trigger there would fail
+  // every MFA verify. These two are the state the PR head shipped in.
+  test('MUTATION: a trigger on auth.mfa_challenges (the address GoTrue compares on verify) is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace(
+        'COMMIT;',
+        "CREATE OR REPLACE FUNCTION nikatru_privacy.mfa_ip_unspecified()\n  RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$\nBEGIN\n  NEW.ip_address := '0.0.0.0'::inet;\n  RETURN NEW;\nEND $$;\n" +
+          'CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_unspecified();\n\nCOMMIT;',
+      );
+      assert.notEqual(cut, sql);
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /creates a trigger on auth\.mfa_challenges, whose ip_address is EXEMPT/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the MFA challenge address moved back into `columns` is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const doc = JSON.parse(get(root, IDENTITY_COLUMNS));
+      put(root, IDENTITY_COLUMNS, JSON.stringify({
+        ...doc,
+        columns: [...doc.columns, { table: 'auth.mfa_challenges', column: 'ip_address', emptiedTo: "'0.0.0.0'::inet" }],
+        exempt: [],
+      }, null, 2));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /auth\.mfa_challenges\.ip_address is in `columns`/);
+    } finally { kill(root); }
+  });
+
   test('COVERAGE LOST: an identity column list with nothing in it exits 2 (limb 10)', () => {
     const root = tree();
     try {

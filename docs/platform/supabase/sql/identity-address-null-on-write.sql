@@ -8,7 +8,7 @@
 --
 --   auth.sessions.ip                  inet, nullable          -> NULL
 --   auth.audit_log_entries.ip_address varchar(64) NOT NULL '' -> ''
---   auth.mfa_challenges.ip_address    inet NOT NULL           -> 0.0.0.0
+--   auth.mfa_challenges.ip_address    inet NOT NULL           -> NOT TOUCHED (below)
 --
 -- THE CATALOG READ (names only; run it in postgres AND in _supabase after every
 -- GoTrue upgrade, and add any new column here and to
@@ -21,16 +21,31 @@
 --           OR column_name ~* '(^|_)(ip|ip_address|remote_addr|client_ip|ip_addr)$')
 --    ORDER BY 1, 2, 3;
 --
--- A BEFORE INSERT OR UPDATE trigger on each table empties that column on every
--- write, so GoTrue can keep writing it (its code does, on every sign-in and
--- refresh) and nothing reaches the row. NOT NULL columns get their empty value:
--- '' for the audit log (GoTrue's own default) and 0.0.0.0 for MFA challenges
--- (no MFA factor exists; GoTrue never reads the column back).
+-- A BEFORE INSERT OR UPDATE trigger on each of the first two tables empties
+-- that column on every write, so GoTrue can keep writing it (its code does, on
+-- every sign-in and refresh) and nothing reaches the row. The NOT NULL audit
+-- column gets '' (GoTrue's own default).
 --
--- tooling/ci/assert-identity-address-columns.mjs holds this file to that list:
--- every column in tooling/legal/identity-address-columns.json must be emptied
--- here, by a trigger on its table, or the guard fails, and the app notice's "no
--- network address is stored" sentence may only render while it passes.
+-- 🔴 auth.mfa_challenges IS EXEMPT, AND MUST STAY SO (review 1 of #1140,
+-- finding 3). GoTrue READS that column back: v2.189.0 internal/api/mfa.go,
+-- validateChallenge and verifyPhoneFactor, refuse a verify whose request
+-- address differs from the challenge's ("Challenge and verify IP addresses
+-- mismatch"). Any value written in its place (0.0.0.0 was, until this
+-- correction) fails EVERY MFA verify, the day a factor exists. No minimised
+-- value can pass that equality, so the column is held empty another way: MFA
+-- enrolment OFF on Box C (GOTRUE_MFA_TOTP_ENROLL_ENABLED,
+-- GOTRUE_MFA_PHONE_ENROLL_ENABLED and GOTRUE_MFA_WEB_AUTHN_ENROLL_ENABLED all
+-- false; a compose setting, not something this file sets), so no factor, and
+-- so no challenge row, can be created; READ-BACK 3 below counts its rows
+-- (0 rows on 2026-10-02, syn-p2-purge.sql). Turning MFA on is a privacy-notice change first.
+-- This file DROPS the trigger it once put there, so re-applying it removes it.
+--
+-- tooling/ci/assert-app-yaml.mjs limb 10 holds this file to that list: every
+-- column in tooling/legal/identity-address-columns.json `columns` must be
+-- emptied here, by a trigger on its table, and every column in its `exempt`
+-- list (the MFA challenge address) must NOT be, or the guard fails; the app
+-- notice's "no network address is stored" sentence may only render while it
+-- passes.
 --
 -- ⚠️ NOT A MIGRATION THAT ANY WORKFLOW RUNS (see sessions-rpc.sql): applied on
 -- Box C by hand, the whole file at once, as supabase_admin:
@@ -44,7 +59,7 @@
 -- migration that drops and recreates one of the three tables could drop its
 -- trigger, and READ-BACK 1 below is how that is found. Re-applying is safe.
 --
--- READ-BACK 1 (names and counts only): three enabled triggers, one per table:
+-- READ-BACK 1 (names and counts only): two enabled triggers, one per table:
 --
 --   SELECT c.relname, t.tgname, t.tgenabled::text
 --     FROM pg_catalog.pg_trigger t
@@ -53,7 +68,8 @@
 --    WHERE n.nspname = 'auth' AND t.tgname = 'nikatru_address_null_on_write'
 --    ORDER BY 1;
 --
---   Expect audit_log_entries, mfa_challenges, sessions, each tgenabled = O.
+--   Expect audit_log_entries and sessions, each tgenabled = O, and NO row
+--   for mfa_challenges.
 --
 -- READ-BACK 2: sign a throwaway user in; then
 --
@@ -61,6 +77,11 @@
 --     FROM auth.sessions WHERE created_at > '<the time you signed in>';
 --
 --   Expect 0 and at least 1.
+--
+-- READ-BACK 3 (the exempt column is held empty by MFA being off):
+--
+--   SELECT count(*) FROM auth.mfa_challenges;   -- expect 0
+--   SELECT count(*) FROM auth.mfa_factors;      -- expect 0
 --
 -- THE VALUES STORED BEFORE THIS FILE WAS APPLIED are not touched by it: the
 -- one-time purge is docs/platform/supabase/sql/syn-p2-purge.sql, written and
@@ -71,7 +92,6 @@
 --
 --   DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.sessions;
 --   DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.audit_log_entries;
---   DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.mfa_challenges;
 --   DROP SCHEMA IF EXISTS nikatru_privacy CASCADE;
 
 BEGIN;
@@ -96,22 +116,12 @@ BEGIN
   RETURN NEW;
 END $$;
 
-CREATE OR REPLACE FUNCTION nikatru_privacy.mfa_ip_unspecified()
-  RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
-BEGIN
-  NEW.ip_address := '0.0.0.0'::inet;
-  RETURN NEW;
-END $$;
-
 ALTER FUNCTION nikatru_privacy.sessions_ip_null() OWNER TO supabase_admin;
 ALTER FUNCTION nikatru_privacy.audit_ip_empty() OWNER TO supabase_admin;
-ALTER FUNCTION nikatru_privacy.mfa_ip_unspecified() OWNER TO supabase_admin;
 REVOKE ALL ON FUNCTION nikatru_privacy.sessions_ip_null() FROM PUBLIC;
 REVOKE ALL ON FUNCTION nikatru_privacy.audit_ip_empty() FROM PUBLIC;
-REVOKE ALL ON FUNCTION nikatru_privacy.mfa_ip_unspecified() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION nikatru_privacy.sessions_ip_null() TO supabase_auth_admin;
 GRANT EXECUTE ON FUNCTION nikatru_privacy.audit_ip_empty() TO supabase_auth_admin;
-GRANT EXECUTE ON FUNCTION nikatru_privacy.mfa_ip_unspecified() TO supabase_auth_admin;
 
 DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.sessions;
 CREATE TRIGGER nikatru_address_null_on_write
@@ -123,9 +133,9 @@ CREATE TRIGGER nikatru_address_null_on_write
   BEFORE INSERT OR UPDATE ON auth.audit_log_entries
   FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();
 
+-- The MFA challenge address is EXEMPT (header): the trigger an earlier version
+-- of this file created there is removed, with its function.
 DROP TRIGGER IF EXISTS nikatru_address_null_on_write ON auth.mfa_challenges;
-CREATE TRIGGER nikatru_address_null_on_write
-  BEFORE INSERT OR UPDATE ON auth.mfa_challenges
-  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_unspecified();
+DROP FUNCTION IF EXISTS nikatru_privacy.mfa_ip_unspecified();
 
 COMMIT;

@@ -1,12 +1,21 @@
 {
-  "_what": "Every column in the identity store (self-hosted GoTrue on Box C) that can hold a network address, and the value a write leaves in it. SYN-P2: every app notice says no network address is stored, and the identity store is inside that promise. tooling/ci/assert-app-yaml.mjs limb 10 refuses any column here that the trigger file does not empty on write, and an empty list (COVERAGE LOST).",
+  "_what": "Every column in the identity store (self-hosted GoTrue on Box C) that can hold a network address, and the value a write leaves in it. SYN-P2: every app notice says no network address is stored, and the identity store is inside that promise. tooling/ci/assert-app-yaml.mjs limb 10 refuses any column in `columns` that the trigger file does not empty on write, any `exempt` column the file does touch, and an empty list (COVERAGE LOST).",
   "_measuredBy": "A catalog read on Box C, counts and names only: every inet or cidr column and every column named ip, *_ip, ip_address, remote_addr or client_ip, in both databases of the stack (postgres and _supabase). The query is the first block of the trigger file's header. Re-run it after every GoTrue image upgrade: a new column is an address the notice would then wrongly deny.",
   "store": "Box C, supabase/gotrue:v2.189.0, auth.schema_migrations max 20260302000000",
   "asOf": "2026-10-02",
   "triggerFile": "docs/platform/supabase/sql/identity-address-null-on-write.sql",
   "columns": [
     { "table": "auth.sessions", "column": "ip", "emptiedTo": "NULL" },
-    { "table": "auth.audit_log_entries", "column": "ip_address", "emptiedTo": "''" },
-    { "table": "auth.mfa_challenges", "column": "ip_address", "emptiedTo": "'0.0.0.0'::inet" }
+    { "table": "auth.audit_log_entries", "column": "ip_address", "emptiedTo": "''" }
+  ],
+  "_exempt": "⏱ 2026-10-02 · review 1 of #1140, finding 3. A column GoTrue READS BACK cannot be emptied on write: the value it compares would no longer match. Each is held empty another way, named in `heldBy`, with the read-back that proves it. limb 10 refuses a trigger on an exempt column's table, and refuses the MFA challenge address anywhere but here.",
+  "exempt": [
+    {
+      "table": "auth.mfa_challenges",
+      "column": "ip_address",
+      "reason": "GoTrue v2.189.0 internal/api/mfa.go (validateChallenge, verifyPhoneFactor) refuses a verify whose request address differs from challenge.IPAddress ('Challenge and verify IP addresses mismatch'), so any emptied value fails every MFA verify.",
+      "heldBy": "MFA enrolment off on Box C (GOTRUE_MFA_TOTP_ENROLL_ENABLED, GOTRUE_MFA_PHONE_ENROLL_ENABLED, GOTRUE_MFA_WEB_AUTHN_ENROLL_ENABLED all false): no factor, so no challenge row. Turning MFA on is a privacy-notice change first.",
+      "readBack": "SELECT count(*) FROM auth.mfa_challenges; -- 0 (READ-BACK 3 of the trigger file)"
+    }
   ]
 }
