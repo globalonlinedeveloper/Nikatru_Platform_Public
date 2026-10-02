@@ -63,7 +63,7 @@
 //          workspace could not be read — a derivation over nothing is never a pass.
 // Tests:  tooling/ci/test/lane-inputs.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, posix, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, parseAllActions, workflowSteps, shellSegments, ACTION_DIR } from './workflow-scan.mjs';
@@ -446,11 +446,13 @@ function arg(argv, name) {
 function main(argv) {
   const root = resolve(arg(argv, '--root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
   const mapPath = join(root, MAP_REL);
-  if (!existsSync(mapPath)) throw new CoverageLost(`${MAP_REL} does not exist under ${root}`);
+  // One read, no exists-check first: a check-then-read (and the --write below) is a
+  // file-system race CodeQL refuses (js/file-system-race, PR #1156).
   let map;
   try {
     map = JSON.parse(readFileSync(mapPath, 'utf8'));
   } catch (e) {
+    if (e?.code === 'ENOENT') throw new CoverageLost(`${MAP_REL} does not exist under ${root}`);
     throw new CoverageLost(`${MAP_REL} could not be parsed (${e.message})`);
   }
   const only = arg(argv, '--lane');
