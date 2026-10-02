@@ -682,7 +682,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/sessions.ts",
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The caller's own sign-in sessions, newest activity first: `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`. Read through the service-role RPC public.nikatru_sessions_of (docs/platform/supabase/sql/sessions-rpc.sql), which returns no IP; `device` is a label derived from the user agent. 503 until the SQL is applied; bounded by SESSIONS_LIMITER (5/60 s per account).",
-      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+      "unconsumedReason": "CONSUMED (ST-SETTINGS, SE-03): packages/api_client/lib/src/dio_sessions_transport.dart (DioSessionsTransport.list), parsed by packages/core DeviceSession.tryParse and drawn by the chassis DevicesSection (\"Your devices\") in apps/subscriptiontracker Settings. Wire-pinned by assert-analytics-contract (sessions-list, the envelope)."
     },
     {
       "id": "sessions-revoke",
@@ -691,7 +691,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/sessions.ts",
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Ends ONE of the caller's other sessions: public.nikatru_revoke_session deletes the auth.sessions row only when it belongs to the caller (another account's id is a 404 and nothing is written), which kills its refresh token; the route then adds the session id to the SESSION_REVOKED list so every Worker refuses its already-issued access token. The caller's own session is a 409 (sign out instead). 204 even when the list write fails twice (logged): the refresh token is already dead, and the access token lapses within jwt_exp.",
-      "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+      "unconsumedReason": "CONSUMED (ST-SETTINGS, SE-03): packages/api_client/lib/src/dio_sessions_transport.dart (DioSessionsTransport.revoke, by status through packages/core SessionRevokeOutcome.forStatus), from the \"Sign out this device\" button of the chassis DevicesSection. Status set pinned by assert-analytics-contract (sessions-revoke)."
     },
     {
       "id": "sessions-revoke-all",

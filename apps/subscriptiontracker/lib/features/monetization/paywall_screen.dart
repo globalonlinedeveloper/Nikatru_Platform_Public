@@ -213,7 +213,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           canStartCheckout: selling && rail.canStartCheckout,
           // Only a hosted page opens in the browser, so only a hosted rail may
           // say so. A store's own sheet names neither the web nor a browser.
-          checkoutStyle: rail.railKind == PurchaseRailKind.paddle
+          checkoutStyle: rail.railKind == PurchaseRailKind.hosted
               ? PaywallCheckoutStyle.hosted
               : PaywallCheckoutStyle.store,
           refusalView: _refusedView,

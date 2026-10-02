@@ -80,6 +80,8 @@ import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_card.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
+import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
+    show SetupStepsView;
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
@@ -838,6 +840,28 @@ void main() {
         reason:
             'accepting the terms did not move the capture past the '
             'interstitial, so every frame below would photograph it',
+      );
+    }
+
+    // ── the after-sign-in setup, skipped, NEVER photographed ─────────────────
+    //
+    // ⏱ 2026-10-02 (O-STORE-SCREENSHOTS): since #1130 a first sign-in whose
+    // list loads EMPTY is sent to /setup once per account, and the capture
+    // user is minted with no rows, so every drive stopped on "Step 1 of 3 |
+    // Your home currency" and timed out waiting for Home (Store screenshots
+    // runs 36952966745 and 36952983438). Skip, not Done: Done writes the
+    // currency and adds every picked tile as a row, and the seeding below
+    // owns what the frames show. Conditional like the interstitial above.
+    if (find.byKey(SetupStepsView.skipButton).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(SetupStepsView.skipButton));
+      await pumpFor(tester, const Duration(seconds: 4));
+      expect(
+        find.byKey(SetupStepsView.skipButton),
+        findsNothing,
+        reason:
+            'Skip did not move the capture past the after-sign-in setup, so '
+            'every frame below would photograph it. On screen: '
+            '${onScreen(tester)}',
       );
     }
 

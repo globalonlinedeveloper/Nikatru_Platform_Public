@@ -12,10 +12,11 @@
 // WHAT IT DOES, AND ALL IT DOES:
 //   1. passes every request to the origin UNCHANGED — method, headers, body,
 //      streaming — with `fetch(request)`, and adds exactly one response header,
-//      `x-nikatru-shield: 1`, which ops-watch reads to prove the shield is still
-//      in path (tooling/ops/check-edge-shield.mjs). It resends a request ONCE
-//      when the origin faults (520/522/524) and repeating it is safe
-//      (passThrough() below, 2026-10-02);
+//      `x-nikatru-shield: <RELEASE>`, which ops-watch reads to prove the shield is
+//      still in path and the deploy smoke reads to prove THIS commit is
+//      (tooling/ops/check-edge-shield.mjs; `1` when no RELEASE was deployed).
+//      It resends a request ONCE when the origin faults (520/522/524) and
+//      repeating it is safe (passThrough() below, 2026-10-02);
 //   2. counts the requests of four classes (src/classify.ts) against one
 //      GLOBAL cap each, and refuses one over its cap with Retry-After
 //      (src/limit.ts): 429, or 503 for the refresh grant, which the auth SDK
@@ -41,6 +42,21 @@
 import { AUTH_HOST, JWKS_PATH, classify, retryableOnOriginFault } from './classify';
 import { SHIELD_HEADER, admit } from './limit';
 import type { Env } from './types';
+
+/** A deployed RELEASE is the commit SHA (`--var RELEASE:${{ github.sha }}`). */
+const RELEASE_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * The shield header's value: the RELEASE this version was deployed with, so the
+ * deploy smoke can tell THIS commit's shield from any older one still in path
+ * (row O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA). A version deployed without one, or
+ * with anything that is not a SHA, still marks itself in path with `1`: the header
+ * must never be the thing that goes missing.
+ */
+export function shieldMark(env: Pick<Env, 'RELEASE'> | undefined): string {
+  const release = env?.RELEASE;
+  return typeof release === 'string' && RELEASE_SHA.test(release) ? release : '1';
+}
 
 /** JWKS rotation is rare; five minutes of staleness is the ruling's bound. */
 // @ceiling none — a cache lifetime (the JWKS staleness bound, LEAD RULING SHIELD-R1 §5), not a platform resource
@@ -97,11 +113,11 @@ export const REVALIDATE_UA = 'nikatru-edge-shield/jwks-revalidate';
 type CacheState = 'HIT' | 'MISS' | 'STALE';
 
 /** The origin's response with the shield header added; status, headers and body stream untouched. */
-export function withShield(res: Response, cache?: CacheState): Response {
+export function withShield(res: Response, mark: string, cache?: CacheState): Response {
   // A protocol switch cannot be re-wrapped; neither host serves one, so pass it as is.
   if (res.status === 101 || (res as Response & { webSocket?: unknown }).webSocket) return res;
   const out = new Response(res.body, res);
-  out.headers.set(SHIELD_HEADER, '1');
+  out.headers.set(SHIELD_HEADER, mark);
   if (cache) out.headers.set('x-nikatru-shield-cache', cache);
   return out;
 }
@@ -111,8 +127,8 @@ function cacheFault(err: unknown): void {
 }
 
 /** A stored copy as the client gets it: the remaining freshness, and no internal header. */
-function served(held: Response, state: CacheState, ageMs: number): Response {
-  const out = withShield(held, state);
+function served(held: Response, state: CacheState, ageMs: number, mark: string): Response {
+  const out = withShield(held, mark, state);
   out.headers.delete(STORED_AT_HEADER);
   out.headers.delete(RETRY_AT_HEADER);
   if (state === 'STALE') {
@@ -162,7 +178,7 @@ export function isUsableJwks(text: string): boolean {
  * through even when a copy is held: it is a definite answer about the path, not
  * an outage.
  */
-async function jwks(ctx: ExecutionContext): Promise<Response> {
+async function jwks(ctx: ExecutionContext, mark: string): Promise<Response> {
   const key = new Request(JWKS_CACHE_KEY, { method: 'GET' });
   const now = Date.now();
   let cache: Cache | null = null;
@@ -179,9 +195,9 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
       // is neither fresh nor servable as stale: the origin is asked as if nothing
       // were stored.
       if (storedAt > 0 && ageMs >= 0) {
-        if (ageMs < JWKS_TTL_SECONDS * 1000) return served(held, 'HIT', ageMs);
+        if (ageMs < JWKS_TTL_SECONDS * 1000) return served(held, 'HIT', ageMs, mark);
         if (ageMs < (JWKS_TTL_SECONDS + JWKS_MAX_STALE_SECONDS) * 1000) {
-          if (Number(held.headers.get(RETRY_AT_HEADER)) > now) return served(held, 'STALE', ageMs);
+          if (Number(held.headers.get(RETRY_AT_HEADER)) > now) return served(held, 'STALE', ageMs, mark);
           stale = held;
           staleAgeMs = ageMs;
         }
@@ -224,7 +240,7 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
         })().catch(cacheFault),
       );
     }
-    return served(held, 'STALE', staleAgeMs);
+    return served(held, 'STALE', staleAgeMs, mark);
   };
 
   const init: RequestInit = { method: 'GET', headers: { 'User-Agent': REVALIDATE_UA, Accept: 'application/json' } };
@@ -243,11 +259,11 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
       origin.body?.cancel().catch(() => {});
       return serveStale(stale, `origin ${origin.status}`);
     }
-    return withShield(origin);
+    return withShield(origin, mark);
   }
   if (!isUsableJwks(text)) {
     if (stale) return serveStale(stale, 'origin 200 is not a JWKS');
-    return withShield(new Response(text, origin));
+    return withShield(new Response(text, origin), mark);
   }
   const fresh = new Response(text, origin);
   fresh.headers.delete('Set-Cookie');
@@ -257,7 +273,7 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
     stored.headers.set(STORED_AT_HEADER, String(now));
     ctx.waitUntil(cache.put(key, stored).catch(cacheFault));
   }
-  return served(fresh, 'MISS', 0);
+  return served(fresh, 'MISS', 0, mark);
 }
 
 /**
@@ -287,16 +303,16 @@ function loggedPath(url: URL): string {
   return url.pathname.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<id>');
 }
 
-async function passThrough(request: Request): Promise<Response> {
+async function passThrough(request: Request, mark: string): Promise<Response> {
   const url = new URL(request.url);
-  if (!retryableOnOriginFault(url, request.method)) return withShield(await fetch(request));
+  if (!retryableOnOriginFault(url, request.method)) return withShield(await fetch(request), mark);
   // The spare is taken BEFORE the first send: a sent body cannot be read again.
   const spare = request.clone();
   const started = Date.now();
   const first = await fetch(request);
   if (!ORIGIN_FAULT_STATUSES.has(first.status)) {
     spare.body?.cancel().catch(() => {});
-    return withShield(first);
+    return withShield(first, mark);
   }
   const left = ORIGIN_RETRY_BUDGET_MS - (Date.now() - started);
   const log = (second: number | string) =>
@@ -306,33 +322,34 @@ async function passThrough(request: Request): Promise<Response> {
   if (left < ORIGIN_RETRY_MIN_MS) {
     log('no budget');
     spare.body?.cancel().catch(() => {});
-    return withShield(first);
+    return withShield(first, mark);
   }
   let second: Response;
   try {
     second = await fetch(spare, { signal: AbortSignal.timeout(left) });
   } catch (err) {
     log(err instanceof Error ? err.name : 'threw');
-    return withShield(first);
+    return withShield(first, mark);
   }
   log(second.status);
   if (ORIGIN_FAULT_STATUSES.has(second.status)) {
     second.body?.cancel().catch(() => {});
-    return withShield(first);
+    return withShield(first, mark);
   }
   first.body?.cancel().catch(() => {});
-  return withShield(second);
+  return withShield(second, mark);
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     ctx.passThroughOnException();
+    const mark = shieldMark(env);
     const route = classify(new URL(request.url), request.method);
-    if (route.kind === 'jwks') return jwks(ctx);
+    if (route.kind === 'jwks') return jwks(ctx, mark);
     if (route.kind === 'limit') {
       const refused = await admit(route.cls, env);
       if (refused) return refused;
     }
-    return passThrough(request);
+    return passThrough(request, mark);
   },
 } satisfies ExportedHandler<Env>;

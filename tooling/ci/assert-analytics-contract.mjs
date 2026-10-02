@@ -617,24 +617,41 @@ const WIRE_CONTRACTS = [
   // be live first. `absentFromDart` keeps each claim checked — the day that PR
   // builds one of these paths, the gap becomes a false statement and this fails,
   // which is exactly when its wire contract has to be pinned.
+  // ⏱ 2026-10-01 · train ST-SETTINGS (SE-03) — the client arrived
+  // (packages/api_client DioSessionsTransport, read by core
+  // DeviceSession.tryParse, drawn by the chassis DevicesSection), so the list
+  // and the one-session revoke are PINNED. ⏱ 2026-10-02 · AB-A4-01 — and
+  // revoke-all is pinned below; revoke-others stays a gap.
   {
     id: 'sessions-list',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: the sessions list ships in the web PR after this Worker deploys. There is no released client of ours to break. The answer is `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`, pinned by services/platform/test/sessions.test.ts until a client reads it.',
-    absentFromDart: '/v1/sessions',
-    // ⏱ 2026-10-02 · scoped to a GET, because revoke-all's client (below)
-    // builds `/v1/sessions/revoke-all`, which contains this path.
-    absentCall: 'get',
+    kind: 'body',
+    server: 'services/platform/src/routes/sessions.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_sessions_transport.dart',
+      member: 'static core.Result<List<core.DeviceSession>> _sessions(',
+      reader: 'body',
+    },
+    requiredBoth: ['sessions'],
+    clientOnly: {},
+    serverOnly: {
+      d1Pending:
+        'NOT THIS ROUTE\'S ANSWER: sessions.ts also serves POST /v1/sessions/revoke-all, whose 200 {d1Pending: true} (EXA-11) is read off the same file. Its client (sessions-revoke-all, below) reads it there; the list never sends it.',
+    },
   },
   {
     id: 'sessions-revoke',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: requestSessionRevocation ships in the web PR after this Worker deploys. Success is a 204 with no body; each refusal is a status with `{error}` (404 not_found, 409 current_session, 429 rate_limited, 503 sessions_unavailable), so what that PR pins is the status set.',
-    absentFromDart: '/v1/sessions/',
-    // ⏱ 2026-10-02 · scoped to a DELETE, for the reason sessions-list is.
-    absentCall: 'delete',
+    kind: 'status',
+    servers: ['services/platform/src/routes/sessions.ts'],
+    client: {
+      file: 'packages/core/lib/src/sessions_transport.dart',
+      member: 'static SessionRevokeOutcome forStatus(',
+    },
+    /** THE FLOOR. 404 is "already signed out", which the list must treat as
+     *  done rather than as a failure; 409 is the caller's own session, which
+     *  is "Log out", never a by-id revoke. */
+    mustMap: [404, 409, 429, 503],
+    bodyIsNotTheContract:
+      'DioSessionsTransport.revoke reads only the status — success is a 204 with no body and every refusal is `{error}` beside a literal status — so the STATUS SET is the contract, as for account deletion.',
   },
   {
     // ⏱ 2026-10-02 · AB-A4-01 — the client arrived: "Log out of all devices" and
@@ -656,7 +673,7 @@ const WIRE_CONTRACTS = [
     requiredBoth: [],
     clientOnly: {},
     serverOnly: {
-      sessions: 'GET /v1/sessions in the same file answers the list; no client reads it yet (the sessions-list gap).',
+      sessions: 'GET /v1/sessions in the same file answers the list; its own pin (sessions-list, above) reads it, and revoke-all never sends it.',
     },
   },
   {
@@ -1903,7 +1920,10 @@ for (const { id, dir } of APP_SET) {
     );
   }
 }
-const serverFilesOf = (contract) => appWorkers.map((w) => `${w}/${contract.appServer.under}`);
+// A status route served by the platform Worker ALONE (sessions-revoke) declares
+// no `appServer`; its `servers` are then the whole set. ⏱ 2026-10-01 · SE-03.
+const serverFilesOf = (contract) =>
+  contract.appServer ? appWorkers.map((w) => `${w}/${contract.appServer.under}`) : [];
 
 /** A keyed pin lives under its app's directory; an unkeyed one is repo-relative. */
 const pinPath = (pin) => (pin.app ? `apps/${pin.app}/${pin.file}` : pin.file);

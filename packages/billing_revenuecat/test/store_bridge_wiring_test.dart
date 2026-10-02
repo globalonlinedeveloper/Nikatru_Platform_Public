@@ -19,37 +19,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_billing_revenuecat/nikatru_billing_revenuecat.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
-
-/// A bridge that does nothing; the test only counts how many were built.
-class _InertBridge implements IapBridge {
-  @override
-  Future<bool> configure(IapBridgeConfig config) async => false;
-
-  @override
-  Future<bool> identify(String appUserId) async => false;
-
-  @override
-  Future<bool> logOut() async => false;
-
-  @override
-  Future<List<StorePlan>> storePlans() async => const <StorePlan>[];
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapPurchaseResult> restore() async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async =>
-      IapCustomerState.unknown;
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      const Stream<IapCustomerState>.empty();
-}
+import 'package:nikatru_purchases/testing.dart';
 
 /// The wiring for [channel], with a bridge factory that counts its calls.
 ({IapBridge? bridge, IapBridgeConfig? config, int built}) _wire(
@@ -64,7 +34,8 @@ class _InertBridge implements IapBridge {
     entitlementId: entitlementId,
     newBridge: () {
       built++;
-      return _InertBridge();
+      // A store that answers nothing: the test only counts how many were built.
+      return FakeIapBridge(configureAnswer: false, identifyAnswer: false);
     },
   );
   return (bridge: w.bridge, config: w.config, built: built);
@@ -75,7 +46,7 @@ void main() {
     test('android-play', () {
       final w = _wire('android-play', key: 'public-sdk-key');
       expect(w.built, 1);
-      expect(w.bridge, isA<_InertBridge>());
+      expect(w.bridge, isA<FakeIapBridge>());
       expect(w.config?.publicApiKey, 'public-sdk-key');
       expect(w.config?.entitlementId, 'pro');
       expect(w.config?.appUserId, isNull);
@@ -84,7 +55,7 @@ void main() {
     test('ios-appstore', () {
       final w = _wire('ios-appstore', key: 'public-sdk-key');
       expect(w.built, 1);
-      expect(w.bridge, isA<_InertBridge>());
+      expect(w.bridge, isA<FakeIapBridge>());
       expect(w.config?.publicApiKey, 'public-sdk-key');
       expect(w.config?.entitlementId, 'pro');
     });
@@ -92,7 +63,7 @@ void main() {
     test('macos-appstore', () {
       final w = _wire('macos-appstore', key: 'public-sdk-key');
       expect(w.built, 1);
-      expect(w.bridge, isA<_InertBridge>());
+      expect(w.bridge, isA<FakeIapBridge>());
       expect(w.config?.publicApiKey, 'public-sdk-key');
       expect(w.config?.entitlementId, 'pro');
     });

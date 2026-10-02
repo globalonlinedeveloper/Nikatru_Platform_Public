@@ -91,11 +91,13 @@ const NAME = 'assert-auth-callbacks';
 export const SCHEME_PREFIX = 'com.nikatru.';
 export const CALLBACK_HOST = 'auth-callback';
 export const MARKER_KEY = 'nk_auth';
-/** Six link-sending calls exist today (signUp, resend ×2 — the session's and,
+/** Seven link-sending calls exist today (signUp, resend ×2 — the session's and,
  *  since ST-A5 on 2026-09-27, the no-session one for "check your inbox" —
- *  signInWithOAuth, resetPasswordForEmail, linkIdentity). Fewer found means the
- *  scan stopped reaching them — a rename, a move — not that the links got fixed. */
-export const MIN_LINK_CALLS = 6;
+ *  signInWithOAuth, resetPasswordForEmail, linkIdentity, and since ST-SETTINGS
+ *  SE-02 on 2026-10-01 updateUser(email:) for "Change e-mail"). Fewer found
+ *  means the scan stopped reaching them — a rename, a move — not that the
+ *  links got fixed. */
+export const MIN_LINK_CALLS = 7;
 
 export const AUTH_REDIRECT = 'packages/auth_supabase/lib/src/auth_redirect.dart';
 export const AUTH_LIB = 'packages/auth_supabase/lib';
