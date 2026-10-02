@@ -30,7 +30,8 @@ const REGISTER = 'tooling/platform-register.json';
 const SENDER = 'packages/api_client/lib/src/session_revocation_request.dart';
 const APP_AUTH = 'apps/subscriptiontracker/lib/state/providers/auth.dart';
 const BRICK_PROVIDERS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
-const WIRING = 'revokeAtWorkers: () =>';
+// ⏱ 2026-10-02 · review 1 of #1140: the hook is handed the bearer to send.
+const WIRING = 'revokeAtWorkers: (String accessToken) =>';
 
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-session-revocation-'));
@@ -207,14 +208,14 @@ describe('assert-session-revocation over a copy of the real tree', () => {
   });
 
   test('🔴 limb 3: the app builds SupabaseAuthRepository WITHOUT revokeAtWorkers ⇒ exit 1 (AB-A4-01, the state before 2026-10-02)', () => {
-    withRoot(mutated([[APP_AUTH, WIRING, 'unusedHook: () =>']]), ({ code, out }) => {
+    withRoot(mutated([[APP_AUTH, WIRING, 'unusedHook: (String accessToken) =>']]), ({ code, out }) => {
       assert.equal(code, 1, out);
       assert.match(out, /providers\/auth\.dart: builds SupabaseAuthRepository without `revokeAtWorkers:`/);
     });
   });
 
   test('🔴 limb 3: the BRICK loses the wiring ⇒ exit 1 (every stamped app would inherit the gap)', () => {
-    withRoot(mutated([[BRICK_PROVIDERS, WIRING, 'unusedHook: () =>']]), ({ code, out }) => {
+    withRoot(mutated([[BRICK_PROVIDERS, WIRING, 'unusedHook: (String accessToken) =>']]), ({ code, out }) => {
       assert.equal(code, 1, out);
       assert.match(out, /lib\/state\/providers\.dart: builds SupabaseAuthRepository without/);
     });
