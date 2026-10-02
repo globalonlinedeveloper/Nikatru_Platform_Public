@@ -3859,6 +3859,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-edge-zone.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "B-11",
       "O-4"

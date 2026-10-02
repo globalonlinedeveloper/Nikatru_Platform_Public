@@ -3706,6 +3706,11 @@
       "firstSeen": "2026-09-27",
       "evidence": []
     },
+    "tooling/ops/check-edge-zone.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/ops/check-heartbeats.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",

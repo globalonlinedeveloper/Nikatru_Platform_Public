@@ -135,7 +135,7 @@
     "message": "Massal"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Tingkatkan ke FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Opsi"
@@ -441,10 +441,10 @@
     "message": "Langsung masuk ke pemberian anotasi (hanya untuk tangkapan satu bagian)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Pintasan satu tombol di editor"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Tombol huruf memilih alat, + dan - memperbesar atau memperkecil, ? menampilkan daftar tombol. Jika nonaktif, pintasan hanya berfungsi saat gambar sedang difokuskan."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1220,7 +1220,7 @@
     "message": "Paskan"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zoom $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1229,28 +1229,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Merah"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Kuning jingga"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Hijau"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Biru"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Ungu"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Merah muda"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Hitam"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Putih"
   },
   "editorZoomTipToHundred": {
     "message": "Paskan ke jendela — klik untuk 100%"
@@ -1921,7 +1921,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ menangkap seluruh area yang terlihat",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -1944,10 +1944,10 @@
     "message": "Chrome Web Store melarang ekstensi membaca halamannya, jadi halaman ini tidak bisa ditangkap."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons melarang ekstensi membaca halamannya, jadi halaman ini tidak bisa ditangkap."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) melarang ekstensi membaca halamannya, jadi halaman ini tidak bisa ditangkap."
   },
   "errRestrictedGeneric": {
     "message": "Halaman ini dilindungi browser dan tidak bisa ditangkap."

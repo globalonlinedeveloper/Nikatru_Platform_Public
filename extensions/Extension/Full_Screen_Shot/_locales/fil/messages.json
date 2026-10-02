@@ -135,7 +135,7 @@
     "message": "Batch"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Mag-upgrade sa FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Mga Opsyon"
@@ -441,10 +441,10 @@
     "message": "Dumiretso agad sa paglalagay ng anotasyon (para lang sa mga pagkuhang isang bahagi)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Mga shortcut na isang key sa editor"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Pumipili ng tool ang mga letter key, nagzo-zoom ang + at -, at ipinapakita ng ? ang mga key. Kapag naka-off, gumagana lang ang mga ito habang naka-focus ang larawan."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1247,7 +1247,7 @@
     "message": "Iangkop"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zoom na $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Pula"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Dilaw-kahel"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Berde"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Asul"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Biyoleta"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rosas"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Itim"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Puti"
   },
   "editorZoomTipToHundred": {
     "message": "Iangkop sa window — i-click para sa 100%"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "Kinukunan ng $ENTER$ ang buong nakikitang bahagi",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Hinaharangan ng Chrome Web Store ang mga extension sa pagbasa ng mga page nito, kaya hindi makukunan ang page na ito."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Hinaharangan ng Microsoft Edge Add-ons ang mga extension sa pagbasa ng mga page nito, kaya hindi makukunan ang page na ito."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Hinaharangan ng Firefox Add-ons (addons.mozilla.org) ang mga extension sa pagbasa ng mga page nito, kaya hindi makukunan ang page na ito."
   },
   "errRestrictedGeneric": {
     "message": "Protektado ng browser ang page na ito at hindi ito makukunan."

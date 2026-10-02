@@ -15,7 +15,7 @@
 //      `x-nikatru-shield: <RELEASE>`, which ops-watch reads to prove the shield is
 //      still in path and the deploy smoke reads to prove THIS commit is
 //      (tooling/ops/check-edge-shield.mjs; `1` when no RELEASE was deployed);
-//   2. counts the requests of four classes (src/classify.ts) against one
+//   2. counts the requests of six classes (src/classify.ts) against one
 //      GLOBAL cap each, and refuses one over its cap with Retry-After
 //      (src/limit.ts): 429, or 503 for the refresh grant, which the auth SDK
 //      would otherwise turn into a sign-out (LEAD RULING SHIELD-R2). It reads no

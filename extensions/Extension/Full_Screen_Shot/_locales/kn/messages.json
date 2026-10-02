@@ -135,7 +135,7 @@
     "message": "ಬ್ಯಾಚ್"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "FullShot Pro ಗೆ ಅಪ್‌ಗ್ರೇಡ್ ಮಾಡಿ"
   },
   "popupLinkOptions": {
     "message": "ಆಯ್ಕೆಗಳು"
@@ -441,10 +441,10 @@
     "message": "ನೇರವಾಗಿ ಟಿಪ್ಪಣಿ ಬರೆಯುವ ಕೆಲಸಕ್ಕೆ ಹೋಗುತ್ತದೆ (ಒಂದೇ ಭಾಗದ ಸೆರೆಹಿಡಿಯುವಿಕೆಗಳಿಗೆ ಮಾತ್ರ)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "ಎಡಿಟರ್‌ನಲ್ಲಿ ಒಂದೇ ಕೀಲಿಯ ಶಾರ್ಟ್‌ಕಟ್‌ಗಳು"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "ಅಕ್ಷರ ಕೀಲಿಗಳು ಉಪಕರಣವನ್ನು ಆರಿಸುತ್ತವೆ, + ಮತ್ತು - ಝೂಮ್ ಮಾಡುತ್ತವೆ, ? ಕೀಲಿಗಳ ಪಟ್ಟಿಯನ್ನು ತೋರಿಸುತ್ತದೆ. ಆಫ್ ಆಗಿದ್ದಾಗ, ಚಿತ್ರದ ಮೇಲೆ ಫೋಕಸ್ ಇರುವಾಗ ಮಾತ್ರ ಅವು ಕೆಲಸ ಮಾಡುತ್ತವೆ."
   },
   "optionsTheme": {
     "message": "ಥೀಮ್"
@@ -1247,7 +1247,7 @@
     "message": "ಹೊಂದಿಸು"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ ಝೂಮ್",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "ಕೆಂಪು"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "ಅಂಬರ್"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "ಹಸಿರು"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "ನೀಲಿ"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "ನೇರಳೆ"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "ಗುಲಾಬಿ"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "ಕಪ್ಪು"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "ಬಿಳಿ"
   },
   "editorZoomTipToHundred": {
     "message": "ಕಿಟಕಿಗೆ ಹೊಂದಿಸಲಾಗಿದೆ — 100% ಗೆ ಕ್ಲಿಕ್ ಮಾಡಿ"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ ಕಾಣುವ ಸಂಪೂರ್ಣ ಪ್ರದೇಶವನ್ನು ಸೆರೆಹಿಡಿಯುತ್ತದೆ",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
   },
   "errRestrictedGeneric": {
     "message": "ಈ ಪುಟವನ್ನು ಬ್ರೌಸರ್ ರಕ್ಷಿಸುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
