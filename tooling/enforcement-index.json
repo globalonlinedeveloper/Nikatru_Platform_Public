@@ -4318,11 +4318,11 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
-      ".github/workflows/extensions-ci.yml#selftest"
+      ".github/workflows/extensions-ci.yml#selftest",
+      ".github/workflows/lane-apps.yml#app-dryrun"
     ],
     "kind": "script",
     "ref": "tooling/scripts/spawn-ceiling.mjs",

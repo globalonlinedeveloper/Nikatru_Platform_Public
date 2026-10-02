@@ -189,6 +189,44 @@ describe('assert-lane-inputs — the derivation', () => {
     assert.ok(globsOf(root).includes('tooling/other.json'), JSON.stringify(globsOf(root)));
   });
 
+  // ⏱ 2026-10-02: `node --test <glob>` names no script, so the suites it runs were a
+  // literal glob and what they read was derived by nothing (#1148's contract suite
+  // reads tooling/ports/channels.json and its fixtures).
+  test('RED: a `node --test <glob>` step runs each suite it matches: what a suite reads, and an --import preload, are inputs', () => {
+    const suite = {
+      'tooling/ci/pre.mjs': 'export {};\n',
+      'tooling/release/test/a.test.mjs': "import { readFileSync } from 'node:fs';\nreadFileSync('tooling/other.json', 'utf8');\n",
+    };
+    const root = fixture(suite);
+    assert.equal(run(root, '--write').status, 0);
+    assert.ok(!globsOf(root).includes('tooling/other.json'));
+    change(root, { '.github/workflows/lane-apps.yml': `${CALLEE}      - run: node --import ./tooling/ci/pre.mjs --test "tooling/release/test/*.test.mjs"\n` });
+    const r = run(root);
+    assert.equal(r.status, 1, out(r));
+    assert.match(r.stderr, /misses input tooling\/other\.json \(read by tooling\/release\/test\/a\.test\.mjs\)/);
+    assert.match(r.stderr, /misses input tooling\/ci\/pre\.mjs/);
+  });
+
+  test('a module that imports a computed path follows the adapters a PORT register names, and no other register\'s', () => {
+    const suite = {
+      'tooling/release/test/a.test.mjs':
+        "import { readFileSync } from 'node:fs';\nconst p = JSON.parse(readFileSync('tooling/ports/rails.json', 'utf8'));\n" +
+        "JSON.parse(readFileSync('tooling/jobs.json', 'utf8'));\nfor (const a of p.adapters) await import(a.impl.file);\n",
+      'tooling/ports/rails.json': JSON.stringify({ adapters: [{ impl: { file: 'tooling/rails/one.mjs' } }] }),
+      'tooling/rails/one.mjs': "import { readFileSync } from 'node:fs';\nreadFileSync('tooling/data.json', 'utf8');\n",
+      'tooling/jobs.json': JSON.stringify({ job: { runs: 'tooling/rails/other.mjs' } }),
+      'tooling/rails/other.mjs': 'export {};\n',
+      '.github/workflows/lane-apps.yml': `${CALLEE}      - run: node --test "tooling/release/test/*.test.mjs"\n`,
+    };
+    const root = fixture(suite);
+    const w = run(root, '--write');
+    assert.equal(w.status, 0, out(w));
+    const globs = globsOf(root);
+    assert.ok(globs.includes('tooling/ports/rails.json'), JSON.stringify(globs));
+    assert.ok(globs.includes('tooling/rails/one.mjs'), `the port's adapter is not followed: ${JSON.stringify(globs)}`);
+    assert.ok(!globs.includes('tooling/rails/other.mjs'), `a non-port register's script path was followed: ${JSON.stringify(globs)}`);
+  });
+
   test('a tool reads its manifest by convention: a `mason make` step derives mason.yaml', () => {
     const root = fixture();
     assert.equal(run(root, '--write').status, 0);
@@ -226,6 +264,13 @@ describe('assert-lane-inputs — COVERAGE LOST, never a pass', () => {
     const r = run(root);
     assert.equal(r.status, 2, out(r));
     assert.match(r.stderr, /names callee \.github\/workflows\/lane-apps\.yml, which does not exist/);
+  });
+
+  test('a `node --test` target that matches no tracked file', () => {
+    const root = fixture({ '.github/workflows/lane-apps.yml': `${CALLEE}      - run: node --test "tooling/none/*.test.mjs"\n` });
+    const r = run(root);
+    assert.equal(r.status, 2, out(r));
+    assert.match(r.stderr, /runs `node --test tooling\/none\/\*\.test\.mjs`, which matches no tracked file/);
   });
 
   test('a callee that runs no node script', () => {

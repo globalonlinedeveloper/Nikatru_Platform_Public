@@ -26,7 +26,10 @@
 //             the step writes to the runner is read as the step's own text. When a
 //             module spawns node, every script it names is followed too, read as an
 //             import is (its files and globs, not its directory walks): a module that
-//             never spawns names other scripts as data.
+//             never spawns names other scripts as data. A `node --test <target>`
+//             runs every tracked suite its target matches, and an `--import`
+//             preload is a script too. A module that imports a COMPUTED path
+//             loads the adapters a port register it names lists (tooling/ports/*.json).
 //   tools     a command that reads a manifest by convention: mason (mason.yaml),
 //             flutter / dart / melos (the root pubspec.yaml, pubspec.lock,
 //             analysis_options.yaml), npm (package.json and its lockfile, in the
@@ -85,6 +88,28 @@ const TOOL_MANIFESTS = [
 /** A module that starts a node process: the scripts it names may be what it runs. */
 const SPAWNS_NODE = /\bprocess\.execPath\b|\b(?:spawn|spawnSync|execFile|execFileSync|fork)\(\s*['"]node['"]/;
 const EXPR = /\$\{\{[^}]*\}\}/g;
+/** A dynamic import whose argument is not a string literal: the module loads a path
+ *  it computed, so the code it runs is named by data rather than by its own text. */
+const IMPORTS_COMPUTED = /\bimport\(\s*[^\s'"`)]/;
+/** A port register: the one kind of JSON whose script paths are code a reader loads. */
+const PORT_REGISTER = /^tooling\/ports\/[^/]+\.json$/;
+
+/** Every tracked script a JSON file names as a string value (any depth). An
+ *  unreadable or unparsable file names none: the file itself is already an input. */
+export function scriptsNamedIn(rel, read, tree) {
+  let data;
+  try { data = JSON.parse(read(rel)); } catch { return []; }
+  const out = new Set();
+  const walk = (v) => {
+    if (typeof v === 'string') {
+      const p = posix.normalize(v.replace(/^\.\//, ''));
+      if (SCRIPT.test(p) && tree.files.has(p)) out.add(p);
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(data);
+  return [...out].sort();
+}
 
 /** One word of workflow text as a candidate path: quotes, a leading `./` or `/`,
  *  and a trailing `/` or `.` stripped; an expression becomes \u0000. */
@@ -197,6 +222,25 @@ export function deriveLane(root, map, lane, { tree = trackedTree(root), read = (
       }
       for (const seg of shellSegments(step.run.text)) {
         const c = parseNodeCall(seg);
+        // ⏱ 2026-10-02 (#1148 put `node --test "tooling/release/test/*.test.mjs"` in
+        // app-dryrun): a `--test` call names no `script`, so its suites were taken as a
+        // literal glob and what they READ (tooling/ports/channels.json, their fixtures)
+        // was derived by nothing. Each suite the call runs, and each `--import` preload,
+        // is a script of the step. A target that matches no tracked file is COVERAGE LOST.
+        if (c?.test) {
+          const base = wd.includes('${{') ? '.' : wd;
+          for (const t of c.test) {
+            const pat = posix.normalize(posix.join(base, t));
+            const re = pat.includes('*') ? globToRegExp(pat) : null;
+            const hits = re ? tree.list.filter((f) => re.test(f)) : tree.files.has(pat) ? [pat] : [];
+            if (hits.length === 0) throw new CoverageLost(`${entry.callee} job "${job.name}" runs \`node --test ${t}\`, which matches no tracked file`);
+            for (const h of hits) calls.push({ rel: h, job: job.name });
+          }
+          for (let i = 0; i < (c.flags ?? []).length; i++) {
+            if (c.flags[i] === '--import' && SCRIPT.test(c.flags[i + 1] ?? '')) calls.push({ rel: posix.normalize(posix.join(base, c.flags[i + 1])), job: job.name });
+          }
+          continue;
+        }
         if (!c?.script) continue;
         if (c.script.includes('$')) {
           // A script the step writes to the runner (`echo "…" > "$RUNNER_TEMP/x.mjs"`) is
@@ -228,6 +272,7 @@ export function deriveLane(root, map, lane, { tree = trackedTree(root), read = (
   }
   const walked = new Set();
   const spawns = (rel) => { try { return SPAWNS_NODE.test(read(rel)); } catch { return false; } };
+  const importsComputed = (rel) => { try { return IMPORTS_COMPUTED.test(read(rel)); } catch { return false; } };
   while (queue.length) {
     const [rel, via, primary] = queue.shift();
     if (walked.has(rel)) continue;
@@ -236,6 +281,23 @@ export function deriveLane(root, map, lane, { tree = trackedTree(root), read = (
     const { subjects, closure } = closureSubjects(rel, tree, read, {});
     for (const m of closure) add({ kind: 'file', path: m }, m === rel ? via : `imported by ${rel}`);
     const spawners = new Set(closure.filter(spawns));
+    // A module that imports a path it COMPUTED (`import(<expression>)`) loads code a
+    // data file names: the contract suite imports each adapter tooling/ports/channels.json
+    // lists. So every tracked script a JSON subject of such a module names is followed,
+    // read as an import is. Only for a dynamic importer: elsewhere a script path in a
+    // register is data (a job row, a citation), and following it would widen the lane.
+    // Only a PORT register the importing module itself names (tooling/ports/*.json):
+    // a port names its adapters' code by design (`impl.file`). Any other register's
+    // script paths are data (a job row, a citation); following them widened the apps
+    // lane from 144 globs to 208, pulling in every Worker's wrangler.jsonc.
+    for (const m of closure.filter(importsComputed)) {
+      for (const s of subjectsOf(read(m), m, tree).subjects) {
+        if (s.kind !== 'file' || !PORT_REGISTER.test(s.path)) continue;
+        for (const p of scriptsNamedIn(s.path, read, tree)) {
+          if (!walked.has(p)) queue.push([p, `imported by ${m} through ${s.path}`, false]);
+        }
+      }
+    }
     for (const s of subjects) {
       if (s.kind !== 'file' && s.kind !== 'dir' && s.kind !== 'glob') continue;
       if (s.kind === 'dir' && !primary) continue;
