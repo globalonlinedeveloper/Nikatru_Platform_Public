@@ -48,6 +48,11 @@
     "LEDGER_BODY_CAP": 60000,
     "E2E_DISPATCH_MIN_GAP_MIN": 30
   },
+  "runner": {
+    "RUNNER_HOUSEKEEPING_OPS": 6,
+    "PIPELINE_FALLBACK_MIN_OUTAGE_H": 6,
+    "resultVerb": "RESULT"
+  },
   "routines": [
     { "id": "reviewer", "account": "1", "minute": 5 },
     { "id": "runner-a", "account": "3", "minute": 20 },

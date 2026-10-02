@@ -30,7 +30,7 @@ export function contractLabels(c) {
 /** Every threshold name the contract defines (UPPER_SNAKE keys of its number groups). */
 export function contractThresholds(c) {
   const up = (o) => Object.keys(o).filter((k) => /^[A-Z][A-Z0-9_]+$/.test(k));
-  return [...up(c.thresholds), ...up(c.heartbeat), ...up(c.claimStaleness), ...up(c.watch ?? {})];
+  return [...up(c.thresholds), ...up(c.heartbeat), ...up(c.claimStaleness), ...up(c.watch ?? {}), ...up(c.runner ?? {})];
 }
 
 /** One source file → findings. Comments are stripped first; a literal in prose is fine. */
@@ -51,7 +51,7 @@ export function hardcodedFindings(rel, source, c) {
 export function docFindings(doc, c) {
   const f = [];
   for (const l of contractLabels(c)) if (!doc.includes(`\`${l}`)) f.push(`label ${l} is not named in the doc`);
-  const numbers = { ...c.thresholds, ...Object.fromEntries(Object.entries(c.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...c.claimStaleness, ...(c.watch ?? {}) };
+  const numbers = { ...c.thresholds, ...Object.fromEntries(Object.entries(c.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...c.claimStaleness, ...(c.watch ?? {}), ...Object.fromEntries(Object.entries(c.runner ?? {}).filter(([k]) => /^[A-Z]/.test(k))) };
   for (const [k, v] of Object.entries(numbers)) {
     const m = new RegExp(`\`${k}\`\\s*=\\s*(\\d+)`).exec(doc);
     if (!m) f.push(`threshold ${k} is not stated as \`${k}\` = <value> in the doc`);

@@ -21,7 +21,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DIR = join(ROOT, 'docs/autopilot');
 const C = JSON.parse(readFileSync(join(ROOT, 'tooling/autopilot/contract.json'), 'utf8'));
 
-const NUMBERS = { ...C.thresholds, ...Object.fromEntries(Object.entries(C.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...C.claimStaleness, ...(C.watch ?? {}) };
+const NUMBERS = { ...C.thresholds, ...Object.fromEntries(Object.entries(C.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...C.claimStaleness, ...(C.watch ?? {}), ...Object.fromEntries(Object.entries(C.runner ?? {}).filter(([k]) => /^[A-Z]/.test(k))) };
 const LABELS = new Set([...C.labels.fixed, ...C.labels.prefixed.map((p) => `${p}<`), ...C.publicLabels.pr, ...C.publicLabels.issue]);
 const isLabel = (w) => LABELS.has(w) || C.labels.prefixed.some((p) => w.startsWith(p));
 
@@ -86,4 +86,10 @@ test('P5 red controls, planted into the real reviewer prompt', () => {
   assert.ok(promptFindings('fixer.prompt.md', fixer).some((x) => /says merge outside a "never"/.test(x)));
   assert.ok(!promptFindings('fixer.prompt.md', '## 1. Standby check\n`heartbeat.mjs read`\n- Never merge anything.\n').some((x) => /says merge/.test(x)));
   assert.ok(promptFindings('runner.prompt.md', '## 1. Standby check\n`heartbeat.mjs read`\n').some((x) => /no DRY/.test(x)));
+  const runner = prompts().find((p) => p.name === 'runner.prompt.md')?.text;
+  if (runner) {
+    const r = promptFindings('runner.prompt.md', runner.replace('`CLAIM_SETTLE_S` (90 seconds)', '`CLAIM_SETTLE_S` (30 seconds)').replace('## 9. DRY', '## 9. Drill'));
+    assert.ok(r.some((x) => /CLAIM_SETTLE_S says 30/.test(x)), r.join('\n'));
+    assert.ok(r.some((x) => /no DRY/.test(x)));
+  }
 });

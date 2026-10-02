@@ -161,6 +161,9 @@
   "autopilot-review-gate.test.mjs":
     11,
 
+  "autopilot-runner.test.mjs":
+    16,
+
   "availability.test.mjs":
     33,
 

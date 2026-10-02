@@ -76,6 +76,15 @@ Private queue issues (see queue.md): `cloud-lane`, `ready`, `blocked`, `claimed:
 | `LEDGER_BODY_CAP` = 60000 | characters | the ledger issue body; the oldest rows are dropped first |
 | `E2E_DISPATCH_MIN_GAP_MIN` = 30 | minutes | at most one E2E-after-deploy dispatch per this gap |
 
+## The runners (`docs/autopilot/runner.prompt.md`)
+
+| Threshold | Value | Meaning |
+|---|---|---|
+| `RUNNER_HOUSEKEEPING_OPS` = 6 | writes | a runner's housekeeping cap per run (the laptop's is `HOUSEKEEPING_MAX_OPS`) |
+| `PIPELINE_FALLBACK_MIN_OUTAGE_H` = 6 | hours | the outage age before the (off by default) pipeline-driver fallback may run |
+
+A runner records its result on the lane issue as `RESULT pr=#<n> head=<sha> ci-gate=success`.
+
 ## Routines
 
 | id | account | minute past the hour |
