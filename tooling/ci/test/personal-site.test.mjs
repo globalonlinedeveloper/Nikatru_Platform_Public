@@ -111,7 +111,12 @@ describe('structured data: the person, not the company (audit §D5/§D6)', () =>
     assert.ok(nodes.some((n) => n['@type'] === 'WebSite'));
     assert.match(person.image, /rajasekar-v4\.jpg$/);
     assert.equal(person.worksFor['@id'], 'https://nikatru.com/#org');
-    for (const n of nodes) for (const u of [].concat(n.sameAs ?? [])) assert.doesNotMatch(u, /nikatru\.com/, `${n['@type']} sameAs ${u}`);
+    for (const n of nodes) {
+      for (const u of [].concat(n.sameAs ?? [])) {
+        const host = new URL(u).hostname;
+        assert.ok(host !== 'nikatru.com' && !host.endsWith('.nikatru.com'), `${n['@type']} sameAs ${u}`);
+      }
+    }
     assert.equal(nodes.find((n) => n['@type'] === 'Organization')?.founder?.['@id'], person['@id'], 'the company relation is founder/worksFor');
     assert.deepEqual(structuredDataFindings(REAL), []);
   });
@@ -216,7 +221,7 @@ describe('the whole contract, and the CLI', () => {
     assert.equal(readFileSync(join(TMP, PAGE), 'utf8'), before, '--check wrote a byte');
     assert.equal(cli().code, 0);
     assert.equal(cli('--check').code, 0);
-    assert.match(readFileSync(join(TMP, PAGE), 'utf8'), /https:\/\/nikatru\.com\/apps\/fixture-app/);
+    assert.ok(readFileSync(join(TMP, PAGE), 'utf8').includes('href="https://nikatru.com/apps/fixture-app"'), 'the new app is not linked out');
     assert.match(readFileSync(join(TMP, LLMS), 'utf8'), /Fixture App \(https:\/\/nikatru\.com\/apps\/fixture-app\)/);
   });
 
