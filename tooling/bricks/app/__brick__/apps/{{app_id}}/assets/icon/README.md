@@ -7,7 +7,7 @@ the directory in the template, and what tells you why it looks empty in git.
 
 | File | What it is |
 |---|---|
-| `app_icon.png` | 1024x1024, **opaque**. The master every platform downscales from. Opaque because the App Store rejects an icon with an alpha channel (ITMS-90717). |
+| `app_icon_1024.png` | 1024x1024, **opaque**. The master every platform downscales from — the launcher icons, the splash (`tooling/store/render-splash.mjs`), the Linux packaging (`tooling/store/render-linux-icons.mjs`) and the Play graphics all read it by this name. Opaque because the App Store rejects an icon with an alpha channel (ITMS-90717). |
 | `app_icon_foreground.png` | 1024x1024, **transparent**. The Android adaptive icon's foreground layer — the mark alone, painted at 52% of the canvas so it survives every launcher mask (Android guarantees only the centre 66.7%). |
 
 The adaptive **background** is not a file: it is `seed_hex` as a flat colour in
@@ -15,11 +15,11 @@ The adaptive **background** is not a file: it is `seed_hex` as a flat colour in
 
 ## Using them
 
-The brick stamps **web only**. The moment you add native platforms:
+The stamp adds the five native platforms itself (`tooling/kit/stamp-native.mjs`,
+called from post_gen) and `tooling/kit/stamp-app.mjs` then brands them:
 
 ```sh
-flutter create . --platforms=android,ios,macos,windows,linux
-dart run flutter_launcher_icons          # <- do not skip this
+dart run flutter_launcher_icons          # run by stamp-app.mjs, from this app's directory
 ```
 
 `flutter create` writes **Flutter's default logo** into every native platform it
@@ -27,12 +27,13 @@ adds. That is how `apps/subscriptiontracker` came to ship the stock icon on Andr
 macOS and Windows simultaneously while its web icons were correct — 29
 byte-identical files, found 2026-08-04. `tooling/ci/assert-launcher-icons.mjs`
 fails the build if a shipped icon is Flutter's, so CI will catch it, but the
-second command above is what stops it happening.
+command above is what stops it happening.
 
 ## Replacing the generated mark
 
 The generated mark is deterministic art derived from the app id — good enough to
 ship, and different for every app so the portfolio does not look templated. When
-real art exists, drop a 1024x1024 PNG over `app_icon.png`, a transparent one
-over `app_icon_foreground.png`, and re-run the command above. Nothing else
+real art exists, drop a 1024x1024 PNG over `app_icon_1024.png`, a transparent one
+over `app_icon_foreground.png`, and re-run the command above, then `node tooling/kit/stamp-native.mjs --app {{app_id}}`
+(it re-derives the splash and the Linux packaging from the new master). Nothing else
 changes; `pubspec.yaml` already points at these paths.

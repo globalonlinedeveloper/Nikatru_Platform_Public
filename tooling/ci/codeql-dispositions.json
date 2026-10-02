@@ -642,6 +642,14 @@
       "disposition": "by-design",
       "host": "api.github.com",
       "reason": "restClient sends JSON bodies to the GitHub REST API: label names from tooling/autopilot/contract.json (review-gate.yml) and, for post-verdict.mjs, the review verdict file's text, whose whole purpose is to be posted as a COMMENT review (O-REVIEWS-DEPEND-ON-THE-LAPTOP). The file cannot choose the host; restClient refuses a repo that is not owner/name and any path outside the shape it builds, and post-verdict refuses a verdict file without the VERDICT line, over 65,000 characters, or carrying a secret-shaped string, before anything is posted. Added 2026-10-02 (club-rt-autopilot)."
+    },
+    {
+      "alert": 571,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/smoke/web-a11y-tree.mjs",
+      "disposition": "by-design",
+      "host": "127.0.0.1",
+      "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
     }
   ]
 }

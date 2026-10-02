@@ -486,7 +486,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 075"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],
@@ -526,6 +528,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-bundle-availability.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-bundle-locales.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -663,7 +675,14 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-channel-register.mjs",
@@ -1888,8 +1907,13 @@
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
       ".github/workflows/store-screenshots.yml#capture-linux",
+      ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
-      ".github/workflows/submit-play.yml#submit"
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-play-device-coverage.mjs",
@@ -3384,6 +3408,17 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/site-set.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/sql-seed.mjs",
@@ -3738,6 +3773,16 @@
     ],
     "kind": "script",
     "ref": "tooling/kit/stamp-app.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/stamp-service.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4513,6 +4558,16 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts"
+    ],
+    "kind": "script",
+    "ref": "tooling/smoke/web-a11y-tree.mjs",
     "references": [],
     "state": "WIRED"
   },

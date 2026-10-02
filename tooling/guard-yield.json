@@ -510,6 +510,11 @@
         }
       ]
     },
+    "tooling/ci/assert-bundle-locales.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-bundle-provenance.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
@@ -3491,6 +3496,11 @@
       "firstSeen": "2026-09-11",
       "evidence": []
     },
+    "tooling/ci/site-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/sql-seed.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
@@ -3659,6 +3669,11 @@
     "tooling/kit/stamp-app.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/kit/stamp-service.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/check-analytics-liveness.mjs": {
@@ -4032,6 +4047,11 @@
     "tooling/smoke/smoke-web-artifact.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/smoke/web-a11y-tree.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/store/capture-backend.mjs": {

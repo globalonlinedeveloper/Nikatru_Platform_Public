@@ -123,7 +123,7 @@
     30,
 
   "auth-callbacks.test.mjs":
-    50,
+    58,
 
   "auth-cutover-preflight.test.mjs":
     100,
@@ -179,6 +179,9 @@
   "boxes.test.mjs":
     47,
 
+  "brick-audience.test.mjs":
+    5,
+
   "brick-drivers.test.mjs":
     5,
 
@@ -196,6 +199,9 @@
 
   "bundle-contract-limbs.test.mjs":
     18,
+
+  "bundle-locales.test.mjs":
+    36,
 
   "bundle-provenance-guards.test.mjs":
     13,
@@ -246,7 +252,7 @@
     55,
 
   "channel-register.test.mjs":
-    368,
+    376,
 
   "channel-surface.test.mjs":
     7,
@@ -276,7 +282,7 @@
     10,
 
   "clone-contract.test.mjs":
-    46,
+    47,
 
   "code-scanning-age.test.mjs":
     15,
@@ -306,7 +312,7 @@
     7,
 
   "cors-allowlist.test.mjs":
-    33,
+    36,
 
   "credential-origin-guard.test.mjs":
     18,
@@ -375,7 +381,7 @@
     27,
 
   "e2e-legs.test.mjs":
-    46,
+    52,
 
   "e2e-parity.test.mjs":
     37,
@@ -513,7 +519,7 @@
     18,
 
   "guards.test.mjs":
-    503,
+    505,
 
   "heartbeats.test.mjs":
     87,
@@ -552,7 +558,7 @@
     11,
 
   "input-contract.test.mjs":
-    29,
+    32,
 
   "install-hooks-worktree.test.mjs":
     8,
@@ -582,7 +588,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    26,
+    29,
 
   "licence-register.test.mjs":
     80,
@@ -657,7 +663,7 @@
     8,
 
   "new-product-plan.test.mjs":
-    41,
+    69,
 
   "new-tool-chain.test.mjs":
     12,
@@ -678,7 +684,7 @@
     5,
 
   "no-hardcoded-strings.test.mjs":
-    96,
+    108,
 
   "no-loop-cases.test.mjs":
     11,
@@ -855,7 +861,7 @@
     68,
 
   "publish-steps-guarded.test.mjs":
-    21,
+    30,
 
   "purchase-path.test.mjs":
     136,
@@ -995,6 +1001,9 @@
   "site-integrity.test.mjs":
     122,
 
+  "site-set.test.mjs":
+    6,
+
   "small-business-program.test.mjs":
     17,
 
@@ -1020,13 +1029,13 @@
     9,
 
   "stamp-app.test.mjs":
-    15,
+    19,
 
   "stamp-brand-assets.test.mjs":
     19,
 
   "stamp-chain-wiring.test.mjs":
-    4,
+    6,
 
   "stamp-channel.test.mjs":
     19,
@@ -1034,14 +1043,17 @@
   "stamp-identity.test.mjs":
     15,
 
+  "stamp-native.test.mjs":
+    31,
+
   "stamp-platforms.test.mjs":
-    30,
+    39,
 
   "stamp-properties.test.mjs":
-    22,
+    30,
 
   "stamp-text-fidelity.test.mjs":
-    41,
+    44,
 
   "stamp-wiring.test.mjs":
     20,
@@ -1068,7 +1080,7 @@
     17,
 
   "store-identity.test.mjs":
-    77,
+    78,
 
   "store-key-secret.test.mjs":
     8,
@@ -1141,6 +1153,9 @@
 
   "walks-bounded.test.mjs":
     42,
+
+  "web-a11y-tree.test.mjs":
+    9,
 
   "web-cache-policy.test.mjs":
     109,
