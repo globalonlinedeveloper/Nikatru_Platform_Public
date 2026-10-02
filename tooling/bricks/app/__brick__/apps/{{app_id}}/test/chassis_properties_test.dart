@@ -79,6 +79,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 // has to fill it.
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:{{app_id.snakeCase()}}/state/money_providers.dart';
 import 'package:{{app_id.snakeCase()}}/state/notification_tap_observer.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
@@ -534,17 +535,8 @@ ProviderContainer _moneyContainer({
 ///
 /// [refuse] flips the SECOND half of the funnel on, so one session can contain
 /// both a success and a failure without inventing a second user.
-class _FakeRail implements PurchaseRail {
-  _FakeRail({this.refuse = false});
-
-  bool refuse;
-  int startCalls = 0;
-
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _fakeRail({bool refuse = false}) => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_monthly',
       amountMinor: 499,
@@ -552,38 +544,19 @@ class _FakeRail implements PurchaseRail {
       term: OfferingTerm.month,
       trial: TrialPeriod.days(30),
     ),
-  ];
-
-  // Deliberately NOT tied to [refuse]: `canStartCheckout` is a CONFIGURATION
-  // answer the paywall asks before it draws a button, and a refusal at
-  // `startCheckout` is a RUNTIME one. Collapsing them would hide the button on
-  // the very path `purchase_failed` exists to measure.
-  @override
-  bool get canStartCheckout => true;
-
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async {
-    startCalls++;
-    if (refuse) {
-      // couldNotOpen, NOT notSignedIn: a signed-out refusal now routes to
-      // sign-in (`refusalRouteOf`), which needs a router this host does not
-      // build. couldNotOpen still lands on the refused screen and still emits
-      // `purchase_failed`, the path these tests measure.
-      return const CheckoutRefused(
-        CheckoutRefusal.couldNotOpen,
-        detail: 'the checkout did not open',
-      );
-    }
-    return CheckoutOpened(
-      offering: offering,
-      url: Uri.parse('https://checkout.invalid/${offering.productId}'),
-    );
-  }
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  // Deliberately NOT tied to the refusal: `canStartCheckout` is a
+  // CONFIGURATION answer the paywall asks before it draws a button, and a
+  // refusal at `startCheckout` is a RUNTIME one. Collapsing them would hide the
+  // button on the very path `purchase_failed` exists to measure.
+  canStartCheckout: true,
+  // couldNotOpen, NOT notSignedIn: a signed-out refusal now routes to sign-in
+  // (`refusalRouteOf`), which needs a router this host does not build.
+  // couldNotOpen still lands on the refused screen and still emits
+  // `purchase_failed`, the path these tests measure.
+  refusal: refuse ? CheckoutRefusal.couldNotOpen : null,
+  refusalDetail: 'the checkout did not open',
+);
 
 /// The money rail AND the analytics rail, in one container — [pipeline 11]E-6.
 ///
@@ -594,7 +567,7 @@ ProviderContainer _funnelContainer({
   required _MemStore store,
   required _FakeEventTransport events,
   required _FakeConsentTransport consent,
-  required _FakeRail rail,
+  required FakePurchaseRail rail,
   required _FakeEntitlements server,
 }) => ProviderContainer(
   overrides: <Override>[
@@ -4528,7 +4501,7 @@ void main() {
       (WidgetTester tester) async {
         final _MemStore store = _onboardedStore();
         final _FakeEventTransport events = _FakeEventTransport();
-        final _FakeRail rail = _FakeRail();
+        final FakePurchaseRail rail = _fakeRail();
         final ProviderContainer c = _funnelContainer(
           store: store,
           events: events,
@@ -4571,7 +4544,7 @@ void main() {
         await analytics.flush();
 
         // ── HALF TWO: the same session, an attempt that is refused. ───────
-        rail.refuse = true;
+        rail.refusal = CheckoutRefusal.couldNotOpen;
         await tester.pumpWidget(
           _paywallHost(c, const ValueKey<String>('funnel-refused')),
         );
@@ -4641,7 +4614,7 @@ void main() {
           store: _onboardedStore(),
           events: events,
           consent: _FakeConsentTransport(),
-          rail: _FakeRail(refuse: true),
+          rail: _fakeRail(refuse: true),
           server: _FakeEntitlements(),
         );
         addTearDown(c.dispose);
@@ -4833,7 +4806,7 @@ void main() {
         server: _FakeEntitlements(pro: pro),
         promoEnabled: promoEnabled,
         promoCopy: promoCopy,
-        rail: realRail ? null : _FakeRail(),
+        rail: realRail ? null : _fakeRail(),
       );
       // SIGNED IN, or the router's redirect guard sends this to /sign-in and
       // the test measures the auth gate instead of the home body.
