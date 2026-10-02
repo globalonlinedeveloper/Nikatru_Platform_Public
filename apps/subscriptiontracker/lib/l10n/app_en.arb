@@ -118,6 +118,18 @@
   "@deleteAccountReauthHint": {
     "description": "Explains why a password is required to delete the account."
   },
+  "deleteAccountPlanWeb": "Your Pro plan is cancelled first, so you are not charged again.",
+  "@deleteAccountPlanWeb": {
+    "description": "⏱ 2026-10-01 · MO-06, AB-A5-02-client. Shown in the delete-account dialog BEFORE the confirm when the active plan was bought on the web: the server cancels it before it deletes anything, and refuses the deletion if it cannot."
+  },
+  "deleteAccountPlanAppStore": "Deleting your account does not cancel Pro bought in the App Store. Cancel it in the App Store first, or it keeps billing.",
+  "@deleteAccountPlanAppStore": {
+    "description": "⏱ 2026-10-01 · MO-06. Shown BEFORE the confirm when the active plan was bought in the App Store: only Apple can stop it."
+  },
+  "deleteAccountPlanGooglePlay": "Deleting your account does not cancel Pro bought in Google Play. Cancel it in Google Play first, or it keeps billing.",
+  "@deleteAccountPlanGooglePlay": {
+    "description": "⏱ 2026-10-01 · MO-06. Shown BEFORE the confirm when the active plan was bought in Google Play: only Google can stop it."
+  },
   "deleteAccountConfirmBodyApple": "This cannot be undone. Deleting removes your sign-in, so you will no longer be able to sign in to this account.",
   "@deleteAccountConfirmBodyApple": {
     "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. The delete confirmation body for a PASSWORD-LESS account (Sign in with Apple). Replaces deleteAccountConfirmBody, which names an email and password this account does not have. ⏱ 2026-09-26: owner-approved provider-free wording, O-REAUTH-COPY-NAMES-APPLE-ONLY (the lead's ruling PRE-1 of 2026-09-26 15:56Z, made under the owner's delegation of wording)."
@@ -411,7 +423,7 @@
   "@onboardingStart": {
     "description": "Finishes onboarding on the last page."
   },
-  "plan": "Subscription",
+  "plan": "Pro",
   "@plan": {
     "description": "Settings section for the money rail. Upgrade and Manage sit side by side so cancelling is never buried deeper than subscribing (ROSCA)."
   },
@@ -475,43 +487,19 @@
   "@paywallTryAgain": {
     "description": "After a refusal, returns the buyer to the plans so a purchase can be started again."
   },
-  "paywallTerm": "Billed per {term}",
-  "@paywallTerm": {
-    "description": "The billing period, from the rail config. NOT a price — the price is formatted from the rail's own amount and currency and is never typed into the app.",
-    "placeholders": {
-      "term": {
-        "type": "String"
-      }
-    }
-  },
-  "paywallTermWithTrial": "Billed per {term}, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
-  "@paywallTermWithTrial": {
-    "description": "As paywallTerm, with the free trial as the seller states it: a count and a unit (day, week, month or year). In a store build that is the store's trial for this buyer; on a hosted channel it is the rail config's, always in days.",
-    "placeholders": {
-      "term": {
-        "type": "String"
-      },
-      "count": {
-        "type": "int"
-      },
-      "unit": {
-        "type": "String"
-      }
-    }
-  },
-  "managePlanTitle": "Manage subscription",
+  "managePlanTitle": "Manage plan",
   "@managePlanTitle": {
     "description": "App-bar title of the manage screen, and the settings entry that opens it."
   },
-  "planActive": "Your subscription is active",
+  "planActive": "Pro is active",
   "@planActive": {
     "description": "Reflects the SERVER's entitlement answer, not a local flag."
   },
-  "planInactive": "You do not have an active subscription",
+  "planInactive": "You are on the free plan",
   "@planInactive": {
     "description": "See subscriptionActive."
   },
-  "planActiveDetail": "Planning and savings tools are on.",
+  "planActiveDetail": "The 12-month forecast and category caps are on.",
   "@planActiveDetail": {
     "description": "Second line on the manage-subscription status card while the SERVER reports an active plan (train ST-D9). Names what the plan gives (ruling D-11: Pro is plan and save), never a price."
   },
@@ -523,21 +511,21 @@
   "@seeProPlans": {
     "description": "Manage-subscription row that opens the paywall, shown only to a user without a plan and only while this build sells. Names no price and no place to buy."
   },
-  "paywallFeaturePlan": "Plan ahead",
-  "@paywallFeaturePlan": {
-    "description": "Paywall feature, config code `plan` (ruling D-11: Pro is plan and save). Which codes are shown is served config, never this file."
+  "paywallFeatureForecast": "12-month forecast",
+  "@paywallFeatureForecast": {
+    "description": "Paywall feature, config code `forecast`. ⏱ 2026-10-01 · MO-07: the pitch names ONLY what Pro delivers today (ADR 101) — the forecast card on Insights is locked behind Pro. Replaces `plan` ('Plan ahead'), which named no single delivered feature. Which codes are shown is served config, never this file."
   },
-  "paywallFeaturePlanBody": "Set budgets and see every charge before it lands.",
-  "@paywallFeaturePlanBody": {
-    "description": "One sentence under paywallFeaturePlan."
+  "paywallFeatureForecastBody": "See what your renewals will cost over the next twelve months.",
+  "@paywallFeatureForecastBody": {
+    "description": "One sentence under paywallFeatureForecast."
   },
-  "paywallFeatureSave": "Find savings",
-  "@paywallFeatureSave": {
-    "description": "Paywall feature, config code `save` (ruling D-11)."
+  "paywallFeatureCaps": "Category caps",
+  "@paywallFeatureCaps": {
+    "description": "Paywall feature, config code `caps`. ⏱ 2026-10-01 · MO-07: the budget editor's per-category caps, locked behind Pro. Replaces `save` ('Find savings — See what you do not use'), which gated nothing."
   },
-  "paywallFeatureSaveBody": "See what you do not use and what you could cut.",
-  "@paywallFeatureSaveBody": {
-    "description": "One sentence under paywallFeatureSave."
+  "paywallFeatureCapsBody": "Set a monthly limit for each category.",
+  "@paywallFeatureCapsBody": {
+    "description": "One sentence under paywallFeatureCaps."
   },
   "paywallFeatureTrack": "Track every subscription",
   "@paywallFeatureTrack": {
@@ -571,7 +559,11 @@
   "@restoreCouldNotReachStore": {
     "description": "After Restore on a store build, when the store could not be asked or did not answer and the server shows no active plan. Not 'nothing found': the store was never checked."
   },
-  "cancelPlan": "Cancel subscription",
+  "restoreCouldNotCheck": "We could not check for your plan right now. Please try again later.",
+  "@restoreCouldNotCheck": {
+    "description": "⏱ 2026-10-01 · review 1 of #1114. After Restore on the paywall, when the restore itself failed (the store call or the server re-read threw, e.g. offline). Says nothing was checked; never 'nothing found'."
+  },
+  "cancelPlan": "Cancel Pro",
   "@cancelPlan": {
     "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."
   },
@@ -579,7 +571,7 @@
   "@keepPlan": {
     "description": "Dismisses the cancellation confirmation."
   },
-  "cancelPlanConfirm": "This will end your subscription. You can subscribe again at any time.",
+  "cancelPlanConfirm": "This will end your Pro plan. You can buy it again at any time.",
   "@cancelPlanConfirm": {
     "description": "The confirmation body. States what happens and that it is reversible; makes no retention offer, because a cancel flow that bargains is the pattern ROSCA exists to stop."
   },

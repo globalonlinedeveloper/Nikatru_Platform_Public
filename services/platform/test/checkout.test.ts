@@ -167,6 +167,9 @@ async function token(sub: string) {
     .sign(signingKey);
 }
 
+/** A per-user bucket that admits. The harness default: the binding is declared (wrangler-breaker.test.ts). */
+const ALLOW = { limit: async () => ({ success: true }) } as RateLimiterBinding;
+
 /** The KV override an owner flips to open the paywall. `null` = shipped state. */
 const PAYWALL_ON = JSON.stringify({ paywall: { enabled: true } });
 
@@ -181,6 +184,7 @@ function harness({
   apiKey = LIVE_KEY as string | null,
   kv = PAYWALL_ON as string | null,
   limiter = undefined as RateLimiterBinding | undefined,
+  userLimiter = ALLOW as RateLimiterBinding | null,
 } = {}) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -208,6 +212,7 @@ function harness({
     MONEY_ENVIRONMENT: environment ?? undefined,
     PADDLE_API_KEY: apiKey ?? undefined,
     CHECKOUT_CEILING_LIMITER: limiter,
+    CHECKOUT_USER_LIMITER: userLimiter ?? undefined,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -610,6 +615,45 @@ describe('the refusals that happen BEFORE any transaction is created', () => {
     const res = await h.post(BUY, `Bearer ${await token(USER)}`);
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: 'rate_limited' });
+    noCall();
+  });
+
+  it('🔴 the PER-USER bucket refuses BEFORE the subrequest, keyed on the verified subject', async () => {
+    // O-ST-CHECKOUT-UNBOUNDED. The edge ceiling admits (absent, fails open); the
+    // per-user bucket says no — and nothing reaches Paddle.
+    const keys: string[] = [];
+    const h = harness({
+      userLimiter: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: false };
+        },
+      } as RateLimiterBinding,
+    });
+    const res = await h.post(BUY, `Bearer ${await token(USER)}`);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: 'rate_limited' });
+    expect(keys).toEqual([`checkout:${USER}`]);
+    noCall();
+  });
+
+  it('🔴 an ABSENT per-user bucket FAILS CLOSED — 503, no Paddle call', async () => {
+    const h = harness({ userLimiter: null });
+    const res = await h.post(BUY, `Bearer ${await token(USER)}`);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'checkout_unavailable' });
+    noCall();
+  });
+
+  it('a per-user bucket that THROWS fails closed too', async () => {
+    const h = harness({
+      userLimiter: {
+        limit: async () => {
+          throw new Error('limiter down');
+        },
+      } as unknown as RateLimiterBinding,
+    });
+    expect((await h.post(BUY, `Bearer ${await token(USER)}`)).status).toBe(503);
     noCall();
   });
 

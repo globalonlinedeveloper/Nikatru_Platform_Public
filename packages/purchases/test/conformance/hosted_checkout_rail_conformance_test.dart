@@ -22,6 +22,31 @@ class _Cancellations implements core.CancellationTransport {
   );
 }
 
+/// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START (train st-money-ready). The
+/// hosted rail asks the platform host's `POST /v1/checkout` for the page instead
+/// of filling a `checkout_url_template` no config serves; this answers as that
+/// route does, one attributed transaction per offering.
+class _Sessions implements core.CheckoutSessionTransport {
+  const _Sessions();
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<core.Result<core.CheckoutSession>> createSession({
+    required String appId,
+    required String offeringId,
+    required String? accessToken,
+  }) async => core.Result<core.CheckoutSession>.ok(
+    core.CheckoutSession(
+      checkoutUrl: Uri.parse(
+        'https://checkout.nikatru.test/?_ptxn=txn_$offeringId',
+      ),
+      transactionId: 'txn_$offeringId',
+    ),
+  );
+}
+
 PurchaseRailFixture _hosted(PurchaseChannel channel, {bool opens = true}) =>
     () async => HostedCheckoutRail(
       config: RailConfig.fromPaywallExtra(ConformancePlans.paywallExtra),
@@ -30,6 +55,7 @@ PurchaseRailFixture _hosted(PurchaseChannel channel, {bool opens = true}) =>
       accountId: () async => 'conformance-user',
       accessToken: () async => 'conformance-token',
       cancellationTransport: _Cancellations(),
+      checkoutSessions: const _Sessions(),
       launcher: FakeCheckoutLauncher(answer: opens),
       capabilities: PurchaseCapabilities.forChannel(channel),
     );

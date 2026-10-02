@@ -2954,6 +2954,9 @@ void main() {
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
                     manageUrlTemplate: null,
                   ),
+                  // ⏱ 2026-10-01: the hosted rail sells through the platform
+                  // host's POST /v1/checkout, so it needs a host to ask.
+                  checkoutSessions: const _A11ySessions(),
                   appId: AppConfig.appId,
                   returnUrl: kCheckoutReturnUrl,
                   accountId: () async => 'a11y',
@@ -2988,14 +2991,19 @@ void main() {
         // is built the same way here rather than re-typed: a `$4.99` literal
         // would pin the fixture and say nothing about the formatter. (It would
         // also trip `assert-no-price-literals.mjs`.)
+        // ⏱ 2026-10-01 · MO-04: the term is the CHASSIS's whole sentence per
+        // term, never "Billed per {term}" with the wire code spliced in.
+        final ChassisLocalizations chassis = await ChassisLocalizations.delegate
+            .load(const Locale('en'));
         for (final Offering o in offerings) {
-          final String term = switch (o.trial) {
-            final TrialPeriod t => l10n.paywallTermWithTrial(
-              o.term.wire,
-              t.count,
-              t.unit.wire,
-            ),
-            null => l10n.paywallTerm(o.term.wire),
+          final String term = switch ((o.term, o.trial)) {
+            (OfferingTerm.month, final TrialPeriod t) =>
+              chassis.paywallTermMonthlyWithTrial(t.count, t.unit.wire),
+            (OfferingTerm.year, final TrialPeriod t) =>
+              chassis.paywallTermYearlyWithTrial(t.count, t.unit.wire),
+            (OfferingTerm.month, null) => chassis.paywallTermMonthly,
+            (OfferingTerm.year, null) => chassis.paywallTermYearly,
+            (OfferingTerm.oneTime, _) => throw StateError('never in-app'),
           };
           expect(
             labels.where(
@@ -3068,6 +3076,9 @@ void main() {
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
                     manageUrlTemplate: null,
                   ),
+                  // ⏱ 2026-10-01: the hosted rail sells through the platform
+                  // host's POST /v1/checkout, so it needs a host to ask.
+                  checkoutSessions: const _A11ySessions(),
                   appId: AppConfig.appId,
                   returnUrl: kCheckoutReturnUrl,
                   accountId: () async => 'a11y',
@@ -4039,6 +4050,9 @@ void main() {
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
                     manageUrlTemplate: null,
                   ),
+                  // ⏱ 2026-10-01: the hosted rail sells through the platform
+                  // host's POST /v1/checkout, so it needs a host to ask.
+                  checkoutSessions: const _A11ySessions(),
                   appId: AppConfig.appId,
                   returnUrl: kCheckoutReturnUrl,
                   accountId: () async => 'a11y',
@@ -5184,6 +5198,9 @@ void main() {
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
                     manageUrlTemplate: null,
                   ),
+                  // ⏱ 2026-10-01: the hosted rail sells through the platform
+                  // host's POST /v1/checkout, so it needs a host to ask.
+                  checkoutSessions: const _A11ySessions(),
                   appId: AppConfig.appId,
                   returnUrl: kCheckoutReturnUrl,
                   accountId: () async => 'a11y',
@@ -5238,10 +5255,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'manage-plan (pro)',
-          covers: const <String>[
-            'Your subscription is active',
-            'Cancel subscription',
-          ],
+          covers: const <String>['Pro is active', 'Cancel Pro'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
@@ -5561,6 +5575,9 @@ void main() {
                     checkoutUrlTemplate: 'https://example.test/{price_id}',
                     manageUrlTemplate: null,
                   ),
+                  // ⏱ 2026-10-01: the hosted rail sells through the platform
+                  // host's POST /v1/checkout, so it needs a host to ask.
+                  checkoutSessions: const _A11ySessions(),
                   appId: AppConfig.appId,
                   returnUrl: kCheckoutReturnUrl,
                   accountId: () async => 'a11y',
@@ -5863,4 +5880,23 @@ Subscription _seedSub(ProviderContainer c) {
         'check.',
   );
   return subs.firstWhere((Subscription s) => s.id == '1');
+}
+
+/// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START. The platform host the
+/// hosted rail asks for a checkout; the sweeps open none, they only need the
+/// rail to be able to.
+class _A11ySessions implements core.CheckoutSessionTransport {
+  const _A11ySessions();
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<core.Result<core.CheckoutSession>> createSession({
+    required String appId,
+    required String offeringId,
+    required String? accessToken,
+  }) async => const core.Result<core.CheckoutSession>.err(
+    core.Failure('the a11y sweep buys nothing'),
+  );
 }

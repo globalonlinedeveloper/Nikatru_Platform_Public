@@ -548,22 +548,30 @@
   "@paywallTryAgain": {
     "description": "After a refusal, returns the buyer to the plans so a purchase can be started again."
   },
-  "paywallTerm": "Billed per {term}",
-  "@paywallTerm": {
-    "description": "The billing period, from the rail config. NOT a price — the price is formatted from the rail's own amount and currency and is never typed into the app.",
+  "paywallTermMonthly": "Billed monthly",
+  "@paywallTermMonthly": {
+    "description": "Under a monthly plan's price. ⏱ 2026-10-01 · MO-04: ONE whole sentence per term, replacing 'Billed per {term}', which spliced the rail's wire code into the sentence — Tamil showed the English token 'month'. NOT a price: the price is formatted from the rail's own amount and currency."
+  },
+  "paywallTermYearly": "Billed yearly",
+  "@paywallTermYearly": {
+    "description": "Under a yearly plan's price. As paywallTermMonthly."
+  },
+  "paywallTermMonthlyWithTrial": "Billed monthly, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
+  "@paywallTermMonthlyWithTrial": {
+    "description": "As paywallTermMonthly, with the free trial as the seller states it: a count and a unit (day, week, month or year). Drawn only behind the trial-copy flag (ruling D-25).",
     "placeholders": {
-      "term": {
+      "count": {
+        "type": "int"
+      },
+      "unit": {
         "type": "String"
       }
     }
   },
-  "paywallTermWithTrial": "Billed per {term}, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
-  "@paywallTermWithTrial": {
-    "description": "As paywallTerm, with the free trial as the seller states it: a count and a unit (day, week, month or year). In a store build that is the store's trial for this buyer; on a hosted channel it is the rail config's, always in days.",
+  "paywallTermYearlyWithTrial": "Billed yearly, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
+  "@paywallTermYearlyWithTrial": {
+    "description": "As paywallTermYearly, with the free trial. Drawn only behind the trial-copy flag (ruling D-25).",
     "placeholders": {
-      "term": {
-        "type": "String"
-      },
       "count": {
         "type": "int"
       },
@@ -584,13 +592,29 @@
   "@paywallLoadingPlans": {
     "description": "Announced to a screen reader while the plans are still being fetched (a store rail before the store has answered). Never shown as visible text."
   },
-  "paywallTerms": "Renews automatically until you cancel. You can cancel at any time in Settings.",
+  "paywallTerms": "Renews automatically until you cancel.",
   "@paywallTerms": {
-    "description": "The terms line under the plans. 🔴 Names no price difference, no fee and no other place to buy: a store build shows it. Says how to cancel because ROSCA requires the buyer to be told before they pay."
+    "description": "The renewal half of the terms line ABOVE the plans; the cancel half (paywallCancelHere / paywallCancelInAppStore / paywallCancelInGooglePlay) follows it. 🔴 Names no price difference, no fee and no other place to buy: a store build shows it. ROSCA requires the buyer to be told before they pay."
   },
-  "paywallTermsTrial": "Your free trial turns into a paid plan when it ends, unless you cancel before then. You can cancel at any time in Settings.",
+  "paywallTermsTrial": "Your free trial turns into a paid plan when it ends, unless you cancel before then.",
   "@paywallTermsTrial": {
-    "description": "The terms line when a plan carries a free trial. 🔴 DRAWN ONLY BEHIND THE CONFIG FLAG (ruling D-25): no trial copy is shown until the store has a trial configured. Same constraints as paywallTerms."
+    "description": "The renewal half of the terms line when a plan carries a free trial; the cancel half follows it. 🔴 DRAWN ONLY BEHIND THE CONFIG FLAG (ruling D-25). Same constraints as paywallTerms."
+  },
+  "paywallCancelHere": "You can cancel at any time here, in Manage plan.",
+  "@paywallCancelHere": {
+    "description": "⏱ 2026-10-01 · MO-04. Ends the terms line on a HOSTED build (web, Windows, Linux), where our own Manage plan screen cancels the plan. ROSCA: the buyer is told how to cancel BEFORE they pay, so this sits above the plans."
+  },
+  "paywallCancelInAppStore": "You can cancel at any time in the App Store.",
+  "@paywallCancelInAppStore": {
+    "description": "⏱ 2026-10-01 · MO-04. Ends the terms line on an Apple build: only the App Store can stop an App Store subscription. 🔴 Names neither the web nor a browser."
+  },
+  "paywallCancelInGooglePlay": "You can cancel at any time in Google Play.",
+  "@paywallCancelInGooglePlay": {
+    "description": "⏱ 2026-10-01 · MO-04. Ends the terms line on a Google Play build: only Google Play can stop a Play subscription. 🔴 Names neither the web nor a browser."
+  },
+  "paywallAppleEula": "Terms of Use (EULA)",
+  "@paywallAppleEula": {
+    "description": "⏱ 2026-10-01 · MO-03. Opens Apple's standard licensed-application EULA. Drawn on the paywall of an APPLE build only: Apple requires a functional link to the terms of use beside an auto-renewable subscription."
   },
   "managePlanLoading": "Loading your plan",
   "@managePlanLoading": {
@@ -607,6 +631,40 @@
   "keepPlan": "Keep it",
   "@keepPlan": {
     "description": "Dismisses the cancellation confirmation."
+  },
+  "planBoughtOnWeb": "Bought on the web",
+  "@planBoughtOnWeb": {
+    "description": "⏱ 2026-10-01 · MO-05. Manage plan's status card: the active plan was bought through our own hosted checkout, so it is cancelled on this screen. Read from the entitlement's source, never from the build. States a fact about a past purchase, names no address and invites no new one."
+  },
+  "planBoughtInAppStore": "Bought in the App Store",
+  "@planBoughtInAppStore": {
+    "description": "⏱ 2026-10-01 · MO-05. The active plan was bought in Apple's App Store, so only the App Store can cancel it."
+  },
+  "planBoughtInGooglePlay": "Bought in Google Play",
+  "@planBoughtInGooglePlay": {
+    "description": "⏱ 2026-10-01 · MO-05. The active plan was bought in Google Play, so only Google Play can cancel it."
+  },
+  "planPeriodEnds": "Current period ends {date}",
+  "@planPeriodEnds": {
+    "description": "⏱ 2026-10-01 · MO-05. When the paid period ends — the entitlement's expiry. Says 'period ends', not 'renews': the entitlement does not say whether renewal is on.",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMd"
+      }
+    }
+  },
+  "manageInAppStore": "Manage in the App Store",
+  "@manageInAppStore": {
+    "description": "⏱ 2026-10-01 · MO-05. Replaces Cancel when the plan was bought in the App Store: opens Apple's own subscriptions page. Our cancel route can never stop a store subscription."
+  },
+  "manageInGooglePlay": "Manage in Google Play",
+  "@manageInGooglePlay": {
+    "description": "⏱ 2026-10-01 · MO-05. Replaces Cancel when the plan was bought in Google Play: opens Play's own subscriptions page."
+  },
+  "cancelInStore": "This plan was bought in a store, so only that store can cancel it. Nothing was changed here.",
+  "@cancelInStore": {
+    "description": "⏱ 2026-10-01 · AB-M4-03-client. The cancel outcome when the server answers 409 for a store row: the plan is real and only its store can stop it. Never worded as a failure, and names no store: the screen's own 'Manage in …' row names it."
   },
   "cancelRecorded": "We have recorded your cancellation and passed it on. Your access continues until the end of the period you have paid for.",
   "@cancelRecorded": {

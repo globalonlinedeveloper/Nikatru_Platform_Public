@@ -396,4 +396,12 @@ class AppConfig {
   );
 
   static bool get remoteConfigEnabled => !_skipRemoteConfig && isBackendLive;
+
+  /// ⏱ 2026-10-01 · MO-03. Apple's STANDARD licensed-application EULA, linked
+  /// from the paywall of an Apple build only: Apple requires a functional link
+  /// to the terms of use beside an auto-renewable subscription, and this app
+  /// uses Apple's standard EULA rather than a custom one. Apple's page, not
+  /// ours — so it is not one of the `nikatru.com` legal pages.
+  static const String appleEulaUrl =
+      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 }
