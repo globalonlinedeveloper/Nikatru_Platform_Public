@@ -233,11 +233,11 @@ jobs:
         run: node tooling/ci/assert-pr-rows.mjs
       # why: the other half of the line above. The register's reader reads `Rows:` from
       # main's SQUASH MESSAGES, which GitHub's squash default writes without the PR body,
-      # so a green body says nothing about main. Push to main only — a PR's merge does not
+      # so a green body says nothing about main. Main only (a push, or its dispatch — land-next P2) — a PR's merge does not
       # exist yet — and a step-level `if:` for the same A6 reason. fetch-depth: 0 above
       # gives it the first-parent history it walks back to the newest PR merge.
       - name: Main's newest merge carries its Rows line in the squash message
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: node tooling/ci/assert-main-rows.mjs --ref "$GITHUB_SHA"
       - name: The CI docs match the workflows (gen-ci-map --check)
         run: node tooling/ci/gen-ci-map.mjs --check
