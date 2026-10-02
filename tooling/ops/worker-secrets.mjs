@@ -248,13 +248,39 @@ async function cf(c, method, path, body) {
 }
 
 /** Live secret NAMES per script; a script Cloudflare does not know is `null` (not deployed), any other failure throws. */
+/** Pages of one Worker's secret listing read at most; past that the listing is refused, never truncated. */
+export const MAX_LIST_PAGES = 20;
+
+/** Live secret NAMES per script; a script Cloudflare does not know is `null` (not deployed).
+ *  ⏱ 2026-10-02 · #1135 review 2: this FAILS CLOSED. Every caller decides "is this name live?"
+ *  from it, and `generate`/`sync` write when the answer is no, so an answer it could not read
+ *  is never "no live names": a success whose `result` is not an array, a page past
+ *  MAX_LIST_PAGES, or names that do not add up to the listing's `result_info.total_count`
+ *  THROW, and the run stops before any write. */
 async function liveNames(c, scripts) {
   const out = new Map();
   for (const s of scripts) {
-    const r = await cf(c, 'GET', `/workers/scripts/${encodeURIComponent(s)}/secrets`);
-    if (r.status === 404) { out.set(s, null); continue; }
-    if (!r.ok) throw new Error(`listing ${s}'s secret names: HTTP ${r.status} ${r.errors}`);
-    out.set(s, new Set((r.json.result ?? []).map((x) => x.name)));
+    const names = [];
+    let total = null;
+    let missing = false;
+    for (let page = 1; ; page++) {
+      if (page > MAX_LIST_PAGES) throw new Error(`listing ${s}'s secret names ran past ${MAX_LIST_PAGES} pages; refusing a truncated listing`);
+      const path = `/workers/scripts/${encodeURIComponent(s)}/secrets${page > 1 ? `?page=${page}` : ''}`;
+      const r = await cf(c, 'GET', path);
+      if (r.status === 404 && page === 1) { missing = true; break; }
+      if (!r.ok) throw new Error(`listing ${s}'s secret names: HTTP ${r.status} ${r.errors}`);
+      if (!Array.isArray(r.json?.result)) throw new Error(`listing ${s}'s secret names: a success with no \`result\` array, so which names are live is UNKNOWN`);
+      for (const x of r.json.result) {
+        if (typeof x?.name !== 'string' || !x.name) throw new Error(`listing ${s}'s secret names: an entry with no name`);
+        names.push(x.name);
+      }
+      const info = r.json.result_info;
+      if (Number.isInteger(info?.total_count)) total = info.total_count;
+      if (!(Number.isInteger(info?.total_pages) && page < info.total_pages)) break;
+    }
+    if (missing) { out.set(s, null); continue; }
+    if (total !== null && names.length !== total) throw new Error(`listing ${s}'s secret names: read ${names.length} of total_count ${total}; refusing a partial listing`);
+    out.set(s, new Set(names));
   }
   return out;
 }

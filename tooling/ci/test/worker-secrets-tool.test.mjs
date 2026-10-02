@@ -144,7 +144,7 @@ describe('worker-secrets — the vault is read once and written once (CodeQL #55
 });
 
 /** A loopback double of the two Cloudflare calls the tool makes. */
-async function fakeCloudflare(live) {
+async function fakeCloudflare(live, { listBody = null } = {}) {
   const puts = [];
   const server = createServer((req, res) => {
     let body = '';
@@ -155,7 +155,7 @@ async function fakeCloudflare(live) {
       if (!m || req.headers.authorization !== 'Bearer tok') { res.statusCode = 403; res.end('{"success":false}'); return; }
       const script = decodeURIComponent(m[1]);
       if (!live.has(script)) { res.statusCode = 404; res.end('{"success":false,"errors":[{"code":10007,"message":"not found"}]}'); return; }
-      if (req.method === 'GET') { res.end(JSON.stringify({ success: true, result: [...live.get(script)].map((name) => ({ name })) })); return; }
+      if (req.method === 'GET') { res.end(JSON.stringify(listBody ? listBody(script, [...live.get(script)]) : { success: true, result: [...live.get(script)].map((name) => ({ name })) })); return; }
       const j = JSON.parse(body);
       puts.push({ script, name: j.name, sha: sha256(j.text) });
       live.get(script).add(j.name);
@@ -266,6 +266,45 @@ describe('worker-secrets — the CLI over a loopback Cloudflare', () => {
       assert.match(g.out, /w-sandbox\/OUR_KEY is LIVE: generate never writes over a live secret .*CUSTODY GAP/);
       assert.deepEqual(cf.puts, [], 'a live key was overwritten');
       assert.equal(readFileSync(join(root, 'vault/secrets.env'), 'utf8'), before, 'the vault was written before the refusal');
+    } finally { cf.server.close(); }
+  });
+  // ⏱ 2026-10-02 · #1135 review 2: the live-name listing FAILS CLOSED. A listing it cannot read
+  // answered "no live names" before, and generate then wrote over the live key.
+  it('🔴 RED CONTROL: a 200 listing with NO `result` array makes generate refuse (exit 2), with no write', async () => {
+    const root = tree();
+    const cf = await fakeCloudflare(new Map([['w', new Set()], ['w-sandbox', new Set(['OUR_KEY'])]]), { listBody: () => ({ success: true }) });
+    try {
+      const before = readFileSync(join(root, 'vault/secrets.env'), 'utf8');
+      const g = await cli(root, cf.base, ['generate', 'OUR_KEY']);
+      assert.equal(g.code, 2, g.out);
+      assert.match(g.out, /COVERAGE LOST — listing w-sandbox's secret names: a success with no `result` array/);
+      assert.deepEqual(cf.puts, [], 'a key was written over an unreadable listing');
+      assert.equal(readFileSync(join(root, 'vault/secrets.env'), 'utf8'), before, 'the vault was written');
+    } finally { cf.server.close(); }
+  });
+  it('🔴 RED CONTROL: a listing whose names do not add up to its total_count makes generate refuse (exit 2), with no write', async () => {
+    const root = tree();
+    const cf = await fakeCloudflare(new Map([['w', new Set()], ['w-sandbox', new Set(['OUR_KEY'])]]), {
+      listBody: (_s, names) => ({ success: true, result: [], result_info: { page: 1, per_page: 20, count: 0, total_count: names.length } }),
+    });
+    try {
+      const before = readFileSync(join(root, 'vault/secrets.env'), 'utf8');
+      const g = await cli(root, cf.base, ['generate', 'OUR_KEY']);
+      assert.equal(g.code, 2, g.out);
+      assert.match(g.out, /read 0 of total_count 1; refusing a partial listing/);
+      assert.deepEqual(cf.puts, [], 'a key was written over a partial listing');
+      assert.equal(readFileSync(join(root, 'vault/secrets.env'), 'utf8'), before, 'the vault was written');
+    } finally { cf.server.close(); }
+  });
+  it('a paginated listing is read to its last page: a live name on page 2 still refuses generate', async () => {
+    const root = tree();
+    const cf = await fakeCloudflare(new Map([['w', new Set()], ['w-sandbox', new Set(['OUR_KEY'])]]), {
+      listBody: (_s, names) => ({ success: true, result: [{ name: 'OTHER' }], result_info: { page: 1, per_page: 1, total_pages: 2, total_count: names.length + 1 } }),
+    });
+    try {
+      const g = await cli(root, cf.base, ['generate', 'OUR_KEY']);
+      assert.notEqual(g.code, 0, g.out);
+      assert.deepEqual(cf.puts, []);
     } finally { cf.server.close(); }
   });
   it('🔴 RED CONTROL: sync over a LIVE `replace: "never"` name refuses, with --force and --replace too', async () => {
