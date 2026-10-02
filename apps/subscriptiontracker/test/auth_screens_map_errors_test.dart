@@ -57,8 +57,10 @@ class _Refusing extends MockAuthRepository {
   }
 
   @override
-  Future<core.AuthUser> updatePassword({required String newPassword}) async =>
-      throw boom;
+  Future<core.AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async => throw boom;
 }
 
 class _MemStore implements core.KeyValueStore {

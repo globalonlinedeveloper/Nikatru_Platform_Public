@@ -995,5 +995,43 @@
   "reauthMessage": "This device appears to be rooted, so enter your password to continue.",
   "@reauthMessage": {
     "description": "Body of the re-authentication dialog on a rooted device."
+  },
+  "devicesTitle": "Your devices",
+  "@devicesTitle": {
+    "description": "SE-03 · Settings section heading: the devices signed in to this account."
+  },
+  "devicesThisDevice": "This device",
+  "@devicesThisDevice": {
+    "description": "SE-03 · Marks the signed-in session the person is using now."
+  },
+  "devicesSignOutDevice": "Sign out this device",
+  "@devicesSignOutDevice": {
+    "description": "SE-03 · Button on ANOTHER signed-in device's row: signs that one session out. The device in hand is never offered it."
+  },
+  "devicesUnavailable": "Your devices could not be loaded.",
+  "@devicesUnavailable": {
+    "description": "SE-03 · Shown in place of the list when it could not be read. Never an empty list."
+  },
+  "devicesSignOutFailed": "That device could not be signed out. Try again.",
+  "@devicesSignOutFailed": {
+    "description": "SE-03 · Shown when signing one other device out failed; the device stays listed."
+  },
+  "devicesLastActive": "Last active {date}",
+  "@devicesLastActive": {
+    "description": "SE-03 · Another device's last activity.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "1 Oct 2026"
+      }
+    }
+  },
+  "devicesShow": "See where you are signed in",
+  "@devicesShow": {
+    "description": "SE-03 · The row that reads the device list. Nothing is read until it is tapped: the list shares the host's sessions limiter with the sign-out it offers."
+  },
+  "devicesRetry": "Tap to try again",
+  "@devicesRetry": {
+    "description": "SE-03 · Under 'Your devices could not be loaded.'; tapping the row reads the list again."
   }
 }
