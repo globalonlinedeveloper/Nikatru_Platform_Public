@@ -594,6 +594,30 @@
       "path": "tooling/ci/assert-mor-adapters.mjs",
       "disposition": "fixed-in-tree",
       "reason": "The unread REGISTRY constant (line 82) became a comment in this PR; since #1127 limb 2 derives the provider set from RENDERED_RAILS. Goes stale once main analysis marks #551 fixed; delete it then."
+    },
+    {
+      "alert": 553,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/record-deployment.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "record-deployment.mjs:397 (api(), the one GitHub read rollback.mjs shares). Since PR #1135 the rollback floor reads tooling/ops/rollback-floors.json and puts its floor commit into `compare/<floor>...<sha>`; that is a 40-hex commit SHA validated by floorsFor, not a secret, and it goes only to api.github.com (githubApiBase: the real origin or the loopback test seam). Added 2026-10-02."
+    },
+    {
+      "alert": 554,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/worker-secrets.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "worker-secrets.mjs:188 (cf()'s request options; :151 when CodeQL flagged it). What cf() reads from the vault, the Cloudflare account id and API token (URL and Authorization header) and the secret value (the PUT body), goes only to Cloudflare, to set a Worker secret: the purpose of the tool (owner lock 2026-10-01: every Worker secret comes from the pipeline). The only host is api.cloudflare.com: apiBase() refuses any CLOUDFLARE_API_BASE except a 127.0.0.1 test double, and no value is ever printed (len + sha8 only). Added 2026-10-02."
+    },
+    {
+      "alert": 555,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/worker-secrets.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "worker-secrets.mjs:190 (cf()'s PUT body; :153 when CodeQL flagged it). The vault value is the body of PUT /accounts/<id>/workers/scripts/<w>/secrets on api.cloudflare.com, which sets a Worker secret: the purpose of the tool. apiBase() admits no other host but a 127.0.0.1 test double, and no value is ever printed. Added 2026-10-02."
     }
   ]
 }

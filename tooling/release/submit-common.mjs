@@ -30,9 +30,11 @@
 // grades this file's own code for the read, so deleting the read here un-credits
 // every caller at once.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { githubApiBase } from '../ci/record-deployment.mjs';
 
 /** The COVERAGE LOST exit. A finding is 1; a guard that could not look is 2. */
@@ -258,5 +260,304 @@ export async function requirePublishEnvironment({ env = process.env, fetchImpl =
           ? '. ⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an administrator can dispatch straight past the gate. The requirement is verified; the approval is not.'
           : ' and `can_admins_bypass` is false, so this job only reached this line because one of them approved it.'),
     ],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ChannelSubmitter CONTRACT — one shape every store submitter exports.
+//
+// ⏱ ADDED 2026-10-01 (port-channels, O-CHANNELS-HAVE-NO-SUBMIT-CONTRACT). Each
+// store had its own submit script and each script its own shape: four here,
+// three extension publishers, and a runbook for apps.gov.in. No test ran every
+// one of them dry, so "adding a store" meant reading all of them to learn what
+// a submitter is. The answer is now this block, and tooling/ports/channels.json
+// is the port registry that names one adapter per store channel:
+//
+//   { channel,                                   a tooling/channel-register.json row id
+//     validate(record, { root }) → findings,     pure: the listing record against its contract
+//     plan(artifact, { dryRun: true }) → steps,  pure and deterministic: what `upload` WOULD do
+//     upload(artifact, { dryRun: false, … }),    the real path — the script's own CLI, every gate kept
+//     status({ root }) → { served, submittable, account, asOf } }   read from the register, never the store
+//
+// 🔴 `plan` NEVER CALLS A WRITE API, AND NEVER CALLS ANY API. It describes the
+// calls and does not make them; `submitterConformance` below runs it under a
+// fetch stub and a child_process stub and refuses a single call. It throws
+// unless `dryRun` is literally `true`, so a caller that forgot the flag gets an
+// error rather than a plan it might mistake for a run.
+//
+// 🔴 `upload` IS THE SCRIPT ITSELF, NOT A SECOND IMPLEMENTATION. It spawns the
+// submit script's own `--submit` path, so the publish environment, the typed
+// confirm word and every PG-n gate stay in exactly one place. It refuses unless
+// `dryRun` is literally `false`. Nothing in this repository's tests calls it.
+//
+// ⚠️ ONE SURFACE PER PLAN (TRAPS stores-07): once the Microsoft Store API has
+// created a submission, editing that submission in Partner Center burns it. So a
+// plan's WRITE steps all speak one surface — the API (or a CLI over it) or the
+// console, never both — and the conformance runner refuses a plan that mixes them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const requireBuiltin = createRequire(import.meta.url);
+
+/** The repository this file sits in. Every contract read defaults to it; tests pass `root`. */
+export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/** The four methods, in the order the contract lists them. */
+export const SUBMITTER_METHODS = Object.freeze(['validate', 'plan', 'upload', 'status']);
+
+/** What a plan step may speak. `api` and `cli` reach the store programmatically,
+ *  `console` is a human in the store's web console, `local` touches only this machine. */
+export const PLAN_SURFACES = Object.freeze(['api', 'cli', 'console', 'local']);
+
+/** The register a submitter's row is read from. */
+export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+
+/** Why a ChannelSubmitter fails the shape: [] when it has every member. Never throws,
+ *  so a submitter missing `plan` is a finding a test can print, not an import error. */
+export function submitterProblems(s) {
+  if (s === null || typeof s !== 'object') return [`is ${s === null ? 'null' : typeof s}, not a ChannelSubmitter object`];
+  const out = [];
+  if (typeof s.channel !== 'string' || s.channel.trim() === '') out.push('names no `channel` (a tooling/channel-register.json row id)');
+  for (const m of SUBMITTER_METHODS) if (typeof s[m] !== 'function') out.push(`has no \`${m}\` function`);
+  return out;
+}
+
+/** The contract's one declaration: its members and its shape check. Named in
+ *  tooling/ports/channels.json `interface`. */
+export const ChannelSubmitter = Object.freeze({ methods: SUBMITTER_METHODS, problemsOf: submitterProblems });
+
+/** True when the module at `metaUrl` is the process entry point. Paths are compared
+ *  after realpath, so a symlinked or differently-cased invocation still runs the CLI
+ *  rather than silently doing nothing and exiting 0. */
+export function invokedAsScript(metaUrl, argv1 = process.argv[1]) {
+  if (typeof argv1 !== 'string' || argv1 === '') return false;
+  const real = (p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return resolve(p);
+    }
+  };
+  return real(resolve(argv1)) === real(fileURLToPath(metaUrl));
+}
+
+/** The register and the channel's row. Throws when either is missing: a contract
+ *  read with no row has nothing to answer from. */
+export function channelRowOf(channelId, root = REPO_ROOT) {
+  const register = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
+  const row = (register.channels ?? []).find((c) => c?.id === channelId);
+  if (!row) throw new Error(`${CHANNEL_REGISTER} has no channel "${channelId}"`);
+  return { register, row };
+}
+
+/** A limit block (`maxChars` / `maxLines`) as { file: max }, dropping `_why` keys
+ *  and any entry without a sourced number — the register refuses an unsourced max. */
+const limitsOf = (block) =>
+  Object.fromEntries(
+    Object.entries(block ?? {})
+      .filter(([k, v]) => !k.startsWith('_') && Number.isInteger(v?.max) && typeof v?.source === 'string')
+      .map(([k, v]) => [k, v.max]),
+  );
+
+/**
+ * The listing contract a channel's record is validated against. An APP row
+ * reads `storeMetadataContract` (requiredFiles + its perChannel additionalFiles
+ * and sourced limits); an EXTENSION row reads contracts/store/vocabulary.js,
+ * the one declaration extensions/scripts/check-store-metadata.mjs also reads —
+ * the per-store files plus the `_shared` ones, flattened into one record.
+ *
+ * ⚠️ The vocabulary is PASSED IN, never imported here: this file is the preamble
+ * of every submit script, and the tests that walk a script in a copied tree copy
+ * its imports by hand. An import here that only extension rows use would break
+ * every one of those copies; the extension publishers import it themselves.
+ */
+export function listingContractOf(channelId, root = REPO_ROOT, vocabulary = null) {
+  const { register, row } = channelRowOf(channelId, root);
+  const contract = register.storeMetadataContract ?? {};
+  if (row.surface === 'extension') {
+    if (vocabulary === null) throw new Error(`${channelId} is an extension row; its listing contract is contracts/store/vocabulary.js, and none was passed`);
+    return {
+      required: [...vocabulary.extensionPerStoreListingFiles(), ...vocabulary.extensionSharedListingFiles()],
+      urlFiles: vocabulary.urlListingFiles(),
+      maxChars: {},
+      maxLines: {},
+    };
+  }
+  const per = contract.perChannel?.[channelId] ?? {};
+  const required = [...(Array.isArray(contract.requiredFiles) ? contract.requiredFiles : []), ...(per.additionalFiles ?? [])];
+  return { required, urlFiles: contract.urlFiles ?? [], maxChars: limitsOf(per.maxChars), maxLines: limitsOf(per.maxLines) };
+}
+
+/**
+ * The findings for a listing record `{ fields: { '<file>': '<text>' } }` against a
+ * contract from `listingContractOf`. Each finding is `{ field, message }`; [] is
+ * a record the store would accept as far as this repository can tell. A required
+ * list of zero is itself a finding: it would accept anything.
+ */
+export function listingFindings(record, contract) {
+  const out = [];
+  const fields = record?.fields;
+  if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) return [{ field: null, message: 'the record carries no `fields` object' }];
+  if (!Array.isArray(contract?.required) || contract.required.length === 0) return [{ field: null, message: 'the listing contract names no required field, so it would accept anything' }];
+  for (const f of contract.required) {
+    const v = fields[f];
+    if (typeof v !== 'string' || v.trim() === '') out.push({ field: f, message: `${f} is required by the listing contract and is ${v === undefined ? 'missing' : 'empty'}` });
+  }
+  for (const f of contract.urlFiles ?? []) {
+    const v = fields[f];
+    if (typeof v === 'string' && v.trim() !== '' && !/^https:\/\/\S+$/.test(v.trim())) out.push({ field: f, message: `${f} must be one https:// URL` });
+  }
+  for (const [f, max] of Object.entries(contract.maxChars ?? {})) {
+    const v = fields[f];
+    if (typeof v === 'string' && [...v.trim()].length > max) out.push({ field: f, message: `${f} is ${[...v.trim()].length} characters; the store's limit is ${max}` });
+  }
+  for (const [f, max] of Object.entries(contract.maxLines ?? {})) {
+    const v = fields[f];
+    const n = typeof v === 'string' ? v.split('\n').filter((l) => l.trim() !== '').length : 0;
+    if (n > max) out.push({ field: f, message: `${f} has ${n} entries; the store's limit is ${max}` });
+  }
+  return out;
+}
+
+/** The status every submitter answers from its row: no store is asked. */
+export function channelStatus(channelId, root = REPO_ROOT) {
+  const { row } = channelRowOf(channelId, root);
+  return {
+    channel: channelId,
+    served: row.served === true,
+    submittable: row.submittable === true,
+    account: row.accountStatus?.status ?? null,
+    asOf: row.accountStatus?.asOf ?? null,
+  };
+}
+
+/**
+ * Build a ChannelSubmitter from the pieces a store differs in. `steps(artifact)`
+ * returns the plan's steps as `{ does, surface, call, writes }`; `extraFindings`
+ * adds the store's own rules to the listing contract; `uploadArgv(artifact, opts)`
+ * is the argv of the script's own `--submit` path, run from `cwd` (repo-relative).
+ * An extension channel passes `vocabulary` (contracts/store/vocabulary.js).
+ */
+export function storeSubmitter({ channel, script, cwd = '.', steps, extraFindings = () => [], uploadArgv, vocabulary = null }) {
+  return Object.freeze({
+    channel,
+    validate(record, { root = REPO_ROOT } = {}) {
+      return [...listingFindings(record, listingContractOf(channel, root, vocabulary)), ...extraFindings(record)];
+    },
+    plan(artifact, opts) {
+      if (opts?.dryRun !== true) throw new Error(`${channel}: plan() is dry-run only — pass { dryRun: true }. It describes the upload and never performs it.`);
+      return steps(artifact).map((s, i) => Object.freeze({ step: i + 1, ...s }));
+    },
+    upload(artifact, opts) {
+      if (opts?.dryRun !== false) throw new Error(`${channel}: upload() runs ${script} --submit and needs { dryRun: false }. Use plan() to see what it would do.`);
+      return spawnSync(process.execPath, [join(REPO_ROOT, script), ...uploadArgv(artifact, opts)], { cwd: join(REPO_ROOT, cwd), stdio: 'inherit' });
+    },
+    status({ root = REPO_ROOT } = {}) {
+      return channelStatus(channel, root);
+    },
+  });
+}
+
+/**
+ * THE CONFORMANCE RUNNER (tooling/ports/channels.json `conformance.suite`). Runs
+ * one submitter, dry, against its recorded fixture `{ good, artifact }` and
+ * returns every finding as a sentence; [] is conformant. It asks that:
+ *   1. the shape is whole (submitterProblems);
+ *   2. `validate` passes the good record;
+ *   3. `validate` refuses the record with each required field removed, NAMING it;
+ *   4. `plan` is non-empty, well-formed, one write surface, and identical twice;
+ *   5. `plan` without `{ dryRun: true }` throws;
+ *   6. `status` answers for the submitter's own channel;
+ *   7. none of the above made a network call or spawned a process — a fetch stub
+ *      and a child_process stub count them, and any count above zero is a finding.
+ */
+export async function submitterConformance(submitter, fixture, { root = REPO_ROOT, stubs } = {}) {
+  const shape = submitterProblems(submitter);
+  if (shape.length) return shape.map((p) => `the submitter ${p}`);
+  const out = [];
+  const ch = submitter.channel;
+  const calls = await underNetworkStubs(stubs, async () => {
+    const good = fixture?.good;
+    const okFindings = await submitter.validate(good, { root });
+    if (!Array.isArray(okFindings)) out.push(`${ch}: validate() returned ${typeof okFindings}, not a findings array`);
+    else if (okFindings.length) out.push(`${ch}: validate() refused the good fixture: ${okFindings.map((f) => f.message).join('; ')}`);
+    const required = listingContractOf(ch, root, await import('../../contracts/store/vocabulary.js')).required;
+    if (required.length === 0) out.push(`${ch}: the listing contract names no required field, so the refusal limb would check nothing`);
+    for (const f of required) {
+      const fields = { ...(good?.fields ?? {}) };
+      delete fields[f];
+      const found = await submitter.validate({ ...good, fields }, { root });
+      if (!Array.isArray(found) || !found.some((x) => x?.field === f)) out.push(`${ch}: validate() accepted a record with no ${f}, which the listing contract requires`);
+    }
+    const p1 = await submitter.plan(fixture?.artifact, { dryRun: true });
+    const p2 = await submitter.plan(fixture?.artifact, { dryRun: true });
+    if (!Array.isArray(p1) || p1.length === 0) out.push(`${ch}: plan() returned no steps`);
+    else {
+      if (JSON.stringify(p1) !== JSON.stringify(p2)) out.push(`${ch}: plan() is not deterministic — two dry runs over one artifact differ`);
+      for (const s of p1) {
+        if (typeof s?.does !== 'string' || s.does.trim() === '') out.push(`${ch}: plan step ${s?.step} says nothing about what it does`);
+        if (!PLAN_SURFACES.includes(s?.surface)) out.push(`${ch}: plan step ${s?.step} has surface ${JSON.stringify(s?.surface)}, not one of ${PLAN_SURFACES.join(', ')}`);
+        if (typeof s?.writes !== 'boolean') out.push(`${ch}: plan step ${s?.step} does not say whether it writes`);
+      }
+      const writeSurfaces = new Set(p1.filter((s) => s?.writes === true && s.surface !== 'local').map((s) => (s.surface === 'cli' ? 'api' : s.surface)));
+      if (writeSurfaces.size > 1) out.push(`${ch}: plan() writes through both the API and the console (stores-07: a console edit of an API-created submission burns it)`);
+    }
+    let threw = false;
+    try {
+      await submitter.plan(fixture?.artifact, {});
+    } catch {
+      threw = true;
+    }
+    if (!threw) out.push(`${ch}: plan() ran without { dryRun: true }; it must refuse`);
+    const st = await submitter.status({ root });
+    if (st?.channel !== ch) out.push(`${ch}: status() answered for ${JSON.stringify(st?.channel)}`);
+  });
+  if (calls.fetch) out.push(`${ch}: ${calls.fetch} network call(s) during validate/plan/status — the dry-run contract allows none`);
+  if (calls.spawn) out.push(`${ch}: ${calls.spawn} process spawn(s) during validate/plan/status — the dry-run contract allows none`);
+  return out;
+}
+
+/** Run `fn` with `fetch` and every child_process launcher replaced by counting
+ *  stubs that refuse; restore them after. `stubs` lets a caller pass its own
+ *  { install, restore, counts } (the tests do, to prove the count is read). */
+async function underNetworkStubs(stubs, fn) {
+  const s = stubs ?? defaultStubs();
+  s.install();
+  try {
+    await fn();
+  } finally {
+    s.restore();
+  }
+  return s.counts;
+}
+
+function defaultStubs() {
+  const counts = { fetch: 0, spawn: 0 };
+  const cp = requireBuiltin('node:child_process');
+  const LAUNCHERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+  let saved = null;
+  return {
+    counts,
+    install() {
+      saved = { fetch: globalThis.fetch, cp: Object.fromEntries(LAUNCHERS.map((k) => [k, cp[k]])) };
+      globalThis.fetch = async () => {
+        counts.fetch++;
+        throw new Error('network refused: the dry-run contract makes no call');
+      };
+      for (const k of LAUNCHERS) {
+        cp[k] = () => {
+          counts.spawn++;
+          throw new Error('spawn refused: the dry-run contract launches nothing');
+        };
+      }
+      // An ESM `import { spawnSync } from 'node:child_process'` is a live binding to
+      // the builtin's exports, refreshed only by this call — without it the stub
+      // would count the CJS callers and miss every module in this tree.
+      syncBuiltinESMExports();
+    },
+    restore() {
+      globalThis.fetch = saved.fetch;
+      Object.assign(cp, saved.cp);
+      syncBuiltinESMExports();
+    },
   };
 }

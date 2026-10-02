@@ -1,0 +1,74 @@
+{
+  "_why": [
+    "THE BACKUP DESTINATIONS AS DATA, each set with a restore drill. Read by tooling/ops/restore-drill.mjs (one named small file from the newest snapshot into a scratch directory, hashed against the hash the SOURCE recorded, then deleted), by tooling/ops/box-move.mjs (the backups to restore first, with a drill command each) and by tooling/ops/check-box-declared.mjs (`readBack`: the snapshot count and the newest timestamp of a repository that lives on a box).",
+    "TRAP backup-04: a restructure that renames AND relayouts gets half-applied, so every destination declares BOTH its remote NAME and its LAYOUT. A `<NAME>` inside a remote or repository is an environment variable the operator sets from the vault; the drill reports LOST when it is unset and never prints its value.",
+    "TRAP backup-06: a same-day re-run of a date-stamped backup replaces that day's artefact, so the drill READS and never runs a backup. Restic is always called with --no-lock (a lock is a write to the repository).",
+    "The encryption posture is cited per destination ([ADR 021], [ADR 046], [ADR 047], [ADR 060]); the facts are those of tooling/ops/register.json rows duty.restic-snapshot, duty.restic-third-copy, duty.cloudflare-backup-pull and duty.supabase-dump, cited by id, not restated beyond the name and the layout.",
+    "A field the public tree does not state is null. A drill whose `file` or `hash` is null is LOST, by design: naming the small file and where its hash was recorded is the first drill's work, never a guess."
+  ],
+  "destinations": [
+    { "id": "boxb-srv-restic", "kind": "restic", "box": "boxb", "remote": { "name": null, "layout": "/srv/restic" }, "repo": "/srv/restic", "env": [], "encryption": { "posture": "restic's own repository encryption; the repository key never leaves the box", "adr": ["046"] } },
+    { "id": "drive-restic-boxb", "kind": "restic", "box": null, "remote": { "name": "oracleenc", "layout": "restic-boxb" }, "repo": "rclone:oracleenc:restic-boxb", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"]], "encryption": { "posture": "restic's repository key inside the rclone crypt `oracleenc:` on the company Drive: the provider holds ciphertext twice over", "adr": ["021", "046", "047"] } },
+    { "id": "r2-restic-boxb", "kind": "restic", "box": null, "remote": { "name": "s3:<R2_S3_ENDPOINT>", "layout": "nikatru-backups/restic-boxb" }, "repo": "s3:<R2_S3_ENDPOINT>/nikatru-backups/restic-boxb", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"], "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_S3_ENDPOINT"], "encryption": { "posture": "restic's repository key over R2 (restic's native S3 backend: rclone serve restic --stdio is refused by R2 with 501)", "adr": ["021", "046"] } },
+    { "id": "oci-thirdcopy", "kind": "restic", "box": "boxa", "remote": { "name": "ocienc", "layout": null }, "repo": "rclone:ocienc:<OCI_THIRDCOPY_PATH>", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"], "OCI_THIRDCOPY_PATH"], "encryption": { "posture": "a byte copy of /srv/restic through the rclone crypt `ocienc:` (the same obscured key as `oracleenc:`) into the versioned OCI bucket nikatru-backup-thirdcopy; the box's credential holds no delete right", "adr": ["060"] } },
+    { "id": "r2-nikatru-backups", "kind": "rclone-manifest", "box": null, "remote": { "name": "<R2_RCLONE_REMOTE>", "layout": "nikatru-backups: manifests/latest.json, d1/<db>/<date>.jsonl.gz, kv/<namespace>/<date>.json.gz" }, "base": "<R2_RCLONE_REMOTE>:nikatru-backups", "env": ["R2_RCLONE_REMOTE"], "encryption": { "posture": "no client-side encryption is declared for the objects: the export is gzip inside Cloudflare, and the off-vendor copy (drive-cloudflare) is the encrypted one", "adr": ["021"] } },
+    { "id": "drive-cloudflare", "kind": "rclone-dated", "box": null, "remote": { "name": "oracleenc", "layout": "cloudflare/<date>/" }, "base": "oracleenc:cloudflare", "env": [], "encryption": { "posture": "the rclone crypt `oracleenc:` on the company Drive", "adr": ["021", "046", "047"] } },
+    { "id": "boxb-glitchtip-dumps", "kind": "box-dir", "box": "boxb", "remote": { "name": null, "layout": "/opt/glitchtip/backups" }, "env": [], "encryption": { "posture": "plaintext on the box's own disk; the off-box copies are the encrypted ones", "adr": ["021"] } },
+    { "id": "drive-glitchtip", "kind": "rclone-dated", "box": null, "remote": { "name": null, "layout": null }, "base": null, "env": [], "encryption": { "posture": "the Drive sync of gt_drive_sync.sh (duty.oci.gt-drive-sync); its remote name and layout are not stated in the public tree", "adr": ["046", "047"] } },
+    { "id": "boxc-supabase-dumps", "kind": "box-dir", "box": "boxc", "remote": { "name": null, "layout": "/opt/supabase/backups" }, "env": [], "encryption": { "posture": "plaintext on the box's own disk; the off-box copies are the encrypted ones", "adr": ["021"] } },
+    { "id": "drive-supabase", "kind": "rclone-dated", "box": null, "remote": { "name": null, "layout": null }, "base": null, "env": [], "encryption": { "posture": "the Drive sync of sb_drive_sync.sh (duty.supabase-drive-sync); its remote name and layout are not stated in the public tree", "adr": ["046", "047"] } },
+    { "id": "boxb-supabase-second-copy", "kind": "box-dir", "box": "boxb", "remote": { "name": null, "layout": null }, "env": [], "encryption": { "posture": "the second copy sb_boxb_sync.sh pushes to Box B (duty.supabase-second-copy); its path is not stated in the public tree", "adr": ["021"] } }
+  ],
+  "sets": [
+    {
+      "id": "boxb-restic",
+      "box": "boxb",
+      "writer": "duty.restic-snapshot",
+      "what": "The seven paths of /opt/backup/restic-sets.txt on Box B, after sqlite-snapshot.py, tagged boxb,daily.",
+      "destinations": ["boxb-srv-restic", "drive-restic-boxb", "r2-restic-boxb"],
+      "retention": "Sundays: forget --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune on all three repositories",
+      "readBack": { "destination": "boxb-srv-restic", "passwordFile": null },
+      "drill": { "from": "r2-restic-boxb", "file": null, "hash": "restic-tree", "tag": "boxb" }
+    },
+    {
+      "id": "restic-third-copy",
+      "box": "boxb",
+      "writer": "duty.restic-third-copy",
+      "what": "An rclone copy of /srv/restic into the OCI Object Storage bucket through `ocienc:`; a superset of /srv/restic (the weekly prune does not reach it).",
+      "destinations": ["oci-thirdcopy"],
+      "retention": "none upstream: the copy only grows; reconciling it is a deliberate act with the tenancy admin key",
+      "readBack": null,
+      "drill": { "from": "oci-thirdcopy", "file": null, "hash": "restic-tree", "tag": "boxb" }
+    },
+    {
+      "id": "glitchtip-pg",
+      "box": "boxb",
+      "writer": "duty.oci.glitchtip-pg-dump",
+      "what": "The nightly pg_dump of GlitchTip's database, then its Drive sync (duty.oci.gt-drive-sync).",
+      "destinations": ["boxb-glitchtip-dumps", "drive-glitchtip"],
+      "retention": null,
+      "readBack": null,
+      "drill": { "from": "drive-glitchtip", "file": null, "hash": null }
+    },
+    {
+      "id": "supabase-auth-pg",
+      "box": "boxc",
+      "writer": "duty.supabase-dump",
+      "what": "Four artefacts every six hours: the globals, the postgres and _supabase databases, and the pgsodium root key; then the Drive sync and the second copy to Box B.",
+      "destinations": ["boxc-supabase-dumps", "drive-supabase", "boxb-supabase-second-copy"],
+      "retention": "14 days on the box (duty.supabase-dump prunes)",
+      "readBack": null,
+      "drill": { "from": "drive-supabase", "file": null, "hash": null }
+    },
+    {
+      "id": "d1-kv-export",
+      "box": null,
+      "writer": "duty.platform-cron",
+      "what": "The nightly D1 and KV export the platform Worker writes to R2 (services/platform/src/backup/index.ts), with a manifest that records every object's SHA-256; Box B's cf_backup_pull.sh copies it off-vendor (duty.cloudflare-backup-pull).",
+      "destinations": ["r2-nikatru-backups", "drive-cloudflare"],
+      "retention": "R2: the Worker's retentionDays (isExpired in services/platform/src/backup/index.ts); the Drive copy: 35 days",
+      "readBack": null,
+      "drill": { "from": "r2-nikatru-backups", "file": "kv/platform-jwks/{date}.json.gz", "hash": "manifest", "manifest": "manifests/latest.json" }
+    }
+  ]
+}
