@@ -508,12 +508,24 @@ IapPurchaseResult outcomeForPlatformException(PlatformException e) {
         IapPurchaseOutcome.cancelledByUser,
         detail: e.message ?? 'The purchase was cancelled.',
       );
+    case rc.PurchasesErrorCode.paymentPendingError:
+      // 🔴 PENDING IS WITH THE STORE, NOT REFUSED. Ask to Buy, a slow payment
+      // method or a parental approval: the store accepted the purchase and
+      // settles it later, and the provider's webhook reaches our Worker when
+      // it does. `submitted` is exactly that ("the unlock is still pending and
+      // still comes from GET /v1/entitlements"), so the paywall converges and
+      // says PENDING. This read `storeRefused` until port-pay-client, which
+      // told a buyer whose money was on its way that this build cannot sell —
+      // runIapBridgeConformance's "pending" scenario holds it.
+      return IapPurchaseResult(
+        IapPurchaseOutcome.submitted,
+        detail: e.message ?? 'The payment is pending with the store.',
+      );
     case rc.PurchasesErrorCode.purchaseNotAllowedError:
     case rc.PurchasesErrorCode.purchaseInvalidError:
     case rc.PurchasesErrorCode.productNotAvailableForPurchaseError:
     case rc.PurchasesErrorCode.productAlreadyPurchasedError:
     case rc.PurchasesErrorCode.ineligibleError:
-    case rc.PurchasesErrorCode.paymentPendingError:
       return IapPurchaseResult(
         IapPurchaseOutcome.storeRefused,
         detail: e.message ?? code.name,
