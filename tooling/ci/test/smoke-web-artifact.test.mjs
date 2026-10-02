@@ -663,7 +663,8 @@ describe('smoke-web-artifact.mjs — the probe in a page its service worker cont
     const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API], copy);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 probe request\(s\) were NOT paused by the interception/);
-    assert.match(r.out, /https:\/\/subscriptiontracker-api\.nikatru\.com\//);
+    // The unpaused URL is named on a line of its own, compared whole (CodeQL #576).
+    assert.ok(r.out.split('\n').some((l) => l.trim() === `${API}/`), r.out);
     // ...and the request it did not pause is the one the worker sent out, to the recording proxy.
     assert.ok(r.seen.some((u) => hostOf(u) === API_HOST), `the recording proxy saw: ${r.seen.join(', ') || 'nothing'}`);
   });
