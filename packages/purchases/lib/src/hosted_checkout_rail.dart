@@ -26,6 +26,18 @@ import 'rail_config.dart';
 ///
 /// It is also not a client that grants anything. `startCheckout` opens a page
 /// and returns. The unlock comes from the server, later, and only from there.
+///
+/// ## ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START — THE SERVER OPENS IT
+/// This rail used to fill [RailConfig.checkoutUrlTemplate], which NO config
+/// serves, so on every hosted channel `canStartCheckout` was false and a served
+/// `paywall.enabled: true` still sold nothing on web, Windows or Linux. It now
+/// asks `POST /v1/checkout` ([core.CheckoutSessionTransport]) and opens the
+/// `checkout_url` that route returns. Chosen over a per-rail template because
+/// the route is where the attribution lives: it puts our account id in the
+/// transaction's `custom_data` and REFUSES when Paddle does not echo it back
+/// ([ADR 044] §6) — a URL the client fills can only hope the vendor keeps a
+/// query parameter. The server also re-checks `paywall.enabled` and the
+/// offering, so a stale client cannot open a checkout the config has closed.
 class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
   HostedCheckoutRail({
     required RailConfig config,
@@ -34,6 +46,8 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
     required Future<String?> Function() accountId,
     required Future<String?> Function() accessToken,
     required core.CancellationTransport cancellationTransport,
+    core.CheckoutSessionTransport checkoutSessions =
+        const core.UnavailableCheckoutSessionTransport(),
     CheckoutLauncher launcher = const UrlCheckoutLauncher(),
     PurchaseCapabilities? capabilities,
   })  : _config = config,
@@ -42,6 +56,7 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
         _accountId = accountId,
         _accessToken = accessToken,
         _cancellations = cancellationTransport,
+        _sessions = checkoutSessions,
         _launcher = launcher,
         _capabilities = capabilities ??
             PurchaseCapabilities.forPlatform(
@@ -55,6 +70,7 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
   final Future<String?> Function() _accountId;
   final Future<String?> Function() _accessToken;
   final core.CancellationTransport _cancellations;
+  final core.CheckoutSessionTransport _sessions;
   final CheckoutLauncher _launcher;
   final PurchaseCapabilities _capabilities;
 
@@ -69,9 +85,17 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
   @override
   List<Offering> get offerings => _config.offerings;
 
+  /// The platform allows it, there is a plan to sell, and this build can ask
+  /// the platform host for a checkout. The return URL is the rail's, not the
+  /// server's: [_returnUrl] is kept for the day a session carries one.
   @override
   bool get canStartCheckout =>
-      _capabilities.canStartCheckout && _config.canCheckout;
+      _capabilities.canStartCheckout &&
+      _config.offerings.isNotEmpty &&
+      _sessions.isAvailable;
+
+  /// Where the merchant of record sends the buyer back to.
+  String get returnUrl => _returnUrl;
 
   @override
   Future<CheckoutStart> startCheckout(Offering offering) async {
@@ -91,25 +115,23 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
         detail: _capabilities.why,
       );
     }
-    if (!_config.canCheckout) {
+    if (_config.offerings.isEmpty || !_sessions.isAvailable) {
       return const CheckoutRefused(
         CheckoutRefusal.railNotConfigured,
-        // ⚠️ CORRECTED 2026-08-28. This read "… OWNER_QUEUE A-1
-        // (merchant-of-record seller account) is pending." The seller account is
-        // NOT pending: it went LIVE 2026-08-11 ([ADR 044]). The refusal itself is
-        // unchanged and still fires — what is absent is the checkout URL template,
-        // because `paywall.enabled` is false for every app in
-        // services/platform/src/app-config-data.json.
-        detail: 'No checkout URL has been configured for this rail. '
-            'The paywall is not enabled for this app.',
+        // ⏱ 2026-10-01. This read "No checkout URL has been configured for this
+        // rail" — a `checkout_url_template` nobody serves. The hosted checkout
+        // is now opened by the platform host, so what can be missing is the
+        // plans (the paywall is not enabled) or the host itself (a build whose
+        // backend is not live).
+        detail: 'Nothing to sell, or no platform host to open a checkout. '
+            'The paywall is not enabled for this app, or the backend is not live.',
       );
     }
 
     // 🔒 [pipeline 5]M-7 — ATTRIBUTION BEFORE MONEY. The account id is what
-    // makes the merchant of record's notification resolve to a person. Without
-    // it the payment arrives unclaimed, and an unclaimed payment from an IN-APP
-    // purchase is a defect, not a supported state — so the checkout does not
-    // open at all rather than opening one that cannot be honoured.
+    // makes the merchant of record's notification resolve to a person. The
+    // server attributes the transaction to the VERIFIED subject; this check is
+    // the client half, so a signed-out buyer goes to sign-in, not to a 401.
     final String? account = await _accountId();
     if (account == null || account.isEmpty) {
       return const CheckoutRefused(
@@ -118,18 +140,23 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
       );
     }
 
-    final String? filled = RailConfig.fill(
-      _config.checkoutUrlTemplate,
-      appId: _appId,
-      priceId: offering.productId,
-      accountId: account,
-      returnUrl: _returnUrl,
+    final core.Result<core.CheckoutSession> session = await _sessions
+        .createSession(
+          appId: _appId,
+          offeringId: offering.productId,
+          accessToken: await _accessToken(),
+        );
+    final Uri? url = session.fold(
+      (core.CheckoutSession s) => s.checkoutUrl,
+      (core.Failure _) => null,
     );
-    final Uri? url = filled == null ? null : Uri.tryParse(filled);
     if (url == null) {
-      return const CheckoutRefused(
-        CheckoutRefusal.railNotConfigured,
-        detail: 'The configured checkout template did not produce a URL.',
+      return CheckoutRefused(
+        CheckoutRefusal.couldNotOpen,
+        detail: session.fold(
+          (core.CheckoutSession _) => '',
+          (core.Failure f) => 'The platform host opened no checkout: ${f.message}',
+        ),
       );
     }
 
@@ -155,6 +182,7 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
         .requestCancellation(appId: _appId, accessToken: await _accessToken());
     return r.fold((core.CancellationReceipt receipt) {
       if (!receipt.hasActivePlan) return CancellationOutcome.noActivePlan;
+      if (receipt.cancelAt != null) return CancellationOutcome.inStore;
       if (receipt.executed) return CancellationOutcome.executed;
       // Recorded but not executed is the state today, and it is reported as
       // its own outcome so the screen can say exactly that. Folding it into

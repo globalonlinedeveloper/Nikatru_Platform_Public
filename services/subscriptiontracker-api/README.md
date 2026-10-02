@@ -80,7 +80,7 @@ HAS NO CALLER.** The live path is `entitlementsProvider`
 (`packages/api_client/lib/src/dio_entitlement_transport.dart:40`), which issues
 `GET {PLATFORM_BASE_URL}/v1/entitlements?app_id=<id>`. `kPlatformBaseUrl` defaults
 to `https://platform.nikatru.com` (`apps/subscriptiontracker/lib/state/providers/analytics_envelope.dart:64`), so
-that read lands on **`services/platform`** — `platform/src/index.ts:105-106` — and
+that read lands on **`services/platform`** — `platform/src/index.ts:286-287` — and
 never on `subscriptiontracker-api.nikatru.com`. `PaywallGate`, `manage_plan_screen.dart:90` and
 `refreshEntitlements()` all watch THAT provider. The two Workers expose the same
 path and answer the same question; only the platform one is wired, because

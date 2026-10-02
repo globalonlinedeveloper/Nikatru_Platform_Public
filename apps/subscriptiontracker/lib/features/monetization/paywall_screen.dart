@@ -9,6 +9,8 @@ import '../../core/format/money_format.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../shared/chassis_adapters.dart';
+import '../shared/widgets.dart' show openExternalUrl;
 
 /// Where the paywall was opened from. A short ENUMERABLE code, because it
 /// becomes an analytics parameter — free text there is a D1 column nobody can
@@ -62,6 +64,7 @@ class PaywallScreen extends ConsumerStatefulWidget {
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   _PaywallPhase _phase = _PaywallPhase.choosing;
+  bool _restoring = false;
   PaywallRefusalView _refusedView = PaywallRefusalView.retryable;
 
   @override
@@ -221,8 +224,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           offline: ref.watch(networkUnreachableProvider),
           onReconnect: () => ref.invalidate(appConfigProvider),
           showTrial: pitch.trialCopy,
-          proFeatures: _features(l10n, pitch.pro),
-          freeFeatures: _features(l10n, pitch.free),
+          proFeatures: paywallFeatures(l10n, pitch.pro, PaywallFeature.new),
+          freeFeatures: paywallFeatures(l10n, pitch.free, PaywallFeature.new),
           offers: <PaywallOffer>[
             for (final Offering o in offerings)
               PaywallOffer(
@@ -243,9 +246,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             offerings.firstWhere((Offering o) => o.productId == offer.id),
           ),
           onCheckAgain: () async {
-            final bool unlocked = (await refreshEntitlements(
-              ref,
-            )).isProAt(DateTime.now());
+            final bool unlocked = await proAfterReread(ref);
             if (!mounted) return;
             setState(
               () => _phase = unlocked
@@ -255,40 +256,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           },
           onGoHome: () => context.go('/'),
           onRetry: () => setState(() => _phase = _PaywallPhase.choosing),
+          // MO-03/MO-04 (st-money-ready): chassis_adapters.dart says why.
+          cancelWhere: switch (rail.railKind) {
+            PurchaseRailKind.appleIap => PaywallCancelWhere.appStore,
+            PurchaseRailKind.playBilling => PaywallCancelWhere.googlePlay,
+            _ => PaywallCancelWhere.here,
+          },
+          restoring: _restoring,
+          onRestore: paywallRestore(context, l10n, (bool busy, bool on) {
+            if (!mounted) return;
+            setState(() => _restoring = busy);
+            if (on) setState(() => _phase = _PaywallPhase.unlocked);
+          }),
+          onOpenTerms: () => openExternalUrl(AppConfig.termsUrl),
+          onOpenPrivacy: () => openExternalUrl(AppConfig.privacyUrl),
+          onOpenEula: appleEulaOpener(rail.railKind),
         );
       },
     );
   }
 }
-
-/// The served feature CODES, in this app's words (D-11). A code this build has
-/// no words for draws nothing — never the raw code on a buyer's screen.
-List<PaywallFeature> _features(AppLocalizations l10n, List<String> codes) =>
-    <PaywallFeature>[
-      for (final String code in codes)
-        ?switch (code) {
-          'plan' => PaywallFeature(
-            icon: Icons.account_balance_wallet_outlined,
-            title: l10n.paywallFeaturePlan,
-            body: l10n.paywallFeaturePlanBody,
-          ),
-          'save' => PaywallFeature(
-            icon: Icons.savings_outlined,
-            title: l10n.paywallFeatureSave,
-            body: l10n.paywallFeatureSaveBody,
-          ),
-          'track' => PaywallFeature(
-            icon: Icons.list_alt_outlined,
-            title: l10n.paywallFeatureTrack,
-          ),
-          'remind' => PaywallFeature(
-            icon: Icons.notifications_none_outlined,
-            title: l10n.paywallFeatureRemind,
-          ),
-          'sync' => PaywallFeature(
-            icon: Icons.sync,
-            title: l10n.paywallFeatureSync,
-          ),
-          _ => null,
-        },
-    ];
