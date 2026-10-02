@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import appModel0003 from '../../subscriptiontracker-api/migrations/0003_subscription_model.sql?raw';
+import appPreferences0008 from '../../subscriptiontracker-api/migrations/0008_preferences.sql?raw';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
 import INVENTORY_RAW from '../../../tooling/legal/data-inventory.json?raw';
 import { REMINDER_MAIL_JOB, reminderMail } from '../src/scheduled';
@@ -25,6 +26,10 @@ import {
   addDays,
   appName,
   appUrl,
+  buildDigest,
+  dateLabel,
+  digestLocale,
+  DIGEST_LOCALES,
   runReminderMail,
   ymdOf,
 } from '../src/lib/reminders';
@@ -33,6 +38,7 @@ import reminders, { MAX_PREFS_BODY_BYTES, parsePrefs } from '../src/routes/remin
 import { app as realApp } from '../src/index';
 import type { AppEnv, Env } from '../src/types';
 import { RealDb, realPlatformDb } from './harness';
+import LOCALE_REGISTER_RAW from '../../../tooling/i18n/locales.json?raw';
 
 const APP = 'subscriptiontracker';
 const AUTH = 'https://auth.example';
@@ -525,6 +531,95 @@ describe('R1 — the digest prints each amount with its currency', () => {
     const text = String(net.sends()[0].body!.text);
     expect(text).toContain('- Anime — Fri, 2 Oct 2026 (monthly, JPY 1200)');
     expect(text).toContain('- Legacy — Sat, 3 Oct 2026 (monthly, 9.99)');
+  });
+});
+
+// ⏱ 2026-10-02 · i18n pipeline. THE DIGEST SPEAKS THE PERSON'S LANGUAGE: the app's
+// own `preferences.locale` (subscriptiontracker_db migration 0008) picks the copy
+// block, and English is what anyone without one — or an app with no preferences
+// table at all, which every case above runs on — reads.
+describe('R1 — the digest is in the stored locale', () => {
+  function prefsDb(): RealDb {
+    return new RealDb([appInit0001, appSchemaDebt0002, appModel0003, appPreferences0008]);
+  }
+  function setLocale(app: RealDb, userId: string, value: unknown): void {
+    app.db
+      .prepare('INSERT INTO preferences (user_id, key, value, version, updated_at) VALUES (?, ?, ?, 1, ?)')
+      .run(userId, 'locale', JSON.stringify(value), '2026-09-28T00:00:00Z');
+  }
+
+  it('🔴 a person whose stored locale is ta gets a TAMIL digest; one with none gets English, in the same run', async () => {
+    const platform = realPlatformDb();
+    const app = prefsDb();
+    const people: Person[] = [
+      { id: 'u-ta', optIn: true, email: 'ta@example.com' },
+      { id: 'u-en', optIn: true, email: 'en@example.com' },
+    ];
+    for (const p of people) seedPerson(platform, p);
+    seedSub(app, 'u-ta', 's-ta', 'Netflix', '2026-10-03');
+    seedSub(app, 'u-en', 's-en', 'Netflix', '2026-10-03');
+    setLocale(app, 'u-ta', 'ta');
+    const net = network(people);
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    const byTo = new Map(net.sends().map((c) => [String((c.body!.to as string[])[0]), c.body!]));
+    const ta = byTo.get('ta@example.com')!;
+    expect(String(ta.subject)).toContain('அன்று புதுப்பிக்கப்படும்');
+    expect(String(ta.text)).toContain('இந்தச் சந்தாக்கள் விரைவில் புதுப்பிக்கப்படும்:');
+    expect(String(ta.text)).toContain('(மாதாந்திரம், 9.99)');
+    expect(String(ta.text)).not.toContain('These subscriptions renew soon');
+    expect(String(ta.html)).toMatch(/^<div lang="ta">/);
+    const en = byTo.get('en@example.com')!;
+    expect(String(en.text)).toContain('These subscriptions renew soon:');
+    expect(String(en.text)).toContain('- Netflix — Sat, 3 Oct 2026 (monthly, 9.99)');
+  });
+
+  it('hi, a region-tagged ta-IN and an unknown fr each resolve; an unnamed row is named in the mail’s language', async () => {
+    const platform = realPlatformDb();
+    const app = prefsDb();
+    const people: Person[] = [
+      { id: 'u-hi', optIn: true, email: 'hi@example.com' },
+      { id: 'u-tain', optIn: true, email: 'tain@example.com' },
+      { id: 'u-fr', optIn: true, email: 'fr@example.com' },
+    ];
+    for (const p of people) seedPerson(platform, p);
+    seedSub(app, 'u-hi', 's-hi', '', '2026-10-03');
+    seedSub(app, 'u-tain', 's-tain', 'Spotify', '2026-10-03');
+    seedSub(app, 'u-fr', 's-fr', 'Spotify', '2026-10-03');
+    setLocale(app, 'u-hi', 'hi');
+    setLocale(app, 'u-tain', 'ta-IN');
+    setLocale(app, 'u-fr', 'fr');
+    const net = network(people);
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    const byTo = new Map(net.sends().map((c) => [String((c.body!.to as string[])[0]), c.body!]));
+    expect(String(byTo.get('hi@example.com')!.text)).toContain('- एक सदस्यता — ');
+    expect(String(byTo.get('hi@example.com')!.html)).toContain('ऐप में इन्हें बदलें</a>।</p>');
+    expect(String(byTo.get('tain@example.com')!.text)).toContain('இந்த மின்னஞ்சல்களை நிறுத்து: ');
+    expect(String(byTo.get('fr@example.com')!.text)).toContain('Stop these emails: ');
+  });
+
+  it('digestLocale: language subtag, case and separator do not matter; anything unknown or unset is English', () => {
+    expect(digestLocale('ta')).toBe('ta');
+    expect(digestLocale('TA_in')).toBe('ta');
+    expect(digestLocale('hi-IN')).toBe('hi');
+    expect(digestLocale('')).toBe('en');
+    expect(digestLocale('fr')).toBe('en');
+    expect(digestLocale(null)).toBe('en');
+    expect(digestLocale(7)).toBe('en');
+  });
+
+  it('a Tamil date is spelled in Tamil, so the subject is not half English', () => {
+    expect(dateLabel('2026-10-03', 'ta')).not.toBe(dateLabel('2026-10-03', 'en'));
+    expect(dateLabel('2026-10-03', 'en')).toBe('Sat, 3 Oct 2026');
+    const d = buildDigest(APP, [
+      { subscriptionId: 's', name: 'X', dueOn: '2026-10-03', cycle: 'yearly', price: null, currency: null, priceMinor: null, lead: 3, kind: 'renewal' },
+    ], 'https://u', 'hi');
+    expect(d.subject).toContain('का नवीनीकरण');
+    expect(d.text).toContain('(वार्षिक)');
+  });
+
+  it('the copy speaks EXACTLY the locale register’s supported set', () => {
+    const reg = JSON.parse(LOCALE_REGISTER_RAW) as { locales: Array<{ code: string; status: string }> };
+    expect([...DIGEST_LOCALES].sort()).toEqual(reg.locales.filter((r) => r.status === 'supported').map((r) => r.code).sort());
   });
 });
 

@@ -15,9 +15,12 @@
 //
 //   L1 register   the register parses and every row is well-formed
 //                 (tooling/i18n/locales.mjs registerProblems).
-//   L2 generated  packages/design_system/lib/src/l10n/locale_register.g.dart and
-//                 every app's android/app/src/main/res/xml/locales_config.xml are
-//                 byte-for-byte what the register renders (`--write` regenerates).
+//   L2 generated  packages/design_system/lib/src/l10n/locale_register.g.dart,
+//                 every app's android/app/src/main/res/xml/locales_config.xml and
+//                 the three auth e-mails (docs/platform/supabase/email-templates/
+//                 and their served twins under sites/nikatru/auth-mail/, one Go-
+//                 template branch per supported locale) are byte-for-byte what
+//                 the register renders (`--write` regenerates).
 //   L3 arb sets   every ARB directory — each app's lib/l10n, the chassis, the
 //                 brick — holds exactly one <prefix>_<code>.arb per SUPPORTED
 //                 code: a missing one is a locale that renders English; an extra
@@ -30,6 +33,11 @@
 //   L6 hand-typed no locale list outside the register: two or more distinct
 //                 register codes as adjacent quoted tokens in code (comments
 //                 stripped), in any scanned file not in EXEMPT below.
+//   L7 copy       the server-side copy tables — the renewal digest's
+//                 (services/platform/src/lib/digest-copy.json) and the auth
+//                 e-mails' (tooling/i18n/auth-mail-copy.json) — carry a complete
+//                 block for EXACTLY the supported set: a missing one is a user
+//                 whose stored language silently reads English.
 //
 // Exit 0 = green. 1 = a finding. 2 = COVERAGE LOST: the register is absent, the
 // scan did not reach every named reader, or no app had native folders to grade.
@@ -42,9 +50,11 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
 import { REGISTER_REL, registerProblems, supportedLocales } from '../i18n/locales.mjs';
+import { AUTH_MAIL_COPY_REL, AUTH_MAIL_OUT_DIRS, authMailCopyProblems, renderAuthMail } from '../i18n/auth-mail.mjs';
 
 export const DART_REGISTER = 'packages/design_system/lib/src/l10n/locale_register.g.dart';
 export const LOCALES_CONFIG = 'android/app/src/main/res/xml/locales_config.xml';
+export const DIGEST_COPY = 'services/platform/src/lib/digest-copy.json';
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 
 /** Every ARB directory and its file prefix. Apps are discovered, not listed. */
@@ -431,6 +441,19 @@ export function main(args) {
       generated.push([`apps/${app}/${LOCALES_CONFIG}`, renderLocalesConfig(reg)]);
     }
   }
+  let authCopy = null;
+  try {
+    authCopy = JSON.parse(read(AUTH_MAIL_COPY_REL) ?? 'null');
+  } catch (e) {
+    problems.push(`L7 ${AUTH_MAIL_COPY_REL} is not valid JSON: ${e.message}`);
+  }
+  if (authCopy === null) return lost(`${AUTH_MAIL_COPY_REL} is absent — the auth e-mails have no copy to render.`);
+  const authGaps = authMailCopyProblems(reg, authCopy);
+  if (authGaps.length === 0) {
+    for (const [file, text] of renderAuthMail(reg, authCopy)) {
+      for (const dir of AUTH_MAIL_OUT_DIRS) generated.push([`${dir}/${file}`, text]);
+    }
+  }
   for (const [rel, want] of generated) {
     const have = read(rel);
     if (have === want) continue;
@@ -518,6 +541,29 @@ export function main(args) {
     else if (!r.must.test(text)) problems.push(`L5 ${r.file} no longer reads the register: ${r.why}. Expected ${r.must}.`);
   }
   oks.push(`L5 readers: ${READERS.length} named file(s) read the register`);
+
+  // L7
+  for (const g of authGaps) problems.push(`L7 ${AUTH_MAIL_COPY_REL} ${g}`);
+  const digestRaw = read(DIGEST_COPY);
+  if (digestRaw === null) return lost(`${DIGEST_COPY} is absent — the renewal digest has no copy table to hold to the register.`);
+  let digest = {};
+  try {
+    digest = JSON.parse(digestRaw);
+  } catch (e) {
+    problems.push(`L7 ${DIGEST_COPY} is not valid JSON: ${e.message}`);
+  }
+  const digestLocales = Object.keys(digest).filter((k) => !k.startsWith('$'));
+  const enKeys = Object.keys(digest[reg.source] ?? {});
+  for (const c of codes) {
+    if (!(c in digest)) {
+      problems.push(`L7 ${DIGEST_COPY} has no "${c}" block — a person whose stored locale is ${c} gets the digest in English.`);
+      continue;
+    }
+    const gaps = enKeys.filter((k) => !(k in digest[c]));
+    if (gaps.length) problems.push(`L7 ${DIGEST_COPY} "${c}" lacks ${gaps.join(', ')}.`);
+  }
+  for (const c of digestLocales) if (!codes.includes(c)) problems.push(`L7 ${DIGEST_COPY} has a "${c}" block, which the register does not list as supported.`);
+  oks.push(`L7 copy: the digest and the ${authCopy?.templates ? Object.keys(authCopy.templates).length : 0} auth e-mail(s) speak exactly the supported set`);
 
   // L6
   let scanned = 0;

@@ -1,0 +1,89 @@
+{
+  "$comment": [
+    "The three auth e-mails' words, per SUPPORTED locale of the locale register (tooling/i18n/locales.json).",
+    "tooling/i18n/auth-mail.mjs renders docs/platform/supabase/email-templates/<file> (the disaster-recovery copy",
+    "of the live templates) and its served twin sites/nikatru/auth-mail/<file> from this file and the register:",
+    "ONE Go-template branch per supported locale, chosen by the user's metadata `locale`, and English for",
+    "anything else. tooling/ci/assert-locale-register.mjs L2 holds both outputs to a render, L7 holds this file",
+    "to the register. {email} becomes <strong>{{ .Email }}</strong>. ta and hi are agent-produced and unreviewed."
+  ],
+  "shared": {
+    "en": {
+      "fallback": "If the button doesn't work, copy this link into your browser:",
+      "sentBy": "Sent by Nikatru"
+    },
+    "ta": {
+      "fallback": "பொத்தான் வேலை செய்யவில்லை என்றால், இந்த இணைப்பை உங்கள் உலாவியில் நகலெடுத்து ஒட்டவும்:",
+      "sentBy": "Nikatru அனுப்பியது"
+    },
+    "hi": {
+      "fallback": "अगर बटन काम न करे, तो यह लिंक अपने ब्राउज़र में कॉपी करें:",
+      "sentBy": "Nikatru द्वारा भेजा गया"
+    }
+  },
+  "templates": {
+    "confirm-signup.html": {
+      "title": "\"Confirm signup\"",
+      "en": {
+        "heading": "Confirm your email",
+        "intro": ["Welcome to Nikatru. Tap the button below to", "confirm {email} and activate your account."],
+        "button": "Confirm email",
+        "ignore": "Didn't create this account? You can safely ignore this email."
+      },
+      "ta": {
+        "heading": "உங்கள் மின்னஞ்சலை உறுதிசெய்யுங்கள்",
+        "intro": ["Nikatru-க்கு வரவேற்கிறோம். {email} முகவரியை உறுதிசெய்து", "உங்கள் கணக்கைச் செயல்படுத்த கீழே உள்ள பொத்தானைத் தட்டுங்கள்."],
+        "button": "மின்னஞ்சலை உறுதிசெய்",
+        "ignore": "இந்தக் கணக்கை நீங்கள் உருவாக்கவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம்."
+      },
+      "hi": {
+        "heading": "अपना ईमेल पुष्टि करें",
+        "intro": ["Nikatru में आपका स्वागत है। {email} की पुष्टि करने और", "अपना खाता सक्रिय करने के लिए नीचे दिया गया बटन टैप करें।"],
+        "button": "ईमेल की पुष्टि करें",
+        "ignore": "यह खाता आपने नहीं बनाया? आप इस ईमेल को अनदेखा कर सकते हैं।"
+      }
+    },
+    "magic-link.html": {
+      "title": "\"Magic Link\"",
+      "en": {
+        "heading": "Your sign-in link",
+        "intro": ["Tap the button below to sign in to Nikatru as {email}.", "This link can only be used once."],
+        "button": "Sign in to Nikatru",
+        "ignore": "Didn't request this link? You can safely ignore this email."
+      },
+      "ta": {
+        "heading": "உங்கள் உள்நுழைவு இணைப்பு",
+        "intro": ["{email} ஆக Nikatru-இல் உள்நுழைய கீழே உள்ள பொத்தானைத் தட்டுங்கள்.", "இந்த இணைப்பை ஒருமுறை மட்டுமே பயன்படுத்த முடியும்."],
+        "button": "Nikatru-இல் உள்நுழை",
+        "ignore": "இந்த இணைப்பை நீங்கள் கேட்கவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம்."
+      },
+      "hi": {
+        "heading": "आपका साइन-इन लिंक",
+        "intro": ["{email} के रूप में Nikatru में साइन इन करने के लिए नीचे दिया गया बटन टैप करें।", "यह लिंक सिर्फ़ एक बार इस्तेमाल किया जा सकता है।"],
+        "button": "Nikatru में साइन इन करें",
+        "ignore": "यह लिंक आपने नहीं माँगा? आप इस ईमेल को अनदेखा कर सकते हैं।"
+      }
+    },
+    "reset-password.html": {
+      "title": "\"Reset Password\" (recovery)",
+      "en": {
+        "heading": "Reset your password",
+        "intro": ["We received a request to reset the password for {email}.", "Tap the button below to choose a new one."],
+        "button": "Reset password",
+        "ignore": "Didn't request a password reset? You can safely ignore this email — your password is unchanged."
+      },
+      "ta": {
+        "heading": "உங்கள் கடவுச்சொல்லை மீட்டமையுங்கள்",
+        "intro": ["{email} கணக்கின் கடவுச்சொல்லை மீட்டமைக்கக் கோரிக்கை வந்தது.", "புதிய கடவுச்சொல்லைத் தேர்வுசெய்ய கீழே உள்ள பொத்தானைத் தட்டுங்கள்."],
+        "button": "கடவுச்சொல்லை மீட்டமை",
+        "ignore": "கடவுச்சொல் மீட்டமைப்பை நீங்கள் கேட்கவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம் — உங்கள் கடவுச்சொல் மாறவில்லை."
+      },
+      "hi": {
+        "heading": "अपना पासवर्ड रीसेट करें",
+        "intro": ["{email} के पासवर्ड को रीसेट करने का अनुरोध मिला है।", "नया पासवर्ड चुनने के लिए नीचे दिया गया बटन टैप करें।"],
+        "button": "पासवर्ड रीसेट करें",
+        "ignore": "पासवर्ड रीसेट का अनुरोध आपने नहीं किया? आप इस ईमेल को अनदेखा कर सकते हैं — आपका पासवर्ड नहीं बदला है।"
+      }
+    }
+  }
+}

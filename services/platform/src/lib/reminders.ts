@@ -40,6 +40,7 @@ import { parseReminderDays } from '../../../_shared/src/reminder-days';
 import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
 import { MAIL_FROM } from '../generated/entity';
 import { mailFor } from '../ports';
+import DIGEST_COPY from './digest-copy.json';
 
 /**
  * [ADR 029] §2 — everything a machine sends leaves from mail.nikatru.com, typed
@@ -373,9 +374,77 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** "Mon 5 Oct 2026" — unambiguous in every locale, which a numeric date is not. */
-export function dateLabel(ymd: string): string {
-  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-GB', {
+// ── the digest's language ──────────────────────────────────────────────────
+/** One locale's digest copy (digest-copy.json). */
+export interface DigestCopy {
+  dateLocale: string;
+  subjectOne: string;
+  subjectMany: string;
+  intro: string;
+  why: string;
+  change: string;
+  stop: string;
+  linkEnd: string;
+  unnamed: string;
+  cycles: Record<string, string>;
+}
+
+const COPY = DIGEST_COPY as unknown as Record<string, DigestCopy>;
+
+/** The locales the digest speaks: one per SUPPORTED row of the locale register
+ *  (tooling/i18n/locales.json), held to it by assert-locale-register L7. */
+export const DIGEST_LOCALES: readonly string[] = Object.keys(COPY).filter((k) => !k.startsWith('$'));
+
+/**
+ * The digest locale for a stored `locale` preference: its language subtag when the
+ * digest speaks it (`ta`, `ta-IN` and `ta_IN` are all Tamil), else English — an
+ * unset preference ('' = follow the device, which a server cannot see), an
+ * unknown language or a malformed value all read in the source language.
+ */
+export function digestLocale(stored: unknown): string {
+  if (typeof stored !== 'string') return 'en';
+  const lang = stored.trim().split(/[-_]/)[0].toLowerCase();
+  return DIGEST_LOCALES.includes(lang) ? lang : 'en';
+}
+
+const fill = (template: string, values: Record<string, string>): string =>
+  template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m));
+
+/**
+ * Each of `userIds`' stored `locale` preference in the APP database, read in ONE
+ * statement. An app database without a `preferences` table (an app that predates
+ * them — renewals.ts's rule: never assume an app's schema) reads as no
+ * preference, so every digest falls back to English; any other error is thrown.
+ */
+export async function readLocales(db: D1Database, userIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  let rows: Array<{ user_id: string; value: string }>;
+  try {
+    rows = await allRows<{ user_id: string; value: string }>(
+      db
+        .prepare("SELECT user_id, value FROM preferences WHERE key = 'locale' AND user_id IN (SELECT value FROM json_each(?))")
+        .bind(JSON.stringify(userIds)),
+    );
+  } catch (err) {
+    if (err instanceof Error && /no such table: preferences/.test(err.message)) return out;
+    throw err;
+  }
+  for (const r of rows) {
+    try {
+      out.set(String(r.user_id), digestLocale(JSON.parse(String(r.value))));
+    } catch {
+      /* a value this route did not write as JSON is not a preference */
+    }
+  }
+  return out;
+}
+
+/** "Mon 5 Oct 2026" — unambiguous in every locale, which a numeric date is not.
+ *  In the digest's locale: `ta-IN` and `hi-IN` spell the weekday and month in their
+ *  own script. */
+export function dateLabel(ymd: string, locale = 'en'): string {
+  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString((COPY[locale] ?? COPY.en).dateLocale, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -388,35 +457,43 @@ export function dateLabel(ymd: string): string {
  * The digest, as plain text plus MINIMAL SEMANTIC HTML: a paragraph, a list, a
  * link. Behaviour, not design — no colours, no type, no images, nothing a mail
  * client has to fetch. Every string a person typed is escaped for HTML.
+ *
+ * In `locale` (digestLocale of the person's stored preference); English for any
+ * locale the copy table does not carry.
  */
 export function buildDigest(
   appId: string,
   items: readonly DueItem[],
   unsubscribeUrl: string,
+  locale = 'en',
 ): { subject: string; text: string; html: string } {
+  const c = COPY[digestLocale(locale)] ?? COPY.en;
+  const lang = digestLocale(locale);
   const name = appName(appId);
   const first = items[0];
+  const label = (i: DueItem): string => i.name.trim() || c.unnamed;
   const subject =
     items.length === 1
-      ? `${first.name} renews on ${dateLabel(first.dueOn)}`
-      : `${items.length} subscriptions renew by ${dateLabel(items[items.length - 1].dueOn)}`;
+      ? fill(c.subjectOne, { name: label(first), date: dateLabel(first.dueOn, lang) })
+      : fill(c.subjectMany, { count: String(items.length), date: dateLabel(items[items.length - 1].dueOn, lang) });
   const line = (i: DueItem): string => {
     const p = priceLabel(i.price, i.currency, i.priceMinor);
-    return `${i.name} — ${dateLabel(i.dueOn)}${i.cycle ? ` (${i.cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
+    const cycle = i.cycle ? (c.cycles[i.cycle] ?? i.cycle) : null;
+    return `${label(i)} — ${dateLabel(i.dueOn, lang)}${cycle ? ` (${cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
   };
   const text =
-    `These subscriptions renew soon:\n\n` +
+    `${c.intro}\n\n` +
     items.map((i) => `- ${line(i)}`).join('\n') +
-    `\n\nYou get this because you switched on renewal reminder emails in ${name}. ` +
-    `Change them in the app: ${appUrl(appId)}\n` +
-    `Stop these emails: ${unsubscribeUrl}\n`;
+    `\n\n${fill(c.why, { app: name })} ` +
+    `${c.change}: ${appUrl(appId)}\n` +
+    `${c.stop}: ${unsubscribeUrl}\n`;
   const html =
-    `<p>These subscriptions renew soon:</p>` +
+    `<p>${escapeHtml(c.intro)}</p>` +
     `<ul>${items.map((i) => `<li>${escapeHtml(line(i))}</li>`).join('')}</ul>` +
-    `<p>You get this because you switched on renewal reminder emails in ${escapeHtml(name)}. ` +
-    `<a href="${escapeHtml(appUrl(appId))}">Change them in the app</a>.</p>` +
-    `<p><a href="${escapeHtml(unsubscribeUrl)}">Stop these emails</a></p>`;
-  return { subject, text, html };
+    `<p>${escapeHtml(fill(c.why, { app: name }))} ` +
+    `<a href="${escapeHtml(appUrl(appId))}">${escapeHtml(c.change)}</a>${escapeHtml(c.linkEnd)}</p>` +
+    `<p><a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(c.stop)}</a></p>`;
+  return { subject, text, html: lang === 'en' ? html : `<div lang="${lang}">${html}</div>` };
 }
 
 /** A fresh 256-bit token, base64url, 43 characters — the unsubscribe and feed capability. */
@@ -530,7 +607,8 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
     if (mailedOn !== undefined && mailedOn >= addDays(due, -lead)) continue;
     const item: DueItem = {
       subscriptionId: sub.id,
-      name: (sub.name ?? '').trim() || 'A subscription',
+      // An unnamed row is named in the digest's own language (buildDigest's `unnamed`).
+      name: (sub.name ?? '').trim(),
       dueOn: due,
       cycle: sub.cycle,
       price: sub.price,
@@ -605,6 +683,9 @@ async function remindApp(
   if (!target.db) return { target: target.appId, ok: false, detail: 'no database binding for this app' };
   try {
     const { optedIn, pending } = await pendingFor(env, target, target.db, state.today);
+    // The person's language, from the app's own `preferences` (ONE read for every
+    // pending person); English where the app or the person has none.
+    const locales = pending.length ? await readLocales(target.db, pending.map((p) => p.userId)) : new Map<string, string>();
     const tail = `pruned=${state.pruned}`;
     if (pending.length === 0) {
       return { target: target.appId, ok: true, detail: `nothing due: opted_in=${optedIn} due=0 ${tail}` };
@@ -640,7 +721,7 @@ async function remindApp(
       const items = await claim(env, target.appId, p, p.items.slice(0, MAX_DIGEST_ITEMS), state.sentAt, hash);
       if (items.length === 0) continue;
       const unsubscribeUrl = `${REMINDER_LINK_ORIGIN}/v1/reminders/unsubscribe?t=${token}`;
-      const digest = buildDigest(target.appId, items, unsubscribeUrl);
+      const digest = buildDigest(target.appId, items, unsubscribeUrl, locales.get(p.userId) ?? 'en');
       let delivered = false;
       let refused = false;
       let why = '';

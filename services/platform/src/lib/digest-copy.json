@@ -1,0 +1,45 @@
+{
+  "$comment": [
+    "The renewal digest's copy, one block per SUPPORTED locale of the locale register (tooling/i18n/locales.json).",
+    "tooling/ci/assert-locale-register.mjs L7 holds the block set to the register's supported set and every block",
+    "to the English block's keys. reminders.ts picks the block by the person's stored `locale` preference and",
+    "falls back to `en` for a locale with no block, an unset preference, or an app database with no preferences.",
+    "{name} {date} {count} {app} are filled by buildDigest. ta and hi are agent-produced and unreviewed."
+  ],
+  "en": {
+    "dateLocale": "en-GB",
+    "subjectOne": "{name} renews on {date}",
+    "subjectMany": "{count} subscriptions renew by {date}",
+    "intro": "These subscriptions renew soon:",
+    "why": "You get this because you switched on renewal reminder emails in {app}.",
+    "change": "Change them in the app",
+    "stop": "Stop these emails",
+    "linkEnd": ".",
+    "unnamed": "A subscription",
+    "cycles": { "weekly": "weekly", "monthly": "monthly", "quarterly": "quarterly", "yearly": "yearly" }
+  },
+  "ta": {
+    "dateLocale": "ta-IN",
+    "subjectOne": "{name} {date} அன்று புதுப்பிக்கப்படும்",
+    "subjectMany": "{count} சந்தாக்கள் {date}-க்குள் புதுப்பிக்கப்படும்",
+    "intro": "இந்தச் சந்தாக்கள் விரைவில் புதுப்பிக்கப்படும்:",
+    "why": "{app}-இல் புதுப்பிப்பு நினைவூட்டல் மின்னஞ்சல்களை நீங்கள் இயக்கியதால் இது உங்களுக்கு வருகிறது.",
+    "change": "செயலியில் அவற்றை மாற்றுங்கள்",
+    "stop": "இந்த மின்னஞ்சல்களை நிறுத்து",
+    "linkEnd": ".",
+    "unnamed": "ஒரு சந்தா",
+    "cycles": { "weekly": "வாராந்திரம்", "monthly": "மாதாந்திரம்", "quarterly": "காலாண்டுதோறும்", "yearly": "ஆண்டுதோறும்" }
+  },
+  "hi": {
+    "dateLocale": "hi-IN",
+    "subjectOne": "{name} का नवीनीकरण {date} को होगा",
+    "subjectMany": "{count} सदस्यताओं का नवीनीकरण {date} तक होगा",
+    "intro": "इन सदस्यताओं का नवीनीकरण जल्द होगा:",
+    "why": "आपको यह इसलिए मिल रहा है क्योंकि आपने {app} में नवीनीकरण रिमाइंडर ईमेल चालू किए हैं।",
+    "change": "ऐप में इन्हें बदलें",
+    "stop": "ये ईमेल बंद करें",
+    "linkEnd": "।",
+    "unnamed": "एक सदस्यता",
+    "cycles": { "weekly": "साप्ताहिक", "monthly": "मासिक", "quarterly": "तिमाही", "yearly": "वार्षिक" }
+  }
+}

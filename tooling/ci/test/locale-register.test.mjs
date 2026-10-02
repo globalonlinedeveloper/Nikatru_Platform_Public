@@ -27,6 +27,8 @@ import {
   renderDartRegister,
 } from '../assert-locale-register.mjs';
 import { REGISTER_REL, loadRegister, registerProblems, supportedCodes } from '../../i18n/locales.mjs';
+import { AUTH_MAIL_COPY_REL, authMailCopyProblems, readAuthMailCopy, renderAuthMail } from '../../i18n/auth-mail.mjs';
+import { DIGEST_COPY } from '../assert-locale-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -54,6 +56,12 @@ function filesToCopy() {
     ...arbs(CHASSIS, 'chassis'),
     ...arbs(`${BRICK}/lib/l10n`, 'app'),
     ...READERS.map((r) => r.file),
+    AUTH_MAIL_COPY_REL,
+    DIGEST_COPY,
+    ...['confirm-signup.html', 'magic-link.html', 'reset-password.html'].flatMap((f) => [
+      `docs/platform/supabase/email-templates/${f}`,
+      `sites/nikatru/auth-mail/${f}`,
+    ]),
   ];
 }
 
@@ -288,5 +296,65 @@ describe('tooling/i18n/locales.mjs CLI', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout.trim(), CODES.join(' '));
     assert.ok(existsSync(join(REPO, REGISTER_REL)));
+  });
+});
+
+describe('L7 · server-side copy, and the auth e-mails it renders', () => {
+  test('RED CONTROL (item 5): the digest copy without its hi block FAILS', () => {
+    const d = JSON.parse(read(DIGEST_COPY));
+    delete d.hi;
+    write(DIGEST_COPY, JSON.stringify(d));
+    const r = run();
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /L7 services\/platform\/src\/lib\/digest-copy\.json has no "hi" block/);
+  });
+
+  test('a digest block one key short FAILS naming the key', () => {
+    const d = JSON.parse(read(DIGEST_COPY));
+    delete d.ta.unnamed;
+    write(DIGEST_COPY, JSON.stringify(d));
+    const r = run();
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /"ta" lacks unnamed/);
+  });
+
+  test('RED CONTROL: an auth mail whose ta button was dropped FAILS (L7), and its template is not rendered', () => {
+    const c = JSON.parse(read(AUTH_MAIL_COPY_REL));
+    delete c.templates['magic-link.html'].ta.button;
+    write(AUTH_MAIL_COPY_REL, JSON.stringify(c));
+    const r = run();
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /L7 tooling\/i18n\/auth-mail-copy\.json templates\["magic-link\.html"\]\.ta: `button` is missing/);
+  });
+
+  test('a hand-edited served template FAILS on L2', () => {
+    edit('sites/nikatru/auth-mail/reset-password.html', 'Reset your password', 'Reset it');
+    const r = run();
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /L2 sites\/nikatru\/auth-mail\/reset-password\.html is not what the register renders/);
+  });
+
+  test('the rendered template branches on the metadata locale SAFELY, with English last', () => {
+    const reg = loadRegister(REPO);
+    const html = renderAuthMail(reg, readAuthMailCopy(REPO)).get('confirm-signup.html');
+    // A bare field access on a nil .Data is a Go template ERROR, i.e. no mail at all:
+    // the value is only ever read through `with`, and stringified before `eq`.
+    assert.match(html, /\{\{- \$locale := "" \}\}\{\{ with \.Data \}\}\{\{ with \.locale \}\}\{\{ \$locale = printf "%v" \. \}\}/);
+    assert.doesNotMatch(html.split('\n').slice(5).join('\n'), /\.Data\./);
+    const branches = [...html.matchAll(/\{\{- (if|else if) eq \$locale "(\w+)" \}\}/g)].map((m) => m[2]);
+    assert.deepEqual(branches, supportedCodes(reg).filter((c) => c !== reg.source));
+    assert.ok(html.indexOf('{{- else }}') > html.lastIndexOf('else if'));
+    assert.match(html.slice(html.indexOf('{{- else }}')), /Welcome to Nikatru\. Tap the button below to\n {12}confirm <strong>\{\{ \.Email \}\}<\/strong> and activate your account\./);
+    assert.equal((html.match(/\{\{ \.ConfirmationURL \}\}/g) ?? []).length, 1 + 3 * supportedCodes(reg).length);
+  });
+
+  test('authMailCopyProblems: a block for an unregistered language and an intro without {email}', () => {
+    const reg = loadRegister(REPO);
+    const c = readAuthMailCopy(REPO);
+    c.templates['magic-link.html'].fr = c.templates['magic-link.html'].en;
+    c.templates['magic-link.html'].hi = { ...c.templates['magic-link.html'].hi, intro: ['a', 'b'] };
+    const p = authMailCopyProblems(reg, c);
+    assert.ok(p.some((x) => /has a block for fr/.test(x)), p.join('\n'));
+    assert.ok(p.some((x) => /hi: `intro` never says \{email\}/.test(x)), p.join('\n'));
   });
 });
