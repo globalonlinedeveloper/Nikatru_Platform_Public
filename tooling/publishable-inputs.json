@@ -79,6 +79,10 @@
       "reason": "🔴 NOT A PUBLISHED VALUE, AND NOT A CREDENTIAL EITHER. The literal string `form` or `token`: how the live E2E walk signs in — through the real form (a stack whose Turnstile site key is Cloudflare's always-pass test key, or that has no gate) or with the harness-minted one-time token. e2e.yml derives it (tooling/e2e/sign_in_via.mjs --derive, train st-e2e-parity, 2026-10-01) and grades the drive log against it afterwards. It reaches only e2e.yml's `flutter drive` DEBUG web build on the runner, destroyed with the runner. It names a branch, not a key.",
       "residual": "It tells a reader of the run's logs whether a given E2E run walked the form or used the token, which the run's summary already prints. Nothing about it is sensitive; it is recorded here because set equality is checked in both directions and a define with no entry is refused."
     },
+    "E2E_PENDING_FLOWS": {
+      "reason": "🔴 NOT A PUBLISHED VALUE, AND NOT A CREDENTIAL EITHER. The literal string `skip` or `run`: whether the live E2E walk skips (and says so) or walks the changed flows PARKED by the lead ruling on #1143 (2026-10-02) under row O-E2E-CORE-FLOW-LEGS-PENDING. e2e.yml passes the `pending_flows` dispatch input, `skip` when absent (the schedule). It reaches only e2e.yml's `flutter drive` DEBUG web build on the runner, destroyed with the runner. It names a branch, not a key.",
+      "residual": "It tells a reader of the run's logs whether a given E2E run walked the parked flows, which the run's own log line already prints. Nothing about it is sensitive; it is recorded here because set equality is checked in both directions and a define with no entry is refused."
+    },
     "APP_ENV": {
       "reason": "The literal string `production`. It selects which config branch the app takes and is not a credential in any sense.",
       "residual": "None beyond confirming the build is the production one, which the version already says."
