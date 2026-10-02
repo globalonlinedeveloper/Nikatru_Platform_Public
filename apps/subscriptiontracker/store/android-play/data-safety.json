@@ -253,7 +253,7 @@
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
       "and the app branches on them at four places that decide everything this form asks about:",
       "  providers/auth.dart:167          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
-      "  providers/subscriptions.dart:90  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
+      "  providers/subscriptions.dart:91  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:552  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:471                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
@@ -1316,7 +1316,7 @@
       "inventoryRows": [
         "table:subscriptiontracker_db.subscriptions"
       ],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:700). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:707). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
     },
     {
       "category": "App activity",
