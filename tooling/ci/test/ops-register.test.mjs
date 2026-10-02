@@ -2327,8 +2327,12 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  page plus one cross-check. The replay measured 27 after the row.
    *  2026-09-24: 28 → 30, the same documented raise for the tenth scheduled
    *  workflow, duty.workflow.name-clearance.yml. The replay measured 29 after
-   *  the row (its history is answered by replayWorld's derived run). */
-  const OPS_GITHUB_REQUEST_CEILING = 30;
+   *  the row (its history is answered by replayWorld's derived run).
+   *  2026-10-01: 30 → 32, the same documented raise for the next scheduled
+   *  workflow, duty.freshness.time-travel (.github/workflows/time-travel.yml).
+   *  The replay measured 32 after the row: one new page plus one cross-check,
+   *  answered by replayWorld's derived run. */
+  const OPS_GITHUB_REQUEST_CEILING = 32;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
