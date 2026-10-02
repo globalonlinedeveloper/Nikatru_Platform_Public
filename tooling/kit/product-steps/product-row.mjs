@@ -12,7 +12,7 @@ export const name = 'product row';
 export const guard = 'the private corpus\'s assert-platform-state limb P (run from its hooks; no CI job can read it)';
 export const MANIFEST_REL = 'platform-state/manifest.json';
 
-export function read(root, id, { privateRoot = null } = {}) {
+export function read(root, id, { privateRoot = null, kind = 'app' } = {}) {
   if (privateRoot === null || !existsSync(privateRoot)) {
     return {
       state: 'UNREAD',
@@ -30,7 +30,7 @@ export function read(root, id, { privateRoot = null } = {}) {
   return {
     state: 'NEXT',
     detail: `${MANIFEST_REL} products.list has no "${id}" row`,
-    command: `add {"id": "${id}", "kind": "app", "status": <its catalog status>, "firstPublish": {…}} to products.list in the private corpus's ${MANIFEST_REL}`,
+    command: `add {"id": "${id}", "kind": "${kind}", "status": <its register status>, "firstPublish": {…}} to products.list in the private corpus's ${MANIFEST_REL}`,
     guard,
   };
 }
