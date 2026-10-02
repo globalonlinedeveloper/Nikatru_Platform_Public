@@ -4458,6 +4458,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-personal-site.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
