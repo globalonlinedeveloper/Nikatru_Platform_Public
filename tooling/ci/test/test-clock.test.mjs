@@ -172,11 +172,17 @@ describe('the test-time clock (tooling/scripts/test-clock.mjs)', () => {
   test('C7 the time-travel workflow puts both variables on the tooling suite', () => {
     const wf = readFileSync(join(ROOT, '.github', 'workflows', 'time-travel.yml'), 'utf8');
     assert.match(wf, /NIKATRU_TEST_NOW: \$\{\{ matrix\.instant \}\}/, 'the workflow no longer sets NIKATRU_TEST_NOW');
+    // ⏱ 2026-10-02 · the preload is an absolute file URL in $TEST_CLOCK (#1160's
+    // spawn-ceiling-cwd rule refuses a relative --import), exported from this path.
     assert.match(
       wf,
-      /NODE_OPTIONS: --import=\$\{\{ github\.workspace \}\}\/tooling\/scripts\/test-clock\.mjs/,
-      'the tooling suite no longer preloads tooling/scripts/test-clock.mjs',
+      /resolve\(process\.env\.GITHUB_WORKSPACE, 'tooling\/scripts\/test-clock\.mjs'\)\)\.href"\)"[\s\S]*?echo "TEST_CLOCK=\$clock" >> "\$GITHUB_ENV"/,
+      'the workflow no longer exports tooling/scripts/test-clock.mjs as TEST_CLOCK',
     );
-    assert.match(wf, / --test "tooling\/ci\/test\/\*\.test\.mjs"/, 'the tooling suite is not the one ci.yml runs');
+    assert.match(
+      wf,
+      /export NODE_OPTIONS="--import=\$TEST_CLOCK"\n\s*node [^\n]*--import "\$TEST_CLOCK" [^\n]* --test "tooling\/ci\/test\/\*\.test\.mjs"/,
+      'the tooling suite no longer preloads $TEST_CLOCK in NODE_OPTIONS and on its own command line',
+    );
   });
 });
