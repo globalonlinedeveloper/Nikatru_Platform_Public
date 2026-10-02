@@ -2,7 +2,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // worker-secrets.mjs — EVERY WORKER SECRET FROM ONE MANIFEST, SYNCED FROM THE
 // VAULT BY ONE COMMAND (owner lock 2026-10-01: portable, from the pipeline).
-// Rotating any key = edit its vault key, then `sync --secret <NAME>`.
+// Rotating a `replace: "explicit"` key = edit its vault key, then
+// `sync --secret <NAME> --replace <NAME>`. A `replace: "never"` key (TOKEN_ENC_KEY_*:
+// it seals stored data) is NEVER overwritten while live: rotate it as a new name (_V2)
+// plus a migration (#1135 review finding 1).
 //
 //   check    [--worker W] [--port P [--adapter A]]
 //            Diffs tooling/worker-secrets.json, the live secret NAMES of every
@@ -13,21 +16,28 @@
 //            or re-synced from the pipeline). With --port, one line per secret
 //            `<name> <present|absent> <len> <sha8>` (present = set on its
 //            Worker; len/sha8 of the vault value, `0 -` when the vault lacks
-//            it), for tooling/ops/port-switch.mjs to parse.
-//   sync     [--worker W] [--secret S] [--dry-run] [--force]
-//            PUTs the vault value of each selected `setBy: vault` row. Without
-//            --secret it only RE-SYNCS names already live (it never provisions
-//            one: setting an absent secret can switch a feature on). An
-//            unchanged value (its sha256 equals the ledger's, and the name is
-//            live) is SKIPPED; --force always PUTs. `deploy` rows ride
-//            deploy-workers.yml and are never written here.
+//            it, and sha8 `-` for a value under 16 characters, whose hash
+//            would give it away), for tooling/ops/port-switch.mjs to parse.
+//   sync     [--worker W] [--secret S] [--replace NAME]... [--dry-run] [--force]
+//            Provisions an ABSENT name only with an explicit --secret (setting
+//            one can switch a feature on). A LIVE name is skipped when the
+//            ledger shows the vault value is what was last synced; otherwise
+//            it is REFUSED, its length (and sha8, when long enough) printed,
+//            unless its row is `replace: "explicit"` and `--replace <NAME>` is
+//            spelled out for it. A `replace: "never"` row is refused while live
+//            by every flag. --force re-sends an unchanged value, only where a
+//            replace is allowed. `deploy` rows ride deploy-workers.yml and are
+//            never written here.
 //   generate <SECRET> [--worker W] [--dry-run]
 //            For a `generated` row: random bytes into the vault FIRST (the
 //            vault read once, the new text verified in memory, a backup of
 //            what was read, then ONE write: temp file + rename), then the PUT.
-//            Refuses when the vault
-//            already holds the key — that is a rotation, and the row's
-//            `rotation` says how (TOKEN_ENC_KEY_V1 must never be replaced).
+//            It first LISTS the Worker's live names and refuses when the name
+//            is live, whatever the vault holds and with no flag to override
+//            (a live value missing from a vault is a custody gap: import it).
+//            It also refuses when the vault already holds the key. The vault
+//            write refuses a symlinked vault, and a vault whose mtime or size
+//            moved since it was read (a concurrent edit).
 //
 // NEVER PRINTS A VALUE: a length and the first 8 hex of its sha256 only. The
 // vault is read in-process. Cloudflare credentials come from the environment
@@ -42,7 +52,7 @@
 // after fetch aborts in libuv (TRAPS: UV_HANDLE_CLOSING), so this only ever
 // sets process.exitCode.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, readlinkSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -52,23 +62,30 @@ import { readWorkers, MANIFEST } from '../ci/assert-worker-secrets-declared.mjs'
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const API_DEFAULT = 'https://api.cloudflare.com/client/v4';
 export const LEDGER_NAME = 'worker-secrets.ledger.json';
-const VALUE_FLAGS = new Set(['--worker', '--secret', '--port', '--adapter', '--root']);
+const VALUE_FLAGS = new Set(['--worker', '--secret', '--port', '--adapter', '--root', '--replace']);
 const NO_VALUE_FLAGS = new Set(['--dry-run', '--force']);
+/** Below this length a hash of a value is a dictionary lookup away from the value, so only its length prints. */
+export const MIN_HASHED_LENGTH = 16;
 
 export const sha8 = (v) => createHash('sha256').update(v).digest('hex').slice(0, 8);
 export const sha256 = (v) => createHash('sha256').update(v).digest('hex');
-/** The only thing ever printed about a value. */
-export const fingerprint = (v) => (typeof v === 'string' && v.length ? `len ${v.length} sha8 ${sha8(v)}` : 'len 0 sha8 -');
+/** The only thing ever printed about a value: its length, and a sha8 only when it is long enough not to give the value away. */
+export const fingerprint = (v) => {
+  if (typeof v !== 'string' || !v.length) return 'len 0';
+  return v.length < MIN_HASHED_LENGTH ? `len ${v.length}` : `len ${v.length} sha8 ${sha8(v)}`;
+};
 
 export function parseArgs(argv) {
-  const out = { cmd: null, positional: [], worker: null, secret: null, port: null, adapter: null, root: null, dryRun: false, force: false };
+  const out = { cmd: null, positional: [], worker: null, secret: null, port: null, adapter: null, root: null, dryRun: false, force: false, replace: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (NO_VALUE_FLAGS.has(a)) { if (a === '--dry-run') out.dryRun = true; else out.force = true; continue; }
     if (VALUE_FLAGS.has(a)) {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` };
-      out[a.slice(2)] = v;
+      // --replace is spelled out once per NAME it may overwrite; it is never a wildcard.
+      if (a === '--replace') out.replace.push(v);
+      else out[a.slice(2)] = v;
       i++;
       continue;
     }
@@ -115,15 +132,26 @@ export function vaultCandidates(root) {
 // volume). Nothing appends to the vault and nothing re-reads it.
 
 /** ONE read: the first candidate that reads is the vault. `{ path, text }`, or `{ path: null, tried }`. */
-export function readVault(root, read = readFileSync) {
+export function readVault(root, { read = readFileSync, readlink = readlinkSync, stat = statSync } = {}) {
   const tried = [];
   for (const path of vaultCandidates(root)) {
+    let text;
     try {
-      return { path, text: read(path, 'utf8') };
+      text = read(path, 'utf8');
     } catch (e) {
       if (e?.code !== 'ENOENT') throw e;
       tried.push(path);
+      continue;
     }
+    // A symlinked vault would be REPLACED by a regular file at the rename, and its target would
+    // keep the old text: refused. readlink answers EINVAL for anything that is not a link.
+    let target = null;
+    try { target = readlink(path); } catch (e) { if (e?.code !== 'EINVAL') throw e; }
+    if (target !== null) throw new Refusal(`the vault ${path} is a symlink; refusing to read or write a vault through a link (point NIKATRU_VAULT at the file itself)`, 2);
+    // Taken AFTER the read, so nothing here checks a file and then trusts the check: writeVaultOnce
+    // compares these to the file just before its rename, and refuses a concurrent edit.
+    const s = stat(path);
+    return { path, text, mtimeMs: s.mtimeMs, size: s.size };
   }
   return { path: null, tried };
 }
@@ -135,10 +163,18 @@ export function withVaultKey(text, key, value) {
   return next;
 }
 
-/** ONE write of the whole vault: a temp file created beside it (`wx`: never an existing file), then renamed over it. */
-export function writeVaultOnce(path, next, { write = writeFileSync, rename = renameSync } = {}) {
+/** ONE write of the whole vault: a temp file created beside it (`wx`: never an existing file), then renamed over it.
+ *  `asRead` is readVault's { mtimeMs, size }: if the vault moved since that read, an edit made in between would be
+ *  lost by the rename, so it refuses and removes its temp file instead. */
+export function writeVaultOnce(path, next, asRead, { write = writeFileSync, rename = renameSync, stat = statSync, remove = unlinkSync } = {}) {
+  if (!asRead || typeof asRead.mtimeMs !== 'number' || typeof asRead.size !== 'number') throw new Refusal('writeVaultOnce needs the mtime and size the vault was read at', 2);
   const tmp = `${path}.tmp-${process.pid}`;
   write(tmp, next, { mode: 0o600, flag: 'wx' });
+  const now = stat(path);
+  if (now.mtimeMs !== asRead.mtimeMs || now.size !== asRead.size) {
+    remove(tmp);
+    throw new Refusal(`the vault ${path} changed since it was read (mtime or size moved): a concurrent edit; nothing was written, run again`, 1);
+  }
   rename(tmp, path);
 }
 
@@ -155,18 +191,35 @@ export function writeLedger(path, ledger) {
   renameSync(tmp, path);
 }
 
-/** What sync does with one row: a pure decision, so the tests can hold it. */
-export function decideSync(row, { vaultValue, livePresent, ledgerSha, force, explicit = false }) {
+/** What sync does with one row: a pure decision, so the tests can hold it.
+ *
+ *  ⏱ 2026-10-02 · #1135 review finding 1 (MAJOR). Overwriting a LIVE secret is never a default:
+ *  a key that seals stored data (TOKEN_ENC_KEY_*) overwritten live makes every sealed row
+ *  unreadable for good. So a live name is only ever SKIPPED (the ledger shows the vault value is
+ *  what was last synced), or replaced when its row is `replace: "explicit"` AND the operator spelled
+ *  `--replace <NAME>` for it. A `replace: "never"` row is never overwritten while live, by any flag:
+ *  rotating it is a new name (`_V2`) and a migration. `--force` only re-sends an UNCHANGED value,
+ *  and only where a replace is allowed. A row with no `replace` is treated as `never`. */
+export function decideSync(row, { vaultValue, livePresent, ledgerSha, force, explicit = false, replace = [] }) {
   if (row.setBy !== 'vault') return { action: 'skip', why: `setBy ${row.setBy}: carried by ${row.setBy === 'deploy' ? 'deploy-workers.yml (--secrets-file)' : row.setBy}, never written here` };
   const inVault = typeof vaultValue === 'string' && vaultValue.length > 0;
   if (!inVault && livePresent) return { action: 'refuse', why: `vault key ${row.vaultKey} is absent: a CUSTODY GAP, the value exists only on Cloudflare` };
   if (!inVault) return explicit ? { action: 'refuse', why: `vault key ${row.vaultKey} is absent: nothing to sync` } : { action: 'skip', why: 'not provisioned (neither the vault nor the Worker holds it)' };
-  // A bulk sync RE-SYNCS what is live and never provisions: setting an absent
-  // secret can switch a feature on (a payment rail, a receipt verifier), so
-  // that takes an explicit --secret.
+  // A bulk sync never provisions: setting an absent secret can switch a feature on (a payment
+  // rail, a receipt verifier), so that takes an explicit --secret.
   if (!livePresent && !explicit) return { action: 'skip', why: 'absent on the Worker: provisioning takes an explicit --secret' };
-  if (!force && livePresent && ledgerSha === sha256(vaultValue)) return { action: 'skip', why: 'unchanged (ledger hash equals the vault value, and the name is live)' };
-  return { action: 'put', why: force ? '--force' : !livePresent ? 'absent on the Worker' : ledgerSha ? 'the vault value differs from the ledger' : 'no ledger entry yet' };
+  if (!livePresent) return { action: 'put', why: 'absent on the Worker: provisioned' };
+  const unchanged = ledgerSha === sha256(vaultValue);
+  if (unchanged && !force) return { action: 'skip', why: 'unchanged (ledger hash equals the vault value, and the name is live)' };
+  const mode = row.replace === 'explicit' ? 'explicit' : 'never';
+  const versus = `the vault holds ${fingerprint(vaultValue)}; the last synced value ${!ledgerSha ? 'is unknown (no ledger entry)' : unchanged ? 'is the same' : `differs${vaultValue.length < MIN_HASHED_LENGTH ? '' : ` (ledger sha8 ${ledgerSha.slice(0, 8)})`}`}`;
+  if (mode === 'never') {
+    return { action: 'refuse', why: `LIVE and \`replace: "never"\`: it is never overwritten in place, by any flag (${versus}). Rotate it as a NEW name (_V2) plus a migration.` };
+  }
+  if (!replace.includes(row.secret)) {
+    return { action: 'refuse', why: `LIVE: overwriting it needs \`--replace ${row.secret}\` spelled out (${versus})` };
+  }
+  return { action: 'put', why: `--replace ${row.secret}${force ? ' --force' : ''} (${versus})` };
 }
 
 /** The API base: the default, or a loopback test double — never another host with the token. */
@@ -244,7 +297,7 @@ async function run(opts) {
       for (const r of selected) {
         const v = vault.get(r.vaultKey);
         const present = live.get(r.worker)?.has(r.secret) ? 'present' : 'absent';
-        console.log(`${r.secret} ${present} ${v ? v.length : 0} ${v ? sha8(v) : '-'}`);
+        console.log(`${r.secret} ${present} ${v ? v.length : 0} ${v && v.length >= MIN_HASHED_LENGTH ? sha8(v) : '-'}`);
         if (r.setBy === 'vault' && present === 'present' && !v) bad++;
       }
       return bad ? 1 : 0;
@@ -271,13 +324,15 @@ async function run(opts) {
   if (opts.cmd === 'sync') {
     if (opts.secret) selected = selected.filter((r) => r.secret === opts.secret);
     if (!selected.length) throw new Refusal(`no row of ${MANIFEST} matches${opts.worker ? ` --worker ${opts.worker}` : ''}${opts.secret ? ` --secret ${opts.secret}` : ''}`, 1);
+    const stray = opts.replace.filter((n) => !selected.some((r) => r.secret === n));
+    if (stray.length) throw new Refusal(`--replace ${stray.join(', ')} names no selected row: a replace is spelled per NAME it overwrites`, 2);
     let live;
     try { live = await liveNames(c, [...new Set(selected.map((r) => r.worker))]); } catch (e) { throw new Refusal(`COVERAGE LOST — ${e.message}`, 2); }
     let failed = 0;
     for (const r of selected) {
       const v = vault.get(r.vaultKey);
       const names = live.get(r.worker);
-      const d = decideSync(r, { vaultValue: v, livePresent: !!names?.has(r.secret), ledgerSha: ledger[`${r.worker}/${r.secret}`]?.sha256, force: opts.force, explicit: !!opts.secret });
+      const d = decideSync(r, { vaultValue: v, livePresent: !!names?.has(r.secret), ledgerSha: ledger[`${r.worker}/${r.secret}`]?.sha256, force: opts.force, explicit: !!opts.secret, replace: opts.replace });
       const tag = `${r.worker}/${r.secret} (${fingerprint(v)})`;
       if (d.action === 'refuse') { console.log(`REFUSED ${tag}: ${d.why}`); failed++; continue; }
       if (d.action === 'skip') { console.log(`skipped ${tag}: ${d.why}`); continue; }
@@ -299,6 +354,21 @@ async function run(opts) {
   if (!cands.length) throw new Refusal(`no generated row of ${MANIFEST} is ${name}${opts.worker ? ` on ${opts.worker}` : ''}`, 1);
   if (cands.length > 1) throw new Refusal(`${name} is generated on ${cands.map((r) => r.worker).join(', ')}: pass --worker`, 2);
   const r = cands[0];
+  // ⏱ 2026-10-02 · #1135 review finding 1: the LIVE Worker is asked first, names only. A name that is
+  // live is never generated over, whatever this vault holds and whatever flag is given: with the
+  // wrong vault (a worktree's, a stray NIKATRU_VAULT) or a custody gap, a fresh value over a live
+  // sealing key makes every sealed row unreadable, and the old key may be in no vault at all.
+  let live;
+  try { live = await liveNames(c, [r.worker]); } catch (e) { throw new Refusal(`COVERAGE LOST — ${e.message}; generate never writes without first reading the live names`, 2); }
+  if (live.get(r.worker) === null) throw new Refusal(`script ${r.worker} does not exist on Cloudflare`, 1);
+  if (live.get(r.worker).has(r.secret)) {
+    throw new Refusal(
+      `${r.worker}/${r.secret} is LIVE: generate never writes over a live secret (row replace: ${r.replace ?? 'never'}). ` +
+        `If this vault lacks it, that is a CUSTODY GAP: import the value from where it was made, never regenerate it. ` +
+        `Rotating it: ${r.rotation}`,
+      1,
+    );
+  }
   if (vault.has(r.vaultKey)) throw new Refusal(`vault key ${r.vaultKey} already exists (${fingerprint(vault.get(r.vaultKey))}); generate never replaces a key. Re-send it with \`sync --secret ${r.secret} --worker ${r.worker}\`, or rotate per the row: ${r.rotation}`, 1);
   const value = randomBytes(r.generate.bytes).toString(r.generate.encoding);
   if (opts.dryRun) { console.log(`DRY RUN — would add vault key ${r.vaultKey} (${r.generate.bytes} random bytes, ${r.generate.encoding}) and PUT ${r.worker}/${r.secret}`); return 0; }
@@ -307,7 +377,7 @@ async function run(opts) {
   const next = withVaultKey(vaultText, r.vaultKey, value);
   // The backup is the text this run READ, written from memory: no second read of the vault.
   writeFileSync(backup, vaultText, { mode: 0o600, flag: 'wx' });
-  writeVaultOnce(vPath, next);
+  writeVaultOnce(vPath, next, read);
   console.log(`vault: ${r.vaultKey} added (${fingerprint(value)}); backup ${backup}`);
   const put = await cf(c, 'PUT', `/workers/scripts/${encodeURIComponent(r.worker)}/secrets`, { name: r.secret, text: value, type: 'secret_text' });
   if (!put.ok) { console.log(`FAILED PUT ${r.worker}/${r.secret}: HTTP ${put.status} ${put.errors}. The vault holds it; re-send with \`sync --secret ${r.secret} --worker ${r.worker}\``); return 1; }

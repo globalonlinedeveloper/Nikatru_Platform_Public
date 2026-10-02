@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { MOVE_BY, flipText } from '../../ops/check-secret-scopes.mjs';
+import { MOVE_BY, FIRST_DUE_MAX_DAYS, flipText, readNames, nextLink } from '../../ops/check-secret-scopes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TOOL = resolve(HERE, '..', '..', 'ops', 'check-secret-scopes.mjs');
@@ -92,5 +92,65 @@ describe('check-secret-scopes — the names, read back against the register', ()
     assert.equal(inside.code, 0, inside.out);
     assert.match(inside.out, /::warning title=Secret scopes NOT READ \(unreadable until 2099-01-01\)::/);
     assert.equal(run(f, ['--unreadable-until', '2020-01-01'], env).code, 2);
+  });
+});
+
+// ⏱ 2026-10-02 · #1135 review finding 2: a scoped secret declared before its channel exists is
+// KNOWN FAILING, NOT YET DUE until its row's `firstDue`, bounded, then it blocks (ops-register's pattern).
+describe('check-secret-scopes — a dated pending state for a secret not minted yet', () => {
+  const nowhere = { repository: [], environments: { 'store-publish': [] } };
+  it('before firstDue: stored nowhere PRINTS as NOT YET DUE and does not block (exit 0)', () => {
+    const r = run(fixture({ rows: [row('environment', { firstDue: '2026-11-30' })], names: nowhere }), ['--today', '2026-10-02']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /NOT YET DUE {3}MS_STORE_CLIENT_SECRET: scoped to store-publish and stored NOWHERE.*KNOWN FAILING, NOT YET DUE: firstDue is 2026-11-30, 59 day\(s\) from now/);
+  });
+  it('🔴 on and after firstDue it BLOCKS (exit 1), saying the date has passed', () => {
+    for (const today of ['2026-11-30', '2026-12-15']) {
+      const r = run(fixture({ rows: [row('environment', { firstDue: '2026-11-30' })], names: nowhere }), ['--today', today]);
+      assert.equal(r.code, 1, `${today}\n${r.out}`);
+      assert.match(r.out, /FAIL {2}MS_STORE_CLIENT_SECRET: .*stored NOWHERE.*its firstDue 2026-11-30 has PASSED, so it gates nothing/);
+    }
+  });
+  it(`🔴 a firstDue more than ${FIRST_DUE_MAX_DAYS} days ahead, or not a date, gates nothing (exit 1): never an open-ended waiver`, () => {
+    for (const firstDue of ['2027-06-01', 'someday']) {
+      const r = run(fixture({ rows: [row('environment', { firstDue })], names: nowhere }), ['--today', '2026-10-02']);
+      assert.equal(r.code, 1, `${firstDue}\n${r.out}`);
+      assert.match(r.out, /gates nothing|past the 92-day bound/);
+    }
+  });
+  it('🔴 firstDue never excuses a REPOSITORY-level copy of an environment-stored secret', () => {
+    const r = run(fixture({ rows: [row('environment', { firstDue: '2026-11-30' })], names: { repository: ['MS_STORE_CLIENT_SECRET'], environments: { 'store-publish': ['MS_STORE_CLIENT_SECRET'] } } }), ['--today', '2026-10-02']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /a REPOSITORY-level copy exists/);
+  });
+});
+
+// ⏱ 2026-10-02 · #1135 review finding 3: each listing read one page of 100 names.
+describe('check-secret-scopes — every page of every listing', () => {
+  /** A fake GitHub serving `names` 100 a page with Link: rel="next", and one environment. */
+  const fakeGitHub = (names, { totalCount = names.length } = {}) => async (url) => {
+    const u = new URL(url);
+    const json = (body, link) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json', ...(link ? { link } : {}) } });
+    if (u.pathname.endsWith('/environments')) return json({ total_count: 1, environments: [{ name: 'store-publish' }] });
+    if (u.pathname.includes('/environments/')) return json({ total_count: 1, secrets: [{ name: 'ENV_ONLY' }] });
+    const page = Number(u.searchParams.get('page') ?? 1);
+    const slice = names.slice((page - 1) * 100, page * 100);
+    const more = page * 100 < names.length;
+    return json({ total_count: totalCount, secrets: slice.map((name) => ({ name })) }, more ? `<https://api.github.com/repos/o/r/actions/secrets?per_page=100&page=${page + 1}>; rel="next", <https://api.github.com/repos/o/r/actions/secrets?per_page=100&page=3>; rel="last"` : null);
+  };
+  const names = Array.from({ length: 230 }, (_, i) => `SECRET_${String(i).padStart(3, '0')}`);
+  it('🔴 230 repository names over three pages are ALL read: a name on page 3 is seen', async () => {
+    const r = await readNames({ repo: 'o/r', token: 't', fetchImpl: fakeGitHub(names) });
+    assert.equal(r.repository.size, 230);
+    assert.ok(r.repository.has('SECRET_229'), 'a name past page 1 was not read');
+    assert.deepEqual([...r.environments.get('store-publish')], ['ENV_ONLY']);
+  });
+  it('🔴 pages that do not add up to total_count are refused, never graded as a full listing', async () => {
+    await assert.rejects(readNames({ repo: 'o/r', token: 't', fetchImpl: fakeGitHub(names, { totalCount: 231 }) }), /listed 230 of total_count 231/);
+  });
+  it('nextLink reads rel="next" and nothing else', () => {
+    assert.equal(nextLink('<https://x/a?page=2>; rel="next", <https://x/a?page=9>; rel="last"'), 'https://x/a?page=2');
+    assert.equal(nextLink('<https://x/a?page=9>; rel="last"'), null);
+    assert.equal(nextLink(null), null);
   });
 });

@@ -219,7 +219,7 @@
     23,
 
   "check-secret-scopes.test.mjs":
-    8,
+    15,
 
   "chrome-raster.test.mjs":
     1,
@@ -1104,10 +1104,10 @@
     11,
 
   "worker-secrets-declared.test.mjs":
-    19,
+    20,
 
   "worker-secrets-tool.test.mjs":
-    14,
+    21,
 
   "worker-set.test.mjs":
     37,

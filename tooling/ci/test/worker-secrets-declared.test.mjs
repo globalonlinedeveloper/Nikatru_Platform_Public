@@ -21,7 +21,7 @@ const run = (root) => {
 };
 
 const row = (over = {}) => ({
-  worker: 'w', secret: 'ACME_KEY', vaultKey: 'ACME_KEY_LIVE', setBy: 'vault', kind: 'vendor', port: 'widgets', adapter: 'acme',
+  worker: 'w', secret: 'ACME_KEY', vaultKey: 'ACME_KEY_LIVE', setBy: 'vault', replace: 'explicit', kind: 'vendor', port: 'widgets', adapter: 'acme',
   purpose: 'the acme API key for widgets', rotation: 'acme console, then vault, then sync', consumers: ['services/w/src/acme.ts'], ...over,
 });
 const rows = () => [
@@ -119,6 +119,25 @@ describe('assert-worker-secrets-declared — the fixture', () => {
     const r = run(mutate((m) => { m.rows.push({ ...m.rows[0] }); }));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /limb F: .*declares w\/ACME_KEY twice/);
+  });
+  // ⏱ 2026-10-02 · #1135 review finding 1: whether a LIVE value may ever be overwritten is data.
+  it('🔴 G: a row with no `replace`, an unknown one, or a TOKEN_ENC_KEY_* row that is not `never` exits 1', () => {
+    assert.match(run(mutate((m) => { delete m.rows[0].replace; })).first, /limb G: .*replace undefined is not one of never\|explicit/);
+    assert.match(run(mutate((m) => { m.rows[0].replace = 'sometimes'; })).first, /limb G: .*replace "sometimes"/);
+    const enc = { _why: ['fixture'], rows: rows() };
+    enc.rows[1] = { ...enc.rows[1], secret: 'TOKEN_ENC_KEY_V1', vaultKey: 'TOKEN_ENC_KEY_V1' };
+    const r = run(fixture({ manifest: enc, files: {
+      'services/w/src/types.ts': 'export interface Env {\n  APP_ID: string;\n  URL: string;\n  RELEASE?: string;\n  ACME_KEY?: string;\n  TOKEN_ENC_KEY_V1?: string;\n  ANON?: string;\n  DB: D1Database;\n}\n',
+      'services/w/src/crypto.ts': 'export const k = (env) => env.TOKEN_ENC_KEY_V1;\n',
+    } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb G: .*w\/TOKEN_ENC_KEY_V1\) seals stored data and says replace "explicit"/);
+    enc.rows[1].replace = 'never';
+    const ok = run(fixture({ manifest: enc, files: {
+      'services/w/src/types.ts': 'export interface Env {\n  APP_ID: string;\n  URL: string;\n  RELEASE?: string;\n  ACME_KEY?: string;\n  TOKEN_ENC_KEY_V1?: string;\n  ANON?: string;\n  DB: D1Database;\n}\n',
+      'services/w/src/crypto.ts': 'export const k = (env) => env.TOKEN_ENC_KEY_V1;\n',
+    } }));
+    assert.equal(ok.code, 0, ok.out);
   });
   it('G: a generated row without its generate spec, and a deploy row the deploy does not carry, exit 1', () => {
     assert.match(run(mutate((m) => { delete m.rows[1].generate; })).first, /limb G: .*generated but declares no generate/);

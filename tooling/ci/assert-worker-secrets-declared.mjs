@@ -29,7 +29,9 @@
 //   E workers   a row's `worker` is a wrangler script: a services/<w> `name`,
 //               or `<name>-sandbox` where that config declares env.sandbox.
 //   F unique    (worker, secret) appears once.
-//   G shape     `kind` is generated|vendor|config and `setBy` vault|deploy; a
+//   G shape     `kind` is generated|vendor|config, `setBy` vault|deploy and
+//               `replace` never|explicit (TOKEN_ENC_KEY_* always never: a key that
+//               seals stored data is never overwritten live, #1135 review); a
 //               `generated` row, and only one, declares `generate` (>= 32
 //               bytes, base64 or hex); a `deploy` row is carried by
 //               .github/workflows/deploy-workers.yml as `secrets.<NAME>`.
@@ -54,7 +56,10 @@ export const PORTS_DIR = 'tooling/ports';
 export const DEPLOY_WORKFLOW = '.github/workflows/deploy-workers.yml';
 export const KINDS = Object.freeze(['generated', 'vendor', 'config']);
 export const SET_BY = Object.freeze(['vault', 'deploy']);
-export const ROW_KEYS = Object.freeze(['worker', 'secret', 'vaultKey', 'setBy', 'kind', 'port', 'adapter', 'generate', 'purpose', 'rotation', 'consumers']);
+export const ROW_KEYS = Object.freeze(['worker', 'secret', 'vaultKey', 'setBy', 'replace', 'kind', 'port', 'adapter', 'generate', 'purpose', 'rotation', 'consumers']);
+export const REPLACE = Object.freeze(['never', 'explicit']);
+/** Keys that seal or sign STORED data: overwritten live, every sealed row stops opening. Always `never`. */
+export const SEALS_STORED_DATA = /^TOKEN_ENC_KEY_/;
 const NAME = /^[A-Z][A-Z0-9_]*$/;
 const VAULT_KEY = /^[A-Za-z][A-Za-z0-9_]*$/;
 
@@ -182,6 +187,8 @@ export function evaluate(root) {
     if (typeof r.vaultKey !== 'string' || !VAULT_KEY.test(r.vaultKey)) find('G', `${MANIFEST} ${at} (${id}): vaultKey ${JSON.stringify(r.vaultKey)} is not a vault key name`);
     if (!KINDS.includes(r.kind)) find('G', `${MANIFEST} ${at} (${id}): kind ${JSON.stringify(r.kind)} is not one of ${KINDS.join('|')}`);
     if (!SET_BY.includes(r.setBy)) find('G', `${MANIFEST} ${at} (${id}): setBy ${JSON.stringify(r.setBy)} is not one of ${SET_BY.join('|')}`);
+    if (!REPLACE.includes(r.replace)) find('G', `${MANIFEST} ${at} (${id}): replace ${JSON.stringify(r.replace)} is not one of ${REPLACE.join('|')}; every row says whether a LIVE value may ever be overwritten`);
+    else if (typeof r.secret === 'string' && SEALS_STORED_DATA.test(r.secret) && r.replace !== 'never') find('G', `${MANIFEST} ${at} (${id}) seals stored data and says replace ${JSON.stringify(r.replace)}: overwritten live, every sealed row stops opening, so it is "never" (rotate as a new name plus a migration)`);
     for (const k of ['purpose', 'rotation']) if (typeof r[k] !== 'string' || r[k].trim().length < 10) find('G', `${MANIFEST} ${at} (${id}): \`${k}\` must say it in words (10+ characters)`);
     if (r.kind === 'generated') {
       const g = r.generate;

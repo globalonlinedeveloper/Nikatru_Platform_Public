@@ -23,7 +23,10 @@
 //           while it says "repository" and the move date (MOVE_BY, #1095's
 //           2026-11-30) has passed; or a scoped secret exists NOWHERE.
 //           Before MOVE_BY a "repository" row with a `moveStep` PRINTS as
-//           pending (#1095's rule), never fails.
+//           pending (#1095's rule), never fails. A scoped secret stored
+//           nowhere whose row carries a `firstDue` (YYYY-MM-DD, at most
+//           FIRST_DUE_MAX_DAYS ahead) is KNOWN FAILING, NOT YET DUE: it prints
+//           and does not block until that date, and blocks from it.
 //   prints  stored-but-unreferenced names (security-022: candidates to delete,
 //           an owner step) and referenced-but-unstored names; and each move the
 //           names show as DONE, with the follow-up: `--write-flips`.
@@ -63,7 +66,7 @@ export function scopedRows(register, referenced) {
   const rows = [];
   for (const r of reg.nonSigning ?? []) {
     const envs = scopeOf(r?.environment);
-    if (envs && envs.length) rows.push({ name: r.name, envs, storedAt: r.storedAt ?? null, moveStep: r.moveStep ?? null, from: 'nonSigning' });
+    if (envs && envs.length) rows.push({ name: r.name, envs, storedAt: r.storedAt ?? null, moveStep: r.moveStep ?? null, firstDue: r.firstDue ?? null, from: 'nonSigning' });
   }
   const sc = reg.signingScope;
   if (sc && typeof sc.environment === 'string') {
@@ -92,16 +95,41 @@ export function referencedNames(root) {
   return out;
 }
 
+/** The longest a `firstDue` may sit ahead of today: a pending state is bounded, never an open-ended waiver. */
+export const FIRST_DUE_MAX_DAYS = 92;
+
+/** ⏱ 2026-10-02 · #1135 review finding 2. A scoped secret declared before its channel exists
+ *  (SNAPCRAFT_STORE_CREDENTIALS: the owner sets up Snap) was red on every read from the first
+ *  one, which teaches readers to skip the check. The register's own pattern answers it
+ *  (assert-ops-register.mjs, `recordQuery.firstDue`): the verdict stays FAILING and PRINTS, only
+ *  the block is lifted, only while today < firstDue, only for a date within FIRST_DUE_MAX_DAYS,
+ *  and it expires by arithmetic. It applies to "stored nowhere" alone; a repository-level copy
+ *  is never pending. PURE: { notYetDue, days } or { problem } or {}. */
+export function firstDueVerdict(firstDue, today) {
+  if (firstDue === null || firstDue === undefined) return {};
+  const due = Date.parse(`${firstDue}T00:00:00Z`);
+  const now = Date.parse(`${today}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(firstDue)) || Number.isNaN(due)) return { problem: `its firstDue ${JSON.stringify(firstDue)} is not a YYYY-MM-DD date, so it gates nothing` };
+  const days = Math.round((due - now) / 86_400_000);
+  if (days > FIRST_DUE_MAX_DAYS) return { problem: `its firstDue ${firstDue} is ${days} days ahead, past the ${FIRST_DUE_MAX_DAYS}-day bound: a pending state is dated, not open-ended` };
+  if (days > 0) return { notYetDue: true, days };
+  return { problem: `its firstDue ${firstDue} has PASSED, so it gates nothing: mint the secret, or drop the row's environment scope until the channel exists` };
+}
+
 /** The verdict over the names. PURE. `stored` = { repository: Set, environments: Map(env → Set) }. */
 export function grade(rows, stored, referenced, today) {
   const findings = [];
   const pending = [];
+  const notYetDue = [];
   const done = [];
   for (const r of rows) {
     const atRepo = stored.repository.has(r.name);
     const inEnvs = r.envs.filter((e) => stored.environments.get(e)?.has(r.name));
     if (!atRepo && inEnvs.length === 0) {
-      findings.push(`${r.name}: scoped to ${r.envs.join(' | ')} and stored NOWHERE — not at repository level, not in ${r.envs.join(' or ')}`);
+      const nowhere = `${r.name}: scoped to ${r.envs.join(' | ')} and stored NOWHERE — not at repository level, not in ${r.envs.join(' or ')}`;
+      const due = firstDueVerdict(r.firstDue, today);
+      if (due.notYetDue) notYetDue.push(`${nowhere}. KNOWN FAILING, NOT YET DUE: firstDue is ${r.firstDue}, ${due.days} day(s) from now, so this prints and does not block; it BLOCKS from that date, whether or not anybody edits the row`);
+      else findings.push(due.problem ? `${nowhere}; ${due.problem}` : nowhere);
       continue;
     }
     if (atRepo) {
@@ -115,7 +143,7 @@ export function grade(rows, stored, referenced, today) {
   const allStored = new Set([...stored.repository, ...[...stored.environments.values()].flatMap((s) => [...s])]);
   const unreferenced = [...allStored].filter((n) => !referenced.has(n)).sort();
   const unstored = [...referenced].filter((n) => !allStored.has(n)).sort();
-  return { findings, pending, done, unreferenced, unstored };
+  return { findings, pending, notYetDue, done, unreferenced, unstored };
 }
 
 /** Rewrite each done row's storedAt and drop its moveStep, textually, in the row's own block. PURE. */
@@ -147,21 +175,47 @@ export function flipText(text, names) {
   return { text: out, flipped };
 }
 
-async function readNames({ repo, token, fetchImpl = fetch }) {
+/** Pages read per listing at most: 100 names a page, so 5,000 names; past that the read refuses, never truncates. */
+export const MAX_PAGES = 50;
+
+/** The `rel="next"` URL of a Link header, or null. PURE. */
+export function nextLink(link) {
+  const m = /<([^>]+)>\s*;\s*rel="next"/.exec(link ?? '');
+  return m ? m[1] : null;
+}
+
+/** Every secret NAME per scope, every page of every listing.
+ *  ⏱ 2026-10-02 · #1135 review finding 3: each listing read ONE page of 100, so a repository-level
+ *  copy on page 2 read as clean and a name there as "stored nowhere". It now follows `Link:
+ *  rel="next"` to the end, and refuses (throws: exit 2) when the pages do not add up to the
+ *  listing's own `total_count`, or run past MAX_PAGES. */
+export async function readNames({ repo, token, fetchImpl = fetch }) {
   const api = `https://api.github.com/repos/${repo}`;
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   // The shared reading of "a blip or an outage" (bounded-retry.mjs): a dropped wire, a 429 or a 5xx is
   // asked again within its ceiling; any other non-OK status is an answer.
-  const get = async (url) => {
-    const path = url.replace(api, '');
-    const res = await fetchWithBoundedRetry(({ signal }) => fetchImpl(url, { headers, signal }), { describe: (s) => `GET ${path}: ${s}` });
-    if (!res.ok) throw new Error(`GET ${path} answered HTTP ${res.status}`);
-    return res.json();
+  const getAll = async (first, key) => {
+    const items = [];
+    let url = first;
+    let total = null;
+    for (let page = 1; url; page++) {
+      if (page > MAX_PAGES) throw new Error(`${first.replace(api, '')} runs past ${MAX_PAGES} pages; refusing to grade a truncated listing`);
+      const path = url.replace(api, '');
+      const res = await fetchWithBoundedRetry(({ signal }) => fetchImpl(url, { headers, signal }), { describe: (s) => `GET ${path}: ${s}` });
+      if (!res.ok) throw new Error(`GET ${path} answered HTTP ${res.status}`);
+      const body = await res.json();
+      if (!Array.isArray(body?.[key])) throw new Error(`GET ${path} carried no ${key} array`);
+      items.push(...body[key]);
+      if (Number.isInteger(body.total_count)) total = body.total_count;
+      url = nextLink(res.headers.get('link'));
+    }
+    if (total !== null && items.length !== total) throw new Error(`${first.replace(api, '')} listed ${items.length} of total_count ${total}; refusing to grade a partial listing`);
+    return items;
   };
-  const repository = new Set(((await get(`${api}/actions/secrets?per_page=100`)).secrets ?? []).map((s) => s.name));
+  const repository = new Set((await getAll(`${api}/actions/secrets?per_page=100`, 'secrets')).map((s) => s.name));
   const environments = new Map();
-  for (const e of (await get(`${api}/environments?per_page=100`)).environments ?? []) {
-    environments.set(e.name, new Set(((await get(`${api}/environments/${encodeURIComponent(e.name)}/secrets?per_page=100`)).secrets ?? []).map((s) => s.name)));
+  for (const e of await getAll(`${api}/environments?per_page=100`, 'environments')) {
+    environments.set(e.name, new Set((await getAll(`${api}/environments/${encodeURIComponent(e.name)}/secrets?per_page=100`, 'secrets')).map((s) => s.name)));
   }
   return { repository, environments };
 }
@@ -217,6 +271,7 @@ async function main() {
   const g = grade(rows, stored, referenced, today);
   console.log(`read: ${stored.repository.size} repository name(s); ${[...stored.environments].map(([e, s]) => `${e} ${s.size}`).join(', ') || 'no environment'}; ${rows.length} scoped row(s) graded`);
   for (const p of g.pending) console.log(`PENDING MOVE  ${p}`);
+  for (const p of g.notYetDue) console.log(`NOT YET DUE   ${p}`);
   for (const r of g.done) console.log(`MOVE DONE     ${r.name}: absent at repository level, present in ${r.envs.join(' and ')} — flip its storedAt (--write-flips)`);
   if (g.unreferenced.length) console.log(`STORED, REFERENCED BY NO WORKFLOW (security-022; deleting is an owner step): ${g.unreferenced.join(', ')}`);
   if (g.unstored.length) console.log(`REFERENCED, STORED NOWHERE (an owner step not yet taken, or a dead reference): ${g.unstored.join(', ')}`);

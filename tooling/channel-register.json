@@ -1516,6 +1516,7 @@
         "name": "SNAPCRAFT_STORE_CREDENTIALS",
         "kind": "publishing-credential",
         "productionData": "none",
+        "firstDue": "2026-11-30",
         "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else.",
         "environment": "store-publish",
         "storedAt": "repository",
