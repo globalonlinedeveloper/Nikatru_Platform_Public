@@ -1,5 +1,5 @@
 {
-  "_header": "The review classes (lane autopilot-reviews, O-REVIEWS-DEPEND-ON-THE-LAPTOP). Owner rule 2026-09-29: an auth, money, user-data or API pull request gets an INDEPENDENT review before it may merge. .github/workflows/review-gate.yml runs tooling/autopilot/review-paths.mjs over a PR's file list and adds `needs-review` when any path matches a glob below; tooling/ci/land-next.mjs then waits for an owner's `VERDICT: APPROVE` on the head. Name globs are scoped to the product roots (apps, packages, services, sites, extensions) so a tooling test named after a class is not a review. Globs: `**` any depth, `*` within one segment, `{a,b}` alternatives; matched case-insensitively against the repo-relative path. Seeded from the brief, refined from this tree (packages/, services/*/src/routes, services/*/migrations, contracts/). A test fixture per class is in tooling/ci/test/autopilot-review-gate.test.mjs.",
+  "_header": "The review classes (lane autopilot-reviews, O-REVIEWS-DEPEND-ON-THE-LAPTOP). Owner rule 2026-09-29: an auth, money, user-data or API pull request gets an INDEPENDENT review before it may merge. .github/workflows/review-gate.yml runs tooling/autopilot/review-paths.mjs over a PR's file list and adds `needs-review` when any path matches a glob below; tooling/ci/land-next.mjs then waits for an owner's `VERDICT: APPROVE` on the head. Name globs are scoped to the product roots (apps, packages, services, sites, extensions) so a tooling test named after a class is not a review. Globs: `**` any depth, `*` within one segment, `{a,b}` alternatives; matched case-insensitively against the repo-relative path. Seeded from the brief, refined from this tree (packages/, services/*/src/routes, services/*/migrations, contracts/). ⏱ 2026-10-02 (review of #1171, finding 3): ALL Worker source is api (services/*/src/**, queries/**, migrations/**), the store-receipt verifiers and packages/core money are money, token-crypto and provider-revoke are auth, the D1 backup and the mail adapters are user-data; a red control classifies one REAL tracked file from each. A test fixture per class is in tooling/ci/test/autopilot-review-gate.test.mjs.",
   "classes": {
     "auth": [
       "packages/auth_supabase/**",
@@ -10,6 +10,7 @@
       "services/*/src/middleware/**",
       "services/_shared/src/auth*.ts",
       "services/platform/src/routes/{native-auth,native-handoff,provider-token}.ts",
+      "services/platform/src/lib/{token-crypto,provider-revoke}.ts",
       "tooling/bricks/app/__brick__/**/features/auth/**",
       "{apps,packages,services,sites,extensions}/**/*{session,oauth,jwks,siwa,signin,sign_in,sign-in,captcha,turnstile}*"
     ],
@@ -18,6 +19,8 @@
       "packages/billing_revenuecat/**",
       "contracts/{entitlement,fx,renewals}/**",
       "services/platform/src/lib/mor/**",
+      "services/platform/src/lib/receipts/**",
+      "packages/core/lib/src/money/**",
       "services/platform/src/routes/{checkout,money,receipts,rail-price-ids,entitlements,cancellation}.ts",
       "services/platform/src/{fx,renewals}.ts",
       "services/_shared/src/entitlement-read.ts",
@@ -29,13 +32,18 @@
       "services/*/migrations/**",
       "services/_shared/src/erasure.ts",
       "services/platform/src/routes/account.ts",
+      "services/platform/src/backup/**",
+      "services/platform/src/adapters/mail/**",
       "{apps,packages,services,sites,extensions}/**/*{privacy,erasure,deletion,dpdp,consent,data-export,data_export,account-delet}*"
     ],
     "api": [
       "services/*-api/**",
       "contracts/**",
       "services/platform/src/routes/**",
-      "services/_shared/src/**"
+      "services/_shared/src/**",
+      "services/*/src/**",
+      "services/*/queries/**",
+      "services/*/migrations/**"
     ]
   }
 }

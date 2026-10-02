@@ -8,7 +8,7 @@
 // Run:  node --test "tooling/ci/test/autopilot-land-gate.test.mjs"
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { decidePr, reviewVerdict, plan, report, mainWatch, stripAnsi, freezeLogSection, freezeJobs, freezeCloseVerdict, LAND_LABEL, HOLD_LABEL, NEEDS_REVIEW_LABEL, APPROVE_LABEL, FIX_FIRST_LABEL, FREEZE_LOG_CAP } from '../land-next.mjs';
+import { decidePr, reviewVerdict, reviewRequired, verdictOf, unionFreezeChecks, plan, report, mainWatch, stripAnsi, freezeLogSection, freezeJobs, freezeCloseVerdict, LAND_LABEL, HOLD_LABEL, NEEDS_REVIEW_LABEL, APPROVE_LABEL, FIX_FIRST_LABEL, FREEZE_LOG_CAP } from '../land-next.mjs';
 
 const R = 'o/r';
 const sha = (c) => c.repeat(40);
@@ -87,6 +87,31 @@ describe('the review gate', () => {
     assert.equal(decide({}).action, 'MERGE');
     assert.equal(decide({ reviews: [verdict(1, 'CHANGES')] }).action, 'MERGE');
     assert.equal(decide({ labels: [] }).action, 'SKIP', 'no land-ok is still a skip');
+  });
+  test('🔴 a review-CLASSED PR with `land-ok` and NO `needs-review` label → WAIT (the label is a display, not the gate)', () => {
+    const files = ['services/platform/src/lib/receipts/apple.ts'];
+    const d = decide({ labels: [LAND_LABEL], files });
+    assert.equal(d.action, 'WAIT', d.why);
+    assert.match(d.why, /needs-review: no owner verdict yet/);
+    assert.equal(reviewRequired({ labels: [LAND_LABEL], files, filesComplete: true }), 'review-classed: money, api');
+    const ok = decide({ labels: [LAND_LABEL, APPROVE_LABEL], files, reviews: [verdict(1, 'APPROVE')] });
+    assert.equal(ok.action, 'MERGE', `an owner APPROVE on the head still lands it: ${ok.why}`);
+  });
+  test('🔴 an unreadable or capped file list with NO label never merges (SKIP: land by hand), and needs review (fail closed)', () => {
+    assert.equal(decide({ labels: [LAND_LABEL], filesComplete: false }).action, 'SKIP');
+    assert.equal(decide({ labels: [LAND_LABEL], files: null }).action, 'SKIP');
+    assert.match(reviewRequired({ labels: [], files: null }), /fail closed/);
+    assert.equal(reviewRequired({ labels: [], files: ['tooling/ci/x.mjs'], filesComplete: true }), null);
+  });
+  test('🔴 any `VERDICT:` line 1 other than exactly `VERDICT: APPROVE` is CHANGES (fail closed)', () => {
+    assert.equal(verdictOf('VERDICT: APPROVE'), 'APPROVE');
+    assert.equal(verdictOf('VERDICT: APPROVE  '), 'APPROVE');
+    for (const l of ['VERDICT: CHANGES', 'VERDICT: CHANGES REQUIRED', 'VERDICT: APPROVE WITH NITS', 'VERDICT: approve', 'VERDICT:']) assert.equal(verdictOf(l), 'CHANGES', l);
+    assert.equal(verdictOf('Looks fine.'), null);
+    const d = decide({ labels: REVIEWED, reviews: [verdict(1, 'APPROVE'), verdict(2, 'CHANGES REQUIRED')] });
+    assert.equal(d.action, 'WAIT', 'a newer CHANGES REQUIRED beats the older APPROVE');
+    assert.match(d.why, /is CHANGES \(review 2\)/);
+    assert.equal(decide({ labels: REVIEWED, reviews: [verdict(1, 'APPROVE WITH NITS')] }).action, 'WAIT', 'NITS reaching the gate un-mapped is CHANGES');
   });
   test('reviewVerdict orders by submission time, then id', () => {
     const r = reviewVerdict({ reviews: [verdict(9, 'CHANGES', { submitted_at: '2026-10-02T09:00:00Z' }), verdict(3, 'APPROVE', { submitted_at: '2026-10-02T11:00:00Z' })], headSha: HEAD, labels: REVIEWED });
@@ -185,6 +210,20 @@ describe('fix-first: the freeze closes itself when main is green again', () => {
   test('🔴 a run still going, or none read → stays open', () => {
     assert.equal(freezeCloseVerdict({ freeze, check: check({}, { status: 'in_progress' }) }).close, false);
     assert.equal(freezeCloseVerdict({ freeze, check: null }).close, false);
+  });
+  test('🔴 a freeze naming a CodeQL job closes on codeql.yml’s run (the watched workflows are UNIONED)', () => {
+    const cq = { number: 51, body: '<!-- land-freeze-jobs ["Analyze (javascript)","web"] -->' };
+    const ci = check({ web: 'success', other: 'success' });
+    const codeql = check({ 'Analyze (javascript)': 'success' }, { runId: 13, url: 'https://x/13' });
+    assert.equal(freezeCloseVerdict({ freeze: cq, check: ci }).close, false, 'ci.yml alone cannot see the CodeQL job');
+    const u = unionFreezeChecks([ci, codeql]);
+    const v = freezeCloseVerdict({ freeze: cq, check: u });
+    assert.equal(v.close, true, v.why);
+    assert.equal(u.runId, '12+13');
+    assert.equal(freezeCloseVerdict({ freeze: cq, check: unionFreezeChecks([ci, check({ 'Analyze (javascript)': 'failure' }, { runId: 13, conclusion: 'failure' })]) }).close, false);
+    assert.equal(freezeCloseVerdict({ freeze: cq, check: unionFreezeChecks([ci, check({}, { runId: 13, status: 'in_progress' })]) }).close, false, 'a watched run still going keeps it open');
+    assert.equal(freezeCloseVerdict({ freeze: cq, check: unionFreezeChecks([ci, check({ 'Analyze (javascript)': 'success', x: 'failure' }, { runId: 13, conclusion: 'failure', baseline: null })]) }).close, false, 'a part with no baseline keeps its reds new');
+    assert.equal(unionFreezeChecks([]), null);
   });
   test('the plan closes it (one write) before any merge', () => {
     const p = plan({

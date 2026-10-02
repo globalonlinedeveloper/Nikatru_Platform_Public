@@ -7,7 +7,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +40,21 @@ describe('the classes', () => {
       assert.deepEqual(d.add, [], files.join(','));
       assert.match(d.why, /no review class/);
     }
+  });
+  test('🔴 one REAL tracked file from each directory the review of #1171 found unclassed is classed (finding 3)', () => {
+    const real = {
+      money: ['services/platform/src/lib/receipts/apple.ts', 'services/platform/src/lib/receipts/google.ts', 'services/platform/src/lib/receipts/verifiers.ts', 'packages/core/lib/src/money/money.dart', 'packages/core/lib/src/money/fx_rates.dart'],
+      auth: ['services/platform/src/lib/token-crypto.ts', 'services/platform/src/lib/provider-revoke.ts'],
+      'user-data': ['services/platform/src/backup/dump.ts', 'services/platform/src/adapters/mail/resend.ts'],
+      api: ['services/platform/src/index.ts', 'services/platform/src/lib/body.ts', 'services/platform/src/lib/d1.ts', 'services/platform/src/lib/request-log.ts', 'services/platform/src/scheduled.ts', 'services/platform/src/backup/index.ts', 'services/edge-shield/src/index.ts', 'services/platform/migrations/0001_entitlements.sql'],
+    };
+    for (const [cls, files] of Object.entries(real)) {
+      for (const f of files) {
+        assert.ok(existsSync(join(ROOT, f)), `${f} is not a real file any more: re-point this control at its successor`);
+        assert.ok(classify([f]).classes.includes(cls), `${f} should be ${cls}, got ${classify([f]).classes.join(',') || 'nothing'}`);
+      }
+    }
+    assert.ok(classify(['services/platform/queries/x.sql']).classes.includes('api'), 'Worker queries are api');
   });
   test('the four classes exist and each glob compiles; `subscription` alone is not money', () => {
     assert.deepEqual(Object.keys(CLASSES).sort(), ['api', 'auth', 'money', 'user-data']);
@@ -85,6 +100,15 @@ describe('the label decision', () => {
 describe('.github/workflows/review-gate.yml never runs the PR’s code', () => {
   test('pull_request_target on opened, synchronize, reopened, ready_for_review, with the zizmor ignore and a why', () => {
     assert.match(WF, /# zizmor: ignore\[dangerous-triggers\]\n\s+# why:[^\n]+\n(?:\s+#[^\n]*\n)*\s+pull_request_target:\n\s+types: \[opened, synchronize, reopened, ready_for_review\]/);
+  });
+  test('🔴 the synchronize case runs its own step WITH `--synchronize` (stale verdict labels are removed on a new head)', () => {
+    const steps = WF.split(/\n(?=\s+- name:)/);
+    const sync = steps.filter((st) => /if: github\.event\.action == 'synchronize'/.test(st));
+    assert.equal(sync.length, 1, 'exactly one step is chosen on synchronize');
+    assert.match(sync[0], /run: node tooling\/autopilot\/review-paths\.mjs --pr "\$PR_NUMBER" --synchronize\s*$/);
+    const other = steps.filter((st) => /if: github\.event\.action != 'synchronize'/.test(st));
+    assert.equal(other.length, 1);
+    assert.doesNotMatch(other[0], /--synchronize/);
   });
   test('🔴 the checkout names main and persists no credential', () => {
     assert.match(WF, /uses: actions\/checkout@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+persist-credentials: false\n\s+ref: main\n/);

@@ -38,6 +38,17 @@ describe('post-verdict', () => {
     assert.ok(!calls.some((c) => c.body?.event === 'APPROVE' || c.body?.event === 'REQUEST_CHANGES'));
     assert.deepEqual(calls.find((c) => c.path === '/issues/9/labels').body, { labels: ['review:approve', 'land-ok'] });
   });
+  test('🔴 the review format\'s spellings map explicitly: APPROVE WITH NITS posts as `VERDICT: APPROVE`, CHANGES REQUIRED as `VERDICT: CHANGES` (what land-next reads)', () => {
+    const nits = planVerdict({ pr: prJson(['needs-review']), head: HEAD, text: 'VERDICT: APPROVE WITH NITS\n- a nit\n' });
+    assert.equal(nits.verdict, 'APPROVE');
+    assert.equal(nits.review.body, `VERDICT: APPROVE\nHead: ${HEAD}\nVerdict as written: VERDICT: APPROVE WITH NITS\n- a nit`);
+    assert.ok(nits.add.includes('review:approve'));
+    const req = planVerdict({ pr: prJson(['needs-review', 'review:approve']), head: HEAD, text: 'VERDICT: CHANGES REQUIRED\n- a bug\n' });
+    assert.equal(req.verdict, 'CHANGES');
+    assert.match(req.review.body, /^VERDICT: CHANGES\nHead: /);
+    assert.deepEqual(req.remove, ['review:approve']);
+    assert.ok(!req.add.includes('land-ok'));
+  });
   test('🔴 a MOVED head → refused, NOTHING posted', async () => {
     const { call, calls } = fake(prJson([], 'b'.repeat(40)));
     const r = await postVerdict({ call, n: 9, head: HEAD, text: APPROVE });
@@ -63,6 +74,7 @@ describe('post-verdict', () => {
     assert.deepEqual(p.add, ['review:approve', 'land-ok']);
   });
   test('🔴 a verdict file whose first line is not a verdict, or a short sha, is refused', () => {
+    assert.match(planVerdict({ pr: prJson(), head: HEAD, text: 'VERDICT: APPROVE-ish\n' }).refuse, /first line/, 'an unmapped VERDICT: line is refused, never guessed');
     assert.match(planVerdict({ pr: prJson(), head: HEAD, text: 'LGTM\nVERDICT: APPROVE' }).refuse, /first line/);
     assert.match(planVerdict({ pr: prJson(), head: 'abc123', text: APPROVE }).refuse, /full commit sha/);
     assert.ok(planVerdict({ pr: prJson(), head: HEAD, text: 'VERDICT: APPROVE\r\n- crlf from Windows\r\n' }).review, 'CRLF verdict files (written on Windows) are read');

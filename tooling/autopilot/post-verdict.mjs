@@ -28,7 +28,13 @@ import { readFileSync } from 'node:fs';
 import { envToken, flag, ghSpawnSpec, isMain, redact } from './cli.mjs';
 import { LABELS, restClient } from './review-paths.mjs';
 
-export const VERDICT_LINE = /^VERDICT: (APPROVE|CHANGES)\s*$/;
+/** The verdict lines this posts, and what each is posted as. The repo's review format
+ *  also writes `APPROVE WITH NITS` and `CHANGES REQUIRED`: NITS is an APPROVE (a nit
+ *  never blocks) and is posted as the canonical `VERDICT: APPROVE`, the only line
+ *  land-next.mjs approves on; CHANGES REQUIRED is posted as `VERDICT: CHANGES`. The
+ *  original line follows as `Verdict as written: …`. Any other line 1 is refused. */
+export const VERDICT_LINE = /^VERDICT: (APPROVE|CHANGES|APPROVE WITH NITS|CHANGES REQUIRED)\s*$/;
+export const VERDICT_MAP = Object.freeze({ APPROVE: 'APPROVE', 'APPROVE WITH NITS': 'APPROVE', CHANGES: 'CHANGES', 'CHANGES REQUIRED': 'CHANGES' });
 /** GitHub's review body limit; a longer verdict is refused, never cut. */
 export const VERDICT_MAX = 65_000;
 const SECRET = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
@@ -41,7 +47,7 @@ const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 export function planVerdict({ pr, head, text }) {
   const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
   const m = VERDICT_LINE.exec(lines[0] ?? '');
-  if (!m) return { refuse: 'the verdict file\'s first line is not `VERDICT: APPROVE` or `VERDICT: CHANGES`' };
+  if (!m) return { refuse: 'the verdict file\'s first line is not `VERDICT: APPROVE`, `VERDICT: APPROVE WITH NITS`, `VERDICT: CHANGES` or `VERDICT: CHANGES REQUIRED`' };
   // The file's text is posted to the GitHub API; it is held to a verdict's shape first.
   if (String(text).length > VERDICT_MAX) return { refuse: `the verdict file is ${String(text).length} characters, over ${VERDICT_MAX}` };
   if (SECRET.test(String(text))) return { refuse: 'the verdict file carries a secret-shaped string: nothing posted' };
@@ -49,7 +55,7 @@ export function planVerdict({ pr, head, text }) {
   const now = pr?.head?.sha;
   if (now !== head) return { refuse: `the head moved: the review read ${String(head).slice(0, 8)}, the PR is now at ${String(now).slice(0, 8)} — nothing posted; review the new head` };
   if (pr?.state !== 'open') return { refuse: `the PR is ${pr?.state}` };
-  const verdict = m[1];
+  const verdict = VERDICT_MAP[m[1]];
   const labels = new Set((pr.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name)));
   const mine = verdict === 'APPROVE' ? LABELS.REVIEW_APPROVE : LABELS.REVIEW_CHANGES;
   const other = verdict === 'APPROVE' ? LABELS.REVIEW_CHANGES : LABELS.REVIEW_APPROVE;
@@ -57,7 +63,8 @@ export function planVerdict({ pr, head, text }) {
   if (!labels.has(mine)) add.push(mine);
   if (verdict === 'APPROVE' && !labels.has(LABELS.LAND_HOLD) && !labels.has(LABELS.LAND_OK)) add.push(LABELS.LAND_OK);
   const remove = labels.has(other) ? [other] : [];
-  const body = [lines[0], `Head: ${head}`, ...lines.slice(1)].join('\n').replace(/\n+$/, '');
+  const asWritten = m[1] === verdict ? [] : [`Verdict as written: ${lines[0].trim()}`];
+  const body = [`VERDICT: ${verdict}`, `Head: ${head}`, ...asWritten, ...lines.slice(1)].join('\n').replace(/\n+$/, '');
   return { verdict, review: { event: 'COMMENT', commit_id: head, body }, add, remove };
 }
 

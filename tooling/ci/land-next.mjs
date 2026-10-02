@@ -40,15 +40,18 @@
 //             codeql.yml are judged, so the attended dispatches (Rollback, Native
 //             auth proof, Store submit) never count.
 //   review    ⏱ 2026-10-02 (O-REVIEWS-DEPEND-ON-THE-LAPTOP) a `land-hold` label waits; a
-//             `needs-review` PR waits until the NEWEST owner verdict review (line 1
+//             `needs-review` PR — or one whose OWN file list is review-classed or
+//             unreadable (`reviewRequired`: the label is a display, never the only
+//             input) — waits until the NEWEST owner verdict review (line 1
 //             `VERDICT: APPROVE`) is on the current head, with `review:approve`
-//             (`reviewVerdict`). Labels set by review-gate.yml; verdicts posted by
-//             tooling/autopilot/post-verdict.mjs.
+//             (`reviewVerdict`); any other `VERDICT:` line 1 is CHANGES. Labels set by
+//             review-gate.yml; verdicts posted by tooling/autopilot/post-verdict.mjs.
 //   fix-first ⏱ 2026-10-02 (O-FREEZE-FIX-NEEDS-THE-LAPTOP) the freeze issue carries each
 //             new failing job's first failing step and log tail (`freezeLogSection`);
 //             while it is open, a PR labelled `fix-first` whose body says
 //             `Fixes-freeze: #<it>` may merge (every other rule still applies), and a
-//             later pass CLOSES it once main's newest ci.yml run at the head has every
+//             later pass CLOSES it once main's newest ci.yml AND codeql.yml runs at the
+//             head (`unionFreezeChecks`) have every
 //             named job green and no red that was not already red on the parent
 //             (`freezeCloseVerdict`). The fixer routine is docs/autopilot/fixer.prompt.md.
 //   one       ONE write per run (a merge, an update-branch, an E2E dispatch, a
@@ -76,6 +79,7 @@ import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
 import { globClaims } from './deploy-globs.mjs';
 import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
 import { CONTRACT } from '../autopilot/cli.mjs';
+import { classify as classifyReview } from '../autopilot/review-paths.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -95,8 +99,20 @@ export const FIXES_FREEZE_LINE = /^Fixes-freeze: #(\d+)\s*$/m;
 export const FREEZE_LOG_LINES = 60;
 export const FREEZE_LOG_CAP = 20_000;
 /** Line 1 of a verdict review's body. A verdict is a COMMENT review (GitHub refuses
- *  APPROVE from a PR's author, and every PR here has one author). */
-export const VERDICT_LINE = /^VERDICT: (APPROVE|CHANGES)\s*$/;
+ *  APPROVE from a PR's author, and every PR here has one author). ANY line 1 that
+ *  starts `VERDICT:` is a verdict, and only exactly `VERDICT: APPROVE` approves:
+ *  `VERDICT: CHANGES REQUIRED`, `VERDICT: APPROVE WITH NITS` or a typo is CHANGES
+ *  here (fail closed). post-verdict.mjs maps `APPROVE WITH NITS` to the canonical
+ *  `VERDICT: APPROVE` before posting (nits never block), so a NITS line reaching
+ *  this gate was posted by hand and is read as CHANGES. */
+export const VERDICT_LINE = /^VERDICT:/;
+export const APPROVE_LINE = /^VERDICT: APPROVE\s*$/;
+/** Line 1 → 'APPROVE' | 'CHANGES' | null (not a verdict). */
+export function verdictOf(line1) {
+  const l = String(line1 ?? '');
+  if (!VERDICT_LINE.test(l)) return null;
+  return APPROVE_LINE.test(l) ? 'APPROVE' : 'CHANGES';
+}
 export const BASE_BRANCH = 'main';
 export const E2E_WORKFLOW_PATH = '.github/workflows/e2e.yml';
 /** The workflows whose run on main's head is main's verdict after a merge. */
@@ -343,11 +359,31 @@ export function freezeJobs(body) {
  * head. Closes only when every job the freeze named is in that run and green, and every
  * red job in it was already red on the parent (baseline-aware, like the opening).
  */
+/**
+ * The newest run of EACH watched workflow at main's head (`parts`, one per workflow
+ * that has one) → ONE check for freezeCloseVerdict: completed only when every part
+ * is, their jobs unioned, each part's baseline unioned (a part with no baseline adds
+ * none, so its reds stay new: fail closed). null when no part was read.
+ */
+export function unionFreezeChecks(parts) {
+  const ps = (parts ?? []).filter(Boolean);
+  if (!ps.length) return null;
+  const pending = ps.find((p) => p.status !== 'completed');
+  return {
+    runId: ps.map((p) => p.runId).join('+'),
+    url: ps.map((p) => p.url).filter(Boolean).join(' · ') || null,
+    status: pending ? pending.status : 'completed',
+    conclusion: ps.every((p) => p.conclusion === 'success') ? 'success' : (ps.find((p) => p.conclusion !== 'success')?.conclusion ?? null),
+    jobs: ps.flatMap((p) => p.jobs ?? []),
+    baseline: ps.flatMap((p) => p.baseline ?? []),
+  };
+}
+
 export function freezeCloseVerdict({ freeze, check }) {
   const named = freezeJobs(freeze?.body);
   const stay = (why) => ({ close: false, why: `#${freeze?.number} stays open: ${why}` });
-  if (!check) return stay("main's newest ci.yml run at the head was not read");
-  if (check.status !== 'completed') return stay(`ci.yml run ${check.runId} is ${check.status}`);
+  if (!check) return stay("main's newest watched run (ci.yml, codeql.yml) at the head was not read");
+  if (check.status !== 'completed') return stay(`run ${check.runId} is ${check.status}`);
   if (!named.length) return stay('it names no job this can check');
   const by = new Map((check.jobs ?? []).map((j) => [String(j.name), String(j.conclusion)]));
   const notGreen = named.filter((n) => by.get(n) !== 'success');
@@ -378,7 +414,10 @@ export function fixesOpenFreeze(pr, freezes) {
  */
 export function reviewVerdict({ reviews, headSha, labels }) {
   const verdicts = (reviews ?? [])
-    .map((r) => ({ r, m: VERDICT_LINE.exec(String(r?.body ?? '').split(/\r?\n/)[0]) }))
+    .map((r) => {
+      const v = verdictOf(String(r?.body ?? '').split(/\r?\n/)[0]);
+      return { r, m: v && [null, v] };
+    })
     .filter(({ r, m }) => m && r?.author_association === 'OWNER')
     .sort((a, b) => (Date.parse(b.r.submitted_at ?? '') || 0) - (Date.parse(a.r.submitted_at ?? '') || 0) || Number(b.r.id ?? 0) - Number(a.r.id ?? 0));
   const at = String(headSha).slice(0, 8);
@@ -391,6 +430,22 @@ export function reviewVerdict({ reviews, headSha, labels }) {
   if (m[1] !== 'APPROVE') return { ok: false, why: `needs-review: the newest verdict on ${at} is CHANGES (review ${r.id})` };
   if (!(labels ?? []).includes(APPROVE_LABEL)) return { ok: false, why: `needs-review: APPROVE on ${at} (review ${r.id}) but no \`${APPROVE_LABEL}\` label` };
   return { ok: true, why: `owner APPROVE on ${at} (review ${r.id})` };
+}
+
+/**
+ * Does this PR need the independent review? Re-derived HERE from its own file list
+ * (tooling/autopilot/review-paths.mjs `classify`), not trusted to the `needs-review`
+ * label: that label is set by one review-gate.yml run that can fail, never ran for a
+ * PR opened before the cut-over or by a workflow token, and its ABSENCE is the
+ * default. The label still counts; it is now a display, never the only input. A file
+ * list that is unreadable or cut at the API's cap needs review (fail closed).
+ * Returns the reason, or null.
+ */
+export function reviewRequired(pr) {
+  if ((pr?.labels ?? []).includes(NEEDS_REVIEW_LABEL)) return `\`${NEEDS_REVIEW_LABEL}\``;
+  if (!Array.isArray(pr?.files) || pr.filesComplete === false) return 'the file list is unreadable or cut (fail closed)';
+  const c = classifyReview(pr.files);
+  return c.classes.length ? `review-classed: ${c.classes.join(', ')}` : null;
 }
 
 // ── PURE: one pull request ──────────────────────────────────────────────────
@@ -410,8 +465,11 @@ export function decidePr(pr, { repo, units }) {
   if (pr.baseRef !== BASE_BRANCH) return skip(`base is ${pr.baseRef}, not ${BASE_BRANCH}`);
   if (!/^[0-9a-f]{40}$/.test(String(pr.headSha ?? ''))) return skip('no readable head sha');
   if ((pr.labels ?? []).includes(HOLD_LABEL)) return wait(`\`${HOLD_LABEL}\`: held by the lead`);
+  // Before the review gate: an unreadable list is never landed by this tool at all
+  // (and reviewRequired would fail closed on it anyway).
+  if (!Array.isArray(pr.files) || pr.filesComplete === false) return skip("the PR's file list is unreadable or cut at the API's cap: land it by hand");
   let reviewed = '';
-  if ((pr.labels ?? []).includes(NEEDS_REVIEW_LABEL)) {
+  if (reviewRequired(pr)) {
     const rv = reviewVerdict({ reviews: pr.reviews, headSha: pr.headSha, labels: pr.labels });
     if (!rv.ok) return wait(rv.why);
     reviewed = `, ${rv.why}`;
@@ -421,7 +479,6 @@ export function decidePr(pr, { repo, units }) {
   if (g.verdict !== 'GREEN') return wait(`ci-gate ${g.verdict} — ${g.why}`);
   if (pr.mergeable === false || pr.mergeableState === 'dirty') return skip('merge conflict with main');
   if (pr.mergeable !== true) return wait('GitHub has not computed mergeability yet');
-  if (!Array.isArray(pr.files) || pr.filesComplete === false) return skip("the PR's file list is unreadable or cut at the API's cap: land it by hand");
   if (Number(pr.behindBy) > 0) {
     const s = skewVerdict({ prFiles: pr.files, mainFiles: pr.mainFiles, mainComplete: pr.mainFilesComplete !== false, units });
     if (s.verdict !== 'DISJOINT') return { action: 'UPDATE', why: `${pr.behindBy} commit(s) behind main, skew ${s.verdict}: ${s.why}` };
@@ -637,20 +694,25 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
   }
   const issues = (await paged(get, `/issues?labels=${FREEZE_LABEL}&state=all`)).rows.filter((i) => !i.pull_request);
   const freezes = issues.filter((i) => i.state === 'open').map((i) => ({ number: i.number, title: i.title, state: i.state, body: i.body ?? '' }));
-  // The auto-close input, read only while a freeze is open: main's newest COMPLETED
-  // ci.yml run at the head, its jobs, and the parent's failed jobs (the baseline).
+  // The auto-close input, read only while a freeze is open: each watched workflow's
+  // newest run at the head, its jobs, and the parent's failed jobs (the baseline).
+  // One part per WATCHED workflow (ci.yml AND codeql.yml), unioned by unionFreezeChecks:
+  // a freeze naming a CodeQL job closes on codeql's own run, never waits on ci.yml's.
   let freezeCheck = null;
   if (freezes.length) {
-    const top = mainRuns.filter((r) => r?.head_sha === main.sha && r?.head_branch === BASE_BRANCH && POST_GATE_EVENTS.includes(String(r?.event ?? '')) && pathOf(r) === MAIN_WORKFLOW_PATH).sort(newestFirst)[0];
-    if (top) {
+    const parts = [];
+    for (const wf of WATCHED_PATHS) {
+      const top = mainRuns.filter((r) => r?.head_sha === main.sha && r?.head_branch === BASE_BRANCH && POST_GATE_EVENTS.includes(String(r?.event ?? '')) && pathOf(r) === wf).sort(newestFirst)[0];
+      if (!top) continue;
       const jobs = top.status === 'completed' ? ((await get(`/actions/runs/${top.id}/jobs?filter=latest&per_page=100`)).jobs ?? []).map((j) => ({ name: j.name, conclusion: j.conclusion })) : [];
-      let base = baseline[MAIN_WORKFLOW_PATH];
+      let base = baseline[wf];
       if (base === undefined && main.parentSha && jobs.some((j) => RED_JOB.has(String(j.conclusion)))) {
-        const prev = ((await get(`/actions/runs?head_sha=${main.parentSha}&per_page=100`)).workflow_runs ?? []).filter((x) => pathOf(x) === MAIN_WORKFLOW_PATH && x.status === 'completed' && x.conclusion !== 'cancelled').sort(newestFirst)[0];
+        const prev = ((await get(`/actions/runs?head_sha=${main.parentSha}&per_page=100`)).workflow_runs ?? []).filter((x) => pathOf(x) === wf && x.status === 'completed' && x.conclusion !== 'cancelled').sort(newestFirst)[0];
         base = prev ? failedJobNames((await get(`/actions/runs/${prev.id}/jobs?filter=latest&per_page=100`)).jobs) : null;
       }
-      freezeCheck = { runId: top.id, url: top.html_url, status: top.status, conclusion: top.conclusion, jobs, baseline: base ?? null };
+      parts.push({ runId: top.id, url: top.html_url, status: top.status, conclusion: top.conclusion, jobs, baseline: base ?? null });
     }
+    freezeCheck = unionFreezeChecks(parts);
   }
   const freezeMarkers = issues.map((i) => (/<!-- land-freeze run=\d+ -->/.exec(String(i.body ?? '')) ?? [null])[0]).filter(Boolean);
   const units = JSON.parse(readFileSync(join(ROOT, 'tooling/ci/lane-map.json'), 'utf8')).deployUnits ?? {};
@@ -671,8 +733,9 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
     const runs = (await get(`/actions/runs?head_sha=${p.head.sha}&per_page=100`)).workflow_runs ?? [];
     const files = await paged(get, `/pulls/${p.number}/files`, null, PR_FILE_CAP / 100);
     const cmp = await get(`/compare/${p.head.sha}...${BASE_BRANCH}`);
-    // The review gate's input, read only for a PR that carries `needs-review`.
-    const reviews = labels.includes(NEEDS_REVIEW_LABEL) ? (await paged(get, `/pulls/${p.number}/reviews`)).rows.map((r) => ({ id: r.id, author_association: r.author_association, body: r.body, commit_id: r.commit_id, submitted_at: r.submitted_at, state: r.state })) : [];
+    // The review gate's input, read for every PR reviewRequired names: the label OR
+    // its own file list (re-derived here, never trusted to the label alone).
+    const reviews = reviewRequired({ labels, files: files.rows.map((f) => f.filename), filesComplete: files.complete }) ? (await paged(get, `/pulls/${p.number}/reviews`)).rows.map((r) => ({ id: r.id, author_association: r.author_association, body: r.body, commit_id: r.commit_id, submitted_at: r.submitted_at, state: r.state })) : [];
     prs.push({
       reviews,
       ...entry,
