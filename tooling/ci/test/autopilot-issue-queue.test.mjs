@@ -69,7 +69,13 @@ test('IQ1 parse/render round trip with every dependency kind; CRLF bodies parse'
   // red: a title that disagrees with the header is refused, not silently re-laned
   assert.throws(() => parseIssue({ number: 7, title: 'lane: someone-else', body }), /header lane/);
   assert.throws(() => parseIssue({ number: 7, title, body: body.replace('\n---\n', '\nnot a dep\n') }), /neither a dependency line/);
-  assert.throws(() => renderIssue(lane({ lander: 'x-->y' })), /-->/);
+  // a value that would close the HTML comment early is escaped, and reads back unchanged
+  for (const lander of ['^a' + '--' + '>b$', '^a' + '--!' + '>b$', '<' + '!-- c']) {
+    const r = renderIssue(lane({ lander }));
+    const header = r.body.split('\n')[0];
+    assert.equal(header.indexOf('>'), header.length - 1, `the header's only '>' is its own closing one (${lander})`);
+    assert.equal(parseIssue({ number: 7, ...r }).lander, lander);
+  }
 });
 
 test('IQ2 split at the 60,000 boundary, and join refuses a missing part', () => {

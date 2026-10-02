@@ -140,11 +140,19 @@ export function secretFindings(body, vault = new Map()) {
 /** A dep path (Windows or POSIX) → its marker name: `lwld-x` from a `…\lwld-x.out` path. */
 export const markerName = (dep) => win32.basename(String(dep).trim()).replace(/\.out$/i, '');
 
+/** A file's text, or null when it does not exist: one read, no check-then-read race. */
+export function readIfExists(p) {
+  try { return readFileSync(p, 'utf8'); } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 /** The marker's last non-empty line is `land exit=0`. */
 export function markerSatisfied(markersDir, name) {
-  const p = join(markersDir, `${name}.out`);
-  if (!existsSync(p)) return false;
-  const lines = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const text = readIfExists(join(markersDir, `${name}.out`));
+  if (text === null) return false;
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   return lines.at(-1) === 'land exit=0';
 }
 
@@ -359,7 +367,7 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     const plan = planMigration({
       items,
       aliases,
-      prompt: (lane) => { const p = join(o['prompts-dir'], `${lane}.prompt.md`); return existsSync(p) ? readFileSync(p, 'utf8') : null; },
+      prompt: (lane) => readIfExists(join(o['prompts-dir'], `${lane}.prompt.md`)),
       launched: (lane) => launchedSet.has(lane) || existsSync(join(o['routines-dir'], `${lane}.routine`)),
       satisfied: (name) => markerSatisfied(o['markers-dir'], name),
       mergedBranches,
@@ -377,7 +385,11 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     if (o.apply) {
       const { numbers, counts } = await applyPlan(client, plan, existing, { log });
       if (o['map-out']) {
-        const prior = existsSync(o['map-out']) ? readJson(o['map-out'], 'the existing map') : {};
+        const priorText = readIfExists(o['map-out']);
+        let prior = {};
+        if (priorText !== null) {
+          try { prior = JSON.parse(priorText); } catch { throw new CoverageLost(`the existing map ${o['map-out']} is not JSON`); }
+        }
         for (const l of plan.lanes) prior[l.lane] = numbers.get(l.lane);
         writeFileSync(o['map-out'], JSON.stringify(prior, null, 2) + '\n');
       }

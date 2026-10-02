@@ -64,9 +64,10 @@ export function renderIssue(lane) {
   if (typeof meta.lane !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(meta.lane)) {
     throw new Error(`lane name ${JSON.stringify(meta.lane)} is not [A-Za-z0-9._-]`);
   }
-  const json = JSON.stringify(meta);
-  // `-->` inside the JSON would end the HTML comment early and leak the rest into the body.
-  if (json.includes('-->')) throw new Error(`lane ${meta.lane}: a header value contains "-->"`);
+  // No value may end the HTML comment early (`-->`, or the `--!>` browsers also accept)
+  // and leak the rest into the body: `<` and `>` are written as JSON escapes, which
+  // JSON.parse reads back unchanged, so the header holds no `>` but its own closing one.
+  const json = JSON.stringify(meta).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
   const deps = (lane.deps ?? []).map(renderDep);
   const prompt = lf(lane.prompt);
   return {
