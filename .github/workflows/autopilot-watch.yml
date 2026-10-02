@@ -11,14 +11,17 @@ on:
   schedule:
     - cron: '7,22,37,52 * * * *'
   # zizmor: ignore[dangerous-triggers]
-  # why: a CI, E2E live or Land run finishing changes the PR board and the run
-  # ledger, and CI on main is where a web deploy completes (Deploy web and Deploy
-  # workers are workflow_call workflows that run INSIDE CI, so CI's completion is
-  # theirs). Safe here: no expression reads the triggering run, the checkout is
+  # why: CI on main is where a web deploy completes (Deploy web and Deploy workers
+  # are workflow_call workflows that run INSIDE CI, so CI's completion is theirs),
+  # and E2E live on main proves it. MAIN ONLY, and not Land: every PR's CI and every
+  # Land pass would wake this ~25-35 times an hour against the repo's shared 1,000
+  # GITHUB_TOKEN requests an hour (review of #1171, finding 4); the board refreshes
+  # on the clock. Safe here: no expression reads the triggering run, the checkout is
   # main, and the only code run is watch.mjs from main.
   workflow_run:
-    workflows: [CI, E2E live, Land]
+    workflows: [CI, E2E live]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

@@ -64,6 +64,8 @@ export function docFindings(doc, c) {
   if (!doc.includes(`\`${c.heartbeat.ref}\``) || !doc.includes(`\`${c.heartbeat.file}\``)) f.push('the heartbeat ref or file is not named');
   for (const s of c.heartbeat.states) if (!doc.includes(`\`${s}\``)) f.push(`state ${s} is not named`);
   if (!doc.includes(`\`pipelineDriverFallback\`: ${c.pipelineDriverFallback}`)) f.push('pipelineDriverFallback is not stated at its value');
+  const limits = /^## Known limits\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(doc);
+  if (!limits || !/self-approval/.test(limits[1]) || !/enforced by the prompts, not by code/.test(limits[1])) f.push('the Known limits section does not record that independence is enforced by prompts only (self-approval)');
   return f;
 }
 
@@ -123,6 +125,9 @@ test('C4 red controls: a planted label, a planted threshold and a wrong doc valu
   const wrong = DOC.replace(/`FIX_CLAIM_STALE_H` = 3/, '`FIX_CLAIM_STALE_H` = 4');
   assert.notEqual(wrong, DOC);
   assert.ok(docFindings(wrong, CONTRACT).some((x) => /FIX_CLAIM_STALE_H: the doc says 4/.test(x)));
+  const noLimit = DOC.replace(/## Known limits[\s\S]*$/, '');
+  assert.notEqual(noLimit, DOC);
+  assert.ok(docFindings(noLimit, CONTRACT).some((x) => /self-approval/.test(x)), 'dropping the accepted-risk note is reported');
   const noRoutine = DOC.replace(/\| `fixer` \| Acct3 \| :35 \|/, '| `fixer` | Acct1 | :35 |');
   assert.notEqual(noRoutine, DOC);
   assert.ok(docFindings(noRoutine, CONTRACT).some((x) => /routine fixer/.test(x)));

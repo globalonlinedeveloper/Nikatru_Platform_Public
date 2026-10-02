@@ -49,6 +49,7 @@
     "E2E_DISPATCH_MIN_GAP_MIN": 30,
     "JOB_READS_PER_PASS": 5,
     "BOARD_READS_PER_PASS": 25,
+    "BOARD_CACHE_MIN": 60,
     "REQUEST_CEILING": 80
   },
   "runner": {

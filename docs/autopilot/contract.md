@@ -82,6 +82,7 @@ Private queue issues (see queue.md): `cloud-lane`, `ready`, `blocked`, `claimed:
 | `E2E_DISPATCH_MIN_GAP_MIN` = 30 | minutes | at most one E2E-after-deploy dispatch per this gap |
 | `JOB_READS_PER_PASS` = 5 | requests | a pass reads the jobs of at most this many failed runs (newest first); the rest show `jobs not read` |
 | `BOARD_READS_PER_PASS` = 25 | PRs | a pass re-reads check-runs for at most this many PRs; a PR whose head is unchanged since the last ledger and whose ci-gate was already GREEN or RED reuses that verdict and costs nothing |
+| `BOARD_CACHE_MIN` = 60 | minutes | the longest a reused GREEN/RED verdict is trusted before its check-runs are read again (a re-run can turn it) |
 | `REQUEST_CEILING` = 80 | requests | the most REST requests one pass may make; the next one is refused and the pass writes nothing (exit 2) |
 
 ## The runners (`docs/autopilot/runner.prompt.md`)
@@ -120,3 +121,15 @@ summary line `laptop off since <at> (<h> h): <row> degraded`, and not a problem 
 `duty.laptop.nikatru-daily-backup` is red again past `DEGRADED_MAX_H` of outage. Every other
 state, and every non-laptop row, is graded exactly as before. Every scheduled `duty.laptop.*`
 row names its outage home in `outage: { cloudTwin, laptopOnly }`.
+
+## Known limits
+
+- **Independence is enforced by the prompts, not by code (accepted risk, review of #1171,
+  finding 8).** `reviewVerdict` in `tooling/ci/land-next.mjs` counts any OWNER verdict, and
+  every session — the runner that authored the PR, the fixer and the reviewer — acts as that one
+  OWNER identity. So nothing in code stops an authoring session from posting its own
+  `VERDICT: APPROVE` plus `review:approve` (a self-approval). The single identity makes this
+  inherent; the reviewer prompt's claim and its "never review your own work" rule (`Lane-runner: reviewer`) are the control.
+- **Verdict spellings.** Only a line 1 of exactly `VERDICT: APPROVE` approves at the gate; any
+  other `VERDICT:` line is CHANGES (fail closed). `post-verdict.mjs` posts `APPROVE WITH NITS`
+  as `VERDICT: APPROVE` (a nit never blocks) and `CHANGES REQUIRED` as `VERDICT: CHANGES`.

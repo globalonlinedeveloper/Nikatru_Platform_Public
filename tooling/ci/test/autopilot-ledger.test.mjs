@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { laptopIssueAction, boardRow, runLedger, renderLedger, assertPublic, e2eDecision, LAPTOP_OFF_TITLE } from '../../autopilot/ledger.mjs';
+import { laptopIssueAction, boardRow, runLedger, renderLedger, assertPublic, e2eDecision, requestBudget, parseBoardCache, boardPlan, jobReadIds, UNREAD, LAPTOP_OFF_TITLE } from '../../autopilot/ledger.mjs';
 import { pass } from '../../autopilot/watch.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -89,6 +89,13 @@ describe('(c) the run ledger', () => {
     assert.doesNotMatch(body, /\| 100 \|/, 'the oldest row is dropped');
     assert.match(body, /older row\(s\) dropped/);
   });
+  test('🔴 a fork branch name is escaped and stripped of `@` in the owner cell (no broken row, no ping)', () => {
+    const ledger = runLedger({ runs: [run(61, { head_branch: 'x|y @someone' })], now: NOW });
+    assert.equal(ledger[0].owner, 'branch x\\|y someone');
+    const body = renderLedger({ now: NOW, laptop: { state: 'fresh', beat: null }, board: [], ledger, freeze: null });
+    assert.doesNotMatch(body, /@someone/);
+    assert.equal(body.split('\n').find((l) => l.startsWith('| 61 ')).split(/(?<!\\)\|/).length, 8, 'six cells, the pipe escaped');
+  });
   test('🔴 a cell escapes backslashes before pipes, so a trailing backslash cannot break the table (CodeQL 581)', () => {
     const ledger = runLedger({ runs: [run(60, { name: 'CI \\|x' })], now: NOW });
     const body = renderLedger({ now: NOW, laptop: { state: 'fresh', beat: null }, board: [], ledger, freeze: null });
@@ -117,6 +124,43 @@ describe('E2E after a web deploy', () => {
   });
 });
 
+describe('the request budget (review of #1171, finding 4)', () => {
+  test('🔴 REQUEST_CEILING: 80 requests pass, the 81st is refused', () => {
+    const b = requestBudget();
+    assert.equal(b.ceiling, 80);
+    for (let i = 0; i < 80; i++) b.take(`r${i}`);
+    assert.throws(() => b.take('one more'), /REQUEST CEILING: one more would be request 81 of one pass, over 80/);
+    assert.equal(b.used(), 80);
+  });
+  test('🔴 jobs are read for at most JOB_READS_PER_PASS (5) failed runs, newest first', () => {
+    const runs = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, status: 'completed', conclusion: i % 3 ? 'failure' : 'cancelled', updated_at: iso(30 - i) }));
+    const ids = jobReadIds(runs);
+    assert.equal(ids.length, 5);
+    assert.deepEqual(ids, ['30', '29', '27', '26', '24']);
+  });
+  test('🔴 the board cache: a head unchanged with a GREEN/RED younger than BOARD_CACHE_MIN is reused; a moved head, a stale or non-terminal entry, is read', () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    const body = renderLedger({ now: NOW, laptop: { state: 'fresh', beat: null }, ledger: [], freeze: null, board: [boardRow({ number: 1, labels: [], createdAt: iso(1), headSha: A, gate: 'GREEN' }, NOW), boardRow({ number: 2, labels: [], createdAt: iso(1), headSha: A, gate: 'PENDING' }, NOW), boardRow({ number: 3, labels: [], createdAt: iso(1), headSha: A, gate: 'RED', readAt: NOW - 61 * 60_000 }, NOW)] });
+    const cache = parseBoardCache(body);
+    assert.deepEqual([...cache.keys()], [1, 3], 'only terminal verdicts are cached');
+    const plan = boardPlan({ prs: [{ number: 1, headSha: A }, { number: 2, headSha: A }, { number: 3, headSha: A }, { number: 4, headSha: A }], cache, now: NOW });
+    assert.deepEqual(plan.get(1), { gate: 'GREEN', at: NOW });
+    assert.deepEqual(plan.get(2), { read: true });
+    assert.deepEqual(plan.get(3), { read: true }, 'older than BOARD_CACHE_MIN: a re-run can turn it');
+    assert.deepEqual(plan.get(4), { read: true });
+    assert.deepEqual(boardPlan({ prs: [{ number: 1, headSha: B }], cache, now: NOW }).get(1), { read: true }, 'a moved head is read');
+    assert.equal(parseBoardCache('<!-- autopilot board-cache {"1":["../x","GREEN",1]} -->').size, 0, 'off-shape entries are dropped');
+    assert.equal(parseBoardCache('<!-- autopilot board-cache {not json -->').size, 0);
+  });
+  test('🔴 at most BOARD_READS_PER_PASS (25) PRs are read; the rest show UNREAD', () => {
+    const prs = Array.from({ length: 30 }, (_, i) => ({ number: i + 1, headSha: 'a'.repeat(40) }));
+    const plan = boardPlan({ prs, cache: new Map(), now: NOW });
+    assert.equal([...plan.values()].filter((p) => p.read).length, 25);
+    assert.equal(plan.get(30).gate, UNREAD);
+  });
+});
+
 describe('one watch pass against a fake GitHub', () => {
   const fake = (world) => {
     const writes = [];
@@ -131,20 +175,54 @@ describe('one watch pass against a fake GitHub', () => {
     return { call, writes };
   };
   const world = (extra = {}) => ({ '/issues?labels=laptop-off': [], '/pulls?state=open': [], '/actions/runs?created': { workflow_runs: [] }, '/issues?labels=land-freeze': [], '/issues?state=open': [], ...extra });
+  const noBeat = async () => ({ ok: false, status: 404 });
+  test('🔴 40 open PRs and 60 red runs stay under REQUEST_CEILING; a second pass on the same heads reads NO check-runs', async () => {
+    const prs = Array.from({ length: 40 }, (_, i) => ({ number: 100 + i, draft: false, labels: [], created_at: iso(1), head: { sha: HEAD, ref: `feat/${i}`, repo: { full_name: 'o/r' } } }));
+    const red = Array.from({ length: 60 }, (_, i) => ({ id: 1000 + i, name: 'CI', workflow_id: 1, head_branch: 'main', head_sha: HEAD, status: 'completed', conclusion: 'failure', updated_at: iso(1) }));
+    const w = world({ '/pulls?state=open': prs, '/actions/runs?created': { workflow_runs: red }, '/commits/': { check_runs: [gate(100, 'success')] }, '/actions/runs?head_sha': { workflow_runs: [ciRun(100)] }, '/actions/runs/': { jobs: [] } });
+    const reads = (f) => f.gets.filter((g) => g.startsWith('/commits/')).length;
+    const counting = (wld) => {
+      const f = fake(wld);
+      f.gets = [];
+      const inner = f.call;
+      f.call = async (m, p, b) => {
+        if (m === 'GET') f.gets.push(p);
+        return inner(m, p, b);
+      };
+      return f;
+    };
+    const f1 = counting(w);
+    const b1 = requestBudget();
+    const r1 = await pass({ call: f1.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat, budget: b1 });
+    assert.equal(r1.code, 0, r1.lines.join('\n'));
+    assert.ok(b1.used() <= 80, `${b1.used()} requests`);
+    assert.equal(reads(f1), 25, 'BOARD_READS_PER_PASS');
+    assert.equal(f1.gets.filter((g) => /^\/actions\/runs\/\d+\/jobs/.test(g)).length, 5, 'JOB_READS_PER_PASS');
+    const f2 = counting({ ...w, '/issues?state=open': [{ number: 12, title: 'Autopilot ledger', body: f1.writes.at(-1).body.body }] });
+    const b2 = requestBudget();
+    await pass({ call: f2.call, repo: 'o/r', token: null, now: NOW + 60_000, fetchImpl: noBeat, budget: b2 });
+    assert.equal(reads(f2), 15, 'only the 15 left UNREAD last pass are read; the 25 cached GREEN are reused');
+    assert.ok(b2.used() < b1.used(), `${b2.used()} < ${b1.used()}`);
+  });
+  test('🔴 a pass that would exceed the ceiling throws before sending, so nothing past it is written', async () => {
+    const f = fake(world());
+    await assert.rejects(pass({ call: f.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat, budget: requestBudget(3) }), /REQUEST CEILING/);
+    assert.deepEqual(f.writes, []);
+  });
   test('creates the ledger once, then EDITS it; never comments on it', async () => {
     const f1 = fake(world());
-    const r1 = await pass({ call: f1.call, repo: 'o/r', token: null, now: NOW });
+    const r1 = await pass({ call: f1.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat });
     assert.equal(r1.code, 0, r1.lines.join('\n'));
     assert.deepEqual(f1.writes.map((w) => `${w.method} ${w.path}`), ['POST /issues']);
     assert.equal(f1.writes[0].body.title, 'Autopilot ledger');
     const f2 = fake(world({ '/issues?state=open': [{ number: 12, title: 'Autopilot ledger' }] }));
-    await pass({ call: f2.call, repo: 'o/r', token: null, now: NOW });
+    await pass({ call: f2.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat });
     assert.deepEqual(f2.writes.map((w) => `${w.method} ${w.path}`), ['PATCH /issues/12']);
     assert.ok(!f2.writes.some((w) => /comments/.test(w.path)));
   });
   test('🔴 a ledger body that is not public is NOT written', async () => {
     const f = fake(world({ '/actions/runs?created': { workflow_runs: [{ id: 1, name: 'CI C:/Users/owner', workflow_id: 1, head_branch: 'main', head_sha: HEAD, status: 'completed', conclusion: 'cancelled', updated_at: iso(1) }] } }));
-    const r = await pass({ call: f.call, repo: 'o/r', token: null, now: NOW });
+    const r = await pass({ call: f.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat });
     assert.equal(r.code, 1);
     assert.match(r.lines.at(-1), /ledger NOT written: it carries a C:\/Users path/);
     assert.deepEqual(f.writes, []);
@@ -152,9 +230,10 @@ describe('one watch pass against a fake GitHub', () => {
 });
 
 describe('.github/workflows/autopilot-watch.yml', () => {
-  test('schedule every 15 min, workflow_run of CI / E2E live / Land with the zizmor ignore, dispatch', () => {
+  test('🔴 schedule every 15 min, workflow_run of CI / E2E live on MAIN only (never Land) with the zizmor ignore, dispatch', () => {
     assert.match(WF, /cron: '7,22,37,52 \* \* \* \*'/);
-    assert.match(WF, /# zizmor: ignore\[dangerous-triggers\]\n\s+# why:[\s\S]*?workflow_run:\n\s+workflows: \[CI, E2E live, Land\]\n\s+types: \[completed\]/);
+    assert.match(WF, /# zizmor: ignore\[dangerous-triggers\]\n\s+# why:[\s\S]*?workflow_run:\n\s+workflows: \[CI, E2E live\]\n\s+types: \[completed\]\n\s+branches: \[main\]\n/);
+    assert.doesNotMatch(WF, /workflows: \[[^\]]*\bLand\b/, 'a Land wake is ~6 an hour more passes against the shared token budget');
     assert.match(WF, /^ {2}workflow_dispatch:$/m);
   });
   test('concurrency autopilot-watch, never cancelled in flight (assert-workflow-hardening); permissions {} at the top', () => {

@@ -8,8 +8,12 @@
 //
 // A PASS (default):
 //   (a) the laptop heartbeat → open / edit / close the ONE `laptop-off` issue
-//   (b) the open same-repo PR board (newest ci-gate RUN on each head decides)
-//   (c) the run ledger: every run that ended red in the last LEDGER_WINDOW_H
+//   (b) the open same-repo PR board (newest ci-gate RUN on each head decides; a
+//       head unchanged since the last ledger reuses its GREEN/RED for up to
+//       BOARD_CACHE_MIN, and at most BOARD_READS_PER_PASS PRs are read per pass)
+//   (c) the run ledger: every run that ended red in the last LEDGER_WINDOW_H (the
+//       jobs of the newest JOB_READS_PER_PASS failed runs are read)
+//   every request counted against REQUEST_CEILING (ledger.mjs requestBudget)
 //   (d) the open `land-freeze` issue, if any
 //   then EDIT the body of the ONE issue titled `Autopilot ledger` (created once,
 //   never commented on). A body ledger.mjs's assertPublic refuses is NOT written.
@@ -24,7 +28,7 @@
 import { envToken, isMain, redact, CONTRACT } from './cli.mjs';
 import { laptopState, parseBeat, readBeatApi } from './heartbeat.mjs';
 import { restClient } from './review-paths.mjs';
-import { laptopIssueAction, boardRow, runLedger, renderLedger, assertPublic, e2eDecision, LEDGER_TITLE, WATCH_LABELS } from './ledger.mjs';
+import { laptopIssueAction, boardRow, runLedger, renderLedger, assertPublic, e2eDecision, requestBudget, parseBoardCache, boardPlan, jobReadIds, LEDGER_TITLE, WATCH_LABELS } from './ledger.mjs';
 
 const FREEZE = CONTRACT.publicLabels.issue[0];
 const H = 3_600_000;
@@ -39,8 +43,16 @@ async function issuesLabelled(call, label) {
   return ((await get(call, `/issues?labels=${encodeURIComponent(label)}&state=open&per_page=100`)) ?? []).filter((i) => !i.pull_request);
 }
 
-/** One watch pass. `call` is a REST client's call; `now` ms. Returns { code, lines }. */
-export async function pass({ call, repo, token, now = Date.now() }) {
+/**
+ * One watch pass. `call` is a REST client's call; `now` ms. Every request — the beat's
+ * two included — is counted against `budget` (REQUEST_CEILING): the one past it throws,
+ * and main() reports COULD NOT LOOK. Returns { code, lines }.
+ */
+export async function pass({ call: rawCall, repo, token, now = Date.now(), fetchImpl = globalThis.fetch, budget = requestBudget() }) {
+  const call = async (method, path, body) => {
+    budget.take(`${method} ${path}`);
+    return rawCall(method, path, body);
+  };
   const lines = [];
   let code = 0;
   const write = async (method, path, body, what) => {
@@ -50,7 +62,11 @@ export async function pass({ call, repo, token, now = Date.now() }) {
     return r;
   };
   // (a)
-  const got = await readBeatApi({ repo, token });
+  const countedFetch = (...a) => {
+    budget.take('GET the heartbeat');
+    return fetchImpl(...a);
+  };
+  const got = await readBeatApi({ repo, token, fetchImpl: countedFetch });
   const laptop = laptopState(parseBeat(got.text), now);
   const offIssues = await issuesLabelled(call, WATCH_LABELS.LAPTOP_OFF);
   const a = laptopIssueAction({ state: laptop.state, beat: laptop.beat, open: offIssues[0] ?? null, now });
@@ -61,13 +77,24 @@ export async function pass({ call, repo, token, now = Date.now() }) {
     await write('POST', `/issues/${offIssues[0].number}/comments`, { body: a.comment }, `commented on laptop-off #${offIssues[0].number}`);
     await write('PATCH', `/issues/${offIssues[0].number}`, { state: 'closed', state_reason: 'completed' }, `closed laptop-off #${offIssues[0].number}`);
   }
-  // (b)
+  // The ledger issue first: its body carries the board cache this pass reuses.
+  const mine = ((await get(call, '/issues?state=open&per_page=100&creator=github-actions%5Bbot%5D')) ?? []).find((i) => !i.pull_request && i.title === LEDGER_TITLE);
+  // (b) — check-runs only for a PR whose head moved or whose cached verdict is stale.
   const open = ((await get(call, '/pulls?state=open&per_page=100')) ?? []).filter((p) => p.head?.repo?.full_name === repo);
+  const plan = boardPlan({ prs: open.map((p) => ({ number: p.number, headSha: p.head?.sha })), cache: parseBoardCache(mine?.body), now });
   const board = [];
+  let read = 0;
   for (const p of open) {
+    const base = { number: p.number, draft: p.draft, labels: (p.labels ?? []).map((l) => l.name), createdAt: p.created_at, headSha: p.head.sha };
+    const step = plan.get(p.number);
+    if (!step.read) {
+      board.push(boardRow({ ...base, gate: step.gate, readAt: step.at }, now));
+      continue;
+    }
+    read++;
     const checks = (await get(call, `/commits/${p.head.sha}/check-runs?check_name=ci-gate&per_page=100`))?.check_runs ?? [];
     const runs = (await get(call, `/actions/runs?head_sha=${p.head.sha}&per_page=100`))?.workflow_runs ?? [];
-    board.push(boardRow({ number: p.number, draft: p.draft, labels: (p.labels ?? []).map((l) => l.name), createdAt: p.created_at, checks, runs }, now));
+    board.push(boardRow({ ...base, checks, runs }, now));
   }
   // (c)
   const since = new Date(now - CONTRACT.watch.LEDGER_WINDOW_H * H).toISOString();
@@ -78,9 +105,7 @@ export async function pass({ call, repo, token, now = Date.now() }) {
     if (rows.length < 100) break;
   }
   const jobs = {};
-  for (const r of runs.filter((x) => x.status === 'completed' && x.conclusion === 'failure').slice(0, 30)) {
-    jobs[String(r.id)] = (await get(call, `/actions/runs/${r.id}/jobs?filter=latest&per_page=100`))?.jobs ?? [];
-  }
+  for (const id of jobReadIds(runs)) jobs[id] = (await get(call, `/actions/runs/${id}/jobs?filter=latest&per_page=100`))?.jobs ?? [];
   const prByBranch = Object.fromEntries(open.map((p) => [p.head.ref, p.number]));
   const ledger = runLedger({ runs, jobs, prByBranch, now });
   // (d)
@@ -89,8 +114,7 @@ export async function pass({ call, repo, token, now = Date.now() }) {
   const body = renderLedger({ now, laptop, board, ledger, freeze });
   const refused = assertPublic(body);
   if (refused) return { code: 1, lines: [...lines, `ledger NOT written: ${refused}`] };
-  const mine = ((await get(call, '/issues?state=open&per_page=100&creator=github-actions%5Bbot%5D')) ?? []).find((i) => !i.pull_request && i.title === LEDGER_TITLE);
-  if (mine) await write('PATCH', `/issues/${mine.number}`, { body }, `edited the ledger #${mine.number} (${board.length} PR(s), ${ledger.length} red run(s))`);
+  if (mine) await write('PATCH', `/issues/${mine.number}`, { body }, `edited the ledger #${mine.number} (${board.length} PR(s), ${read} read, ${ledger.length} red run(s), ${budget.used()}/${budget.ceiling} requests)`);
   else await write('POST', '/issues', { title: LEDGER_TITLE, body }, 'created the ledger issue');
   return { code, lines };
 }

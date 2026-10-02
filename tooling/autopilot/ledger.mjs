@@ -60,13 +60,102 @@ export function laptopIssueAction({ state, beat, open, now }) {
 
 // ── (b) the PR board ────────────────────────────────────────────────────────
 
-/** One open same-repo PR → its board row. `checks` are ci-gate check-runs on the head; `runs` the head's runs. */
+/**
+ * One open same-repo PR → its board row. `checks` are ci-gate check-runs on the head;
+ * `runs` the head's runs. `pr.gate` (a verdict reused from the board cache, or
+ * UNREAD past the per-pass read cap) skips the computation.
+ */
 export function boardRow(pr, now) {
   const labels = (pr.labels ?? []).filter((l) => BOARD_LABELS.includes(l));
-  const g = gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) });
+  const gate = pr.gate ?? gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) }).verdict;
   const ageH = (now - Date.parse(pr.createdAt)) / H;
-  const stall = !pr.draft && g.verdict === 'GREEN' && ageH > W.STALL_H && !labels.includes(LAND_OK);
-  return { number: pr.number, draft: Boolean(pr.draft), labels, gate: g.verdict, ageH, stall };
+  const stall = !pr.draft && gate === 'GREEN' && ageH > W.STALL_H && !labels.includes(LAND_OK);
+  return { number: pr.number, draft: Boolean(pr.draft), labels, gate, ageH, stall, headSha: pr.headSha ?? null, readAt: pr.readAt ?? now };
+}
+
+// ── the pass's request budget (review of #1171, finding 4) ───────────────────
+//
+// GITHUB_TOKEN has 1,000 REST requests an hour PER REPOSITORY, shared with Land,
+// ops-watch, review-gate and the CI guards. A pass is held to REQUEST_CEILING: the
+// board re-reads check-runs only for a PR whose head moved, whose cached verdict was
+// not terminal or is older than BOARD_CACHE_MIN, at most BOARD_READS_PER_PASS of
+// them; the ledger reads the jobs of at most JOB_READS_PER_PASS failed runs.
+
+export const UNREAD = 'UNREAD';
+const TERMINAL = ['GREEN', 'RED'];
+const CACHE_TAG = '<!-- autopilot board-cache ';
+const SHA40 = /^[0-9a-f]{40}$/;
+
+/** A counter that refuses the request past `ceiling`: take() throws, nothing is sent. */
+export function requestBudget(ceiling = W.REQUEST_CEILING) {
+  let used = 0;
+  return {
+    ceiling,
+    used: () => used,
+    take(what) {
+      if (used >= ceiling) throw new Error(`REQUEST CEILING: ${what} would be request ${used + 1} of one pass, over ${ceiling}`);
+      used += 1;
+    },
+  };
+}
+
+/** The previous ledger body → Map<pr number, { sha, gate, at }>; anything off-shape is dropped. */
+export function parseBoardCache(body) {
+  const out = new Map();
+  const text = String(body ?? '');
+  const i = text.lastIndexOf(CACHE_TAG);
+  if (i === -1) return out;
+  const end = text.indexOf(' -->', i);
+  if (end === -1) return out;
+  let j;
+  try {
+    j = JSON.parse(text.slice(i + CACHE_TAG.length, end));
+  } catch {
+    return out;
+  }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return out;
+  for (const [k, v] of Object.entries(j)) {
+    if (!/^\d{1,7}$/.test(k) || !Array.isArray(v) || v.length !== 3) continue;
+    const [sha, gate, at] = v;
+    if (SHA40.test(String(sha)) && TERMINAL.includes(gate) && Number.isFinite(at)) out.set(Number(k), { sha, gate, at });
+  }
+  return out;
+}
+
+/** The board rows → the cache marker the next pass reads (terminal verdicts only). */
+export function renderBoardCache(board) {
+  const j = {};
+  for (const b of board) if (SHA40.test(String(b.headSha)) && TERMINAL.includes(b.gate)) j[b.number] = [b.headSha, b.gate, Math.round(b.readAt)];
+  return `${CACHE_TAG}${JSON.stringify(j)} -->`;
+}
+
+/**
+ * Which open PRs' check-runs this pass reads. `prs` [{ number, headSha }] in board
+ * order. Returns Map<number, { read: true } | { gate, at }>: reuse a cached terminal
+ * verdict on the same head younger than BOARD_CACHE_MIN, else read while under
+ * `max`, else UNREAD.
+ */
+export function boardPlan({ prs, cache, now, max = W.BOARD_READS_PER_PASS }) {
+  const plan = new Map();
+  let reads = 0;
+  for (const p of prs) {
+    const c = cache?.get(p.number);
+    if (c && c.sha === p.headSha && now - c.at <= W.BOARD_CACHE_MIN * MIN) plan.set(p.number, { gate: c.gate, at: c.at });
+    else if (reads < max) {
+      plan.set(p.number, { read: true });
+      reads++;
+    } else plan.set(p.number, { gate: UNREAD, at: now });
+  }
+  return plan;
+}
+
+/** The failed runs whose jobs this pass reads: newest first, at most `max`. */
+export function jobReadIds(runs, max = W.JOB_READS_PER_PASS) {
+  return (runs ?? [])
+    .filter((x) => x.status === 'completed' && x.conclusion === 'failure')
+    .sort((a, b) => Date.parse(b.updated_at ?? b.created_at ?? '') - Date.parse(a.updated_at ?? a.created_at ?? '') || Number(b.id) - Number(a.id))
+    .slice(0, max)
+    .map((r) => String(r.id));
 }
 
 // ── (c) the run ledger ──────────────────────────────────────────────────────
@@ -84,7 +173,9 @@ export function runLedger({ runs, jobs = {}, prByBranch = {}, now }) {
     if (r.status !== 'completed' || !RED_CONCLUSIONS.includes(r.conclusion)) continue;
     const ended = Date.parse(r.updated_at ?? r.created_at ?? '');
     if (!(ended >= since)) continue;
-    const owner = r.head_branch === 'main' ? 'main' : prByBranch[r.head_branch] ? `#${prByBranch[r.head_branch]}` : r.pull_requests?.[0]?.number ? `#${r.pull_requests[0].number}` : `branch ${r.head_branch}`;
+    // A fork's branch name is its author's text: escaped for the table and stripped of
+    // `@`, so it can neither break a row nor ping anyone on every edit.
+    const owner = r.head_branch === 'main' ? 'main' : prByBranch[r.head_branch] ? `#${prByBranch[r.head_branch]}` : r.pull_requests?.[0]?.number ? `#${r.pull_requests[0].number}` : `branch ${esc(String(r.head_branch ?? '').replace(/@/g, ''))}`;
     let cause;
     if (r.conclusion === 'cancelled') {
       const newer = all.filter((x) => x.workflow_id === r.workflow_id && x.head_sha === r.head_sha && Number(x.id) > Number(r.id)).sort((a, b) => Number(a.id) - Number(b.id))[0];
@@ -127,7 +218,7 @@ export function renderLedger({ now, laptop, board, ledger, freeze, cap = W.LEDGE
     '',
     '| PR | state | ci-gate | labels | age | stall |',
     '|---|---|---|---|---|---|',
-    ...board.map((b) => `| #${b.number} | ${b.draft ? 'draft' : 'ready for review'} | ${b.gate} | ${b.labels.map((l) => `\`${l}\``).join(' ') || '—'} | ${b.ageH.toFixed(1)} h | ${b.stall ? `**STALL** (> ${W.STALL_H} h, green, no \`${LAND_OK}\`)` : ''} |`),
+    ...board.map((b) => `| #${b.number} | ${b.draft ? 'draft' : 'ready for review'} | ${b.gate === UNREAD ? `not read this pass (> ${W.BOARD_READS_PER_PASS})` : b.gate} | ${b.labels.map((l) => `\`${l}\``).join(' ') || '—'} | ${b.ageH.toFixed(1)} h | ${b.stall ? `**STALL** (> ${W.STALL_H} h, green, no \`${LAND_OK}\`)` : ''} |`),
     ...(board.length ? [] : ['| — | no open same-repo PR | | | | |']),
     '',
     `## Runs that ended red in the last ${W.LEDGER_WINDOW_H} h`,
@@ -139,7 +230,8 @@ export function renderLedger({ now, laptop, board, ledger, freeze, cap = W.LEDGE
   const tail = (dropped) => ['', dropped ? `_${dropped} older row(s) dropped to stay under ${cap} characters._` : `_${ledger.length} row(s)._`];
   let rows = ledger.map(row);
   let dropped = 0;
-  const text = () => [...head, ...rows, ...(rows.length ? [] : ['| — | none | | | | |']), ...tail(dropped)].join('\n');
+  const cache = renderBoardCache(board);
+  const text = () => [...head, ...rows, ...(rows.length ? [] : ['| — | none | | | | |']), ...tail(dropped), '', cache].join('\n');
   while (text().length > cap && rows.length) {
     rows = rows.slice(0, -1); // newest first, so the last row is the oldest
     dropped++;
