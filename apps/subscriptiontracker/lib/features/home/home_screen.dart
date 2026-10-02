@@ -7,9 +7,14 @@
 //   · `AppSummaryCard`  — the monthly total, what qualifies it, and the 7- and
 //                         30-day figures. Replaces the brand-gradient hero, whose
 //                         white-on-purple literals no theme could reach.
-//   · `DecisionStrip`   — "N marked unused · cancel to save X · Review": the
-//                         one decision this screen asks. Replaces the warn-bar
-//                         `RowCard` and its hand-measured `!` glyph tone.
+//   · `DecisionStrip`   — the ONE decision this screen asks, the most urgent
+//                         of `HomeSignals` (T8 · HO-05): a trial ending, a
+//                         yearly charge close, a price that rose, "Still using
+//                         {name}?" — each with one answer. It replaced the
+//                         "N marked unused" strip only demo data could fill.
+//   · `ListControls`    — search, sort and filter (T8 · HO-03), the design
+//                         system's, leading the list so / and Ctrl/⌘+F always
+//                         find the field built.
 //   · `AppSectionHeader` + `AppListGroup` of `AppListRow`s — upcoming renewals
 //                         and every subscription. Replace `SectionHeader` and
 //                         one `RowCard` per row.
@@ -18,15 +23,20 @@
 //                         raw exception string (`couldNotLoad('$e')` is gone
 //                         from here).
 //
-// What this file still decides is domain: which subscriptions are upcoming,
-// which one is urgent, what "unused" means, where a tap goes. Every colour,
+// What this file still decides is domain: which subscriptions are upcoming
+// (the next 30 days, HO-04), which one is urgent, what matches a search,
+// where a tap goes. Every colour,
 // size and type style comes from the theme through the components.
 //
 // 🔴 THE ORDERING RULE THIS FILE ENCODES, because it is the one that bites:
 // `overrides.md` §10-11 records that home and settings must merge AS A PAIR —
 // `showUnused` below reads `prefs['unused']`, which only the settings toggles
-// write. Changing one screen without the other severs a coupling nothing tests.
+// write — it now gates the "Still using {name}?" signal. Changing one screen
+// without the other severs a coupling nothing tests.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async' show Timer;
+
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,9 +48,11 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/format/category_label.dart';
+import '../../core/format/rail_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
+import '../../data/portability/subscription_columns.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
@@ -58,7 +70,14 @@ import '../shared/due.dart';
 // The shell this screen is a BRANCH of, imported for one number:
 // [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
 // shell, so the arithmetic does too.
+import '../setup/setup_screen.dart' show shouldOfferSetup;
 import '../shell/app_shell.dart';
+import '../stop/stop_flow.dart' show showStopSheet;
+import 'home_search.dart';
+import 'home_signals.dart';
+
+/// Home's sort orders (HO-03).
+enum HomeSort { nextCharge, price, monthlyShare, name }
 
 /// Home — branch 0's BODY ([ADR 037] Variant B): `AppShell` owns the adaptive
 /// [AppScaffold], so this screen carries NO scaffold of its own — nesting one
@@ -67,7 +86,13 @@ import '../shell/app_shell.dart';
 /// The `PaywallGate` wraps the INSIGHTS branch in `lib/core/router.dart`, so
 /// `paywallLockedProvider` keeps its one real consumer there.
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({this.category, super.key});
+
+  /// T12 (IN-07): list only this category's rows — the drill-down from an
+  /// Insights category row (`/home?category=`). Null or empty is every row.
+  /// It lands as Home's own category filter chip (HO-03), so the user sees
+  /// the filter in force and clears it where every other filter is cleared.
+  final String? category;
 
   /// The narrowest BODY that holds the summary side column beside a
   /// list/detail split: `form` (420) + divider (1) + `expanded` (840) = 1261.
@@ -95,11 +120,31 @@ class HomeScreen extends ConsumerWidget {
   /// The summary card, wherever it is laid out.
   static const Key summaryKey = Key('home-summary');
 
-  /// The unused-plans decision.
-  static const Key unusedStripKey = Key('home-unused-strip');
+  /// The decision strip for [s] of [kind] (HO-05).
+  static Key signalKey(HomeSignalKind kind, String id) =>
+      Key('home-signal-${kind.name}-$id');
 
-  /// The decision's one answer.
-  static const Key unusedReviewKey = Key('home-unused-review');
+  /// That strip's one answer.
+  static Key signalActionKey(HomeSignalKind kind, String id) =>
+      Key('home-signal-${kind.name}-$id-action');
+
+  /// The search field (HO-03).
+  static const Key searchFieldKey = Key('home-search');
+
+  /// The sort menu button (HO-03).
+  static const Key sortKey = Key('home-sort');
+
+  /// The filter toggle that shows the chips (HO-03).
+  static const Key filterKey = Key('home-filter');
+
+  /// Shown in place of the all-subscriptions group when nothing matches.
+  static const Key noMatchesKey = Key('home-no-matches');
+
+  /// How many upcoming charges are listed before "{n} more" (HO-04).
+  static const int upcomingShown = 4;
+
+  /// The upcoming horizon, in days (HO-04).
+  static const int upcomingDays = 30;
 
   /// The upcoming-renewals group.
   static const Key upcomingKey = Key('home-upcoming');
@@ -107,21 +152,70 @@ class HomeScreen extends ConsumerWidget {
   /// The every-subscription group.
   static const Key allKey = Key('home-all');
 
+  /// The control that enters the selection on a pointer target (HO-08).
+  static const Key selectKey = Key('home-select');
+
+  /// The selection's action bar (train T20, HO-08), its four actions, and
+  /// the Done that leaves it.
+  static const Key selectionBarKey = Key('home-selection-bar');
+  static const Key selectDoneKey = Key('home-select-done');
+  static const Key bulkPauseKey = Key('home-bulk-pause');
+  static const Key bulkCancelKey = Key('home-bulk-cancel');
+  static const Key bulkDeleteKey = Key('home-bulk-delete');
+  static const Key bulkExportKey = Key('home-bulk-export');
+
+  /// The tag filter's chips (ST-AD12), present only when a row has a tag.
+  static const Key tagFilterKey = Key('home-tag-filter');
+
+  /// One row's swipe wrapper, on a touch platform.
+  static Key swipeKeyOf(String id) => ValueKey<String>('home-swipe-$id');
+
+  /// One row's selection box, in the selection mode.
+  static Key pickKeyOf(String id) => ValueKey<String>('home-pick-$id');
+
+  /// A tag's chip in the filter.
+  static Key tagChipKeyOf(String tag) =>
+      ValueKey<String>('home-tag-${tag.toLowerCase()}');
+
+  /// Whether rows swipe on [platform]: the two touch-first ones, where a
+  /// swipe is the idiom. A desktop pointer has the selection mode instead.
+  static bool swipesOn(TargetPlatform platform) =>
+      platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return const Column(
-      children: <Widget>[
-        // [pipeline T-8] Above everything. MOUNTED EXACTLY ONCE IN THE APP —
-        // chassis_properties_test pumps the whole SublyApp and asserts it.
-        CatchUpNudgeBanner(),
-        // [research/44 §7 rung 3] The same-app upgrade card, in the slot the
-        // stamped chassis gives it: under the nudge, above the dashboard. It
-        // renders NOTHING while `features.promo_card_enabled` is absent.
-        UpgradePromoCard(),
-        Expanded(child: _HomeDashboard()),
-      ],
+    // The filter reaches the dashboard through [_HomeFilter] so the shell
+    // below stays one `const` tree — the shape the chassis property audit
+    // reads its mounts from (assert-stamp-properties).
+    return _HomeFilter(
+      category: (category ?? '').isEmpty ? null : category,
+      child: const Column(
+        children: <Widget>[
+          // [pipeline T-8] Above everything. MOUNTED EXACTLY ONCE IN THE APP —
+          // chassis_properties_test pumps the whole SublyApp and asserts it.
+          CatchUpNudgeBanner(),
+          // [research/44 §7 rung 3] The same-app upgrade card, in the slot the
+          // stamped chassis gives it: under the nudge, above the dashboard. It
+          // renders NOTHING while `features.promo_card_enabled` is absent.
+          UpgradePromoCard(),
+          Expanded(child: _HomeDashboard()),
+        ],
+      ),
     );
   }
+}
+
+/// The category Home is filtered to (T12, IN-07), handed to the dashboard.
+class _HomeFilter extends InheritedWidget {
+  const _HomeFilter({required this.category, required super.child});
+
+  final String? category;
+
+  static String? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_HomeFilter>()?.category;
+
+  @override
+  bool updateShouldNotify(_HomeFilter old) => old.category != category;
 }
 
 /// Subly's product dashboard, docked as the Home destination.
@@ -145,8 +239,106 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
   /// not BUILD its detail below the split, so keeping it costs nothing.
   String? _selectedId;
 
+  /// HO-03: what the user searched, sorted by and filtered to. Screen state:
+  /// a way of looking at the list, not a fact about the user's data.
+  String _query = '';
+  HomeSort _sort = HomeSort.monthlyShare;
+  final Set<String> _filters = <String>{};
+
+  /// Whether the filter chips are showing — and they stay showing while any
+  /// chip is on, so a filter in force is never folded away.
+  bool _filtersOpen = false;
+  final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode(debugLabel: 'home search');
+
+  /// The list column's scroll, so a search request can bring the field back.
+  final ScrollController _scroll = ScrollController();
+
+  /// HO-04: lands at the next local midnight and re-reads [nowProvider], so a
+  /// screen left open overnight relabels "Renews tomorrow" as "Due today".
+  Timer? _midnight;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMidnight();
+  }
+
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    _midnight = Timer(untilLocalMidnight(ref.read(nowProvider)()), () {
+      if (!mounted) return;
+      ref.invalidate(nowProvider);
+      setState(() {});
+      _scheduleMidnight();
+    });
+  }
+
+  /// The drill-down category last applied (IN-07), so a rebuild does not
+  /// re-impose a filter the user has since cleared.
+  String? _drilledTo;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final String? category = _HomeFilter.of(context);
+    if (category == _drilledTo) return;
+    _drilledTo = category;
+    // A NEW drill-down replaces any category chip, and only that group: a
+    // status or currency filter the user set stays.
+    _filters.removeWhere((String f) => f.startsWith(_cat));
+    if (category != null) {
+      _filters.add('$_cat$category');
+      _filtersOpen = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    _search.dispose();
+    _searchFocus.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// The tag "All subscriptions" is narrowed to, or null for every row
+  /// (ST-AD12). Screen state for the reason [_selectedId] is.
+  String? _tag;
+
+  /// The MULTI-SELECTION (train T20, HO-08): null when the list is not in its
+  /// selection mode, else the ids picked — possibly none yet.
+  ///
+  /// Entered by a long press on a row (touch) or by the section's "Select"
+  /// action (every target: a pointer has no long press worth teaching), and
+  /// left by "Done" or by acting on the selection. In the mode every row shows
+  /// a checkbox and a tap toggles it instead of opening the row.
+  Set<String>? _picked;
+
+  void _toggle(String id) => setState(() {
+    final Set<String> picked = _picked ?? <String>{};
+    if (!picked.remove(id)) picked.add(id);
+    _picked = picked;
+  });
+
   @override
   Widget build(BuildContext context) {
+    // SH-02: the shell's / and Ctrl/⌘+F land here. Next frame, so a request
+    // that also switched to this branch finds the field mounted.
+    ref.listen<int>(homeSearchRequestProvider, (int? _, int _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // Scrolled past it, the field is not built: back to the top first.
+        if (_searchFocus.context == null && _scroll.hasClients) {
+          _scroll.jumpTo(0);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _searchFocus.requestFocus();
+          });
+          return;
+        }
+        _searchFocus.requestFocus();
+      });
+    });
     final AppLocalizations l10n = AppLocalizations.of(context);
     final MoneyFormatter money = MoneyFormatter(
       l10n.localeName,
@@ -162,6 +354,22 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     final AsyncValue<List<Subscription>> subs = ref.watch(
       subscriptionsControllerProvider,
     );
+
+    // ⏱ ST-T9 (EN-18): a first sign-in whose list loads EMPTY is offered the
+    // after-sign-in setup, once per account. After the frame, because a
+    // navigation is not something a build may do; `maybeOf`, because a test
+    // that pumps home without a router has nowhere to go.
+    if (shouldOfferSetup(
+      seen: ref.watch(setupSeenProvider),
+      subscriptions: subs,
+    )) {
+      final GoRouter? router = GoRouter.maybeOf(context);
+      if (router != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) router.go('/setup');
+        });
+      }
+    }
 
     // 🔴 IT MEASURES THE BOX, NOT THE WINDOW. `AppShell`'s scaffold hands this
     // body the window minus its navigation, so a `MediaQuery` reading here
@@ -199,7 +407,8 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
                   id: _selectedId!,
                   onClose: () => setState(() => _selectedId = null),
                 ),
-          placeholder: TwoPanePlaceholder(message: l10n.allSubscriptions),
+          // B8: the empty pane says what to do, not what the list is called.
+          placeholder: TwoPanePlaceholder(message: l10n.homeSelectSubscription),
         );
 
         if (!aside) return panes;
@@ -252,6 +461,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         key: HomeScreen.pullToRefreshKey,
         onRefresh: () => refreshOnReturn(ref),
         child: ListView(
+          controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: AppShell.pageInsetOf(context),
           children: <Widget>[
@@ -501,10 +711,132 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     required bool summaryInList,
     required bool twoPane,
   }) {
-    final List<Subscription> unused = SubMath.unused(subs);
-    final List<Subscription> upcoming = SubMath.upcoming(subs, now);
-    final List<Subscription> all = SubMath.byMonthlyDesc(subs);
+    // HO-05: decisions a real row raises, each with one answer.
+    final List<HomeSignal> signals = HomeSignals.of(
+      subs,
+      now,
+      stillUsing: showUnused ? (Subscription s) => s.unused : null,
+    ).take(HomeSignals.maxShown).toList();
+    // HO-04: the next 30 days, four listed, the rest counted.
+    final List<Subscription> horizon = SubMath.upcoming(
+      subs,
+      now,
+      take: subs.length,
+      withinDays: HomeScreen.upcomingDays,
+    );
+    final List<Subscription> upcoming = horizon
+        .take(HomeScreen.upcomingShown)
+        .toList();
+    final int more = horizon.length - upcoming.length;
+    // ST-AD12: a tag that has left the list (its last row untagged or
+    // removed) filters nothing — the list never empties behind a stale chip.
+    final List<String> tags = SubMath.tagsOf(subs);
+    final String? tag = _tag == null
+        ? null
+        : tags
+              .where((String t) => t.toLowerCase() == _tag!.toLowerCase())
+              .firstOrNull;
+    // HO-03: search, filter and sort apply to the every-subscription list;
+    // a tag (ST-AD12) narrows it the same way.
+    final List<Subscription> all = SubMath.taggedWith(_apply(subs, now), tag);
+    // HO-08: a picked row that has left the list is no longer picked.
+    final Set<String>? picked = _picked?.intersection(<String>{
+      for (final Subscription s in subs) s.id,
+    });
 
+    // While the user is FINDING — a query or a filter on — the dashboard
+    // steps aside and the matches sit directly under the controls.
+    final bool finding =
+        _query.trim().isNotEmpty || _filters.isNotEmpty || tag != null;
+
+    return <Widget>[
+      // FIRST, so / and Ctrl/⌘+F always find the field built: a lazy list
+      // does not build what is below the fold, and an unbuilt field cannot
+      // take focus.
+      _controls(l10n, subs),
+      const SizedBox(height: AppSpacing.lg),
+      if (!finding)
+        ..._overview(
+          context,
+          l10n,
+          money,
+          subs,
+          now,
+          signals,
+          upcoming,
+          more,
+          summaryInList: summaryInList,
+          twoPane: twoPane,
+        ),
+      AppSectionHeader(title: l10n.allSubscriptions, count: '${all.length}'),
+      // HO-08: a POINTER has no long press worth teaching, so on the desktop
+      // targets the way into the selection is a visible control. A touch
+      // target enters it by a long press on a row (also a screen reader's
+      // long-press action). Either way the bar's Done is the way out.
+      if (picked == null && !HomeScreen.swipesOn(defaultTargetPlatform))
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: TextButton.icon(
+            key: HomeScreen.selectKey,
+            icon: const Icon(Icons.checklist),
+            label: Text(l10n.selectAction),
+            onPressed: () => setState(() => _picked = <String>{}),
+          ),
+        ),
+      if (tags.isNotEmpty) ...<Widget>[
+        _tagFilter(l10n, tags, tag),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+      if (picked != null) ...<Widget>[
+        _selectionBar(context, l10n, subs, picked),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+      if (all.isEmpty)
+        Padding(
+          key: HomeScreen.noMatchesKey,
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+          child: Text(
+            l10n.homeNoMatches,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        )
+      else
+        AppListGroup(
+          key: HomeScreen.allKey,
+          children: <Widget>[
+            for (final Subscription s in all)
+              _row(
+                context,
+                l10n,
+                money,
+                s,
+                now,
+                due: false,
+                twoPane: twoPane,
+                swipe:
+                    picked == null &&
+                    HomeScreen.swipesOn(defaultTargetPlatform),
+              ),
+          ],
+        ),
+    ];
+  }
+
+  /// The summary, the decisions and the upcoming charges — what Home shows
+  /// above the list while the user is not searching.
+  List<Widget> _overview(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    List<Subscription> subs,
+    DateTime now,
+    List<HomeSignal> signals,
+    List<Subscription> upcoming,
+    int more, {
+    required bool summaryInList,
+    required bool twoPane,
+  }) {
     return <Widget>[
       // In this column only while there is no column of its own: two summary
       // cards quoting one total read as a duplicated render.
@@ -512,34 +844,15 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         _summary(l10n, money, subs, now),
         const SizedBox(height: AppSpacing.lg),
       ],
-      if (showUnused && unused.isNotEmpty)
-        // A DECISION, NOT A NOTICE: the user has plans they marked unused,
-        // and the answer is one tap away. The tone is the scheme's warn pair
-        // on an opaque tint — measured once per scheme by the component —
-        // which retires the `_warnGlyphOnWash` #956006 this file measured by
-        // hand for a 16 % wash.
-        DecisionStrip(
-          key: HomeScreen.unusedStripKey,
-          kind: StatusKind.warn,
-          // PLURAL: the whole clause is in each arm, so a language that
-          // inflects the noun translates a sentence.
-          message: l10n.markedUnusedCount(unused.length),
-          detail: l10n.cancelToSave(money.formatBag(SubMath.savings(subs))),
-          actions: <DecisionAction>[
-            DecisionAction(
-              key: HomeScreen.unusedReviewKey,
-              label: l10n.homeReviewUnused,
-              primary: true,
-              onPressed: () => context.go('/insights'),
-            ),
-          ],
-        ),
+      for (final HomeSignal sig in signals)
+        _signalStrip(context, l10n, money, sig),
       // The Calendar link is the section's action: a real, keyboard-reachable
       // 48 px control whose arrow mirrors in RTL (the word used to carry a
       // literal '→').
       AppSectionHeader(
         title: l10n.upcomingRenewals,
-        actionLabel: l10n.calendarLink,
+        // "{n} more →" when the horizon holds more than the four listed.
+        actionLabel: more > 0 ? l10n.homeUpcomingMore(more) : l10n.calendarLink,
         onAction: () => context.go('/calendar'),
       ),
       if (upcoming.isNotEmpty)
@@ -550,15 +863,408 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               _row(context, l10n, money, s, now, due: true, twoPane: twoPane),
           ],
         ),
-      AppSectionHeader(title: l10n.allSubscriptions, count: '${subs.length}'),
-      AppListGroup(
-        key: HomeScreen.allKey,
-        children: <Widget>[
-          for (final Subscription s in all)
-            _row(context, l10n, money, s, now, due: false, twoPane: twoPane),
+    ];
+  }
+
+  /// The filter keys: `status:<name>`, `cat:<category>`, `cur:<code>`.
+  /// OR within a group, AND across groups.
+  static const String _status = 'status:';
+  static const String _cat = 'cat:';
+  static const String _cur = 'cur:';
+
+  /// [subs] searched (name and notes), filtered and sorted — through the
+  /// shared [ListControls.apply], so the fold is the design system's.
+  List<Subscription> _apply(List<Subscription> subs, DateTime now) {
+    Iterable<String> group(String prefix) => _filters
+        .where((String f) => f.startsWith(prefix))
+        .map((String f) => f.substring(prefix.length));
+    final Set<String> statuses = group(_status).toSet();
+    final Set<String> cats = group(_cat).toSet();
+    final Set<String> curs = group(_cur).toSet();
+    final List<Subscription> base = SubMath.byMonthlyDesc(subs);
+    return ListControls.apply<Subscription>(
+      base,
+      query: _query,
+      matches: (Subscription s, String q) =>
+          ListControls.anyFieldContains(<String>[s.name, s.notes], q),
+      filters: <bool Function(Subscription)>[
+        if (statuses.isNotEmpty)
+          (Subscription s) => statuses.contains(s.status.name),
+        if (cats.isNotEmpty) (Subscription s) => cats.contains(s.category),
+        if (curs.isNotEmpty) (Subscription s) => curs.contains(s.currencyCode),
+      ],
+      compare: switch (_sort) {
+        // byMonthlyDesc already ordered `base`; the stable fold keeps it.
+        HomeSort.monthlyShare => null,
+        HomeSort.nextCharge =>
+          (Subscription a, Subscription b) =>
+              a.daysUntil(now).compareTo(b.daysUntil(now)),
+        // Within one currency only: across currencies the input (grouped by
+        // currency) order stands, because the amounts do not compare.
+        HomeSort.price =>
+          (Subscription a, Subscription b) => a.currencyCode != b.currencyCode
+              ? 0
+              : b.price.minorUnits.compareTo(a.price.minorUnits),
+        HomeSort.name =>
+          (Subscription a, Subscription b) =>
+              a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      },
+    );
+  }
+
+  /// The shared [ListControls], fed this screen's words and filters.
+  Widget _controls(AppLocalizations l10n, List<Subscription> subs) {
+    final List<String> categories =
+        subs.map((Subscription s) => s.category).toSet().toList()..sort();
+    final List<String> currencies =
+        subs.map((Subscription s) => s.currencyCode).toSet().toList()..sort();
+    String statusLabel(SubscriptionStatus st) => switch (st) {
+      SubscriptionStatus.active => l10n.homeFilterActive,
+      SubscriptionStatus.trialing => l10n.homeFilterTrial,
+      SubscriptionStatus.paused => l10n.statusPaused,
+      SubscriptionStatus.cancelled => l10n.statusCancelled,
+    };
+    return ListControls<HomeSort, String>(
+      searchFieldKey: HomeScreen.searchFieldKey,
+      sortButtonKey: HomeScreen.sortKey,
+      searchLabel: l10n.homeSearchLabel,
+      clearSearchLabel: l10n.homeSearchClear,
+      searchController: _search,
+      searchFocusNode: _searchFocus,
+      query: _query,
+      onQueryChanged: (String q) => setState(() => _query = q),
+      sortLabel: l10n.homeSortLabel,
+      sortOptions: <ListSortOption<HomeSort>>[
+        ListSortOption<HomeSort>(
+          value: HomeSort.monthlyShare,
+          label: l10n.homeSortMonthlyShare,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.nextCharge,
+          label: l10n.homeSortNextCharge,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.price,
+          label: l10n.homeSortPrice,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.name,
+          label: l10n.homeSortName,
+        ),
+      ],
+      sort: _sort,
+      onSortChanged: (HomeSort v) => setState(() => _sort = v),
+      // STATUS is a fixed four and always offered — filtering to one the
+      // list does not hold says "No subscriptions match", which is true. A
+      // category or currency group with one value filters nothing, so it
+      // draws no chips.
+      filters: <ListFilterOption<String>>[
+        for (final SubscriptionStatus st in SubscriptionStatus.values)
+          ListFilterOption<String>(
+            value: '$_status${st.name}',
+            label: statusLabel(st),
+          ),
+        if (categories.length > 1 || _drilledTo != null)
+          for (final String c in categories)
+            ListFilterOption<String>(
+              value: '$_cat$c',
+              label: categoryLabel(l10n, c),
+            ),
+        if (currencies.length > 1)
+          for (final String c in currencies)
+            ListFilterOption<String>(value: '$_cur$c', label: c),
+      ],
+      filterLabel: l10n.homeFilterLabel,
+      filterButtonKey: HomeScreen.filterKey,
+      filtersOpen: _filtersOpen || _filters.isNotEmpty,
+      onFiltersOpenChanged: (bool open) => setState(() {
+        _filtersOpen = open;
+        // Closing the chips clears them: a filter the user cannot see is a
+        // list that silently shows less than it says.
+        if (!open) _filters.clear();
+      }),
+      selectedFilters: _filters,
+      onFilterToggled: (String f) => setState(
+        () => _filters.contains(f) ? _filters.remove(f) : _filters.add(f),
+      ),
+    );
+  }
+
+  /// One [HomeSignal] as a [DecisionStrip] with its one answer (HO-05).
+  Widget _signalStrip(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    HomeSignal sig,
+  ) {
+    final Subscription s = sig.subscription;
+    final (String message, String? detail) = switch (sig.kind) {
+      HomeSignalKind.trialEnding => (
+        l10n.homeSignalTrialEnds(s.name, sig.days),
+        null,
+      ),
+      HomeSignalKind.yearlyDue => (
+        l10n.homeSignalYearlyDue(s.name, sig.days),
+        l10n.homeSignalYearlyDueDetail(money.format(s.price)),
+      ),
+      HomeSignalKind.priceRose => (
+        l10n.homeSignalPriceRose(s.name, money.format(s.price)),
+        l10n.homeSignalPriceRoseDetail(money.format(sig.was!)),
+      ),
+      HomeSignalKind.stillUsing => (l10n.homeSignalStillUsing(s.name), null),
+    };
+    final bool stop = sig.kind == HomeSignalKind.stillUsing;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: DecisionStrip(
+        key: HomeScreen.signalKey(sig.kind, s.id),
+        kind: StatusKind.warn,
+        message: message,
+        detail: detail,
+        actions: <DecisionAction>[
+          DecisionAction(
+            key: HomeScreen.signalActionKey(sig.kind, s.id),
+            label: stop ? l10n.homeSignalStop : l10n.homeSignalOpen,
+            primary: true,
+            onPressed: stop
+                // DE-07: the stop-a-charge flow replaced the cancel sheet.
+                ? () => showStopSheet(context, s)
+                : () => context.push('/sub/${s.id}'),
+          ),
         ],
       ),
+    );
+  }
+
+  /// The tag filter (ST-AD12): one chip per tag on the list, at most one on.
+  /// Choosing the chip that is on turns the filter off.
+  Widget _tagFilter(AppLocalizations l10n, List<String> tags, String? on) {
+    return Semantics(
+      label: l10n.tagFilterLabel,
+      container: true,
+      child: Wrap(
+        key: HomeScreen.tagFilterKey,
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: <Widget>[
+          for (final String t in tags)
+            FilterChip(
+              key: HomeScreen.tagChipKeyOf(t),
+              label: Text(t),
+              selected: on != null && on.toLowerCase() == t.toLowerCase(),
+              onSelected: (bool sel) => setState(() => _tag = sel ? t : null),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The selection's actions (HO-08): how many are picked, then Pause, Mark
+  /// cancelled, Delete and Export — each acting on every picked row, each
+  /// with ONE Undo for all of them. Disabled until something is picked.
+  Widget _selectionBar(
+    BuildContext context,
+    AppLocalizations l10n,
+    List<Subscription> subs,
+    Set<String> picked,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    final List<Subscription> rows = <Subscription>[
+      for (final Subscription s in subs)
+        if (picked.contains(s.id)) s,
     ];
+    final bool any = rows.isNotEmpty;
+    final Future<core.ExportOutcome> Function(core.ExportFile)? export =
+        exportFileTap(ref);
+    return AppCard(
+      key: HomeScreen.selectionBarKey,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    l10n.selectedCount(rows.length),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+              TextButton(
+                key: HomeScreen.selectDoneKey,
+                onPressed: () => setState(() => _picked = null),
+                child: Text(l10n.selectDone),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            children: <Widget>[
+              TextButton.icon(
+                key: HomeScreen.bulkPauseKey,
+                icon: const Icon(Icons.pause),
+                label: Text(l10n.actionPause),
+                onPressed: any ? () => _pauseRows(rows) : null,
+              ),
+              TextButton.icon(
+                key: HomeScreen.bulkCancelKey,
+                icon: const Icon(Icons.cancel_outlined),
+                label: Text(l10n.actionMarkCancelled),
+                onPressed: any ? () => _cancelRows(rows) : null,
+              ),
+              TextButton.icon(
+                key: HomeScreen.bulkDeleteKey,
+                icon: const Icon(Icons.delete_outline),
+                label: Text(l10n.actionDeleteFromTracker),
+                onPressed: any ? () => _deleteRows(rows) : null,
+              ),
+              // Absent while `features.exports` is off — the one flag every
+              // file that leaves the app answers to.
+              if (export != null)
+                TextButton.icon(
+                  key: HomeScreen.bulkExportKey,
+                  icon: const Icon(Icons.ios_share),
+                  label: Text(l10n.exportSelected),
+                  onPressed: any ? () => _exportRows(l10n, export, rows) : null,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One snackbar for a write over [count] rows, with ONE Undo for all of
+  /// them. Resolved before any await by the callers: it outlives the rows.
+  void _announce(
+    ScaffoldMessengerState messenger,
+    String message,
+    Future<void> Function() undo,
+  ) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(label: l10n.undo, onPressed: () => undo()),
+        ),
+      );
+  }
+
+  /// Runs a bulk [write], leaves the selection, and reports a failure in a
+  /// sentence — never a stack-adjacent string.
+  Future<void> _bulk(
+    Future<void> Function(
+      SubscriptionsController ctl,
+      ScaffoldMessengerState messenger,
+    )
+    write,
+  ) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final SubscriptionsController ctl = ref.read(
+      subscriptionsControllerProvider.notifier,
+    );
+    setState(() => _picked = null);
+    try {
+      await write(ctl, messenger);
+    } on Object {
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.updateSubscriptionFailed)),
+      );
+    }
+  }
+
+  /// Pause [rows] — or, for a swipe on a row already stopped, resume it.
+  Future<void> _pauseRows(List<Subscription> rows) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _bulk((SubscriptionsController ctl, ScaffoldMessengerState m) async {
+      final List<Subscription> before = await ctl.pauseMany(
+        rows.map((Subscription s) => s.id),
+      );
+      if (before.isEmpty) return;
+      _announce(
+        m,
+        l10n.bulkPaused(before.length),
+        () => ctl.restoreStatuses(before),
+      );
+    });
+  }
+
+  /// A swipe's start-to-end action: Pause a charging row, Resume a stopped
+  /// one — the overflow menu's pair, on one gesture.
+  Future<void> _pauseOrResume(Subscription s) {
+    if (s.isCharging) return _pauseRows(<Subscription>[s]);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _bulk((SubscriptionsController ctl, ScaffoldMessengerState m) async {
+      await ctl.resumeSubscription(s.id);
+      _announce(
+        m,
+        l10n.subscriptionResumed(s.name),
+        () => ctl.restoreStatuses(<Subscription>[s]),
+      );
+    });
+  }
+
+  Future<void> _cancelRows(List<Subscription> rows) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _bulk((SubscriptionsController ctl, ScaffoldMessengerState m) async {
+      final List<Subscription> before = await ctl.markCancelledMany(
+        rows.map((Subscription s) => s.id),
+      );
+      if (before.isEmpty) return;
+      _announce(
+        m,
+        l10n.bulkMarkedCancelled(before.length),
+        () => ctl.restoreStatuses(before),
+      );
+    });
+  }
+
+  /// Delete [rows] — SOFT deletes, so the one Undo brings every one back.
+  Future<void> _deleteRows(List<Subscription> rows) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _bulk((SubscriptionsController ctl, ScaffoldMessengerState m) async {
+      final List<Subscription> removed = await ctl.deleteMany(
+        rows.map((Subscription s) => s.id),
+      );
+      if (removed.isEmpty) return;
+      final List<String> ids = <String>[
+        for (final Subscription s in removed) s.id,
+      ];
+      final String message = removed.length == 1
+          ? l10n.subscriptionDeleted(removed.single.name)
+          : l10n.bulkDeleted(removed.length);
+      if (!ids.any(ctl.canUndoDelete)) {
+        // The hard-DELETE fallback: nothing to bring back, so no Undo.
+        m.showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      _announce(m, message, () => ctl.undoDeleteMany(ids));
+    });
+  }
+
+  /// Export [rows] as the same CSV Settings exports, through the same seam.
+  Future<void> _exportRows(
+    AppLocalizations l10n,
+    Future<core.ExportOutcome> Function(core.ExportFile) export,
+    List<Subscription> rows,
+  ) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    setState(() => _picked = null);
+    final core.ExportOutcome outcome = await export(subscriptionsCsvFile(rows));
+    if (outcome == core.ExportOutcome.failed) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.exportFailed)));
+    }
   }
 
   /// The summary: the monthly total, its two qualifiers, and the 7- and
@@ -613,7 +1319,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     DateTime now, {
     required bool due,
     required bool twoPane,
+    bool swipe = false,
   }) {
+    final Set<String>? picked = _picked;
     final String subtitle;
     final StatusKind? status;
     if (due) {
@@ -646,12 +1354,43 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
                     : (s.usedPct > 60 ? StatusKind.positive : null)));
     }
 
-    return AppListRow(
-      // The monogram is a visual shorthand; the title names the plan, so the
-      // letters are silent rather than read before the name.
-      leading: ExcludeSemantics(child: _monogram(context, s)),
+    // HO-06: the catalogue's logo where the row came from the catalogue and
+    // the pack has one; else the monogram.
+    final String? logo = s.serviceId == null
+        ? null
+        : ref.watch(serviceLogoAssetsProvider)[s.serviceId];
+    // ST-T9 (AD-06): how it is paid, as neutral text in the subtitle's own
+    // colour — no new tone; the row's status stays the only coloured signal.
+    final String? rail = railLabel(l10n, s.rail);
+    final Widget row = AppListRow(
+      // The mark is a visual shorthand; the title names the plan, so the
+      // logo or letters are silent rather than read before the name. In the
+      // selection mode the slot holds the row's checkbox instead (HO-08) —
+      // the one control a pointer and a screen reader both expect there.
+      leading: picked != null
+          ? Checkbox(
+              key: HomeScreen.pickKeyOf(s.id),
+              value: picked.contains(s.id),
+              onChanged: (_) => _toggle(s.id),
+            )
+          : ExcludeSemantics(
+              child: logo == null
+                  ? _monogram(context, s)
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                      child: Image.asset(
+                        logo,
+                        width: AppListRow.leadingSize,
+                        height: AppListRow.leadingSize,
+                        fit: BoxFit.contain,
+                        errorBuilder:
+                            (BuildContext c, Object e, StackTrace? t) =>
+                                _monogram(c, s),
+                      ),
+                    ),
+            ),
       title: s.name,
-      subtitle: subtitle,
+      subtitle: rail == null ? subtitle : '$subtitle · $rail',
       status: status,
       // The list SORTS by monthly share and the row SHOWS the charge with its
       // own cycle: a share is not a price.
@@ -659,16 +1398,107 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       caption: cadenceCaption(l10n, s.cycle),
       // A selection exists only where the layout has one: in a single column
       // the tap pushes a route, and "not selected" on every row would announce
-      // a state this screen does not have.
-      selected: twoPane ? s.id == _selectedId : null,
+      // a state this screen does not have. The multi-selection is one.
+      selected: picked != null
+          ? picked.contains(s.id)
+          : (twoPane ? s.id == _selectedId : null),
+      showChevron: picked == null,
       onTap: () {
-        if (twoPane) {
+        if (picked != null) {
+          _toggle(s.id);
+        } else if (twoPane) {
           // No navigation: the detail is already beside this row.
           setState(() => _selectedId = s.id);
         } else {
           context.push('/sub/${s.id}');
         }
       },
+      // HO-08: a long press enters the selection with this row picked.
+      onLongPress: () => picked == null
+          ? setState(() => _picked = <String>{s.id})
+          : _toggle(s.id),
+    );
+    if (!swipe) return row;
+    return _swipeable(context, l10n, s, row);
+  }
+
+  /// [row] with the touch idiom on it (HO-08): swipe towards the END to pause
+  /// (or resume a stopped row), towards the START to delete — each with an
+  /// Undo. A delete lets the row leave; a pause leaves it in place, because
+  /// a paused row stays on the list.
+  Widget _swipeable(
+    BuildContext context,
+    AppLocalizations l10n,
+    Subscription s,
+    Widget row,
+  ) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool stopped = !s.isCharging;
+    return Dismissible(
+      key: HomeScreen.swipeKeyOf(s.id),
+      background: _swipeBackground(
+        context,
+        icon: stopped ? Icons.play_arrow : Icons.pause,
+        label: stopped ? l10n.actionResume : l10n.actionPause,
+        fill: scheme.secondaryContainer,
+        ink: scheme.onSecondaryContainer,
+        alignment: AlignmentDirectional.centerStart,
+      ),
+      secondaryBackground: _swipeBackground(
+        context,
+        icon: Icons.delete_outline,
+        label: l10n.actionDeleteFromTracker,
+        fill: scheme.errorContainer,
+        ink: scheme.onErrorContainer,
+        alignment: AlignmentDirectional.centerEnd,
+      ),
+      confirmDismiss: (DismissDirection direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          await _pauseOrResume(s);
+          return false;
+        }
+        await _deleteRows(<Subscription>[s]);
+        // Let the row go only if the delete took it off the list; a failed
+        // write leaves it, and it slides back.
+        if (!mounted) return false;
+        final List<Subscription>? now = ref
+            .read(subscriptionsControllerProvider)
+            .value;
+        return now != null && !now.any((Subscription x) => x.id == s.id);
+      },
+      child: row,
+    );
+  }
+
+  Widget _swipeBackground(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color fill,
+    required Color ink,
+    required AlignmentGeometry alignment,
+  }) {
+    return ColoredBox(
+      color: fill,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Align(
+          alignment: alignment,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: ink),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(color: ink),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

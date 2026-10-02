@@ -203,10 +203,11 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
 
   /// The rows a screen may show: everything but a soft-deleted one.
   ///
-  /// ⚠️ FILTERED HERE AS WELL AS ON THE SERVER, and the server half does not
-  /// exist yet: `GET /v1/subscriptions` (ST-T3a) still returns rows whose
-  /// `deleted_at` is set. A row the user deleted must not come back on the
-  /// next refresh, so the app does not wait for that reader.
+  /// ⏱ 2026-10-01 · DE-10: FILTERED HERE AS WELL AS ON THE SERVER, and both
+  /// halves now exist. The server's readers skip a row whose `deleted_at` is
+  /// set; this filter stays for the two sources that are not the server — the
+  /// offline cache, which may still hold a row removed on another device, and
+  /// the demo store — so a removed row never comes back on a refresh.
   static List<Subscription> _visible(List<Subscription> subs) =>
       subs.where((Subscription s) => s.deletedAt == null).toList();
 
@@ -460,21 +461,32 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         'cancelled_on': null,
       });
 
+  /// The Undo for Pause and Mark cancelled (DE-09): [was]'s status and cancel
+  /// date, put back exactly — never a guess at "active".
+  Future<void> restoreStatus(Subscription was) =>
+      updateSubscription(was.id, <String, dynamic>{
+        'status': was.status.name,
+        'cancelled_on': was.cancelledOn == null
+            ? null
+            : Subscription.dateOnly(was.cancelledOn!),
+      });
+
   /// Remove [id] from the tracker — a SOFT delete (ST-E3): `deleted_at` is
   /// set, the row leaves every list, total and reminder, and
   /// [undoDelete] brings it back. Returns the row as it was, for the Undo.
   ///
-  /// ⏱ 2026-09-28 · ST-T3b. This was `DELETE /v1/subscriptions/:id`, which
-  /// removed the row and — through the table's foreign key — its payment
-  /// history, with no way back from a mis-tap.
+  /// ⏱ 2026-09-28 · ST-T3b. This was a hard `DELETE /v1/subscriptions/:id`,
+  /// which removed the row and — through the table's foreign key — its
+  /// payment history, with no way back from a mis-tap.
   ///
-  /// ⚠️ ONE FALLBACK, AND IT IS THE SERVER'S TO REMOVE. The ST-T3a route
-  /// (`services/subscriptiontracker-api/src/routes/subscriptions.ts`,
-  /// `validate`) still answers 400 to any non-null `deleted_at` until its own
-  /// readers skip deleted rows. A remove that then failed would be a
-  /// regression on the one delete path ST-U3 shipped, so a 400 on THIS write
-  /// falls back to the old DELETE — and that removal has no Undo
-  /// ([canUndoDelete] says so). Every other failure is rethrown.
+  /// ⏱ 2026-10-01 · DE-10: ONE FALLBACK, AND IT IS ALSO UNDOABLE. A server
+  /// that answers 400 to `deleted_at` on a PATCH (an API older than its
+  /// soft-delete readers) is sent `DELETE /v1/subscriptions/:id` instead —
+  /// and that route is now a soft delete too (`UPDATE subscriptions SET
+  /// deleted_at = COALESCE(deleted_at, ?)`), which `PATCH {deleted_at: null}`
+  /// reverses. So BOTH paths are undoable and [canUndoDelete] says yes after
+  /// either; it used to refuse the Undo the server would have honoured.
+  /// Every other failure is rethrown.
   Future<Subscription?> cancelSubscription(String id) async {
     final Subscription? was = observedList
         ?.where((Subscription s) => s.id == id)
@@ -487,7 +499,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     } on ApiException catch (e) {
       if (e.statusCode != 400) rethrow;
       await ref.read(subscriptionRepositoryProvider).cancel(id);
-      _undoable.remove(id);
+      _undoable.add(id);
       if (!ref.mounted) return was; // Riverpod 3: the provider may be gone.
       final List<Subscription>? before = observedList;
       if (before == null) {
@@ -508,12 +520,12 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     return was;
   }
 
-  /// The ids [cancelSubscription] soft-deleted this session — the only ones
-  /// an Undo can bring back.
+  /// The ids [cancelSubscription] removed this session — by either path, both
+  /// soft deletes — and not yet brought back.
   final Set<String> _undoable = <String>{};
 
-  /// Whether [undoDelete] can restore [id]: false after the hard-DELETE
-  /// fallback in [cancelSubscription], where there is no row left to restore.
+  /// Whether [undoDelete] can restore [id]: true after [cancelSubscription]
+  /// succeeded by EITHER path (DE-10), false once the Undo has run.
   bool canUndoDelete(String id) => _undoable.contains(id);
 
   /// Undo [cancelSubscription]: `deleted_at: null`, and the row is back.
@@ -531,6 +543,103 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   Future<void> resyncReminders() async {
     final List<Subscription>? observed = observedList;
     if (observed != null) await _syncReminders(observed);
+  }
+
+  /// "Mark as paid" (DE-04): record a payment the user already made against
+  /// [id] — the amount prefilled from the plan, the date today unless they
+  /// changed it — and refresh that row's history. No money moves; this is a
+  /// record. [idempotencyKey] is minted ONCE per tap by the caller and reused
+  /// by its retry, so a replay adds no second payment.
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    await ref
+        .read(subscriptionRepositoryProvider)
+        .recordPayment(
+          id,
+          amount: amount,
+          paidOn: paidOn,
+          idempotencyKey: idempotencyKey,
+        );
+    if (!ref.mounted) return; // Riverpod 3: the provider may be gone.
+    ref.invalidate(paymentHistoryProvider(id));
+  }
+
+  // ── BULK (train T20, HO-08) ────────────────────────────────────────────────
+  // A selection on home, or a swipe, acts on rows through the SAME one-row
+  // writes above — one PATCH per row, each re-arming the reminders — so a bulk
+  // pause cannot mean anything a single pause does not. What a bulk action
+  // adds is ONE Undo: each method returns the rows as they were, and its twin
+  // puts every one of them back.
+
+  /// Soft-delete every row in [ids] ([cancelSubscription] each). Returns the
+  /// rows as they were, in [ids]' order — the input to [undoDeleteMany].
+  Future<List<Subscription>> deleteMany(Iterable<String> ids) async {
+    final List<Subscription> removed = <Subscription>[];
+    for (final String id in ids.toList()) {
+      final Subscription? was = await cancelSubscription(id);
+      if (was != null) removed.add(was);
+      if (!ref.mounted) break; // Riverpod 3: the provider may be gone.
+    }
+    return removed;
+  }
+
+  /// Undo [deleteMany]: every row that CAN come back ([canUndoDelete]) does.
+  /// A row the hard-DELETE fallback removed has nothing left to restore.
+  Future<void> undoDeleteMany(Iterable<String> ids) async {
+    for (final String id in ids.toList()) {
+      if (!canUndoDelete(id)) continue;
+      await undoDelete(id);
+      if (!ref.mounted) return;
+    }
+  }
+
+  /// Pause every row in [ids]. Returns the rows as they were, for
+  /// [restoreStatuses].
+  Future<List<Subscription>> pauseMany(Iterable<String> ids) =>
+      _statusMany(ids, SubscriptionStatus.paused, pauseSubscription);
+
+  /// Mark every row in [ids] cancelled (today). Returns the rows as they
+  /// were, for [restoreStatuses].
+  Future<List<Subscription>> markCancelledMany(Iterable<String> ids) =>
+      _statusMany(ids, SubscriptionStatus.cancelled, markCancelled);
+
+  /// Undo [pauseMany] / [markCancelledMany]: each row back to the status and
+  /// the cancel date it had — not to "active", which would end a trial.
+  Future<void> restoreStatuses(Iterable<Subscription> before) async {
+    for (final Subscription was in before.toList()) {
+      final DateTime? on = was.cancelledOn;
+      await updateSubscription(was.id, <String, dynamic>{
+        'status': was.status.name,
+        'cancelled_on': on == null ? null : Subscription.dateOnly(on),
+      });
+      if (!ref.mounted) return;
+    }
+  }
+
+  /// [write] for every row of [ids] not already [target]; the rows as they
+  /// were before it.
+  Future<List<Subscription>> _statusMany(
+    Iterable<String> ids,
+    SubscriptionStatus target,
+    Future<void> Function(String id) write,
+  ) async {
+    final Map<String, Subscription> byId = <String, Subscription>{
+      for (final Subscription s in observedList ?? const <Subscription>[])
+        s.id: s,
+    };
+    final List<Subscription> before = <Subscription>[];
+    for (final String id in ids.toList()) {
+      final Subscription? was = byId[id];
+      if (was == null || was.status == target) continue;
+      await write(id);
+      before.add(was);
+      if (!ref.mounted) break;
+    }
+    return before;
   }
 
   /// Keep the OS reminder set in step with [subs] — AWAITED, and never a

@@ -9033,7 +9033,7 @@ describe('assert-responsive-coverage', () => {
   const TEST = 'apps/subscriptiontracker/test';
 
   // 🔴 THE FIXTURE MIRRORS THE SHAPE OF THE REAL TREE, NOT A MINIATURE OF IT.
-  // The guard carries a REQUIRED_COVERAGE floor of 19 surfaces and 16 width test
+  // The guard carries a REQUIRED_COVERAGE floor of 19 surfaces and 17 width test
   // files, so a three-screen fixture would fail every case for a reason that has
   // nothing to do with the behaviour under test — and a case that passes for the
   // wrong reason is the same defect as one that cannot fail. Same reason the
@@ -9059,7 +9059,16 @@ describe('assert-responsive-coverage', () => {
   // without one would fail every case here on the guard's own bookkeeping. The
   // shape being modelled is the argued exemption, which is why the paywall
   // fixture pumps kPhone and kTablet and stops.
-  const N = 16;
+  // ⏱ 17 SINCE 2026-10-01 (train ST-detail-stop): the owed `widthTestFiles`
+  // raise 16 → 17 landed, so `N` follows 16 → 17 and s14 is promoted to its
+  // own width file — the file COUNT is what that floor measures. The surface
+  // floor moved 18 → 19 in the same change; the fixture's 17 + paywall + 2
+  // sheets = 20 clears it.
+  // ⏱ 18 SINCE 2026-10-01 (club apply-st): the app's surface floor is 21 with
+  // SetupScreen, the stop flow's net +1 and the share-a-month sheet, so `N`
+  // follows 17 → 18 — s18 joins the shared multi-subject file, because the
+  // width-FILE floor (17) did not move.
+  const N = 18;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
   const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
@@ -9117,8 +9126,8 @@ describe('assert-responsive-coverage', () => {
     );
   };
 
-  /** The whole app tree: N screens + the paywall, 2 sheets, and 16 width tests
-   *  covering all 18. */
+  /** The whole app tree: N screens + the paywall, 2 sheets, and 17 width tests
+   *  covering all 20. */
   const build = (name, over = {}, routerOpts = {}) => {
     const files = {
       'pubspec.yaml': 'name: nikatru_workspace\npublish_to: none\n\nworkspace:\n  - apps/subscriptiontracker\n',
@@ -9126,7 +9135,7 @@ describe('assert-responsive-coverage', () => {
       [ROUTER]: routerSrc(routerOpts),
       [HARNESS]: harnessSrc,
       [sheetFile('add')]: sheetSrc('showAddSheet'),
-      [sheetFile('cancel')]: sheetSrc('showCancelSheet'),
+      [sheetFile('stop')]: sheetSrc('showStopSheet'),
       [PAYWALL]: `class PaywallScreen extends StatelessWidget {\n  const PaywallScreen({super.key});\n}\n`,
       // Two widths, not three — the surface WIDTH_EXEMPT argues about.
       [`${TEST}/width_paywall_test.dart`]: testSrc(
@@ -9136,23 +9145,28 @@ describe('assert-responsive-coverage', () => {
       ),
     };
     for (const i of ids) files[screenFile(i)] = screenSrc(i);
-    // 13 single-subject files + one three-subject file + one sheets file + the
-    // paywall file above = 16, which is the floor. It was 12 + s13/s14/s15 = 15
+    // 14 single-subject files + one three-subject file + one sheets file + the
+    // paywall file above = 17, which is the floor (16 until 2026-10-01). It was 12 + s13/s14/s15 = 15
     // until 2026-08-11, when `/reset-password` moved the floor to 19/16: the
     // extra SURFACE comes from `N` and the extra FILE has to come from
     // somewhere, so s13 was promoted to its own file rather than the shared one
     // growing a fourth subject — the file COUNT is what the floor measures, and
     // a fourth subject in one file would have left it at 15.
-    for (const i of ids.slice(0, 13)) {
+    for (const i of ids.slice(0, 14)) {
       files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
     }
     files[`${TEST}/responsive_width_test.dart`] = testSrc(
-      [`features/s14/s14_screen.dart`, `features/s15/s15_screen.dart`, `features/s16/s16_screen.dart`],
-      ['const S14Screen()', 'const S15Screen()', 'const S16Screen()'],
+      [
+        `features/s15/s15_screen.dart`,
+        `features/s16/s16_screen.dart`,
+        `features/s17/s17_screen.dart`,
+        `features/s18/s18_screen.dart`,
+      ],
+      ['const S15Screen()', 'const S16Screen()', 'const S17Screen()', 'const S18Screen()'],
     );
     files[`${TEST}/width_sheets_test.dart`] = testSrc(
-      ['features/add/add_sheet.dart', 'features/cancel/cancel_sheet.dart'],
-      ['showAddSheet(context)', 'showCancelSheet(context)'],
+      ['features/add/add_sheet.dart', 'features/stop/stop_sheet.dart'],
+      ['showAddSheet(context)', 'showStopSheet(context)'],
     );
     return fixture(name, { ...files, ...over });
   };
@@ -9160,7 +9174,7 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured/);
+    assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured/);
     assert.match(out, /the two sets are EQUAL/);
     assert.match(out, /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
@@ -9178,7 +9192,9 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // A 17th routed screen with no test. The floor is untouched (20 >= 19) and
+    // A 19th routed screen with no test (19 since 2026-10-01, club apply-st:
+    // `N` is 18). The
+    // floor is untouched (21 >= 19) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
     //
     // ⚠️ 17, NOT 16, SINCE 2026-08-11. This index has to be the first one BEYOND
@@ -9188,12 +9204,12 @@ describe('assert-responsive-coverage', () => {
     // prove, so the case passed its exit code and asserted the wrong message.
     const dir = build(
       'rc-uncovered',
-      { [screenFile(17)]: screenSrc(17) },
-      { screens: [...ids, 17] },
+      { [screenFile(19)]: screenSrc(19) },
+      { screens: [...ids, 19] },
     );
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /UNCOVERED SURFACE — `S17Screen`/);
+    assert.match(out, /UNCOVERED SURFACE — `S19Screen`/);
   });
 
   test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
@@ -9315,10 +9331,10 @@ describe('assert-responsive-coverage', () => {
       [`${TEST}/width_sheets_test.dart`]: null,
       [`${TEST}/width_paywall_test.dart`]: null,
     };
-    for (const i of ids.slice(0, 13)) over[`${TEST}/width_s${i}_test.dart`] = null;
+    for (const i of ids.slice(0, 14)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 18/); // 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 21/); // 20 -> 21 on 2026-10-01 (T20: the share-a-month sheet, measured by width_share_month_test); 19 -> 20 on 2026-10-01 (ST-detail-stop: the stop sheet and /sub/:id/stop replace the cancel sheet, net +1); 18 -> 19 on 2026-10-01 (ST-T9: /setup arrived measured by width_setup_test); 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
   });
 
   test('FAILS when a route builds something this guard cannot classify', () => {

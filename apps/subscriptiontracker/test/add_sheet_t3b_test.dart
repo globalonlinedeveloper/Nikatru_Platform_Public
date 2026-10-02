@@ -19,6 +19,7 @@ import 'package:subscriptiontracker/features/detail/subscription_detail_screen.d
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 /// Records every write; a PATCH is applied the way the route applies it.
@@ -104,6 +105,7 @@ Future<void> _openSheet(
   WidgetTester tester,
   _Api api, {
   Subscription? initial,
+  bool stayOnPick = false,
 }) async {
   await pumpAt(
     tester,
@@ -118,10 +120,19 @@ Future<void> _openSheet(
         ),
       ),
     ),
-    overrides: <Override>[apiClientProvider.overrideWithValue(api)],
+    overrides: <Override>[
+      apiClientProvider.overrideWithValue(api),
+      ...catalogueOverrides(),
+    ],
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
+  // ST-T9: an add opens on the catalogue pick step; these tests are about the
+  // form, so they step past it the way a user adding by hand does.
+  if (initial == null && !stayOnPick) {
+    await tester.tap(find.byKey(E2EKeys.addByHand));
+    await tester.pumpAndSettle();
+  }
 }
 
 // ⏱ 2026-09-29 · train ST-D6 on ST-T3b: the primary is the chassis
@@ -155,6 +166,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
         await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+        await tester.pump();
         await tester.tap(find.byKey(E2EKeys.addSubmit));
         await tester.pumpAndSettle();
 
@@ -234,6 +247,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+      await tester.pump();
       await tester.tap(find.byKey(E2EKeys.addSubmit));
       await tester.pumpAndSettle();
       expect(api.posts.single.price.minorUnits, 129900);
@@ -253,6 +268,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
         await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+        await tester.pump();
         await tester.tap(find.byKey(E2EKeys.addSubmit));
         await tester.pumpAndSettle();
         // ⏱ train ST-D6: said on the sheet's banner, not in a SnackBar the
@@ -297,8 +314,22 @@ void main() {
     testWidgets('Tab reaches a POPULAR tile, the cycle and the date', (
       WidgetTester tester,
     ) async {
-      await _openSheet(tester, _Api(<Subscription>[]));
+      // ST-T9: the POPULAR tiles are on the pick step, the cycle and the
+      // date on the form after it — one walk each.
+      await _openSheet(tester, _Api(<Subscription>[]), stayOnPick: true);
       final Set<String> reached = <String>{};
+      for (int i = 0; i < 40; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pumpAndSettle();
+        final BuildContext? focused =
+            FocusManager.instance.primaryFocus?.context;
+        if (focused?.findAncestorWidgetOfExactType<GridView>() != null) {
+          reached.add('tile');
+          break;
+        }
+      }
+      await tester.tap(find.byKey(E2EKeys.addByHand));
+      await tester.pumpAndSettle();
       for (int i = 0; i < 40; i++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pumpAndSettle();

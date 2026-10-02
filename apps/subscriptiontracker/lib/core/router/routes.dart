@@ -27,10 +27,12 @@ import '../../features/auth/reset_password_screen.dart';
 import '../../features/auth/verify_email_screen.dart';
 import '../../features/detail/subscription_detail_screen.dart';
 import '../../features/import/import_screen.dart';
+import '../../features/setup/setup_screen.dart';
 import '../../features/monetization/manage_plan_screen.dart';
 import '../../features/monetization/paywall_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/stop/stop_flow.dart';
 import 'navigator_key.dart';
 
 /// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
@@ -191,6 +193,15 @@ List<RouteBase> appRoutes() => <RouteBase>[
 
   // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────
   // parentNavigatorKey pins these ABOVE the shell so they cover the nav bar.
+  // ⏱ ST-T9 (EN-18): the after-sign-in setup, offered once per account by
+  // home when a first sign-in's list loads empty. Signed-in only (the
+  // signed-out gate does not list it), above the shell like a first run.
+  GoRoute(
+    path: '/setup',
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (_, __) => const SetupScreen(),
+    caseSensitive: false,
+  ),
   GoRoute(
     path: '/notifications',
     parentNavigatorKey: rootNavigatorKey,
@@ -202,6 +213,16 @@ List<RouteBase> appRoutes() => <RouteBase>[
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, GoRouterState state) =>
         SubscriptionDetailScreen(id: state.pathParameters['id']!),
+    caseSensitive: false,
+  ),
+  // DE-07: the stop-a-charge flow as a page — a deep link (a "cancel by"
+  // reminder, a shared URL) lands on the choose step. The detail screen opens
+  // the same flow as a sheet, which also works in its two-pane mount.
+  GoRoute(
+    path: '/sub/:id/stop',
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (_, GoRouterState state) =>
+        StopScreen(id: state.pathParameters['id']!),
     caseSensitive: false,
   ),
 

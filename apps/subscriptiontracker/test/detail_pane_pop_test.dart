@@ -450,7 +450,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(SubscriptionDetailScreen),
-          matching: find.text(l10n.cancelPlanButton),
+          matching: find.text(l10n.stopOrRemove),
         ),
       );
       await tester.pumpAndSettle();
@@ -460,33 +460,15 @@ void main() {
       expect(
         find.byType(BottomSheet),
         findsOneWidget,
-        reason: 'the cancel sheet never opened, so :457 is never reached',
+        reason: 'the stop sheet never opened, so the dismiss is never reached',
       );
 
+      // DE-07: "Just remove it from the tracker" completes the stop sheet
+      // with `removed`, which is what hands control back to the dismiss.
       await tester.tap(
         find.descendant(
           of: find.byType(BottomSheet),
-          matching: find.text(l10n.confirmCancel),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.descendant(
-          of: find.byType(BottomSheet),
-          matching: find.text(l10n.done),
-        ),
-        findsOneWidget,
-        reason:
-            'the sheet did not reach step 1, so "Done" - the tap that lets '
-            'showCancelSheet complete and hands control back to :457 - does '
-            'not exist yet',
-      );
-
-      await tester.tap(
-        find.descendant(
-          of: find.byType(BottomSheet),
-          matching: find.text(l10n.done),
+          matching: find.byKey(E2EKeys.stopChoiceRemove),
         ),
       );
       await tester.pumpAndSettle();

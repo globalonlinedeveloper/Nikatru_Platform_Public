@@ -1052,7 +1052,7 @@
   "@calendarLink": {
     "description": "Consumed by home_screen.dart:312. The trailing link on the Upcoming renewals header. The live literal baked a \"→\" into the string; the arrow is DIRECTIONAL and belongs to the layout, not to the text. Pinned by integration_test/app_test.dart:386, integration_test/store_screenshots_test.dart:292 — the value must not change without moving those."
   },
-  "monthlySpend": "MONTHLY SPEND",
+  "monthlySpend": "Monthly spend",
   "@monthlySpend": {
     "description": "Consumed by home_screen.dart:368."
   },
@@ -1083,11 +1083,11 @@
       }
     }
   },
-  "dueIn7Days": "DUE IN 7 DAYS",
+  "dueIn7Days": "Due in 7 days",
   "@dueIn7Days": {
     "description": "Consumed by home_screen.dart:405."
   },
-  "dueIn30Days": "DUE IN 30 DAYS",
+  "dueIn30Days": "Due in 30 days",
   "@dueIn30Days": {
     "description": "Consumed by home_screen.dart:413."
   },
@@ -2441,6 +2441,1323 @@
   "@categoryOther": {
     "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
   },
+  "homeSearchLabel": "Search subscriptions",
+  "@homeSearchLabel": {
+    "description": "Consumed by features/home/home_screen.dart, the search field of ListControls (HO-03): its hint and accessible name. Matches name and notes."
+  },
+  "homeSearchClear": "Clear search",
+  "@homeSearchClear": {
+    "description": "Consumed by features/home/home_screen.dart, the clear button inside the search field (HO-03)."
+  },
+  "homeSortLabel": "Sort",
+  "@homeSortLabel": {
+    "description": "Consumed by features/home/home_screen.dart, the sort menu button name (HO-03); the order on is read after it."
+  },
+  "homeSortNextCharge": "Next charge",
+  "@homeSortNextCharge": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: soonest charge first (HO-03)."
+  },
+  "homeSortPrice": "Price",
+  "@homeSortPrice": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: highest charge first (HO-03)."
+  },
+  "homeSortMonthlyShare": "Monthly share",
+  "@homeSortMonthlyShare": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: biggest per-month share first (HO-03)."
+  },
+  "homeSortName": "Name",
+  "@homeSortName": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: A to Z (HO-03)."
+  },
+  "homeFilterActive": "Active",
+  "@homeFilterActive": {
+    "description": "Consumed by features/home/home_screen.dart, a status filter chip (HO-03)."
+  },
+  "homeFilterTrial": "Trial",
+  "@homeFilterTrial": {
+    "description": "Consumed by features/home/home_screen.dart, a status filter chip: free trials (HO-03)."
+  },
+  "homeNoMatches": "No subscriptions match",
+  "@homeNoMatches": {
+    "description": "Consumed by features/home/home_screen.dart, shown in place of the list when search and filters leave nothing (HO-03)."
+  },
+  "homeUpcomingMore": "{count, plural, =1{1 more} other{{count} more}}",
+  "@homeUpcomingMore": {
+    "description": "Consumed by features/home/home_screen.dart, the Upcoming header action when more than four charges fall in the next 30 days; it opens Calendar (HO-04). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSelectSubscription": "Select a subscription",
+  "@homeSelectSubscription": {
+    "description": "Consumed by features/home/home_screen.dart, the empty detail pane of the two-pane layout (B8)."
+  },
+  "homeSignalTrialEnds": "{name}: trial ends in {days, plural, =0{less than a day} =1{1 day} other{{days} days}}",
+  "@homeSignalTrialEnds": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: a free trial ending within 7 days (HO-05). PLURAL.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSignalYearlyDue": "{name} renews yearly in {days, plural, =0{less than a day} =1{1 day} other{{days} days}}",
+  "@homeSignalYearlyDue": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: a yearly plan due within 60 days (HO-05). PLURAL.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSignalYearlyDueDetail": "{amount} will be charged at once",
+  "@homeSignalYearlyDueDetail": {
+    "description": "Consumed by features/home/home_screen.dart, the yearly decision strip detail: the whole yearly price (HO-05).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalPriceRose": "{name} went up to {price}",
+  "@homeSignalPriceRose": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: the price rose since the last charge (HO-05).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalPriceRoseDetail": "It was {price}",
+  "@homeSignalPriceRoseDetail": {
+    "description": "Consumed by features/home/home_screen.dart, the price-rise strip detail: the previous price (HO-05).",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalStillUsing": "Still using {name}?",
+  "@homeSignalStillUsing": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip for a plan the user flagged rarely used (HO-05). Replaces the unused count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalOpen": "Open",
+  "@homeSignalOpen": {
+    "description": "Consumed by features/home/home_screen.dart, the one action on a trial, yearly or price strip: opens the subscription (HO-05)."
+  },
+  "homeSignalStop": "Stop",
+  "@homeSignalStop": {
+    "description": "Consumed by features/home/home_screen.dart, the one action on the still-using strip: opens the cancel sheet (HO-05)."
+  },
+  "menuFile": "File",
+  "menuView": "View",
+  "@menuFile": {
+    "description": "Consumed by features/shell/app_shell.dart: the macOS menu bar File menu (SH-02)."
+  },
+  "@menuView": {
+    "description": "Consumed by features/shell/app_shell.dart: the macOS menu bar View menu, one item per destination (SH-02)."
+  },
+  "homeFilterLabel": "Filter",
+  "@homeFilterLabel": {
+    "description": "Consumed by features/home/home_screen.dart: the toggle that shows the filter chips (status, category, currency) under the search (HO-03)."
+  },
+  "addPickSearchLabel": "Search services",
+  "@addPickSearchLabel": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the pick step's search over the bundled catalogue (AD-03)."
+  },
+  "addPickByHand": "Add by hand",
+  "@addPickByHand": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): opens the blank form instead of a catalogue pick."
+  },
+  "addPickNoMatch": "No service matches. Add it by hand.",
+  "@addPickNoMatch": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the search found nothing."
+  },
+  "addPickUnavailable": "The service list is not available. Add it by hand.",
+  "@addPickUnavailable": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the bundled catalogue did not load."
+  },
+  "fieldLabelPaidWith": "Paid with",
+  "@fieldLabelPaidWith": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the payment rail (AD-06), sent as `rail`."
+  },
+  "fieldLabelPaidHolder": "Card or account label (optional)",
+  "@fieldLabelPaidHolder": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): a label for whose card or which UPI handle, sent as `rail_holder`. Never a number."
+  },
+  "railNotSet": "Not set",
+  "@railNotSet": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): no payment method chosen."
+  },
+  "railUpiAutopay": "UPI Autopay",
+  "@railUpiAutopay": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail upi_autopay."
+  },
+  "railCard": "Card",
+  "@railCard": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail card_emandate."
+  },
+  "railNach": "Net banking / NACH",
+  "@railNach": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail nach."
+  },
+  "railAppStore": "App Store",
+  "@railAppStore": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail app_store."
+  },
+  "railPlay": "Google Play",
+  "@railPlay": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail play."
+  },
+  "railPaypal": "PayPal",
+  "@railPaypal": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail paypal."
+  },
+  "railOther": "Other",
+  "@railOther": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail manual."
+  },
+  "fieldLabelRemindMe": "Remind me",
+  "@fieldLabelRemindMe": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the row's own reminder days (AD-07), sent as `reminder_days`."
+  },
+  "fieldLabelNotice": "Notice to cancel",
+  "@fieldLabelNotice": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the row's notice period (AD-07), sent as `notice_days`."
+  },
+  "fieldLabelThenPrice": "Then (price after trial)",
+  "@fieldLabelThenPrice": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the price a trial turns into (AD-08), sent as `price_after_trial_minor`."
+  },
+  "addPickResults": "{count, plural, =1{1 service} other{{count} services}}",
+  "@addPickResults": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): how many services the search shows.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "statusTrialingThen": "Free trial until {date}, then {price}",
+  "@statusTrialingThen": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart, the status line. ST-T9 (AD-08): a trial whose price after the trial is known (`price_after_trial_minor`).",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Oct 3, 2026"
+      },
+      "price": {
+        "type": "String",
+        "example": "₹649.00"
+      }
+    }
+  },
+  "settingsCategories": "Categories",
+  "@settingsCategories": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the Settings row that opens the categories manager."
+  },
+  "categoriesBuiltinHeading": "BUILT IN",
+  "@categoriesBuiltinHeading": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): heading over the built-in categories, which cannot be renamed."
+  },
+  "categoriesOwnHeading": "YOUR CATEGORIES",
+  "@categoriesOwnHeading": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): heading over the user's own categories."
+  },
+  "categoriesOwnEmpty": "None yet. Add one below.",
+  "@categoriesOwnEmpty": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): shown when the user has no categories of their own."
+  },
+  "categoriesNewLabel": "New category",
+  "@categoriesNewLabel": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the add field's name."
+  },
+  "categoriesAdd": "Add category",
+  "@categoriesAdd": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the add action."
+  },
+  "categoriesRename": "Rename",
+  "@categoriesRename": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the rename action on a row."
+  },
+  "categoriesDelete": "Delete",
+  "@categoriesDelete": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the delete action on a row."
+  },
+  "categoriesRenameTitle": "Rename category",
+  "@categoriesRenameTitle": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the rename dialog's title."
+  },
+  "categoriesFailed": "Could not save that category. Check the name and try again.",
+  "@categoriesFailed": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): a failed add, rename or delete."
+  },
+  "setupCurrencyTitle": "Your home currency",
+  "@setupCurrencyTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupCurrencyBody": "We picked {code} from your device's region. New subscriptions start in it, and each one can still have its own. You can change it in Settings later.",
+  "@setupCurrencyBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "INR"
+      }
+    }
+  },
+  "setupRemindersTitle": "How should we remind you?",
+  "@setupRemindersTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersBody": "Before a subscription renews, we can remind you. Choose where — you can change this in Settings.",
+  "@setupRemindersBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersPush": "Notifications on this device",
+  "@setupRemindersPush": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersNoPush": "This device cannot schedule notifications. E-mail and the calendar feed reach every device once you are signed in.",
+  "@setupRemindersNoPush": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPickTitle": "Pick what you pay for",
+  "@setupPickTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPickBody": "Tap every service you pay for. Each one is added with what we know about it; you fill in the price.",
+  "@setupPickBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupNext": "Next",
+  "@setupNext": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupFinish": "Done",
+  "@setupFinish": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupSkip": "Skip",
+  "@setupSkip": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupBack": "Back",
+  "@setupBack": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPosition": "Step {step} of {count}",
+  "@setupPosition": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "setupPicked": "{count, plural, =0{Nothing picked yet} =1{1 picked} other{{count} picked}}",
+  "@setupPicked": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "detailsHeading": "Details",
+  "@detailsHeading": {
+    "description": "DE-11 · Heading of the detail screen card that lists every fact about the subscription."
+  },
+  "detailNextReminder": "Next reminder",
+  "@detailNextReminder": {
+    "description": "DE-11 · Details row label: when the next reminder for this subscription fires, from the armed schedule."
+  },
+  "detailPaidWith": "Paid with",
+  "@detailPaidWith": {
+    "description": "DE-11 · Details row label: the payment rail and its holder, e.g. \"UPI Autopay · name@okaxis\"."
+  },
+  "detailCategory": "Category",
+  "@detailCategory": {
+    "description": "DE-11 · Details row label: the category."
+  },
+  "detailWebsite": "Website",
+  "@detailWebsite": {
+    "description": "DE-11 · Details row label: the provider website the user saved."
+  },
+  "detailNotes": "Notes",
+  "@detailNotes": {
+    "description": "DE-11 · Details row label: the user's own notes."
+  },
+  "detailFirstCharge": "First charge",
+  "@detailFirstCharge": {
+    "description": "DE-11 · Details row label: the date of the first charge."
+  },
+  "markAsPaid": "Mark as paid",
+  "@markAsPaid": {
+    "description": "DE-04 · The detail action that records a payment the user already made. No money moves."
+  },
+  "markAsPaidTitle": "Mark {name} as paid",
+  "@markAsPaidTitle": {
+    "description": "DE-04 · Title of the mark-as-paid dialog.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "markAsPaidBody": "This records a payment you already made. No money moves.",
+  "@markAsPaidBody": {
+    "description": "DE-04 · The line under the title: what saving does and does not do."
+  },
+  "markAsPaidAmount": "Amount",
+  "@markAsPaidAmount": {
+    "description": "DE-04 · Amount field label; prefilled from the plan, editable."
+  },
+  "markAsPaidDate": "Paid on",
+  "@markAsPaidDate": {
+    "description": "DE-04 · Date field label; today unless changed."
+  },
+  "markAsPaidSave": "Save payment",
+  "@markAsPaidSave": {
+    "description": "DE-04 · The dialog's confirm button."
+  },
+  "markAsPaidAmountInvalid": "Enter the amount you paid",
+  "@markAsPaidAmountInvalid": {
+    "description": "DE-04 · Shown under the amount field when it is not a number."
+  },
+  "paymentRecorded": "Payment recorded",
+  "@paymentRecorded": {
+    "description": "DE-04 · Snackbar after a payment is saved."
+  },
+  "timelinePriceRose": "Price rose from {from} to {to} on {date}",
+  "@timelinePriceRose": {
+    "description": "DE-05 · A timeline row for a price rise. {from} and {to} are formatted money, {date} a short date.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "timelinePriceFell": "Price fell from {from} to {to} on {date}",
+  "@timelinePriceFell": {
+    "description": "DE-05 · A timeline row for a price drop.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "timelinePriceChanged": "Price changed from {from} to {to} on {date}",
+  "@timelinePriceChanged": {
+    "description": "DE-05 · A timeline row for a change of currency, which is neither a rise nor a fall.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "howToCancelTitle": "How to cancel {name}",
+  "@howToCancelTitle": {
+    "description": "DE-06 · Heading of the how-to-cancel card.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "howToCancelProviderPage": "Open {name}'s cancel page",
+  "@howToCancelProviderPage": {
+    "description": "DE-06 · Opens the provider's own cancel page in the browser.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "howToCancelPlay": "Manage in Google Play subscriptions",
+  "@howToCancelPlay": {
+    "description": "DE-06 · Opens Google Play's subscription page, for a row paid through Play."
+  },
+  "howToCancelAppStore": "Manage in App Store subscriptions",
+  "@howToCancelAppStore": {
+    "description": "DE-06 · Opens the App Store's subscription page, for a row paid through Apple."
+  },
+  "howToCancelStep1": "Sign in to your account on the provider's website or app.",
+  "@howToCancelStep1": {
+    "description": "DE-06 · Generic step 1, for a row with no catalogue match."
+  },
+  "howToCancelStep2": "Find Subscription, Membership or Billing in the account settings.",
+  "@howToCancelStep2": {
+    "description": "DE-06 · Generic step 2."
+  },
+  "howToCancelStep3": "Choose Cancel and keep the confirmation the provider sends.",
+  "@howToCancelStep3": {
+    "description": "DE-06 · Generic step 3."
+  },
+  "linkNotOpened": "Couldn't open that link.",
+  "@linkNotOpened": {
+    "description": "DE-06 · Snackbar when the external link launcher did not open a link."
+  },
+  "stopOrRemove": "Stop or remove",
+  "@stopOrRemove": {
+    "description": "DE-07 · The detail screen button that opens the stop-a-charge flow. Replaces \"Remove\"."
+  },
+  "stopChooseTitle": "What do you want to do with {name}?",
+  "@stopChooseTitle": {
+    "description": "DE-07 · Title of the choose step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopChoiceStop": "Stop the charge",
+  "@stopChoiceStop": {
+    "description": "DE-07 · Choice 1."
+  },
+  "stopChoiceStopDetail": "Cancel with the provider. We'll show you where.",
+  "@stopChoiceStopDetail": {
+    "description": "DE-07 · Under choice 1. The app shows the way; it does not cancel anything itself."
+  },
+  "stopChoicePause": "Pause it",
+  "@stopChoicePause": {
+    "description": "DE-07 · Choice 2."
+  },
+  "stopChoicePauseDetail": "It stays on your list. Reminders stop until you resume.",
+  "@stopChoicePauseDetail": {
+    "description": "DE-07 · Under choice 2."
+  },
+  "stopChoiceAlreadyCancelled": "I already cancelled",
+  "@stopChoiceAlreadyCancelled": {
+    "description": "DE-07 · Choice 3."
+  },
+  "stopChoiceAlreadyCancelledDetail": "Mark it cancelled. Its history stays.",
+  "@stopChoiceAlreadyCancelledDetail": {
+    "description": "DE-07 · Under choice 3."
+  },
+  "stopChoiceRemove": "Just remove it from the tracker",
+  "@stopChoiceRemove": {
+    "description": "DE-07 · Choice 4."
+  },
+  "stopChoiceRemoveDetail": "Deletes it from this app only. It doesn't cancel anything.",
+  "@stopChoiceRemoveDetail": {
+    "description": "DE-07 · Under choice 4."
+  },
+  "stopWalkthroughTitle": "Stop the charge for {name}",
+  "@stopWalkthroughTitle": {
+    "description": "DE-07 · Title of the walkthrough step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopPlayStep1": "Open the Google Play Store app and tap your profile picture.",
+  "@stopPlayStep1": {
+    "description": "DE-07 · Google Play walkthrough, step 1."
+  },
+  "stopPlayStep2": "Tap Payments & subscriptions, then Subscriptions.",
+  "@stopPlayStep2": {
+    "description": "DE-07 · Google Play walkthrough, step 2. Menu names as Google Play shows them."
+  },
+  "stopPlayStep3": "Choose {name} and tap Cancel subscription.",
+  "@stopPlayStep3": {
+    "description": "DE-07 · Google Play walkthrough, step 3.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopAppStoreStep1": "Open Settings on your iPhone or iPad and tap your name.",
+  "@stopAppStoreStep1": {
+    "description": "DE-07 · App Store walkthrough, step 1."
+  },
+  "stopAppStoreStep2": "Tap Subscriptions.",
+  "@stopAppStoreStep2": {
+    "description": "DE-07 · App Store walkthrough, step 2."
+  },
+  "stopAppStoreStep3": "Choose {name} and tap Cancel Subscription.",
+  "@stopAppStoreStep3": {
+    "description": "DE-07 · App Store walkthrough, step 3.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopProviderFirst": "Cancel with {name} first, on its website or app.",
+  "@stopProviderFirst": {
+    "description": "DE-07 · Card, UPI and NACH walkthroughs, step 1.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopCardStep2": "Then open your bank's app or card portal, find standing instructions or e-mandates, and remove the one for {name}.",
+  "@stopCardStep2": {
+    "description": "DE-07 · Card walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopUpiStep2": "Then open the UPI app you approved it in, find Autopay or Mandates, and revoke the one for {name}.",
+  "@stopUpiStep2": {
+    "description": "DE-07 · UPI Autopay walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopNachStep2": "Then ask your bank to cancel the mandate for {name}, in its app, net banking or at a branch.",
+  "@stopNachStep2": {
+    "description": "DE-07 · NACH walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopKeepConfirmation": "Keep the confirmation you are sent.",
+  "@stopKeepConfirmation": {
+    "description": "DE-07 · Card, UPI and NACH walkthroughs, last step."
+  },
+  "stopDidItWork": "Did it work?",
+  "@stopDidItWork": {
+    "description": "DE-07 · The question after the walkthrough."
+  },
+  "stopDidItWorkBody": "When the provider confirms, mark it cancelled here. Its history stays.",
+  "@stopDidItWorkBody": {
+    "description": "DE-07 · The line under \"Did it work?\"."
+  },
+  "stopItWorked": "Yes, mark it cancelled",
+  "@stopItWorked": {
+    "description": "DE-07 · The answer that marks the row cancelled with the date above."
+  },
+  "stopNotYet": "Not yet",
+  "@stopNotYet": {
+    "description": "DE-07 · The answer that leaves the row as it is."
+  },
+  "stopDoneTitle": "{name} is marked cancelled",
+  "@stopDoneTitle": {
+    "description": "DE-07 · Title of the done step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopDoneBody": "Its reminders have stopped. Its history stays on its page.",
+  "@stopDoneBody": {
+    "description": "DE-07 · Body of the done step."
+  },
+  "railPanelUpiTitle": "About UPI Autopay",
+  "@railPanelUpiTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading of the India rail panel for a UPI Autopay row."
+  },
+  "railPanelUpiWhat": "UPI Autopay is a permission you gave in your UPI app for {name} to collect payments on a schedule.",
+  "@railPanelUpiWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is. Never name a debit time.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelUpiWhere": "Revoke it in the UPI app you approved it in, under Autopay or Mandates.",
+  "@railPanelUpiWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it — the user's own app."
+  },
+  "railPanelCardTitle": "About card mandates",
+  "@railPanelCardTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading for a card e-mandate row."
+  },
+  "railPanelCardWhat": "A card e-mandate is a standing instruction on your card that lets {name} charge it on a schedule.",
+  "@railPanelCardWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelCardWhere": "Remove it in your bank's app or card portal, under standing instructions or e-mandates.",
+  "@railPanelCardWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it."
+  },
+  "railPanelNachTitle": "About NACH / e-mandates",
+  "@railPanelNachTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading for a NACH row."
+  },
+  "railPanelNachWhat": "A NACH or e-mandate is a standing instruction with your bank that lets {name} collect from your account on a schedule.",
+  "@railPanelNachWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelNachWhere": "Cancel it through your bank's app, net banking or a branch.",
+  "@railPanelNachWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it."
+  },
+  "railPanelNotTheSame": "Cancelling with {name} is not the same as revoking the mandate. Do both.",
+  "@railPanelNotTheSame": {
+    "description": "DE-08 · R3 allowed copy, all three rails: the two acts are different.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "pauseConfirmTitle": "Pause {name}?",
+  "@pauseConfirmTitle": {
+    "description": "DE-09 · The one confirmation before Pause.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "pauseConfirmBody": "Reminders stop until you resume.",
+  "@pauseConfirmBody": {
+    "description": "DE-09 · Under the pause question."
+  },
+  "markCancelledConfirmTitle": "Mark {name} as cancelled?",
+  "@markCancelledConfirmTitle": {
+    "description": "DE-09 · The one confirmation before Mark as cancelled.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "markCancelledConfirmBody": "It leaves your totals and reminders. Its history stays.",
+  "@markCancelledConfirmBody": {
+    "description": "DE-09 · Under the mark-cancelled question."
+  },
+  "subscriptionPaused": "{name} paused",
+  "@subscriptionPaused": {
+    "description": "DE-09 · Snackbar after Pause, with Undo.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "subscriptionMarkedCancelled": "{name} marked cancelled",
+  "@subscriptionMarkedCancelled": {
+    "description": "DE-09 · Snackbar after Mark as cancelled, with Undo.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "changeRefused": "That change was refused. Nothing was saved.",
+  "@changeRefused": {
+    "description": "DE-09 / B08 · A write the server answered 4xx. Never blames the connection."
+  },
+  "changeOffline": "You're offline. Nothing was saved. Try again when you're connected.",
+  "@changeOffline": {
+    "description": "DE-09 / B08 · A write that never got an answer."
+  },
+  "changeServerError": "The server had a problem. Nothing was saved. Try again in a moment.",
+  "@changeServerError": {
+    "description": "DE-09 / B08 · A write the server answered 5xx."
+  },
+  "changeFailed": "Couldn't save that change. Try again.",
+  "@changeFailed": {
+    "description": "DE-09 / B08 · Any other failed write."
+  },
+  "reminderSaveFailed": "Couldn't save the reminders for {name}. Try again.",
+  "@reminderSaveFailed": {
+    "description": "DE-09 / B09 · A reminder row whose subscription save failed. Names the save, not a \"reminder service\".",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "calendarPrevMonth": "Previous month",
+  "@calendarPrevMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the pager's back control."
+  },
+  "calendarNextMonth": "Next month",
+  "@calendarNextMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the pager's forward control."
+  },
+  "calendarToday": "Today",
+  "@calendarToday": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · returns the pager to the current month."
+  },
+  "calendarViewMonth": "Month",
+  "@calendarViewMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the one-month grid view."
+  },
+  "calendarViewAgenda": "12 months",
+  "@calendarViewAgenda": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the twelve-month agenda view."
+  },
+  "calendarViewLabel": "Calendar view",
+  "@calendarViewLabel": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · accessible name of the Month / 12 months switch."
+  },
+  "calendarNothingRenews": "Nothing renews in {month}",
+  "@calendarNothingRenews": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · an empty month with no later charge. {month} is month and year.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "October 2026"
+      }
+    }
+  },
+  "calendarNothingRenewsNext": "Nothing renews in {month} — next: {name} on {date}",
+  "@calendarNothingRenewsNext": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · an empty month, pointing at the next charge after it.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "October 2026"
+      },
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Nov 2026"
+      }
+    }
+  },
+  "calendarMostExpensive": "Most expensive month ahead: {month} · {amount}",
+  "@calendarMostExpensive": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · on a large window, the month of the next twelve that charges the most.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "March 2027"
+      },
+      "amount": {
+        "type": "String",
+        "example": "₹5,397"
+      }
+    }
+  },
+  "calendarLegendRenews": "Renews",
+  "@calendarLegendRenews": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · legend for the round renewal mark."
+  },
+  "calendarLegendDeadline": "Trial ends or cancel by",
+  "@calendarLegendDeadline": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · legend for the square deadline mark."
+  },
+  "calendarTrialEnds": "trial ends",
+  "@calendarTrialEnds": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · spoken after a grid date that a trial ends on: '14, trial ends'."
+  },
+  "calendarCancelBy": "cancel by",
+  "@calendarCancelBy": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · spoken after a grid date that is a cancel-by deadline: '14, cancel by'."
+  },
+  "calendarDeadlines": "Deadlines",
+  "@calendarDeadlines": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · heading over the month's trial-end and cancel-by rows."
+  },
+  "calendarTrialEndsRow": "Trial ends — then {amount}",
+  "@calendarTrialEndsRow": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · a trial-end row's subtitle. {amount} is the price with its cycle.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹649/mo"
+      }
+    }
+  },
+  "calendarCancelByRow": "Cancel by — renews {date}",
+  "@calendarCancelByRow": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · a cancel-by row's subtitle. {date} is the renewal it avoids.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Fri, 14 Nov"
+      }
+    }
+  },
+  "calendarFeedTitle": "Renewals in your calendar app",
+  "@calendarFeedTitle": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · heading over Subscribe / Download / Copy link."
+  },
+  "calendarFeedSubscribe": "Subscribe",
+  "@calendarFeedSubscribe": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · opens the private feed in the calendar app (webcal:) or the web subscribe URL."
+  },
+  "calendarFeedDownload": "Download .ics",
+  "@calendarFeedDownload": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · downloads the feed as a file."
+  },
+  "calendarFeedCopy": "Copy link",
+  "@calendarFeedCopy": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · copies the private feed URL."
+  },
+  "calendarFeedCopied": "Calendar link copied. Anyone with it can see your renewals.",
+  "@calendarFeedCopied": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · after Copy link; the link is a credential, so it says so."
+  },
+  "fxConvertedAt": "Converted at ECB rates of {date}",
+  "@fxConvertedAt": {
+    "description": "Consumed by features/insights/fx_caption.dart · under a total that converted other currencies. {date} is the ECB fix date.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "25 Sept 2026"
+      }
+    }
+  },
+  "fxConvertedAtYourRate": "Converted at your rate",
+  "@fxConvertedAtYourRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · the total converted with only the user's own rate (no ECB table yet)."
+  },
+  "fxYourRate": "Your rate: 1 {from} = {rate} {to}",
+  "@fxYourRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · the one rate the user set by hand.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "USD"
+      },
+      "rate": {
+        "type": "String",
+        "example": "88"
+      },
+      "to": {
+        "type": "String",
+        "example": "INR"
+      }
+    }
+  },
+  "fxNotConverted": "Plans in other currencies are shown in their own currency.",
+  "@fxNotConverted": {
+    "description": "Consumed by features/insights/fx_caption.dart · mixed currencies and no rate yet."
+  },
+  "fxSetRate": "Set my rate",
+  "@fxSetRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · opens the one-rate override."
+  },
+  "fxUseEcbRate": "Use ECB rate",
+  "@fxUseEcbRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · clears the user's rate."
+  },
+  "fxRateDialogTitle": "Your exchange rate",
+  "@fxRateDialogTitle": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override dialog's title."
+  },
+  "fxRateField": "{to} for 1 {from}",
+  "@fxRateField": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override field's label.",
+    "placeholders": {
+      "to": {
+        "type": "String",
+        "example": "INR"
+      },
+      "from": {
+        "type": "String",
+        "example": "USD"
+      }
+    }
+  },
+  "fxRateInvalid": "Enter a rate above zero",
+  "@fxRateInvalid": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override field's error."
+  },
+  "budgetAverageShare": "Average monthly share",
+  "@budgetAverageShare": {
+    "description": "Consumed by features/insights/budget_card.dart · says what the meter measures (IN-09): a yearly plan counts a twelfth, so the figure is an average, not what was charged this month. Short on purpose — it sits under the card title."
+  },
+  "insightsSavedLabel": "Saved since you cancelled",
+  "@insightsSavedLabel": {
+    "description": "Consumed by features/insights/summary_tiles.dart · the savings tile's label (IN-10)."
+  },
+  "signalStillUsingNo": "No",
+  "@signalStillUsingNo": {
+    "description": "Consumed by features/insights/signals.dart · answers the still-using question with No; opens the stop flow."
+  },
+  "signalStillUsingNoA11y": "No, not using {name}",
+  "@signalStillUsingNoA11y": {
+    "description": "Consumed by features/insights/signals.dart · the accessible name of the No button.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "insightsSavedCaption": "{count, plural, =1{From 1 cancelled plan} other{From {count} cancelled plans}}",
+  "@insightsSavedCaption": {
+    "description": "Consumed by features/insights/summary_tiles.dart · under the savings figure.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "languageHindi": "हिन्दी",
+  "@languageHindi": {
+    "description": "Hindi, written in Hindi — see languageEnglish (train T20, XP-06)."
+  },
+  "selectAction": "Select",
+  "@selectAction": {
+    "description": "train T20 (st-polish), HO-08 · The All-subscriptions section action that starts choosing several rows at once."
+  },
+  "selectDone": "Done",
+  "@selectDone": {
+    "description": "train T20 (st-polish), HO-08 · The same action while choosing: leaves the selection mode."
+  },
+  "selectedCount": "{count, plural, =0{None selected} =1{1 selected} other{{count} selected}}",
+  "@selectedCount": {
+    "description": "train T20 (st-polish), HO-08 · Above the selection's actions on home. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exportSelected": "Export",
+  "@exportSelected": {
+    "description": "train T20 (st-polish), HO-08 · The selection action that exports the chosen rows as a CSV file."
+  },
+  "bulkPaused": "{count, plural, =1{1 subscription paused} other{{count} subscriptions paused}}",
+  "@bulkPaused": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after pausing chosen rows; it carries one Undo for all of them. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bulkMarkedCancelled": "{count, plural, =1{1 subscription marked as cancelled} other{{count} subscriptions marked as cancelled}}",
+  "@bulkMarkedCancelled": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after marking chosen rows cancelled; one Undo. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bulkDeleted": "{count, plural, =1{1 subscription deleted} other{{count} subscriptions deleted}}",
+  "@bulkDeleted": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after deleting chosen rows; one Undo brings every one back. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionResumed": "{name} resumed",
+  "@subscriptionResumed": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after a swipe resumes a paused or cancelled row.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "exportFailed": "Could not export on this device. Nothing was saved.",
+  "@exportFailed": {
+    "description": "train T20 (st-polish) · Snackbar when the platform could not take an exported file (share sheet, download or save)."
+  },
+  "fieldLabelTags": "Tags",
+  "@fieldLabelTags": {
+    "description": "train T20 (st-polish), AD-12 · The add/edit sheet's tags field, and the name of the chips on the detail page."
+  },
+  "tagsHint": "e.g. family, work",
+  "@tagsHint": {
+    "description": "train T20 (st-polish), AD-12 · Hint under the tags field."
+  },
+  "tagFilterLabel": "Filter by tag",
+  "@tagFilterLabel": {
+    "description": "train T20 (st-polish), AD-12 · Screen-reader name of the tag chips above All subscriptions."
+  },
+  "actionDuplicate": "Duplicate",
+  "@actionDuplicate": {
+    "description": "train T20 (st-polish), AD-10 · Detail › More options: opens the add sheet prefilled from this row."
+  },
+  "duplicateName": "{name} (2)",
+  "@duplicateName": {
+    "description": "train T20 (st-polish), AD-10 · The name a duplicate is prefilled with, so it is told apart from its original.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "shareMonth": "Share this month",
+  "@shareMonth": {
+    "description": "train T20 (st-polish), IN-12 · Insights header control; opens the share choices."
+  },
+  "shareSummaryImage": "Summary as a picture",
+  "@shareSummaryImage": {
+    "description": "train T20 (st-polish), IN-12 · Share choice: a PNG of the four summary tiles."
+  },
+  "shareMonthCsv": "This month's charges (CSV)",
+  "@shareMonthCsv": {
+    "description": "train T20 (st-polish), IN-12 · Share choice: every charge this month and its total, as a CSV file."
+  },
+  "nameErrorRequired": "Enter a name",
+  "@nameErrorRequired": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart, the name field's errorText when it is blank (ST truth pass (2026-10-01). AD-01)."
+  },
+  "priceWithCadence": "{amount} {cadence}",
+  "@priceWithCadence": {
+    "description": "Consumed by features/insights/summary_tiles.dart: a price with its own cadence caption, e.g. \"₹900 every 3 months\" (ST truth pass (2026-10-01). IN-01). {cadence} is perEveryMonths and its siblings.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹900"
+      },
+      "cadence": {
+        "type": "String",
+        "example": "every 3 months"
+      }
+    }
+  },
+  "calendarDayToday": "today",
+  "@calendarDayToday": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: the word a screen reader hears in today's month-grid cell, after the date (ST truth pass (2026-10-01). CA-03)."
+  },
+  "calendarDayRenewals": "{count, plural, =1{1 renewal} other{{count} renewals}}",
+  "@calendarDayRenewals": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: how many charges a month-grid cell carries, read by a screen reader (ST truth pass (2026-10-01). CA-03).",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "calendarCharged": "Charged",
+  "@calendarCharged": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: a charge earlier this month, beside its date badge (ST truth pass (2026-10-01). CA-02)."
+  },
+  "nextChargeNone": "None",
+  "@nextChargeNone": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's figure for a paused or cancelled row (ST truth pass (2026-10-01). DE-02)."
+  },
+  "detailPausedNoCharge": "Paused — no charge",
+  "@detailPausedNoCharge": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a paused row (ST truth pass (2026-10-01). DE-02)."
+  },
+  "detailCancelledOnLabel": "Cancelled on",
+  "@detailCancelledOnLabel": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart, the details card: cancelled_on (ST truth pass (2026-10-01). DE-01)."
+  },
+  "detailWebsiteNotOpened": "Couldn't open that website.",
+  "@detailWebsiteNotOpened": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the snackbar when the website to cancel did not open (ST truth pass (2026-10-01). DE-01)."
+  },
+  "detailRemindersNoDeviceNotifications": "This device does not send notifications — e-mail reminders and the calendar feed are in Settings",
+  "@detailRemindersNoDeviceNotifications": {
+    "description": "Consumed by features/detail/reminder_rows.dart: on a target that cannot schedule a notification, under the reminder rows; opens Settings (ST truth pass (2026-10-01). DE-03)."
+  },
+  "detailCancelledOn": "Cancelled on {date}",
+  "@detailCancelledOn": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a cancelled row (ST truth pass (2026-10-01). DE-02).",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Oct 3, 2026"
+      }
+    }
+  },
+  "reminderActionMarkPaid": "Mark as paid",
+  "@reminderActionMarkPaid": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; records one payment."
+  },
+  "reminderActionSnooze": "Snooze 1 day",
+  "@reminderActionSnooze": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; the reminder comes back in 24 hours."
+  },
+  "reminderActionKeep": "Keep it",
+  "@reminderActionKeep": {
+    "description": "NO-10: /notifications row button — the user keeps the plan; hides the notice, no network."
+  },
+  "reminderActionHowToStop": "How to stop",
+  "@reminderActionHowToStop": {
+    "description": "NO-10: /notifications row button — opens the plan's stop entry."
+  },
+  "reminderMarkedPaid": "Marked {name} as paid",
+  "@reminderMarkedPaid": {
+    "description": "Snackbar after Mark as paid.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "reminderMarkPaidFailed": "Couldn't mark it as paid. Try again.",
+  "@reminderMarkPaidFailed": {
+    "description": "Snackbar when the payment could not be recorded."
+  },
+  "reminderSnoozed": "We'll remind you again tomorrow",
+  "@reminderSnoozed": {
+    "description": "Snackbar after Snooze 1 day."
+  },
+  "testReminderTitle": "Test reminder",
+  "@testReminderTitle": {
+    "description": "NO-13: title of the test notification."
+  },
+  "testReminderBody": "Reminders work on this device.",
+  "@testReminderBody": {
+    "description": "NO-13: body of the test notification."
+  },
+  "settingsSendTestReminder": "Send a test reminder",
+  "@settingsSendTestReminder": {
+    "description": "NO-13: Settings row."
+  },
+  "testReminderSentLocal": "A test reminder arrives in 10 seconds.",
+  "@testReminderSentLocal": {
+    "description": "NO-13: after the test on a device that schedules."
+  },
+  "quietHoursTitle": "Quiet hours",
+  "@quietHoursTitle": {
+    "description": "NO-13: Settings switch."
+  },
+  "quietHoursSubtitle": "No reminders {start}–{end}; they arrive after.",
+  "@quietHoursSubtitle": {
+    "description": "NO-13: under the switch.",
+    "placeholders": {
+      "start": {
+        "type": "String",
+        "example": "22:00"
+      },
+      "end": {
+        "type": "String",
+        "example": "07:00"
+      }
+    }
+  },
+  "exactAlarmOfferTitle": "Get reminders on time?",
+  "@exactAlarmOfferTitle": {
+    "description": "NO-12: one-time Android offer."
+  },
+  "exactAlarmOfferBody": "Allow “Alarms & reminders” for this app so reminders arrive at the time you chose.",
+  "@exactAlarmOfferBody": {
+    "description": "NO-12: one-time Android offer body."
+  },
+  "exactAlarmOfferOpen": "Open settings",
+  "@exactAlarmOfferOpen": {
+    "description": "NO-12: opens the system Alarms & reminders page."
+  },
+  "exactAlarmOfferLater": "Not now",
+  "@exactAlarmOfferLater": {
+    "description": "NO-12: declines the offer."
+  },
+  "exactAlarmRefused": "Reminders may arrive a little late.",
+  "@exactAlarmRefused": {
+    "description": "NO-12: Settings line after a refusal."
+  },
+  "notificationsStatusOn": "Reminders: on, {days, plural, =0{on the day} =1{1 day before} other{{days} days before}} at {time}",
+  "@notificationsStatusOn": {
+    "description": "NO-09: /notifications status where this device posts reminders.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "2"
+      },
+      "time": {
+        "type": "String",
+        "example": "09:00"
+      }
+    }
+  },
+  "notificationsStatusOff": "Reminders: off",
+  "@notificationsStatusOff": {
+    "description": "NO-09: /notifications status where the user turned renewal alerts off."
+  },
+  "notificationsStatusNoPush": "This device can't show reminders. Get them by e-mail or add the calendar feed.",
+  "@notificationsStatusNoPush": {
+    "description": "NO-09: /notifications status where push is absent (web)."
+  },
+  "notificationsOpenSettings": "Reminder settings",
+  "@notificationsOpenSettings": {
+    "description": "NO-09: link from the /notifications status line to Settings."
+  },
   "importTitle": "Import subscriptions",
   "@importTitle": {
     "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The hub title, the Settings › Your data row, the Home empty-state link."
@@ -2636,196 +3953,8 @@
   "@exportDismissed": {
     "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.dismissed."
   },
-  "exportFailed": "Could not export on this device. Nothing was saved.",
-  "@exportFailed": {
-    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.failed."
-  },
   "exportListFailed": "Your list did not load, so there is nothing to export yet. Try again.",
   "@exportListFailed": {
     "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A list-load failure, said instead of returning silently (IM-08)."
-  },
-  "nameErrorRequired": "Enter a name",
-  "@nameErrorRequired": {
-    "description": "Consumed by features/add/add_subscription_sheet.dart, the name field's errorText when it is blank (ST truth pass (2026-10-01). AD-01)."
-  },
-  "priceWithCadence": "{amount} {cadence}",
-  "@priceWithCadence": {
-    "description": "Consumed by features/insights/summary_tiles.dart: a price with its own cadence caption, e.g. \"₹900 every 3 months\" (ST truth pass (2026-10-01). IN-01). {cadence} is perEveryMonths and its siblings.",
-    "placeholders": {
-      "amount": {
-        "type": "String",
-        "example": "₹900"
-      },
-      "cadence": {
-        "type": "String",
-        "example": "every 3 months"
-      }
-    }
-  },
-  "calendarDayToday": "today",
-  "@calendarDayToday": {
-    "description": "Consumed by features/calendar/calendar_screen.dart: the word a screen reader hears in today's month-grid cell, after the date (ST truth pass (2026-10-01). CA-03)."
-  },
-  "calendarDayRenewals": "{count, plural, =1{1 renewal} other{{count} renewals}}",
-  "@calendarDayRenewals": {
-    "description": "Consumed by features/calendar/calendar_screen.dart: how many charges a month-grid cell carries, read by a screen reader (ST truth pass (2026-10-01). CA-03).",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "2"
-      }
-    }
-  },
-  "calendarCharged": "Charged",
-  "@calendarCharged": {
-    "description": "Consumed by features/calendar/calendar_screen.dart: a charge earlier this month, beside its date badge (ST truth pass (2026-10-01). CA-02)."
-  },
-  "nextChargeNone": "None",
-  "@nextChargeNone": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's figure for a paused or cancelled row (ST truth pass (2026-10-01). DE-02)."
-  },
-  "detailPausedNoCharge": "Paused — no charge",
-  "@detailPausedNoCharge": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a paused row (ST truth pass (2026-10-01). DE-02)."
-  },
-  "detailCancelledOn": "Cancelled on {date}",
-  "@detailCancelledOn": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a cancelled row (ST truth pass (2026-10-01). DE-02).",
-    "placeholders": {
-      "date": {
-        "type": "String",
-        "example": "Oct 3, 2026"
-      }
-    }
-  },
-  "detailFirstCharge": "First charge",
-  "@detailFirstCharge": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart, the details card: first_charge_on (ST truth pass (2026-10-01). DE-01)."
-  },
-  "detailCancelledOnLabel": "Cancelled on",
-  "@detailCancelledOnLabel": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart, the details card: cancelled_on (ST truth pass (2026-10-01). DE-01)."
-  },
-  "detailWebsiteNotOpened": "Couldn't open that website.",
-  "@detailWebsiteNotOpened": {
-    "description": "Consumed by features/detail/subscription_detail_screen.dart: the snackbar when the website to cancel did not open (ST truth pass (2026-10-01). DE-01)."
-  },
-  "detailRemindersNoDeviceNotifications": "This device does not send notifications — e-mail reminders and the calendar feed are in Settings",
-  "@detailRemindersNoDeviceNotifications": {
-    "description": "Consumed by features/detail/reminder_rows.dart: on a target that cannot schedule a notification, under the reminder rows; opens Settings (ST truth pass (2026-10-01). DE-03)."
-  },
-  "reminderActionMarkPaid": "Mark as paid",
-  "@reminderActionMarkPaid": {
-    "description": "NO-10: button on a renewal reminder and on a /notifications row; records one payment."
-  },
-  "reminderActionSnooze": "Snooze 1 day",
-  "@reminderActionSnooze": {
-    "description": "NO-10: button on a renewal reminder and on a /notifications row; the reminder comes back in 24 hours."
-  },
-  "reminderActionKeep": "Keep it",
-  "@reminderActionKeep": {
-    "description": "NO-10: /notifications row button — the user keeps the plan; hides the notice, no network."
-  },
-  "reminderActionHowToStop": "How to stop",
-  "@reminderActionHowToStop": {
-    "description": "NO-10: /notifications row button — opens the plan's stop entry."
-  },
-  "reminderMarkedPaid": "Marked {name} as paid",
-  "@reminderMarkedPaid": {
-    "description": "Snackbar after Mark as paid.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Netflix"
-      }
-    }
-  },
-  "reminderMarkPaidFailed": "Couldn't mark it as paid. Try again.",
-  "@reminderMarkPaidFailed": {
-    "description": "Snackbar when the payment could not be recorded."
-  },
-  "reminderSnoozed": "We'll remind you again tomorrow",
-  "@reminderSnoozed": {
-    "description": "Snackbar after Snooze 1 day."
-  },
-  "testReminderTitle": "Test reminder",
-  "@testReminderTitle": {
-    "description": "NO-13: title of the test notification."
-  },
-  "testReminderBody": "Reminders work on this device.",
-  "@testReminderBody": {
-    "description": "NO-13: body of the test notification."
-  },
-  "settingsSendTestReminder": "Send a test reminder",
-  "@settingsSendTestReminder": {
-    "description": "NO-13: Settings row."
-  },
-  "testReminderSentLocal": "A test reminder arrives in 10 seconds.",
-  "@testReminderSentLocal": {
-    "description": "NO-13: after the test on a device that schedules."
-  },
-  "quietHoursTitle": "Quiet hours",
-  "@quietHoursTitle": {
-    "description": "NO-13: Settings switch."
-  },
-  "quietHoursSubtitle": "No reminders {start}–{end}; they arrive after.",
-  "@quietHoursSubtitle": {
-    "description": "NO-13: under the switch.",
-    "placeholders": {
-      "start": {
-        "type": "String",
-        "example": "22:00"
-      },
-      "end": {
-        "type": "String",
-        "example": "07:00"
-      }
-    }
-  },
-  "exactAlarmOfferTitle": "Get reminders on time?",
-  "@exactAlarmOfferTitle": {
-    "description": "NO-12: one-time Android offer."
-  },
-  "exactAlarmOfferBody": "Allow “Alarms & reminders” for this app so reminders arrive at the time you chose.",
-  "@exactAlarmOfferBody": {
-    "description": "NO-12: one-time Android offer body."
-  },
-  "exactAlarmOfferOpen": "Open settings",
-  "@exactAlarmOfferOpen": {
-    "description": "NO-12: opens the system Alarms & reminders page."
-  },
-  "exactAlarmOfferLater": "Not now",
-  "@exactAlarmOfferLater": {
-    "description": "NO-12: declines the offer."
-  },
-  "exactAlarmRefused": "Reminders may arrive a little late.",
-  "@exactAlarmRefused": {
-    "description": "NO-12: Settings line after a refusal."
-  },
-  "notificationsStatusOn": "Reminders: on, {days, plural, =0{on the day} =1{1 day before} other{{days} days before}} at {time}",
-  "@notificationsStatusOn": {
-    "description": "NO-09: /notifications status where this device posts reminders.",
-    "placeholders": {
-      "days": {
-        "type": "int",
-        "example": "2"
-      },
-      "time": {
-        "type": "String",
-        "example": "09:00"
-      }
-    }
-  },
-  "notificationsStatusOff": "Reminders: off",
-  "@notificationsStatusOff": {
-    "description": "NO-09: /notifications status where the user turned renewal alerts off."
-  },
-  "notificationsStatusNoPush": "This device can't show reminders. Get them by e-mail or add the calendar feed.",
-  "@notificationsStatusNoPush": {
-    "description": "NO-09: /notifications status where push is absent (web)."
-  },
-  "notificationsOpenSettings": "Reminder settings",
-  "@notificationsOpenSettings": {
-    "description": "NO-09: link from the /notifications status line to Settings."
   }
 }

@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    80,
+    83,
 
   "analytics-liveness.test.mjs":
     28,
@@ -160,6 +160,9 @@
 
   "bundle-provenance.test.mjs":
     10,
+
+  "business-facts.test.mjs":
+    9,
 
   "capability-register-seams.test.mjs":
     27,
@@ -358,6 +361,9 @@
 
   "entitlement-contract.test.mjs":
     104,
+
+  "entity-change.test.mjs":
+    4,
 
   "erasure-reach.test.mjs":
     53,
@@ -767,6 +773,9 @@
   "pseudonymity-firewall.test.mjs":
     17,
 
+  "public-citations-brain.test.mjs":
+    9,
+
   "public-citations-ids.test.mjs":
     10,
 
@@ -976,6 +985,9 @@
 
   "start-here.test.mjs":
     9,
+
+  "stop-copy.test.mjs":
+    10,
 
   "store-audience.test.mjs":
     18,

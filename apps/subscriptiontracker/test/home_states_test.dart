@@ -35,6 +35,7 @@ import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/home/home_signals.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -236,6 +237,18 @@ void main() {
             'the shell\'s notice is the ONE offline surface; home adds no '
             'second banner of its own',
       );
+      // The search and the decisions sit above the list now (HO-03/05), so
+      // on a phone the first row is a scroll away — still the user's list.
+      await tester.scrollUntilVisible(
+        find.text(homeFixture().first.name),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(HomeScreen.listPaneKey),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       expect(
         find.text(homeFixture().first.name),
         findsWidgets,
@@ -275,14 +288,17 @@ void main() {
       final AppLocalizations l10n = await _en();
       final List<Subscription> subs = homeFixture();
 
-      expect(find.byKey(HomeScreen.unusedStripKey), findsOneWidget);
+      // HO-05: the fixture raises a yearly plan due in 40 days and two rows
+      // flagged rarely used; Home asks the most urgent, the yearly one.
       expect(
-        find.text(
-          l10n.markedUnusedCount(
-            subs.where((Subscription s) => s.unused).length,
-          ),
-        ),
+        find.byKey(HomeScreen.signalKey(HomeSignalKind.yearlyDue, 'adb')),
         findsOneWidget,
+      );
+      expect(find.byType(DecisionStrip), findsOneWidget);
+      expect(
+        find.text(l10n.homeSignalStillUsing(subs[2].name)),
+        findsNothing,
+        reason: 'one decision at a time',
       );
       expect(find.byKey(HomeScreen.upcomingKey), findsOneWidget);
       expect(
@@ -320,7 +336,7 @@ void main() {
       expect(tomorrow.subtitle, l10n.renewsTomorrow);
     });
 
-    testWidgets('the Review answer opens Insights', (
+    testWidgets('a decision answer opens its subscription', (
       WidgetTester tester,
     ) async {
       await pumpAt(
@@ -329,7 +345,9 @@ void main() {
         const HomeScreen(),
         overrides: _repo(_Flaky(failures: 0, then: homeFixture())),
       );
-      await tester.tap(find.byKey(HomeScreen.unusedReviewKey));
+      await tester.tap(
+        find.byKey(HomeScreen.signalActionKey(HomeSignalKind.yearlyDue, 'adb')),
+      );
       await tester.pump();
       // `pumpAt` builds no router, so "this tap reached go_router" and "this
       // tap threw" are the same event — the width tests' idiom.

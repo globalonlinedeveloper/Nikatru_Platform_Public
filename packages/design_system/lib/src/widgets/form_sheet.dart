@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/status_tones.dart';
 import 'app_card.dart';
+import 'app_scaffold.dart' show AppBreakpoints;
 
 /// Opens a chassis FORM SHEET — the add / edit surface (train ST-D6).
 ///
@@ -22,10 +23,31 @@ import 'app_card.dart';
 /// sheet at 640 on every window class, and no `bottomSheetTheme` override
 /// exists in the chassis; a second cap would silently disagree with the
 /// framework's the day either number moved.
+///
+/// ⏱ ST-T9 (AD-09, D6-6): from [dialogMinWidth] up the form is a centred
+/// DIALOG of at most [dialogMaxWidth], not a sheet rising from the bottom of a
+/// desktop window. Esc is the dialog route's own dismiss and Ctrl/⌘+Enter is
+/// [AppFormSheet]'s, so the keyboard contract is the same in both shapes.
 Future<T?> showAppFormSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
 }) {
+  if (MediaQuery.sizeOf(context).width >= AppFormSheet.dialogMinWidth) {
+    return showDialog<T>(
+      context: context,
+      useRootNavigator: true,
+      builder: (BuildContext ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: AppFormSheet.dialogMaxWidth,
+          ),
+          child: _AppFormDialogScope(child: Builder(builder: builder)),
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
@@ -33,6 +55,18 @@ Future<T?> showAppFormSheet<T>(
     backgroundColor: Colors.transparent,
     builder: builder,
   );
+}
+
+/// Marks an [AppFormSheet] as painted inside the desktop dialog: no drag
+/// handle (nothing drags) and every corner rounded.
+class _AppFormDialogScope extends InheritedWidget {
+  const _AppFormDialogScope({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_AppFormDialogScope>() != null;
+
+  @override
+  bool updateShouldNotify(_AppFormDialogScope oldWidget) => false;
 }
 
 /// The chassis FORM SHEET surface: a drag handle, a header title, an optional
@@ -87,6 +121,14 @@ class AppFormSheet extends StatelessWidget {
   /// The tallest the sheet grows, as a fraction of the window height.
   static const double maxHeightFraction = 0.86;
 
+  /// The window width from which [showAppFormSheet] opens a dialog: M3's
+  /// medium window class (`AppBreakpoints.medium`).
+  static const double dialogMinWidth = AppBreakpoints.medium;
+
+  /// The dialog's width cap (D6-6) — the same number as [dialogMinWidth], so
+  /// the form is never wider than the narrowest window that gets a dialog.
+  static const double dialogMaxWidth = AppBreakpoints.medium;
+
   /// The drag handle, per M3's bottom-sheet spec.
   static const Size handleSize = Size(32, 4);
 
@@ -99,6 +141,7 @@ class AppFormSheet extends StatelessWidget {
     final ColorScheme scheme = theme.colorScheme;
     final MediaQueryData mq = MediaQuery.of(context);
     final VoidCallback? submit = onSubmit;
+    final bool inDialog = _AppFormDialogScope.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
       child: Container(
@@ -107,9 +150,9 @@ class AppFormSheet extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           color: fillOf(theme),
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppRadius.xl),
-          ),
+          borderRadius: inDialog
+              ? BorderRadius.circular(AppRadius.xl)
+              : const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
         ),
         child: CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
@@ -139,18 +182,19 @@ class AppFormSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Center(
-                  child: ExcludeSemantics(
-                    child: Container(
-                      width: handleSize.width,
-                      height: handleSize.height,
-                      decoration: BoxDecoration(
-                        color: scheme.outline,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                if (!inDialog)
+                  Center(
+                    child: ExcludeSemantics(
+                      child: Container(
+                        width: handleSize.width,
+                        height: handleSize.height,
+                        decoration: BoxDecoration(
+                          color: scheme.outline,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const SizedBox(height: AppSpacing.lg),
                 Semantics(
                   header: true,

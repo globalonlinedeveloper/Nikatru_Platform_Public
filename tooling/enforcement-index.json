@@ -2510,6 +2510,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stop-copy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 068"
     ],
@@ -4212,6 +4222,16 @@
     ],
     "kind": "script",
     "ref": "tooling/release/submit-windows-store.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/assert-business-facts.mjs",
     "references": [],
     "state": "WIRED"
   },

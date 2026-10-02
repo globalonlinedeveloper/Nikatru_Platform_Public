@@ -29,7 +29,10 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
       routes: <RouteBase>[
         GoRoute(
           path: '/home',
-          builder: (_, __) => const HomeScreen(),
+          // T12 (IN-07): `?category=` is the drill-down from an Insights
+          // category row; Home lists only that category until it is cleared.
+          builder: (_, GoRouterState state) =>
+              HomeScreen(category: state.uri.queryParameters['category']),
           caseSensitive: false,
         ),
       ],

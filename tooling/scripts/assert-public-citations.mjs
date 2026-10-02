@@ -672,6 +672,69 @@ const RE_SELF_SPLIT = /^(ref\/[A-Za-z0-9][A-Za-z0-9_.-]*):(.+)$/;
 
 const DISCLOSED = /\(\s*(?:does not exist|never existed|no longer exists|deleted|retired|gone|removed|absent)/i;
 
+/* ── THE FIFTH CLASS: BRAIN PATHS (rv2-business 008, train P23) ──
+   A public file that cites the shared business brain — a `§<n>` into its Apple vendor
+   page, a backticked vendor path after the word "brain", a `:<line>` into its decisions
+   log (no example is written whole here: this file is in its own subject) — was resolved
+   by nothing: measured 2026-09-30, of 49 non-test brain citations 6 had moved and 2 were
+   stale, and 4 of the 6 moves were LINE cites. So, against `<workspace anchor>/nikatru`:
+     · the cited file or directory must exist;
+     · a `§<n>` or `#<anchor>` into a brain `.md` must name one of its headings
+       (`§9` resolves a heading reading `9.`/`9 `/`§9`; `#x` a GitHub-style heading slug);
+     · a `:NNN` or `line NN` cite into a brain `.md` is REFUSED outright — the brain is
+       appended to every week and a line number lands on another real line, silently.
+   The two disclosure conventions hold here as everywhere. The brain is found by the same
+   anchor walk as the rest of this guard; a brain that holds neither README.md nor
+   AGENTS.md is not one, and the class refuses (exit 2) rather than resolve against it.
+   Hook-only, like every class here: CI cannot read the brain. */
+const BRAIN_ROOTS = 'README\\.md|AGENTS\\.md|CLAUDE\\.md|START-HERE\\.md|OWNER_QUEUE(?:-CLOSED)?\\.md|owner-queue\\.json|business|vendors|decisions|docs|tooling|logo|personal|awfis';
+const BRAIN_SUFFIX = '(?::(?<line>\\d+)(?:-\\d+)?|,?\\s+line\\s+(?<line2>\\d+)|\\s?§\\s?(?<sec>[0-9][0-9A-Za-z.-]*)|#(?<anchor>[a-z0-9_-]+))?';
+const RE_BRAIN_PATH = new RegExp(`(?<![A-Za-z0-9_./@-])nikatru/(?<path>(?:${BRAIN_ROOTS})(?:/[A-Za-z0-9_.{}-]+)*)${BRAIN_SUFFIX}`, 'g');
+const RE_BRAIN_TICK = new RegExp(`\\bbrain(?:'s)?:?\\s+\`(?<path>(?:business|vendors|decisions|docs)/[A-Za-z0-9_./-]+)\`${BRAIN_SUFFIX}`, 'g');
+let brainChecked = 0;
+const brainHeadingCache = new Map();
+/** A heading's GitHub-style slug: lowercase, markup and punctuation out, spaces to hyphens. */
+const headingSlug = (h) => h.toLowerCase().replace(/[*`~_]/g, '').replace(/[^\p{L}\p{N} -]/gu, '').trim().replace(/ /g, '-');
+function brainHeadings(abs) {
+  if (!brainHeadingCache.has(abs)) {
+    let text = '';
+    try { text = readFileSync(abs, 'utf8'); } catch { /* existence is checked first */ }
+    brainHeadingCache.set(abs, text.split(/\r?\n/).filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.replace(/^#{1,6}\s+/, '').trim()));
+  }
+  return brainHeadingCache.get(abs);
+}
+function brainSectionResolves(abs, sec, anchor) {
+  const hs = brainHeadings(abs);
+  if (anchor) return hs.some((h) => headingSlug(h) === anchor);
+  const s = sec.replace(/\.+$/, '').toLowerCase();
+  // A heading's leading text, emoji and markup stripped: `## 9. Bank`, `### 2b. GST ✅`, `## §9 …`.
+  return hs.some((h) => {
+    const lead = h.replace(/^[^\p{L}\p{N}§]+/u, '').replace(/^§\s?/, '').toLowerCase();
+    return lead === s || (lead.startsWith(s) && /^[.\s):—–-]/.test(lead.slice(s.length)));
+  });
+}
+function brainCite(failuresOut, rel, i, lineText, disclosed, g) {
+  brainChecked++;
+  const p = g.path.replace(/[.,;:)]+$/, '');
+  const abs = join(NIKATRU, p);
+  const fail = (what, why) => {
+    if (disclosed) { skippedDisclosed++; return; }
+    failuresOut.push({ rel, line: i + 1, kind: 'brain', what, why, text: lineText.trim().slice(0, 130) });
+  };
+  if (!existsSync(abs)) return fail(`nikatru/${p}`, 'no such brain path');
+  const isMd = /\.md$/i.test(p);
+  const lineNo = g.line ?? g.line2;
+  if (lineNo && isMd) return fail(`nikatru/${p}:${lineNo}`, 'a line cite into a brain .md — cite its heading (§<n> or #<anchor>)');
+  if ((g.sec || g.anchor) && isMd && !brainSectionResolves(abs, g.sec, g.anchor)) {
+    return fail(`nikatru/${p} ${g.sec ? `§${g.sec}` : `#${g.anchor}`}`, 'no such heading in the brain file');
+  }
+}
+if (!existsSync(join(NIKATRU, 'README.md')) && !existsSync(join(NIKATRU, 'AGENTS.md'))) {
+  console.error(`✗  public citations — REFUSING: the BRAIN PATHS class found ${NIKATRU}, and it holds neither README.md nor AGENTS.md,`);
+  console.error('   so it is not the business brain and no brain citation can be resolved against it.');
+  process.exit(2);
+}
+
 const failures = [];
 let pathsChecked = 0, pinsChecked = 0, tagsChecked = 0, idsChecked = 0, filesScanned = 0;
 let selfPinsChecked = 0;
@@ -753,6 +816,13 @@ for (const rel of files) {
       if (disclosed) { skippedDisclosed++; continue; }
       failures.push({ rel, line: i + 1, kind: 'path', what: p, text: line.trim().slice(0, 130) });
     }
+
+    /* ── BRAIN PATHS BEGIN ──────────────────────────────────────────
+       Deleting this region is this guard as it stood before the class existed,
+       which is the mutant tooling/ci/test/public-citations-brain.test.mjs builds. */
+    for (const m of scan.matchAll(RE_BRAIN_PATH)) brainCite(failures, rel, i, line, disclosed, m.groups);
+    for (const m of scan.matchAll(RE_BRAIN_TICK)) brainCite(failures, rel, i, line, disclosed, m.groups);
+    /* ── BRAIN PATHS END ──────────────────────────────────────────── */
 
     /* ── SELF PIN USE BEGIN ────────────────────────────────────────
        A citation pinned to one of THIS repository's own tags. Deleting this region is
@@ -1143,6 +1213,7 @@ const label = `${filesScanned} tracked file(s) · ${pathsChecked} Private/ path 
   ` · ${holdsChecked} owner-id hold(s) in ${holdSubjectFiles} subject file(s) (${HOLD_SUBJECTS.map((s) => `${s.glob} ${subjectPaths(s).join(', ')}`).join('; ')}), ` +
   `${holdsLive} live` + (holdsFound ? `, ${holdsFound} provenance id(s) found in any state` : '') +
   (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '') +
+  ` · ${brainChecked} brain citation(s) resolved against ${NIKATRU}` +
   ` · ${rowIdsChecked} O-/P- row id(s) on ${rowIdLines} line(s), resolved against every row of open.json (${openRowCount}) ` +
   `and programme.json (${programmeItemCount}) whatever its state, ${stateLines} of those line(s) carrying a state phrase`;
 
@@ -1172,7 +1243,7 @@ for (const [rel, hits] of [...byFile.entries()].sort((a, b) => b[1].length - a[1
     const why = h.kind === 'path' ? 'no such path'
       : h.kind === 'pin' ? 'not at that tag'
       : h.kind === 'selfpin' ? 'not at that tag in this repository'
-      : h.kind === 'owner-id' || h.kind === 'row-id' ? h.why
+      : h.kind === 'owner-id' || h.kind === 'row-id' || h.kind === 'brain' ? h.why
       : 'unknown requirement id';
     console.error(`    :${h.line}  ${why}  ${h.what}`);
   }

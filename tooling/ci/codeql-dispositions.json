@@ -587,6 +587,13 @@
       "disposition": "by-design",
       "host": "androidpublisher.googleapis.com",
       "reason": "--sync-listing writes the listing and contact details Play held, as a backup, before it replaces them (#1099 review finding 4). The origin is the pinned Play API origin (loopbackOr: the real origin or the loopback test seam only); the file is the fixed listing.json under --backup-dir (default build/, gitignored), so the response cannot choose the path. Added 2026-10-01."
+    },
+    {
+      "alert": 551,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-mor-adapters.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "The unread REGISTRY constant (line 82) became a comment in this PR; since #1127 limb 2 derives the provider set from RENDERED_RAILS. Goes stale once main analysis marks #551 fixed; delete it then."
     }
   ]
 }

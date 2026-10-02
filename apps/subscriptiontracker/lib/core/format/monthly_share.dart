@@ -40,6 +40,11 @@ extension type const MonthlyShare._(Money _amount) {
   static MoneyBag sum(Iterable<MonthlyShare> shares) =>
       MoneyBag.sum(shares.map((MonthlyShare s) => s._amount));
 
+  /// What [months] of this share add up to — the money a CANCELLED plan has
+  /// not taken since (`SubMath.savedSinceCancelled`). A sum over whole months,
+  /// so it is a real amount and prints as one.
+  Money accruedOver(int months) => _amount.times(months);
+
   /// Larger first, within ONE currency. The cross-currency order is
   /// `SubMath`'s presentation rule, never a comparison of amounts.
   static int descending(MonthlyShare a, MonthlyShare b) {

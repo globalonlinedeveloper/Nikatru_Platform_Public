@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadContext } from '../../entity/facts.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -691,7 +692,8 @@ describe('EXT-3 — the AMO first submit carries the listing, and the store step
     assert.deepEqual(p.categories, { firefox: ['photos-music-videos', 'privacy-security'] });
     assert.equal(p.support_email['en-US'], 'support@nikatru.com');
     assert.equal(p.version.custom_license.name['en-US'], 'PolyForm Shield License 1.0.0');
-    assert.match(p.version.custom_license.text['en-US'], /^Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU \(https:\/\/nikatru\.com\)$/m);
+    const ctx = loadContext();
+    assert.ok(p.version.custom_license.text['en-US'].split('\n').includes(`Required Notice: Copyright ${ctx.legalName}, trading as ${ctx.tradeName} (https://nikatru.com)`), 'the licence text carries the Required Notice the entity source renders');
     assert.ok(p.version.approval_notes.trim().length > 0, 'reviewer notes are the approval_notes');
   });
 

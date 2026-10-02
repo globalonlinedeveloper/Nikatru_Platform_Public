@@ -27,6 +27,7 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 const Color kSublySeed = Color(0xFF6459F5);
@@ -85,6 +86,7 @@ Future<(ProviderContainer, AppLocalizations)> _open(
   required _Repo repo,
   Subscription? editing,
   bool offline = false,
+  bool stayOnPick = false,
 }) async {
   // The VIEW, not `setSurfaceSize`: the sheet caps its height off
   // MediaQuery, which only the view moves (the trap width_add_sheet_test.dart
@@ -96,6 +98,7 @@ Future<(ProviderContainer, AppLocalizations)> _open(
     overrides: <Override>[
       ...defaultWidthOverrides(),
       subscriptionRepositoryProvider.overrideWithValue(repo),
+      ...catalogueOverrides(),
     ],
   );
   addTearDown(c.dispose);
@@ -128,6 +131,12 @@ Future<(ProviderContainer, AppLocalizations)> _open(
   await c.read(subscriptionsControllerProvider.future);
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
+  // ST-T9: an add opens on the catalogue pick step; these tests are about the
+  // FORM, so they step past it the way a user adding by hand does.
+  if (editing == null && !stayOnPick) {
+    await tester.tap(find.byKey(E2EKeys.addByHand));
+    await tester.pumpAndSettle();
+  }
   final AppLocalizations l10n = await AppLocalizations.delegate.load(
     const Locale('en'),
   );
@@ -140,6 +149,10 @@ String _fieldText(WidgetTester tester, Key key) =>
 Future<void> _submit(WidgetTester tester) async {
   await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
   await tester.pumpAndSettle();
+  // ST-T9: a focused field re-shows its caret once the scroll settles, and on
+  // the longer form that can carry Save back below the fold — look again.
+  await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+  await tester.pump();
   await tester.tap(find.byKey(E2EKeys.addSubmit));
 }
 
@@ -149,11 +162,26 @@ Finder _inSubmit(String text) => find.descendant(
 );
 
 void main() {
-  testWidgets('EMPTY — an add opens blank, with the POPULAR shortcuts', (
+  testWidgets('PICKING — an add opens on the catalogue, POPULAR offered', (
+    WidgetTester tester,
+  ) async {
+    final (_, AppLocalizations l10n) = await _open(
+      tester,
+      repo: _Repo(),
+      stayOnPick: true,
+    );
+    expect(find.text(l10n.addPopularHeading), findsOneWidget);
+    expect(find.byKey(E2EKeys.addSearch), findsOneWidget);
+    expect(find.byKey(E2EKeys.addName), findsNothing);
+    expect(find.byKey(E2EKeys.addBanner), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EMPTY — an add by hand opens blank', (
     WidgetTester tester,
   ) async {
     final (_, AppLocalizations l10n) = await _open(tester, repo: _Repo());
-    expect(find.text(l10n.addPopularHeading), findsOneWidget);
+    expect(find.text(l10n.addPopularHeading), findsNothing);
     expect(_fieldText(tester, E2EKeys.addName), isEmpty);
     expect(_fieldText(tester, E2EKeys.addPrice), isEmpty);
     expect(_inSubmit(l10n.addSubscriptionTitle), findsOneWidget);
