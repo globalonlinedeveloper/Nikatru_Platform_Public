@@ -184,7 +184,7 @@ describe('the drift reader (tooling/ops/check-edge-zone.mjs)', () => {
     assert.equal(code, 1, out);
     const leak = records.at(-1);
     assert.match(out, new RegExp(`FAIL DNS {2}undeclared A record sha256:${recordHash(leak)} is DNS-ONLY`));
-    assert.ok(!out.includes('203.0.113.7') && !out.includes('origin.nikatru.com'), `the leaking record's content or name reached the log:\n${out}`);
+    assert.doesNotMatch(out, /203\.0\.113\.7|origin\.nikatru\.com/, "the leaking record's content or name reached the log");
   });
 
   test('🔴 RED CONTROL (item 3): the default output carries NO record content and no undeclared record name — the log is public', async () => {
@@ -220,7 +220,7 @@ describe('the drift reader (tooling/ops/check-edge-zone.mjs)', () => {
     assert.equal(x.records.length, liveRecords().length);
     assert.equal(x.records[0].sha256, recordHash(liveRecords()[0]));
     assert.match(ok.out, /^wrote \d+ record\(s\) to zone-export\.json$/m);
-    assert.ok(!ok.out.includes('origin.example'), ok.out);
+    assert.doesNotMatch(ok.out, /origin\.example/);
     const ci = await go({ exportFile: 'x.json', write, env: { ...ENV, GITHUB_ACTIONS: 'true' } });
     assert.equal(ci.code, 2, ci.out);
     assert.match(ci.out, /LOCAL ONLY/);
