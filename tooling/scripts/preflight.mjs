@@ -165,7 +165,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync, readFileSync, mkdtempSync, openSync, closeSync } from 'node:fs';
 import { resolve, dirname, join, posix } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The ONE workflow parse (tooling/workflow-readers.json): ci-gate's needs, for the NOT CI-GATE line.
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
 
@@ -730,10 +730,12 @@ export function onPath(bin, env = process.env) {
 /** The node-only commands a leg runs, as ci.yml's steps run them: `cwd` is the
  *  step's working directory, `subject` the file or directory (under cwd) that
  *  must exist — a missing one FAILS the leg, never skips it. `{TMP}` is a fresh
- *  temp directory; `{app}` is each app prepare derives. */
+ *  temp directory; `{app}` is each app prepare derives; `{SPAWN_CEILING}` is the
+ *  preload as an absolute file URL under the root, as setup-node exports it to CI
+ *  (a relative `--import` resolves against the cwd: spawn-ceiling-cwd.test.mjs). */
 export const LEG_COMMANDS = {
   [CONTENT_LEG]: [
-    { cwd: '.', subject: 'tooling/content_pipeline/test', args: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'tooling/content_pipeline/test/*.test.mjs'] },
+    { cwd: '.', subject: 'tooling/content_pipeline/test', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'tooling/content_pipeline/test/*.test.mjs'] },
     { cwd: '.', subject: 'tooling/content_pipeline/cli.mjs', args: ['tooling/content_pipeline/cli.mjs', 'validate', '--recipe', 'tooling/content_pipeline/examples/lingo-phrases/recipe.json'] },
     { cwd: '.', subject: 'tooling/content_pipeline/cli.mjs', args: ['tooling/content_pipeline/cli.mjs', 'build', '--recipe', 'tooling/content_pipeline/examples/lingo-phrases/recipe.json', '--out', '{TMP}/pack', '--test-key'] },
   ],
@@ -747,15 +749,15 @@ export const LEG_COMMANDS = {
     { cwd: 'extensions', subject: 'scripts/gen-catalog.mjs', args: ['scripts/gen-catalog.mjs', '--check'] },
     { cwd: 'extensions', subject: 'scripts/render-extension-graphics.mjs', args: ['--single-threaded', 'scripts/render-extension-graphics.mjs', '--all', '--check'] },
     { cwd: 'extensions', subject: 'scripts/check-contracts-sync.mjs', args: ['scripts/check-contracts-sync.mjs'] },
-    { cwd: 'extensions', subject: 'scripts/test/contracts-sync.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/contracts-sync.test.mjs'] },
-    { cwd: 'extensions', subject: 'scripts/test/listing-assets.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/listing-assets.test.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/contracts-sync.test.mjs', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'scripts/test/contracts-sync.test.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/listing-assets.test.mjs', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'scripts/test/listing-assets.test.mjs'] },
     { cwd: 'extensions', subject: 'scripts/test/selftest.node.js', args: ['--single-threaded', 'scripts/test/selftest.node.js'] },
-    { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
   ],
   // prepare's one step, then app-dryrun's contract suite and its five dry runs, per app.
   [DRYRUN_LEG]: [
     { cwd: '.', subject: 'tooling/ci/assert-release-lane-generic.mjs', args: ['tooling/ci/assert-release-lane-generic.mjs', '--emit-apps'], emitsApps: true },
-    { cwd: '.', subject: 'tooling/release/test', args: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'tooling/release/test/*.test.mjs'] },
+    { cwd: '.', subject: 'tooling/release/test', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'tooling/release/test/*.test.mjs'] },
     { cwd: '.', subject: 'tooling/release/submit-windows-store.mjs', args: ['tooling/release/submit-windows-store.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'ios-appstore', '--app', '{app}', '--allow-missing-artifact'] },
     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'macos-appstore', '--app', '{app}', '--allow-missing-artifact'] },
@@ -776,6 +778,10 @@ export const SECURITY_SCANNERS = [
  *  command exits 0; 1 on a red one, a missing subject, or (the dry runs)
  *  prepare's app list unreadable or empty — "no app" must not read as "every
  *  app walked". */
+/** The spawn-ceiling preload under `root` as a file URL: absolute, so a child
+ *  that inherits the `--import` from another cwd still finds it. */
+export const spawnCeilingUrl = (root) => pathToFileURL(join(root, 'tooling', 'scripts', 'spawn-ceiling.mjs')).href;
+
 export function commandLeg(commands, { root = ROOT } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), 'preflight-cmd-'));
   const lines = [];
@@ -792,7 +798,7 @@ export function commandLeg(commands, { root = ROOT } = {}) {
       const each = c.args.some((a) => a.includes('{app}')) ? (apps ?? []) : [null];
       if (each.length === 0) continue;
       for (const app of each) {
-        const argv = c.args.map((a) => a.replaceAll('{TMP}', tmp).replaceAll('{app}', app ?? ''));
+        const argv = c.args.map((a) => a.replaceAll('{TMP}', tmp).replaceAll('{app}', app ?? '').replaceAll('{SPAWN_CEILING}', spawnCeilingUrl(root)));
         const r = exec(process.execPath, argv, { cwd });
         const shown = `(${c.cwd}) node ${argv.join(' ').replaceAll(tmp, '<tmp>')}`;
         if (r.status !== 0) {
@@ -1109,7 +1115,7 @@ step(
   'ci.yml runs `node --test "tooling/ci/test/*.test.mjs"`. Running a single file is a SUBSET and hides every other suite.',
   // The same preload and ceilings as ci.yml (tooling/scripts/spawn-ceiling.mjs);
   // on a slower host set NIKATRU_SPAWN_CEILING_MS rather than drop the preload.
-  () => run('node', ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', '"tooling/ci/test/*.test.mjs"']),
+  () => run('node', ['--import', spawnCeilingUrl(ROOT), '--test-timeout=600000', '--test', '"tooling/ci/test/*.test.mjs"']),
 );
 
 // ── 2 · the guards themselves, over the real tree ───────────────────────────

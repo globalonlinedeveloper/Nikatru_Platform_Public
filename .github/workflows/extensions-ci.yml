@@ -539,9 +539,9 @@ jobs:
       # selftest case mutates. Running them here is what stops that suite being cases
       # nobody executes.
       - name: ...and that gate can still fail
-        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/contracts-sync.test.mjs
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/contracts-sync.test.mjs
       - name: The listing-asset guard can still fail
-        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/listing-assets.test.mjs
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/listing-assets.test.mjs
 
   ff-core:
     # why: FF-2 — starts only once `core` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
@@ -868,7 +868,7 @@ jobs:
       # 2026-09-06). So the pair lives in a node:test file and runs in the same job, and
       # the exemption in selftest.node.js's NO_CASE_RECORDED points at it by name.
       - name: The hang guard's ceiling must be proven to fire
-        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/hang-guard.test.mjs
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/hang-guard.test.mjs
 
       # why: FullShot's two AMO zip wrappers (its tool.json gates at `package` and
       # `release`) take --zip, not --repo-root, so their cases cannot live in
@@ -877,7 +877,7 @@ jobs:
       # a missing zip, a grader failure, and an exit 0 that graded no package.
       # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL.)
       - name: The AMO zip gates must be proven to fail
-        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/amo-gate-zip.test.mjs
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/amo-gate-zip.test.mjs
 
   ff-selftest:
     # why: FF-2 — starts only once `selftest` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
@@ -1124,13 +1124,73 @@ jobs:
           echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
+  # why: the box, port and restore-drill tooling RUNS ON THE OWNER'S WINDOWS LAPTOP (the
+  # drills, the landers), and a Linux-only run let #1148 ship two Windows-only defects: a
+  # repository-containment check that failed open on backslashed paths, and a shebang test
+  # shim Windows cannot spawn (row O-CLOUD-LANES-TEST-LINUX-ONLY). So the same files
+  # run on both OSes here, beside the package matrix's windows leg; the Linux leg is cheap
+  # parity. Only these files, plus the preload's cwd test (spawn-ceiling-cwd.test.mjs): the
+  # job stays lean. guard-tests runs them on Linux too.
+  ops-tooling:
+    name: ops tooling tests · ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # why: `working-directory: .` is written out, not inherited. With only `shell:` here this
+    # job ran from the repository root, not extensions/ — run 37006580364 names the root as
+    # the importer — so its `../` paths left the checkout (ERR_MODULE_NOT_FOUND on the
+    # preload). The preload comes from setup-node as an absolute URL, $SPAWN_CEILING.
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-node
+      # why: NO `node --test` GLOB. On windows-2022 (node 24.21) `--test` matched nothing for
+      # "../tooling/ci/test/{…}.test.mjs" — "Could not find", exit 1, first run of this job on
+      # #1160. Bash expands the braces to plain paths and node runs each file directly:
+      # a node:test file run directly exits 1 on any failing test, and `set -e` stops there.
+      # Each suite finds the repository from its own path, not the cwd.
+      - name: The box, port and restore-drill tests pass on this OS
+        run: |
+          for f in tooling/ci/test/{boxes,ports,port-switch,spawn-ceiling-cwd}.test.mjs; do
+            echo "── $f"
+            node --import "$SPAWN_CEILING" "$f"
+          done
+
+  ff-ops-tooling:
+    # why: FF-2 — starts only once `ops-tooling` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · ops-tooling
+    needs: ops-tooling
+    if: failure() && needs.ops-tooling.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: ops-tooling is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: ops-tooling
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
   # why: the single aggregate for this workflow. It carries always(), needs every
   # job above, and treats skipped as not-green. It is not a required check of its
   # own: ci-gate requires it through ci.yml's `extensions` call job, whose result is
   # red when any job here is.
   ci-required:
     name: ci-required
-    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh]
+    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, ops-tooling, templates, e2e-proof-fresh]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1149,6 +1209,7 @@ jobs:
       R_SELFTEST: ${{ needs.selftest.result }}
       R_TEMPLATES: ${{ needs.templates.result }}
       R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
+      R_OPS_TOOLING: ${{ needs.ops-tooling.result }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -1212,6 +1273,7 @@ jobs:
             "selftest=$R_SELFTEST"
             "templates=$R_TEMPLATES"
             "e2e-proof-fresh=$R_E2E_PROOF_FRESH"
+            "ops-tooling=$R_OPS_TOOLING"
           )
 
           # ── STRUCTURAL: NO JOB MAY ESCAPE THIS AGGREGATOR ───────────────────

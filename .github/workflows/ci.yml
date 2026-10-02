@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/guard-tests"
           node tooling/ci/guard-test-shards.mjs --plan --shards 4 --shard ${{ matrix.shard }} --out "${{ runner.temp }}/guard-tests/files.txt" > /dev/null
-          node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests/guard-tests.junit.xml" $(cat "${{ runner.temp }}/guard-tests/files.txt")
+          node --import "$SPAWN_CEILING" --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests/guard-tests.junit.xml" $(cat "${{ runner.temp }}/guard-tests/files.txt")
       - name: Keep this shard's file list and junit for guard-tests-floor
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1333,7 +1333,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: The pipeline's own tests
-        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
       - name: The pipeline builds and signs the example pack, through the CLI
         run: |
           node tooling/content_pipeline/cli.mjs validate --recipe tooling/content_pipeline/examples/lingo-phrases/recipe.json
@@ -2102,7 +2102,7 @@ jobs:
       # why: every store submitter (tooling/ports/channels.json) against the one dry-run
       # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
       - name: Every store submitter passes the dry-run contract, with no network
-        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
       - name: The Microsoft Store submission path still walks (dry run)
         run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The App Store submission path still walks — iOS (dry run)
