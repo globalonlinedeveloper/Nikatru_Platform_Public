@@ -80,13 +80,13 @@
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
           "linesAtSince": 238,
-          "ceiling": 269,
+          "ceiling": 254,
           "template": 183
         },
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart",
           "linesAtSince": 302,
-          "ceiling": 294,
+          "ceiling": 278,
           "template": 212
         },
         {

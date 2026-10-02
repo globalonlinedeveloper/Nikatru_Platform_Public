@@ -1077,6 +1077,24 @@
         ]
       },
     {
+      "binding": "CHECKOUT_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The server-derived ceiling for POST /v1/checkout, keyed `edge:<colo>:<asn>` — never a client address. `simple: { limit: 60, period: 60 }`. Every accepted request mints a Paddle transaction that can be canceled but never deleted. Fails OPEN like the other edge ceilings; CHECKOUT_USER_LIMITER is the half that fails closed. Its own namespace (1027; the sandbox's is 1028).",
+      "readers": [
+        "services/platform/src/routes/checkout.ts"
+      ]
+    },
+    {
+      "binding": "CHECKOUT_USER_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The per-USER bucket for POST /v1/checkout, keyed `checkout:<sub>` on the VERIFIED subject (the route sits behind platformAuth). `simple: { limit: 5, period: 60 }`. FAILS CLOSED (strictRateLimit, services/platform/src/lib/edge-ceiling.ts): an absent binding or a limiter fault is a 503, never an admit. Its own namespace (1029; the sandbox's is 1030).",
+      "readers": [
+        "services/platform/src/routes/checkout.ts"
+      ]
+    },
+    {
       "binding": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
       "kind": "ratelimits",
       "scope": "edge",

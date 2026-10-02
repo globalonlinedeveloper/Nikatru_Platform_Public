@@ -43,6 +43,24 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 ///    skeleton where the plan goes, a retryable failure, a warning strip —
 ///    and in none of them does Restore go away: a user who cannot see their
 ///    plan is exactly the user who needs it.
+/// Where the user PAID for the plan this screen manages, as the painter needs
+/// it. ⏱ 2026-10-01 · MO-05, AB-M4-03-client. Chassis-owned, like
+/// `PaywallCheckoutStyle`: this package may not depend on `nikatru_purchases`,
+/// so the adapter maps the entitlement's `BillingSource` onto this.
+enum PlanSourceView {
+  /// Our own hosted checkout: cancelled here, through our own cancel route.
+  web,
+
+  /// Apple's App Store: cancelled there, never here.
+  appStore,
+
+  /// Google Play: cancelled there, never here.
+  googlePlay;
+
+  /// Whether this screen's own Cancel can stop the plan.
+  bool get cancelsHere => this == PlanSourceView.web;
+}
+
 class ManagePlanView extends StatelessWidget {
   const ManagePlanView({
     required this.title,
@@ -63,11 +81,18 @@ class ManagePlanView extends StatelessWidget {
     this.onReload,
     this.offline = false,
     this.onReconnect,
+    this.source,
+    this.periodEnds,
+    this.onManageInStore,
     super.key,
   }) : assert(
          (upgradeLabel == null) == (onUpgrade == null),
          'the way to a plan needs both its words and its action',
        );
+
+  /// "Manage in the App Store" / "Manage in Google Play" — the row that
+  /// REPLACES Cancel when the plan was bought in a store.
+  static const Key manageInStoreTile = Key('managePlanManageInStore');
 
   /// The [pipeline 5]M-10 control. Named so a width case can find it.
   static const Key restoreTile = Key('managePlanRestore');
@@ -155,6 +180,19 @@ class ManagePlanView extends StatelessWidget {
   /// The offline warning's Retry, or null for none.
   final VoidCallback? onReconnect;
 
+  /// Where the active plan was bought — FROM THE ENTITLEMENT, not the build
+  /// channel. Null when there is no active plan or it cannot be told; a null
+  /// source keeps the screen's own Cancel, as before.
+  final PlanSourceView? source;
+
+  /// When the current paid period ends (the entitlement's expiry), or null.
+  final DateTime? periodEnds;
+
+  /// Opens the store's own subscriptions page. Drawn in place of Cancel when
+  /// [source] is a store: 🔴 a store purchase NEVER posts our cancel route,
+  /// which cannot stop a subscription only the store bills.
+  final VoidCallback? onManageInStore;
+
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
@@ -211,7 +249,18 @@ class ManagePlanView extends StatelessWidget {
                 key: statusCard,
                 isPro: isPro,
                 label: planStatusLabel,
-                detail: planDetail,
+                details: <String>[
+                  ?planDetail,
+                  if (isPro)
+                    ?switch (source) {
+                      PlanSourceView.web => l10n.planBoughtOnWeb,
+                      PlanSourceView.appStore => l10n.planBoughtInAppStore,
+                      PlanSourceView.googlePlay => l10n.planBoughtInGooglePlay,
+                      null => null,
+                    },
+                  if (isPro && periodEnds != null)
+                    l10n.planPeriodEnds(periodEnds!),
+                ],
               ),
             const SizedBox(height: AppSpacing.lg),
             // [pipeline 5]M-10. `onRestore` is the adapter's `_restore`: it asks
@@ -242,7 +291,22 @@ class ManagePlanView extends StatelessWidget {
                     showChevron: false,
                     onTap: busy ? null : onRestore,
                   ),
-                  if (isPro) ...<Widget>[
+                  // ⏱ 2026-10-01 · MO-05: cancel WHERE THE USER PAID. A
+                  // store plan gets the store's own page and no Cancel; our
+                  // Cancel stays for a web plan (and an unknown source).
+                  if (isPro && !(source?.cancelsHere ?? true)) ...<Widget>[
+                    if (onManageInStore != null) ...<Widget>[
+                      const Divider(height: 1),
+                      AppListRow(
+                        key: manageInStoreTile,
+                        title: source == PlanSourceView.googlePlay
+                            ? l10n.manageInGooglePlay
+                            : l10n.manageInAppStore,
+                        leading: const Icon(Icons.open_in_new),
+                        onTap: busy ? null : onManageInStore,
+                      ),
+                    ],
+                  ] else if (isPro) ...<Widget>[
                     const Divider(height: 1),
                     AppListRow(
                       key: cancelTile,
@@ -385,13 +449,16 @@ class _StatusCard extends StatelessWidget {
   const _StatusCard({
     required this.isPro,
     required this.label,
-    required this.detail,
+    required this.details,
     super.key,
   });
 
   final bool isPro;
   final String label;
-  final String? detail;
+
+  /// The lines under the label: what the plan does, where it was bought, when
+  /// the period ends. Each its own semantics node (see the feature lines).
+  final List<String> details;
 
   @override
   Widget build(BuildContext context) {
@@ -427,12 +494,12 @@ class _StatusCard extends StatelessWidget {
                   container: true,
                   child: Text(label, style: theme.textTheme.titleMedium),
                 ),
-                if (detail != null) ...<Widget>[
+                for (final String detail in details) ...<Widget>[
                   const SizedBox(height: AppSpacing.xs),
                   Semantics(
                     container: true,
                     child: Text(
-                      detail!,
+                      detail,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),

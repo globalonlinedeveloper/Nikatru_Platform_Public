@@ -15,6 +15,7 @@ library;
 // THE FACADE — [ADR 067] decision 7. One call picks the rail the CHANNEL takes,
 // so a paywall never constructs an implementation and never asks the platform a
 // question the platform cannot answer.
+export 'src/billing_source.dart';
 export 'src/chassis_billing.dart';
 export 'src/checkout_launcher.dart';
 export 'src/entitlement_convergence.dart';
