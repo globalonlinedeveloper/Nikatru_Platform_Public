@@ -240,6 +240,30 @@ const ENFORCED_ROOTS = [
     remedy:
       "Add the key to packages/design_system/lib/src/l10n/chassis_en.arb (and chassis_ta.arb — packages/design_system/test/chassis_l10n_parity_test.dart asserts parity in BOTH directions), run `flutter gen-l10n` in that package, and read it through ChassisLocalizations. If the sentence names what an app SELLS it does not belong in a shared package at all — assert-no-clone-tells says so — and the key goes in the app's own arb instead.",
   },
+  {
+    // ⏱ 2026-10-01 · THE SECOND PACKAGE THAT RENDERS (C-20, P38). The entry
+    // above says "widen it when a second package renders", and
+    // `packages/chassis_screens` is that package: 19 screen bodies every stamped
+    // app inherits, read through `context.chassisL10n`. Until today the only look
+    // this guard took at it was the DELEGATION LIMB below, which opens a chassis
+    // file only when a brick adapter imports it — a chassis screen no adapter
+    // delegates to yet was read by nothing. Measured on adoption: 0 hits, so it
+    // lands green and stands as a tripwire, like the shelf did.
+    //
+    // It also corrects the REVERSE limb. Its keys live in design_system's arb,
+    // and with this tree outside the render domain the keys it renders were
+    // printed under "NOT RENDERED, BUT SOMETHING ELSE READS THE KEY" — a bucket
+    // telling the owner a screen was not a screen. Measured the day it joined:
+    // that bucket held 67 keys, 64 of them read first at
+    // packages/chassis_screens/lib; with this entry it holds none, and the
+    // "NOTHING IN THE TREE NAMES THE KEY" bucket is unchanged at 6.
+    root: 'packages/chassis_screens/lib',
+    why: 'the chassis screen bodies every stamped app inherits — a literal here reaches every app at once, whether or not a brick adapter delegates to that screen yet',
+    remedy:
+      "Add the key to packages/design_system/lib/src/l10n/chassis_en.arb (and chassis_ta.arb — packages/design_system/test/chassis_l10n_parity_test.dart asserts parity in BOTH directions), run `flutter gen-l10n` in that package, and read it through `context.chassisL10n`. If the sentence names what an app SELLS, take it as a parameter from the app's adapter instead — assert-no-clone-tells says so.",
+    noArbBecause:
+      'its copy is design_system\'s chassis_en.arb, read through `context.chassisL10n` — the reverse direction reads that arb under packages/design_system/lib and counts this tree as a render surface for it.',
+  },
 ];
 
 /**
@@ -453,6 +477,28 @@ const SHOWN_TO_A_PERSON = [
   // tripwire for the NEXT default — which is the shape a new rule should have,
   // rather than a green bought with an exemption list.
   { re: /\bthis\.[A-Za-z_$][\w$]*\s*=\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g, what: 'a defaulted copy parameter' },
+  // ⏱ 2026-10-01 · THE FOURTH FAMILY (C-20, P38): the copy parameters the
+  // labelling family never named. `Tooltip(message:)`, `Semantics(hint:)`,
+  // `InputDecoration(errorText:/counterText:/prefixText:/suffixText:)`,
+  // `Semantics(value:)`'s `semanticsValue:`, a widget's `content:` string and
+  // `TextSpan(text:)` — the one way a sentence reaches a `Text.rich` — are each
+  // read by a person and each walked straight past the three families above.
+  //
+  // MEASURED ON ADOPTION across the four enforced trees: one match, `text: '1'`
+  // (a TextEditingController's seeded digit), and `NOT_USER_FACING` already
+  // exempts it as letter-free. So it lands green and stands as a tripwire, the
+  // shape the third family set. `text:` is matched bare rather than only inside
+  // `TextSpan(` because a seeded `TextEditingController(text:)` is shown too, and
+  // because a span's other arguments (`style: TextStyle(…)`) nest parentheses
+  // that a constructor-anchored regex would have to count.
+  //
+  // ⚠️ `value:` is NOT in the list, on a measurement: across the same trees it
+  // matches three locale codes and an empty string, and outside them it is the
+  // commonest name a Dart API gives a non-copy argument.
+  {
+    re: /\b(?:message|hint|content|errorText|semanticsValue|counterText|prefixText|suffixText|text)\s*:\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g,
+    what: 'a message, hint or span parameter',
+  },
 ];
 
 // Not user-facing, even inside those positions. Each entry is a real category
@@ -703,6 +749,12 @@ for (const { root, why, remedy } of ENFORCED_ROOTS) {
     );
   }
   if (delegated.files.length > 0) {
+    // ⏱ 2026-10-01 · Since `packages/chassis_screens/lib` became an enforced
+    // root, every file this limb follows is ALSO scanned by that root's own pass,
+    // so a literal there is reported twice: once as a defect in the chassis tree,
+    // once here naming the tree that inherits it. That second line is kept on
+    // purpose — it is the only one that says WHICH app ships the sentence — and
+    // de-duplicating it would leave this push with no reachable input at all.
     let delegatedHits = 0;
     for (const h of scanFiles(delegated.files)) {
       delegatedHits++;

@@ -500,6 +500,11 @@
         }
       ]
     },
+    "tooling/ci/assert-bundle-locales.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-bundle-provenance.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",

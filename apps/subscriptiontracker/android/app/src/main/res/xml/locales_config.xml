@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The locales this app ships: one per arb in lib/l10n/ (C-18, 2026-10-01).
+     Read by the Android 13+ per-app language picker through the manifest's
+     android:localeConfig. tooling/ci/assert-bundle-locales.mjs derives the set
+     from l10n.yaml and fails when this file and the arbs disagree. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="hi" />
+    <locale android:name="ta" />
+</locale-config>

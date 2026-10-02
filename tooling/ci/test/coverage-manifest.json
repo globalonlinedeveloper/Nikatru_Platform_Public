@@ -158,6 +158,9 @@
   "bundle-contract-limbs.test.mjs":
     18,
 
+  "bundle-locales.test.mjs":
+    36,
+
   "bundle-provenance-guards.test.mjs":
     13,
 
@@ -624,7 +627,7 @@
     5,
 
   "no-hardcoded-strings.test.mjs":
-    96,
+    108,
 
   "no-loop-cases.test.mjs":
     11,

@@ -1,0 +1,89 @@
+{
+  "_header": "Store channels with no listing in a locale the app ships, each with the date it was recorded and the owner row that lifts it. Read by tooling/ci/assert-bundle-locales.mjs (limb B): an exemption PRINTS on every run and never fails; a listing missing WITHOUT one fails, and an exemption whose listing now exists (store/<channel>/<locale>/title.txt) is stale and fails. Delete an entry in the same change that adds its listing.",
+  "exemptions": [
+    {
+      "channel": "android-play",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "android-play",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    },
+    {
+      "channel": "apps-gov-in",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "apps-gov-in",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    },
+    {
+      "channel": "ios-appstore",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "ios-appstore",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    },
+    {
+      "channel": "linux-snap",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "linux-snap",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    },
+    {
+      "channel": "macos-appstore",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "macos-appstore",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    },
+    {
+      "channel": "windows-store",
+      "locale": "hi",
+      "since": "2026-10-02",
+      "row": "O-ST-POLISH-P3",
+      "why": "The Hindi strings were agent-drafted (Public PR #1130) and the owner reviews them before release; a Hindi listing is store copy that waits on that same review. The app itself already ships hi."
+    },
+    {
+      "channel": "windows-store",
+      "locale": "ta",
+      "since": "2026-10-01",
+      "row": "O-TAMIL-NOTICE-REVIEW",
+      "why": "A Tamil listing is store copy a native speaker must review before it is published, and it waits on the same native review as the Tamil privacy notice and clickwrap (O-TAMIL-NOTICE-REVIEW); the app itself already ships ta."
+    }
+  ]
+}

@@ -714,6 +714,12 @@ jobs:
       - name: Both of an app's names are shippable — the store title and the icon label
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-naming.mjs
+      # why: C-18/C-20 (P38). The arbs are the locale set; every native bundle, every store
+      # channel and the launcher label are held against it. A missing listing prints with
+      # its dated exemption (store/listing-locales.json) rather than failing — owner-gated.
+      - name: Every bundle, listing and launcher label declares the locales the app ships
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-bundle-locales.mjs
       # why: OFFLINE. It reads apps/<app>/name-clearance.json and never dials out —
       # the networked probe that WRITES that record takes ~14 s and is a routine, not
       # a gate. docs/name-clearance.md carries the measurement and the split.

@@ -30,7 +30,7 @@ the old arrangement red by improvement is exactly what made enforcement affordab
 
 | Path | Holds | The guard asserts |
 | --- | --- | --- |
-| `dirty/` | ≥ 20 hardcoded user-facing strings, in **both** matcher families | the floor, and per-family evidence — a family that stops matching is caught even when the total stays high |
+| `dirty/` | ≥ 20 hardcoded user-facing strings, in **every** matcher family — one file per family since the third (`update_wall.dart`, and `rich_notice.dart` for the fourth, 2026-10-01) | the floor, and per-family evidence — a family that stops matching is caught even when the total stays high |
 | `quiet/` | one near miss per `NOT_USER_FACING` exemption | **zero** enforced hits, and that every exemption has a near miss — an exemption you cannot write the input for is a hole, not a filter |
 | `expected-families.txt` | the matcher families this fixture covers | an identity with the guard's matcher list, in both directions, so a **deleted** matcher is caught too |
 
