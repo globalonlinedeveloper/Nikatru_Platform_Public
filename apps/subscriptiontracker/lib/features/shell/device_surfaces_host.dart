@@ -92,9 +92,16 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
     }
     // The glance is written on each sync (the list changes) and on each plan
     // change (Pro locks or unlocks it), and once now.
+    //
+    // 🔴 ONLY WHILE SOMEONE IS SIGNED IN (ruling on #1155, E2E run
+    // 37047693623). Listening here BUILDS the list, and this host sits at the
+    // root, above the sign-in screen: unconditionally, it read the list at
+    // boot with no session, the Worker answered 401, and the first Home after
+    // sign-in showed "Your session has ended". A signed-out device has no
+    // glance to write (`glanceSignedOut`) and so no reason to read the list.
     ref.listenManual(
-      subscriptionsControllerProvider,
-      (_, _) => _publishGlance(),
+      authUserProvider.select((AsyncValue<Object?> u) => u.value != null),
+      (_, bool signedIn) => _followList(signedIn),
       fireImmediately: true,
     );
     ref.listenManual(paywallLockedProvider, (_, _) => _publishGlance());
@@ -107,8 +114,26 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
 
   AppLockController? _lock;
 
+  /// The list subscription the glance follows, held only while signed in.
+  ProviderSubscription<AsyncValue<List<Subscription>>>? _list;
+
+  void _followList(bool signedIn) {
+    if (!signedIn) {
+      _list?.close();
+      _list = null;
+      _lastGlance = null;
+      return;
+    }
+    _list ??= ref.listenManual(
+      subscriptionsControllerProvider,
+      (_, _) => _publishGlance(),
+      fireImmediately: true,
+    );
+  }
+
   @override
   void dispose() {
+    _list?.close();
     _lock?.removeListener(_publishGlance);
     final Future<void> Function()? cancel = _cancelTaps;
     if (cancel != null) unawaited(cancel());
@@ -134,9 +159,14 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
   /// flat map keeps a rebuild from re-writing the widget store every frame.
   void _publishGlance() {
     if (!mounted) return;
-    final List<Subscription>? subs = ref
-        .read(subscriptionsControllerProvider)
-        .value;
+    // Through the signed-in subscription, never `ref.read`: a read BUILDS the
+    // list, and the lock and plan listeners fire while signed out too.
+    final ProviderSubscription<AsyncValue<List<Subscription>>>? list = _list;
+    if (list == null) {
+      _lastGlance = null;
+      return;
+    }
+    final List<Subscription>? subs = list.read().value;
     if (subs == null) return;
     // Signed out: the sign-out cleared the glance (`userStateDrops`), and an
     // empty list landing after it must not write "This month: 0" back.
