@@ -34,10 +34,24 @@ Subscription _sub(
 
 class _Repo implements SubscriptionRepository {
   _Repo(this.subs);
-  final List<Subscription> subs;
+  List<Subscription> subs;
+
+  /// Every PATCH body, by id. Applied the way the route applies it
+  /// (`Subscription.patched`), so a later `fetchAll` — a sync — reads it.
+  final List<(String, Map<String, dynamic>)> patches =
+      <(String, Map<String, dynamic>)>[];
 
   @override
   Future<List<Subscription>> fetchAll() async => subs;
+
+  @override
+  Future<Subscription> update(String id, Map<String, dynamic> changes) async {
+    patches.add((id, changes));
+    subs = <Subscription>[
+      for (final Subscription s in subs) s.id == id ? s.patched(changes) : s,
+    ];
+    return subs.firstWhere((Subscription s) => s.id == id);
+  }
 
   @override
   Future<BudgetInfo> budget() async => const BudgetInfo(
@@ -141,6 +155,77 @@ void main() {
     expect(find.text('Still using Plan big?'), findsNothing);
     expect(find.text('Still using Plan small?'), findsOneWidget);
     expect(store.data[kLocalStillUsingKey], '["big"]');
+  });
+
+  // Train T11 (IN-08). Red: drop the PATCH from `StillUsingController.answer`
+  // — device A only writes its own cache, and device B asks again; or drop the
+  // row's answer from `answeredIds` — device B asks again with the answer
+  // already on the row.
+  testWidgets(
+    'Yes on one device hides the question on ANOTHER after a sync (the answer is the row’s)',
+    (WidgetTester tester) async {
+      final _Repo server = _Repo(<Subscription>[
+        _sub('big', 'Video', 1500),
+        _sub('small', 'Music', 300),
+      ]);
+
+      // Device A answers.
+      await pumpAt(
+        tester,
+        const Size(420, 2600),
+        const InsightsScreen(),
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => MemStore()),
+          subscriptionRepositoryProvider.overrideWithValue(server),
+          currencyCodeProvider.overrideWithValue('USD'),
+        ],
+      );
+      await tester.tap(
+        find.byKey(const Key('insights.signal.stillUsing.yes.big')),
+      );
+      await tester.pumpAndSettle();
+      expect(server.patches, hasLength(1));
+      expect(server.patches.single.$1, 'big');
+      expect(server.patches.single.$2, <String, dynamic>{'still_using': 'yes'});
+
+      // Device B: its own, EMPTY device store — nothing cached — reading the
+      // same rows after a sync.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpAt(
+        tester,
+        const Size(420, 2600),
+        const InsightsScreen(),
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => MemStore()),
+          subscriptionRepositoryProvider.overrideWithValue(
+            _Repo(List<Subscription>.of(server.subs)),
+          ),
+          currencyCodeProvider.overrideWithValue('USD'),
+        ],
+      );
+      expect(find.text('Still using Plan big?'), findsNothing);
+      expect(find.text('Still using Plan small?'), findsOneWidget);
+    },
+  );
+
+  test('answeredIds is the rows’ answers plus the device cache', () {
+    final Subscription yes = _sub(
+      'a',
+      'Video',
+      100,
+    ).patched(<String, dynamic>{'still_using': 'yes'});
+    final Subscription no = _sub(
+      'b',
+      'Video',
+      100,
+    ).patched(<String, dynamic>{'still_using': 'no'});
+    expect(
+      answeredIds(
+        <Subscription>[yes, no, _sub('c', 'Music', 1)],
+        <String>{'d'},
+      ),
+      <String>{'a', 'b', 'd'},
+    );
   });
 
   test('the answers are forgotten with everything else', () async {

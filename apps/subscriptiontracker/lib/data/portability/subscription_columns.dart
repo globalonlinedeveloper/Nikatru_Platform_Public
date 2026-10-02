@@ -50,6 +50,12 @@ const List<String> _kModelColumns = <String>[
   'deleted_at',
   'notes',
   'cancel_url',
+  // ⏱ 2026-10-01 · train T11 (0010): what a trial converts to, in minor units
+  // of this row's `currency` — the wire's own exact amount, as `toJson` writes
+  // it — and the user's "Still using?" answer with the server's stamp.
+  'price_after_trial_minor',
+  'still_using',
+  'still_using_at',
 ];
 
 /// [s]'s [_kModelColumns] cells, read off `toJson()` so the file and the wire

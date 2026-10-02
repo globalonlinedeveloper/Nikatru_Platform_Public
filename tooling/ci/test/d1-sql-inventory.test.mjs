@@ -911,7 +911,12 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       // ⏱ 2026-09-28 · ST-T3b (ST-M3): 5. renewals.ts probes
       // `pragma_table_info('subscriptions')` for 0003's cadence and lifecycle
       // columns, as it already probed payment_history's.
-      assert.match(r.stdout, /ok {2}platform_db — 5 introspective and 2 mutating statement\(s\) executed/);
+      // ⏱ 2026-10-01 · train T11: 6. src/subscription-housekeeping.ts probes
+      // the three tables its nightly trial-end and purge steps write, in ONE
+      // statement: a UNION ALL of literal `pragma_table_info` reads, with no
+      // sqlite_master (R1). The fixture above answers it, and it is executed.
+      assert.match(r.stdout, /step 1 — services\/platform\/src\/subscription-housekeeping\.ts:\d+ accepted/);
+      assert.match(r.stdout, /ok {2}platform_db — 6 introspective and 2 mutating statement\(s\) executed/);
     });
   });
 

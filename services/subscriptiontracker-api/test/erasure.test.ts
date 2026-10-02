@@ -144,16 +144,18 @@ const columnsOf = (db: SqliteD1, table: string): ColumnInfo[] =>
  * EVERY column — so a column a later migration adds is exercised by the sweep the
  * day it lands rather than sitting NULL and satisfying it trivially.
  *
- * ⚠️ `cycle` IS THE ONE COLUMN THIS CANNOT FILL WITH FILLER. 0001_init.sql
+ * ⚠️ `cycle` IS ONE OF TWO COLUMNS THIS CANNOT FILL WITH FILLER. 0001_init.sql
  * constrains it to ('monthly','yearly'), so a generic string makes the INSERT
  * fail — and a fixture that throws while planting looks exactly like a route that
- * failed to delete. Named here rather than worked around silently.
+ * failed to delete. Named here rather than worked around silently. The other is
+ * 0010's `still_using`, constrained to ('yes','no') for the same reason.
  */
 function plant(db: SqliteD1, table: string, userId: string, tag: string): void {
   const cols = columnsOf(db, table);
   const values = cols.map((c, i) => {
     if (c.name === 'user_id' || c.name.endsWith('_user_id')) return userId;
     if (c.name === 'cycle') return 'monthly';
+    if (c.name === 'still_using') return 'yes';
     return /INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? i : `filler-${table}-${tag}-${i}`;
   });
   db.db

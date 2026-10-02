@@ -848,10 +848,10 @@
       "kind": "d1-table",
       "name": "subscriptions",
       "personalData": true,
-      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id. `tags` (0007) holds the user's own free-text labels for the row (\"family\", \"work\").",
+      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id. `tags` (0007) holds the user's own free-text labels for the row (\"family\", \"work\"). 0010_trial_price_still_using.sql (train T11) adds `price_after_trial_minor` (what a trial converts to, in the row's currency) and the user's own answer to \"Still using?\" (`still_using`, yes or no) with the server time it was given (`still_using_at`).",
       "retention": {
         "kind": "keep",
-        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`, which runs on that user's next list."
+        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by the platform Worker's nightly `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts), at most 100 rows a night, oldest first. ⏱ 2026-10-01 · train T11 (SV-01): until then the purge was subscriptiontracker-api's `purgeExpired`, run on that user's next list, so a user who never opened the app again kept their removed rows; the nightly purge reaches every user's."
       },
       "erasure": {
         "kind": "purge",
@@ -863,7 +863,9 @@
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "services/subscriptiontracker-api/migrations/0003_subscription_model.sql",
         "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
-        "services/subscriptiontracker-api/migrations/0009_tags.sql"
+        "services/subscriptiontracker-api/migrations/0009_tags.sql",
+        "services/subscriptiontracker-api/migrations/0010_trial_price_still_using.sql",
+        "services/platform/src/subscription-housekeeping.ts"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -973,10 +975,10 @@
       "kind": "d1-table",
       "name": "price_change",
       "personalData": true,
-      "holds": "One row per edit that moved a subscription's price, exact amount or currency: the old and new values and when the edit was made (0005_lifecycle_history_categories.sql, [ADR 077] §5.2, ST-I4). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. A record of what the user typed, not of a charge and never a payment instrument.",
+      "holds": "One row per edit that moved a subscription's price, exact amount or currency: the old and new values and when the edit was made (0005_lifecycle_history_categories.sql, [ADR 077] §5.2, ST-I4). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. A record of what the user typed, not of a charge and never a payment instrument. Since train T11 a trial that converts to the post-trial price the user typed (`price_after_trial_minor`, 0010) writes one row too, from the platform Worker's nightly `endTrials`.",
       "retention": {
         "kind": "keep",
-        "reason": "The user's own history, kept until they delete it: it goes with its subscription when a soft-deleted row is purged (services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`), and with the account on erasure."
+        "reason": "The user's own history, kept until they delete it: it goes with its subscription when a soft-deleted row is purged (the platform Worker's nightly `purgeSoftDeleted`, services/platform/src/subscription-housekeeping.ts — until train T11, subscriptiontracker-api's `purgeExpired` on the list read), and with the account on erasure."
       },
       "erasure": {
         "kind": "purge",
@@ -985,7 +987,8 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "services/platform/src/subscription-housekeeping.ts"
       ],
       "disclosure": {
         "page": "privacy.html",

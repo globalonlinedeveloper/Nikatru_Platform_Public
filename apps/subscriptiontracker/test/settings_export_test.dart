@@ -197,6 +197,10 @@ void main() {
       'cancel_url',
       // ⏱ 2026-10-01 · T20 (AD-12): the tags cell — kept and listed too.
       'tags',
+      // ⏱ 2026-10-01 · train T11: 0010's three, kept and listed the same way.
+      'price_after_trial_minor',
+      'still_using',
+      'still_using_at',
     ], reason: 'kept and listed, never dropped');
     final core.ImportPlan plan = core.ImportPlan.build(
       table,

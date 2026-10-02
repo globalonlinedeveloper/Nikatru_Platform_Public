@@ -213,6 +213,8 @@ export async function recomputeRenewals(
     const select = ['id', 'user_id', 'price', 'cycle', 'next_renewal'];
     if (hasCadence) select.push('cycle_every', 'cycle_unit');
     if (subColumns.has('currency')) select.push('currency');
+    const hasTrial = subColumns.has('trial_ends_on');
+    if (hasTrial) select.push('trial_ends_on');
     const where = ['next_renewal IS NOT NULL', 'next_renewal < ?'];
     // A row with no cadence at all has nothing to roll by: skipped, as before.
     where.push(
@@ -223,6 +225,19 @@ export async function recomputeRenewals(
     // one would write a payment for a charge that never happens and move a date
     // the user froze. A soft-deleted row (`deleted_at`) is gone from every list
     // and must not keep "paying" behind the Undo window either.
+    //
+    // ⏱ 2026-10-01 · train T11 (SV-02): THESE TWO TERMS ARE AN INDEX'S WHERE.
+    // subscriptiontracker-api's 0010 adds the partial index
+    // `idx_subscriptions_charging_renewal ON subscriptions (next_renewal) WHERE
+    // deleted_at IS NULL AND status IN ('active', 'trialing')`. SQLite uses a
+    // partial index only when the query's WHERE carries each of its terms as
+    // written — MEASURED on the engine the tests run: `IN ('trialing',
+    // 'active')` (the same set, the other order) or dropping either term scans
+    // the whole table every night again, with no error anywhere. (SQLite does
+    // rewrite `status = 'active' OR status = 'trialing'` into this IN, so that
+    // one spelling keeps the index.) Before 0010 the only renewal index was
+    // (user_id, next_renewal), which this user-less query cannot use.
+    // test/renewals-index.test.ts holds the plan to `USING INDEX`.
     if (subColumns.has('status')) where.push("status IN ('active', 'trialing')");
     if (subColumns.has('deleted_at')) where.push('deleted_at IS NULL');
     const due = await allRows<Subscription>(
@@ -283,6 +298,7 @@ export async function recomputeRenewals(
     const ops: D1PreparedStatement[] = [];
     let rolled = 0;
     let skipped = 0;
+    let inTrial = 0;
     for (const sub of due) {
       const cadence = cadenceOfRow(sub);
       if (cadence === null) {
@@ -293,6 +309,16 @@ export async function recomputeRenewals(
       }
       const { next, crossings } = rollForward(sub.next_renewal as string, cadence, today);
       for (const when of crossings) {
+        // 🔴 NO ASSUMED PAYMENT INSIDE A TRIAL (train T11, AD-13). A charge
+        // date before `trial_ends_on` is a day the user paid nothing, so the
+        // date still rolls and no payment_history row is written for it. The
+        // day the trial ends IS charged: src/subscription-housekeeping.ts
+        // `endTrials` runs before this pass and has already moved the row to
+        // its post-trial price.
+        if (hasTrial && typeof sub.trial_ends_on === 'string' && when < sub.trial_ends_on) {
+          inTrial++;
+          continue;
+        }
         const paidAt = `${when}T00:00:00Z`;
         const values: unknown[] = [uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt];
         if (hasUpdatedAt) values.push(paidAt);
@@ -316,6 +342,7 @@ export async function recomputeRenewals(
       detail:
         `advanced ${rolled} subscription(s), ${ops.length} statement(s)` +
         (skipped > 0 ? ` — SKIPPED ${skipped} with a cadence this build cannot read` : '') +
+        (inTrial > 0 ? `, ${inTrial} in-trial charge(s) not recorded` : '') +
         (hasUpdatedAt
           ? ''
           : ' — WITHOUT updated_at: this app database has no such column on payment_history, so every row written tonight carries none'),

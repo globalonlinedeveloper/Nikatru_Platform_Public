@@ -34,6 +34,7 @@ import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import '../../state/subscriptions_controller.dart';
 import 'summary_tiles.dart' show chargeWithCycle;
 
 /// How far ahead a yearly renewal is worth flagging.
@@ -109,22 +110,38 @@ List<InsightSignal> signalsFor(
   ];
 }
 
-/// The ids answered "still using" on this device, read from and written to the
-/// local store (cleared with everything else on sign-out and deletion).
+/// The ids answered "still using" on THIS device — a CACHE of the row's own
+/// `still_using` (0010), read from and written to the local store (cleared
+/// with everything else on sign-out and deletion).
+///
+/// ⏱ 2026-10-01 · train T11 (IN-08). This set used to be the WHOLE answer, so
+/// a "Yes" on the phone was asked again on the laptop. The answer is written
+/// to the row by PATCH now and every device reads it after a sync
+/// ([answeredIds]); the set only hides the question at once, before the write
+/// lands, and keeps it hidden on a device that cannot reach the server.
 class StillUsingController extends AsyncNotifier<Set<String>> {
   @override
   Future<Set<String>> build() =>
       ref.watch(localSubscriptionStoreProvider).readStillUsing();
 
-  /// Records "yes" for [id]. The row leaves at once; a failed write is not
-  /// swallowed — the answer is rolled back so the question comes back.
-  Future<void> answerYes(String id) => _answer(id);
+  /// Records "yes" for [id]. See [answer].
+  Future<void> answerYes(String id) => answer(id, StillUsing.yes);
 
   /// Records "no" for [id]: the question is answered and leaves, and the
   /// CALLER opens the stop flow — "no" is a decision to act on, not a note.
-  Future<void> answerNo(String id) => _answer(id);
+  /// See [answer].
+  Future<void> answerNo(String id) => answer(id, StillUsing.no);
 
-  Future<void> _answer(String id) async {
+  /// Records [value] for [id]: the row leaves at once (the cache), then the
+  /// answer goes to the server with the row (`PATCH {still_using}`), so the
+  /// question leaves every other device on its next sync.
+  ///
+  /// A failed CACHE write is not swallowed — the answer is rolled back so the
+  /// question comes back, as before. A failed SERVER write keeps the cached
+  /// answer: this device stays answered (exactly what it was before T11), the
+  /// row is untouched on the server, and the next answer on any device writes
+  /// it again.
+  Future<void> answer(String id, StillUsing value) async {
     final Set<String> before = state.value ?? <String>{};
     final Set<String> next = <String>{...before, id};
     state = AsyncData<Set<String>>(next);
@@ -132,9 +149,28 @@ class StillUsingController extends AsyncNotifier<Set<String>> {
       await ref.read(localSubscriptionStoreProvider).writeStillUsing(next);
     } catch (_) {
       if (ref.mounted) state = AsyncData<Set<String>>(before);
+      return;
+    }
+    if (!ref.mounted) return;
+    try {
+      await ref
+          .read(subscriptionsControllerProvider.notifier)
+          .updateSubscription(id, <String, dynamic>{'still_using': value.name});
+    } catch (_) {
+      // Deliberately kept local: see the doc comment.
     }
   }
 }
+
+/// Every id whose "Still using?" is answered: the row's own answer, synced
+/// from the server (0010), plus this device's cache of answers not yet
+/// written back.
+Set<String> answeredIds(Iterable<Subscription> subs, Set<String> cached) =>
+    <String>{
+      ...cached,
+      for (final Subscription s in subs)
+        if (s.stillUsing != null) s.id,
+    };
 
 final AsyncNotifierProvider<StillUsingController, Set<String>>
 stillUsingProvider = AsyncNotifierProvider<StillUsingController, Set<String>>(
@@ -154,8 +190,10 @@ class SignalsSection extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme scheme = theme.colorScheme;
     final TextTheme text = theme.textTheme;
-    final Set<String> answered =
-        ref.watch(stillUsingProvider).value ?? <String>{};
+    final Set<String> answered = answeredIds(
+      subs,
+      ref.watch(stillUsingProvider).value ?? <String>{},
+    );
     // `nowProvider`, never `DateTime.now()` (ST truth pass, IN-02): the day
     // counts are a function of today, and a test must be able to pin it.
     final DateTime now = ref.watch(nowProvider)();

@@ -325,5 +325,26 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     expect(cols('subscriptions')).toContain('notice_days');
     // 0009_tags.sql (AD-12) — its one ADD COLUMN, for the same reason.
     expect(cols('subscriptions')).toContain('tags');
+    // 0010_trial_price_still_using.sql (train T11) — its three columns and its
+    // three partial indexes, each WITH the predicate a nightly scan matches:
+    // an index whose WHERE drifted from the query's would still be listed here
+    // and never be used (services/platform/test/renewals-index.test.ts).
+    expect(cols('subscriptions')).toEqual(
+      expect.arrayContaining(['price_after_trial_minor', 'still_using', 'still_using_at']),
+    );
+    const indexSql = (name: string) =>
+      String(db.rows('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?', 'index', name)[0]?.sql ?? '')
+        .replace(/\s+/g, ' ');
+    expect(indexSql('idx_subscriptions_charging_renewal')).toMatch(
+      /ON subscriptions \(next_renewal\) WHERE deleted_at IS NULL AND status IN \('active', 'trialing'\)$/,
+    );
+    expect(indexSql('idx_subscriptions_trial_end')).toMatch(
+      /ON subscriptions \(trial_ends_on\) WHERE status = 'trialing' AND deleted_at IS NULL$/,
+    );
+    expect(indexSql('idx_subscriptions_deleted')).toMatch(/ON subscriptions \(deleted_at\) WHERE deleted_at IS NOT NULL$/);
+    // The one CHECK 0010 carries: `still_using` is yes, no or not answered.
+    expect(() => db.db.exec("INSERT INTO subscriptions (id, user_id, still_using) VALUES ('c', 'u', 'maybe')")).toThrow(
+      /CHECK constraint failed/,
+    );
   });
 });
