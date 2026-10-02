@@ -210,7 +210,13 @@
       "throwaway user each native leg signs in with.",
       "",
       "⚠️ WEEKLY, NOT NIGHTLY, AND DATED: the native job runs on e2e.yml's Sunday cron. A cost choice, stated here, the same",
-      "way the web-only cut above was."
+      "way the web-only cut above was.",
+      "",
+      "⏱ 2026-10-01 · train st-e2e-parity (EN-07): the native leg OPENS THE APP again (PROOF_NEEDS_DEVICE 'true'), and its",
+      "`sign-in` is the session reaching Home and signing out. Every target takes it from the harness token today (--sign-in",
+      "token), after the refusal probe proves the gate: a phone's form route needs an attestation no hosted device can produce",
+      "(ADR no.NNN), and a desktop's e-mail sign-in is the system-browser hand-off (#1133), which no app screen opens until that",
+      "work's PR B lands. Whether the FORM works is graded separately, by the `flows` row sign-in-form (web, today)."
     ],
     "workflow": ".github/workflows/e2e.yml",
     "job": "native",
@@ -225,6 +231,7 @@
       "sign-in": [
         "await proveFormSignIn(",
         "debugPrint('NK_PROOF step=sign-in outcome=ok')",
+        "debugPrint('NK_PROOF step=session outcome=ok via=harness-token')",
         "debugPrint('NK_PROOF step=sign-out outcome=ok')"
       ]
     },
@@ -445,5 +452,769 @@
     "calibratedWidth": 430,
     "minMedianRemovedInk": 0.011,
     "measuredOn": "2026-09-23"
+  },
+  "flows": {
+    "_why": [
+      "⏱ 2026-10-01 · train st-e2e-parity (EN-07, EN-08, XP-02). READ BY tooling/ci/assert-e2e-legs.mjs limb FLOWS. Feature",
+      "parity is locked: a flow ships only if it works on every target. The targets are DERIVED, as for nativeTargets, from",
+      "tooling/channel-register.json — every platform of a `surface: app` channel, web included — and every flow below must",
+      "name, for EACH, a `legs` entry (the suite that walks it — `web`: apps.<id>.test, `native`: nativeTargets.suite — and",
+      "anchors that resolve in that suite or an integration_test file it imports, comment-stripped) or an `equivalents`",
+      "entry (`provenBy`: a target where this flow is a leg, and a written `why`). A flow with neither on a target is a",
+      "finding (exit 1); an empty list is COVERAGE LOST (exit 2). Each leg asserts BEHAVIOUR — the server row, the prefs,",
+      "the feed, the file — through integration_test/flow_steps.dart, never presence."
+    ],
+    "list": [
+      {
+        "id": "sign-in-form",
+        "asks": "a person signs in through the real form, never a harness-minted token",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "anchors": [
+              "e2eLine(binding, 'NK_E2E step=sign-in via=form')"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "The form's route on a phone build needs a VERIFIED attestation (Play Integrity, App Attest; ADR no.NNN) that no",
+              "hosted emulator or simulator can produce. The leg opens the app with the harness token (--sign-in token; the driver",
+              "requires the token line and the refusal probe in the same job proves the gate); the form itself is the web leg's."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "The form's route on a phone build needs a VERIFIED attestation (Play Integrity, App Attest; ADR no.NNN) that no",
+              "hosted emulator or simulator can produce. The leg opens the app with the harness token (--sign-in token; the driver",
+              "requires the token line and the refusal probe in the same job proves the gate); the form itself is the web leg's."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
+              "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
+              "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
+              "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
+              "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
+              "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
+              "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
+            ]
+          }
+        }
+      },
+      {
+        "id": "add-read-back",
+        "asks": "a plan added through the add sheet is read back from the server",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "anchors": [
+              "submitAddSheet(tester, 'the first subscription')",
+              "'The created subscription did not appear on Home — the POST or '"
+            ]
+          },
+          "android": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[1])"
+            ]
+          },
+          "ios": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[1])"
+            ]
+          },
+          "macos": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[1])"
+            ]
+          },
+          "windows": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[1])"
+            ]
+          },
+          "linux": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[1])"
+            ]
+          }
+        },
+        "equivalents": {}
+      },
+      {
+        "id": "edit-price",
+        "asks": "a plan's price edited through Edit plan is read back from the server",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "newPrice: '8.88'",
+              "expectMinorUnits: 888"
+            ]
+          },
+          "android": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[2])"
+            ]
+          },
+          "ios": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[2])"
+            ]
+          },
+          "macos": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[2])"
+            ]
+          },
+          "windows": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[2])"
+            ]
+          },
+          "linux": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[2])"
+            ]
+          }
+        },
+        "equivalents": {}
+      },
+      {
+        "id": "pause",
+        "asks": "Pause shows the status chip and the server row reads paused",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "action: 'Pause'",
+              "want: SubscriptionStatus.paused"
+            ]
+          },
+          "android": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[3])"
+            ]
+          },
+          "ios": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[3])"
+            ]
+          },
+          "macos": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[3])"
+            ]
+          },
+          "windows": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[3])"
+            ]
+          },
+          "linux": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "debugPrint(kCoreFlowLines[3])"
+            ]
+          }
+        },
+        "equivalents": {}
+      },
+      {
+        "id": "resume",
+        "asks": "Resume on a paused plan reads active on the server",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "action: 'Resume'",
+              "want: SubscriptionStatus.active"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          }
+        }
+      },
+      {
+        "id": "mark-cancelled",
+        "asks": "Mark as cancelled keeps the row and the server reads cancelled",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "action: 'Mark as cancelled'",
+              "want: SubscriptionStatus.cancelled"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          }
+        }
+      },
+      {
+        "id": "delete-undo",
+        "asks": "Delete from tracker offers Undo, Undo restores the server row, a second delete removes it",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "await deleteUndoThenDelete(tester, pumpFor, name: flowName)"
+            ]
+          },
+          "android": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "onUndone: () => debugPrint(kCoreFlowLines[4])",
+              "debugPrint(kCoreFlowLines[5])"
+            ]
+          },
+          "ios": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "onUndone: () => debugPrint(kCoreFlowLines[4])",
+              "debugPrint(kCoreFlowLines[5])"
+            ]
+          },
+          "macos": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "onUndone: () => debugPrint(kCoreFlowLines[4])",
+              "debugPrint(kCoreFlowLines[5])"
+            ]
+          },
+          "windows": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "onUndone: () => debugPrint(kCoreFlowLines[4])",
+              "debugPrint(kCoreFlowLines[5])"
+            ]
+          },
+          "linux": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "await walkCoreFlow(tester, _pumpFor)",
+              "onUndone: () => debugPrint(kCoreFlowLines[4])",
+              "debugPrint(kCoreFlowLines[5])"
+            ]
+          }
+        },
+        "equivalents": {}
+      },
+      {
+        "id": "budget-save",
+        "asks": "a budget saved in the editor is read back from GET /v1/budget",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "await saveBudgetAndReadBack("
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "One Dart call path, compiled from the same source on every target (the detail's controls ->",
+              "SubscriptionsController -> the live Worker); what the web leg asserts is the SERVER's answer, which no target changes."
+            ]
+          }
+        }
+      },
+      {
+        "id": "reminder-prefs",
+        "asks": "the e-mail reminders switch PUTs the prefs and the platform Worker answers them changed",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "await toggleEmailRemindersAndReadBack(tester, pumpFor)"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "One transport (ReminderChannelsTransport) on every target, and the assertion is the platform Worker's",
+              "answer to GET after the PUT; no target changes it."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "One transport (ReminderChannelsTransport) on every target, and the assertion is the platform Worker's",
+              "answer to GET after the PUT; no target changes it."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "One transport (ReminderChannelsTransport) on every target, and the assertion is the platform Worker's",
+              "answer to GET after the PUT; no target changes it."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "One transport (ReminderChannelsTransport) on every target, and the assertion is the platform Worker's",
+              "answer to GET after the PUT; no target changes it."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "One transport (ReminderChannelsTransport) on every target, and the assertion is the platform Worker's",
+              "answer to GET after the PUT; no target changes it."
+            ]
+          }
+        }
+      },
+      {
+        "id": "calendar-feed",
+        "asks": "a calendar feed is minted, its .ics fetched (200, VCALENDAR), and Reset rotates the old URL out",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "await mintFetchAndRotateCalendarFeed(tester, pumpFor)"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "The mint and the rotation are one transport call on every target and the feed is a public server route;",
+              "a native target only hands the webcal: URL to the OS calendar, which a runner cannot read back."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "The mint and the rotation are one transport call on every target and the feed is a public server route;",
+              "a native target only hands the webcal: URL to the OS calendar, which a runner cannot read back."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "The mint and the rotation are one transport call on every target and the feed is a public server route;",
+              "a native target only hands the webcal: URL to the OS calendar, which a runner cannot read back."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "The mint and the rotation are one transport call on every target and the feed is a public server route;",
+              "a native target only hands the webcal: URL to the OS calendar, which a runner cannot read back."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "The mint and the rotation are one transport call on every target and the feed is a public server route;",
+              "a native target only hands the webcal: URL to the OS calendar, which a runner cannot read back."
+            ]
+          }
+        }
+      },
+      {
+        "id": "export-csv",
+        "asks": "Export (CSV) writes a file holding the rows the server held",
+        "legs": {
+          "web": {
+            "suite": "web",
+            "status": "pending",
+            "parkedBy": "web-changed-flows",
+            "anchors": [
+              "const Key('settings.data.export')",
+              "'NK_E2E step=export rows=${exported.length} name=$subNameB '"
+            ]
+          }
+        },
+        "equivalents": {
+          "android": {
+            "provenBy": "web",
+            "why": [
+              "One encoder (subscriptionsCsvFile) on every target; a native target hands the file to the OS share sheet,",
+              "which no hosted runner can complete, while the browser's download is read off the runner's disk (verify_export_csv.mjs)."
+            ]
+          },
+          "ios": {
+            "provenBy": "web",
+            "why": [
+              "One encoder (subscriptionsCsvFile) on every target; a native target hands the file to the OS share sheet,",
+              "which no hosted runner can complete, while the browser's download is read off the runner's disk (verify_export_csv.mjs)."
+            ]
+          },
+          "macos": {
+            "provenBy": "web",
+            "why": [
+              "One encoder (subscriptionsCsvFile) on every target; a native target hands the file to the OS share sheet,",
+              "which no hosted runner can complete, while the browser's download is read off the runner's disk (verify_export_csv.mjs)."
+            ]
+          },
+          "windows": {
+            "provenBy": "web",
+            "why": [
+              "One encoder (subscriptionsCsvFile) on every target; a native target hands the file to the OS share sheet,",
+              "which no hosted runner can complete, while the browser's download is read off the runner's disk (verify_export_csv.mjs)."
+            ]
+          },
+          "linux": {
+            "provenBy": "web",
+            "why": [
+              "One encoder (subscriptionsCsvFile) on every target; a native target hands the file to the OS share sheet,",
+              "which no hosted runner can complete, while the browser's download is read off the runner's disk (verify_export_csv.mjs)."
+            ]
+          }
+        }
+      },
+      {
+        "id": "notification-tap",
+        "asks": "a reminder one minute out, tapped in the OS, lands on its /sub/<id>",
+        "legs": {
+          "android": {
+            "suite": "native",
+            "status": "pending",
+            "parkedBy": "native-core-flow",
+            "anchors": [
+              "if (_notificationTap) await proveNotificationTap(tester, _pumpFor);",
+              "debugPrint(kNotificationTapOkLine)"
+            ]
+          }
+        },
+        "equivalents": {
+          "ios": {
+            "provenBy": "android",
+            "why": [
+              "The simulator has no host-side tap: simctl delivers a notification but nothing on a runner taps it without an",
+              "XCUITest harness. The tap -> payload -> /sub/<id> path is one Dart router (NotificationTapRouter) the Android leg walks."
+            ]
+          },
+          "macos": {
+            "provenBy": "android",
+            "why": [
+              "Notification Center on a hosted macOS runner is not scriptable without an Accessibility grant the image does",
+              "not give. Same router as Android."
+            ]
+          },
+          "windows": {
+            "provenBy": "android",
+            "why": [
+              "A toast is delivered only to the app's packaged identity (the MSIX), and a runner build is not one. Same router."
+            ]
+          },
+          "linux": {
+            "provenBy": "android",
+            "why": [
+              "T5's scheduler shows through the desktop notification daemon, and xvfb runs none a host can click. Same router."
+            ]
+          },
+          "web": {
+            "provenBy": "android",
+            "why": [
+              "Web schedules no OS notification (reminders are e-mail and the in-app nudge); the tap path does not exist there."
+            ]
+          }
+        }
+      }
+    ],
+    "pending": [
+      {
+        "id": "sign-up-check-inbox",
+        "asks": "a person signs up on web and reaches /check-inbox; the admin API confirms the address and the person then signs in",
+        "row": "O-E2E-SIGNUP-CHECK-INBOX-HAS-NO-LEG (absent from open.json on 2026-10-02: a NEW row the lead registers)",
+        "why": [
+          "⏱ 2026-10-02 · lead ruling on #1143: OUT of train st-e2e-parity. No suite walks sign-up -> /check-inbox -> admin",
+          "confirm -> sign-in on any target yet; the lead moves the leg into the queued lane e2e-settings-account. Declared",
+          "here, not left out, so assert-e2e-legs prints it every run until a leg replaces this entry."
+        ]
+      }
+    ],
+    "park": {
+      "_why": [
+        "⏱ 2026-10-02 · lead ruling on #1143 (land the proven, park the red legs). READ BY tooling/ci/assert-e2e-legs.mjs limb",
+        "FLOWS. A leg whose last dispatch was red is PARKED, never silently dropped and never required on main: it keeps its",
+        "anchors (the code is still there, behind the switch) and carries `status: pending` plus `parkedBy`, a key of `runs`",
+        "below — the run id and its failure VERBATIM. The suite skips a parked leg only behind its switch and SAYS so (each",
+        "run's `skip` anchors must resolve in that suite), and the workflows default the switch to `skip` (`workflowAnchors`",
+        "must resolve), so main's nightly cannot go red on a leg not yet proven (an E2E red on main deadlocks every merge).",
+        "One targeted fix followed both runs (flow_steps.dart: the ST-T9 pick step walked; the scroll view driven until the",
+        "control is hit-testable and enabled). A leg is un-parked only by a GREEN dispatch with pending_flows=run on its",
+        "workflow: then drop its `status`/`parkedBy`, cite that run, and drop the run here when nothing points at it."
+      ],
+      "row": "O-E2E-CORE-FLOW-LEGS-PENDING (NEW on 2026-10-02: the lead registers it in Private)",
+      "runs": {
+        "native-core-flow": {
+          "run": 36987269922,
+          "workflow": ".github/workflows/native-auth-proof.yml",
+          "proven": [
+            "On all five targets (android, ios, macos, windows, linux) the refusal probe passed and the harness-token session",
+            "reached Home; the offline read passed on android, macos and linux. Those are graded proven by this run."
+          ],
+          "failure": [
+            "The following StateError was thrown running a test:",
+            "Bad state: No element",
+            "#7      WidgetTester.enterText.<anonymous closure> (package:flutter_test/src/widget_tester.dart:1160:13)",
+            "#12     addPlanThroughSheet (…/apps/subscriptiontracker/integration_test/flow_steps.dart:206:16)",
+            "FAIL missing \"NK_PROOF step=core-add outcome=ok\" — the core flow (add → read back → edit price → pause → delete → Undo → delete) stopped before this step"
+          ],
+          "skip": {
+            "suite": "native",
+            "anchors": [
+              "debugPrint(kCoreFlowPendingLine)",
+              "if (_pendingFlows == 'run') {"
+            ]
+          }
+        },
+        "web-changed-flows": {
+          "run": 36987311361,
+          "workflow": ".github/workflows/e2e.yml",
+          "proven": [
+            "Every step of the walk before 14d (screenshots 00-consent … 14c-home-paused, the delete re-auth refusal) ran green;",
+            "the legs graded before this train keep their own proof."
+          ],
+          "failure": [
+            "Expected: exactly one matching candidate",
+            "  Actual: _HitTestableWidgetFinder:<Found 0 widgets with key",
+            "[<'e2e_add_submit'>] (ignoring all but first) (considering only",
+            "hit-testable widgets with a RenderBox): []>",
+            "   Which: means none were found but one was expected",
+            "the submit of the edit sheet for \"E2E Probe B 1790932181605\" is",
+            "covered, so a tap would not land."
+          ],
+          "skip": {
+            "suite": "web",
+            "anchors": [
+              "e2eLine(binding, kWebFlowsPendingLine)",
+              "if (pendingFlows != 'run') {"
+            ]
+          }
+        }
+      },
+      "workflowAnchors": {
+        ".github/workflows/e2e.yml": [
+          "E2E_PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}",
+          "--dart-define=E2E_PENDING_FLOWS=\"$E2E_PENDING_FLOWS\"",
+          "PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}",
+          "--pending-flows \"$PENDING_FLOWS\""
+        ],
+        ".github/workflows/native-auth-proof.yml": [
+          "PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}",
+          "--pending-flows \"$PENDING_FLOWS\""
+        ]
+      }
+    }
   }
 }
