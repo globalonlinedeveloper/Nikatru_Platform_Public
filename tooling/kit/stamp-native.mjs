@@ -50,7 +50,7 @@
 // Exit 0 = every artefact is in place (or was written). Exit 1 = refused or drift.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -585,7 +585,23 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     for (const p of idProblems) console.error(`  ${p}`);
     process.exit(1);
   }
-  const { ok, lines } = stampNative({ id, check });
+  // ⏱ 2026-10-02 · CodeQL #572 (js/indirect-command-line-injection), CI red 2 of club apply-ci.
+  // `--app <id>` reaches `cmd.exe /c flutter.bat` on Windows. A pattern check on the argument was
+  // not enough for the query, so the id handed on is never the argument: it is the NAME OF A
+  // DIRECTORY under apps/ that equals it. The stamp only ever runs over an app mason just wrote,
+  // so an id with no apps/<id> is refused here instead of being passed anywhere.
+  let appsDirs = [];
+  try {
+    appsDirs = readdirSync(join(REPO, 'apps'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    appsDirs = [];
+  }
+  const appDir = appsDirs.find((name) => name === id);
+  if (appDir === undefined) {
+    console.error(`stamp-native: REFUSED — apps/${id} is not a directory of this checkout, so there is no app to stamp the native folders into.`);
+    process.exit(1);
+  }
+  const { ok, lines } = stampNative({ id: appDir, check });
   for (const l of lines) (ok ? console.log : console.error)(`  ${l}`);
   if (!ok) {
     console.error(`stamp-native: ${check ? 'apps/' + id + ' is not what the native stamp writes' : 'REFUSED'} — run  node tooling/kit/stamp-native.mjs --app ${id}`);
