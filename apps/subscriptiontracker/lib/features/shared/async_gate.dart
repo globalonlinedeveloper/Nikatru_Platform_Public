@@ -56,7 +56,7 @@ import '../../state/subscriptions_controller.dart';
 /// [emptyTitle]/[emptyBody] are shown only when the fetch SUCCEEDED and the
 /// user has no subscriptions AT ALL. That is deliberately NOT the same question
 /// as "is there nothing to show in this section", and the two are kept apart:
-/// `calendar_screen.dart` keeps `l10n.calendarEmpty` ("No renewals this month")
+/// `calendar_screen.dart` keeps `l10n.calendarNothingRenews` ("Nothing renews in …")
 /// and `notifications_screen.dart` keeps its own `items.isEmpty` line, because
 /// a user with five subscriptions and none due this month has a REAL month grid
 /// and a real screen — replacing it with "No subscriptions yet" would be a

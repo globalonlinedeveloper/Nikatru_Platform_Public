@@ -4,176 +4,6 @@
   "@appTitle": {
     "description": "The application title shown in the OS task switcher."
   },
-  "settingsTitle": "Settings",
-  "@settingsTitle": {
-    "description": "Title of the settings screen."
-  },
-  "contactSupport": "Contact support",
-  "@contactSupport": {
-    "description": "Settings entry that opens a support email."
-  },
-  "deleteAccount": "Delete account",
-  "@deleteAccount": {
-    "description": "Settings entry to delete the account and its data."
-  },
-  "appearance": "Appearance",
-  "@appearance": {
-    "description": "Settings section for the light/dark theme choice."
-  },
-  "themeSystem": "System",
-  "@themeSystem": {
-    "description": "Theme option that follows the operating system setting."
-  },
-  "themeLight": "Light",
-  "@themeLight": {
-    "description": "Theme option forcing the light colour scheme."
-  },
-  "themeDark": "Dark",
-  "@themeDark": {
-    "description": "Theme option forcing the dark colour scheme."
-  },
-  "deleteAccountSubtitle": "Permanently delete your account and data",
-  "@deleteAccountSubtitle": {
-    "description": "Explains what the delete-account entry does."
-  },
-  "deleteAccountConfirmTitle": "Delete your account?",
-  "@deleteAccountConfirmTitle": {
-    "description": "Title of the irreversible delete-account confirmation dialog."
-  },
-  "deleteAccountConfirmBody": "This cannot be undone. Deleting removes your sign-in, so the same email and password will no longer work.",
-  "@deleteAccountConfirmBody": {
-    "description": "Body of the delete-account confirmation. Must state that the action cannot be undone."
-  },
-  "cancel": "Cancel",
-  "@cancel": {
-    "description": "Dismisses a dialog without acting."
-  },
-  "delete": "Delete",
-  "@delete": {
-    "description": "Confirms the destructive delete action."
-  },
-  "about": "About",
-  "@about": {
-    "description": "Opens the standard about dialog."
-  },
-  "legalese": "© Nikatru",
-  "@legalese": {
-    "description": "Copyright line in the about dialog. The company name is not translated."
-  },
-  "consentAllow": "Allow",
-  "@consentAllow": {
-    "description": "Grants analytics consent. Must be as prominent as the refusal."
-  },
-  "consentDecline": "No thanks",
-  "@consentDecline": {
-    "description": "Refuses analytics consent. A one-sided prompt is a dark pattern, not a choice."
-  },
-  "homeTagline": "Stamped from the NIKATRU app brick.",
-  "@homeTagline": {
-    "description": "Placeholder home copy in a freshly stamped app."
-  },
-  "welcomeTo": "Welcome to {appName}",
-  "@welcomeTo": {
-    "description": "Home screen greeting.",
-    "placeholders": {
-      "appName": {
-        "type": "String"
-      }
-    }
-  },
-  "consentTitle": "Help improve {appName}?",
-  "@consentTitle": {
-    "description": "Consent prompt heading.",
-    "placeholders": {
-      "appName": {
-        "type": "String"
-      }
-    }
-  },
-  "consentBody": "We can record which features you use, so we can see what works and fix what does not.",
-  "@consentBody": {
-    "description": "What the analytics consent actually covers."
-  },
-  "consentPrivacy": "No name, no email, no advertising ID and no IP address. Just a random code for this installation. You can change this any time in Settings.",
-  "@consentPrivacy": {
-    "description": "THE CONSENT SENTENCE OF RECORD (owner decision 2026-08-09, decisions-log.md). States exactly what is NOT collected AND names the withdrawal route. The last clause is the one the PUBLISHED POLICY already makes — sites/nikatru/privacy.html: 'You can turn usage statistics off at any time in the app's Settings' — so the wording it replaced was the one that under-stated the policy, not the other way round. Kept honest by features/settings/settings_screen.dart, which assert-consent-withdrawal-surface.mjs pins. Consumed by app.dart's `_ConsentPrompt` — the inline scrim, which is the only consent surface the app mounts."
-  },
-  "navHome": "Home",
-  "@navHome": {
-    "description": "Primary navigation destination."
-  },
-  "navExplore": "Explore",
-  "@navExplore": {
-    "description": "Secondary navigation destination."
-  },
-  "navSettings": "Settings",
-  "@navSettings": {
-    "description": "Settings navigation destination."
-  },
-  "deleteAccountPassword": "Password",
-  "@deleteAccountPassword": {
-    "description": "Re-authentication field before an irreversible account deletion."
-  },
-  "deleteAccountReauthHint": "Enter your password to confirm it is you.",
-  "@deleteAccountReauthHint": {
-    "description": "Explains why a password is required to delete the account."
-  },
-  "deleteAccountConfirmBodyApple": "This cannot be undone. Deleting removes your sign-in, so you will no longer be able to sign in to this account.",
-  "@deleteAccountConfirmBodyApple": {
-    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. The delete confirmation body for a PASSWORD-LESS account (Sign in with Apple). Replaces deleteAccountConfirmBody, which names an email and password this account does not have. ⏱ 2026-09-26: owner-approved provider-free wording, O-REAUTH-COPY-NAMES-APPLE-ONLY (the lead's ruling PRE-1 of 2026-09-26 15:56Z, made under the owner's delegation of wording)."
-  },
-  "deleteAccountReauthHintApple": "To confirm it's you, you'll sign in again when you tap Delete account. On the web, if you land back here, tap Delete account once more.",
-  "@deleteAccountReauthHintApple": {
-    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. Shown instead of the password field for a password-less account: deletion is confirmed by signing in with Apple again. The second sentence covers web, where Apple's full-page redirect reloads the app before the deletion can run. ⏱ 2026-09-26: owner-approved provider-free wording, O-REAUTH-COPY-NAMES-APPLE-ONLY (the lead's ruling PRE-1 of 2026-09-26 15:56Z, made under the owner's delegation of wording)."
-  },
-  "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
-  "@deleteAccountFailed": {
-    "description": "Shown when deletion fails with nothing removed. Must state plainly that nothing was deleted."
-  },
-  "deleteAccountNotConfigured": "Nothing was deleted. This app cannot complete an account deletion yet, so the request was refused rather than carried out in part. Your account and your data are unchanged.",
-  "@deleteAccountNotConfigured": {
-    "description": "The 501 answer: the server cannot remove the identity record, so it refused BEFORE deleting anything. Must not state a turnaround time, a retention period or a legal basis — the published deletion page states none."
-  },
-  "deleteAccountSignInSurvives": "Your data was deleted, but your sign-in was not: the same email and password can still sign in. The deletion is incomplete.",
-  "@deleteAccountSignInSurvives": {
-    "description": "The 502 answer: rows purged, identity delete failed. Must NOT say nothing was deleted — the data really is gone and only the login survived."
-  },
-  "deleteAccountPending": "Your deletion request was accepted but isn't finished yet. Some of your data couldn't be removed right away. We'll keep trying automatically, and your sign-in is removed last.",
-  "@deleteAccountPending": {
-    "description": "ADR 081, 2026-09-15: the 202 erasure_pending answer. Accepted, not finished: an app could not be reached, its data and the sign-in are removed later automatically. Must NOT say the account is deleted, and must state no turnaround time."
-  },
-  "deleteAccountUnknown": "We could not confirm what happened to your account. Do not assume it has been deleted.",
-  "@deleteAccountUnknown": {
-    "description": "No response, or a status the contract does not model. How far the deletion got is unknown, so nothing is claimed either way."
-  },
-  "errorTitle": "Something went wrong",
-  "@errorTitle": {
-    "description": "Heading of the global error screen shown when a widget fails to build."
-  },
-  "errorMessage": "The app hit an unexpected problem. Restarting usually helps.",
-  "@errorMessage": {
-    "description": "Body of the global error screen. Must offer the user a way forward."
-  },
-  "notFoundTitle": "Page not found",
-  "@notFoundTitle": {
-    "description": "Heading of the 404 screen."
-  },
-  "notFoundMessage": "That address does not exist in this app.",
-  "@notFoundMessage": {
-    "description": "Body of the 404 screen."
-  },
-  "goHome": "Go home",
-  "@goHome": {
-    "description": "Returns the user to the home screen from an error or 404."
-  },
-  "offlineMessage": "Could not reach the network. Some things may be out of date.",
-  "@offlineMessage": {
-    "description": "Shown when a request failed — driven by a failed request, not a connectivity plugin."
-  },
-  "retry": "Retry",
-  "@retry": {
-    "description": "Retries the action that failed."
-  },
   "syncProblemMessage": "{count, plural, =1{A change couldn't sync} other{{count} changes couldn't sync}}",
   "@syncProblemMessage": {
     "description": "Shown when changes made offline were refused by the server or failed too many times (the outbox's dead letters). Offers Retry and Discard.",
@@ -187,305 +17,9 @@
   "@syncQueueUnreadable": {
     "description": "Shown when the device store holding changes made offline cannot be read. The changes are not lost; Retry reads again."
   },
-  "signInTitle": "Sign in",
-  "@signInTitle": {
-    "description": "Title of the sign-in screen."
-  },
-  "signUpTitle": "Create account",
-  "@signUpTitle": {
-    "description": "Title of the sign-up screen."
-  },
-  "email": "Email",
-  "@email": {
-    "description": "Email field label."
-  },
-  "password": "Password",
-  "@password": {
-    "description": "Password field label."
-  },
-  "signIn": "Sign in",
-  "@signIn": {
-    "description": "Submits the sign-in form."
-  },
-  "signUp": "Create account",
-  "@signUp": {
-    "description": "Submits the sign-up form."
-  },
-  "forgotPassword": "Forgot your password?",
-  "@forgotPassword": {
-    "description": "Sends a password-reset email."
-  },
-  "resetSent": "If that address has an account, a reset link is on its way.",
-  "@resetSent": {
-    "description": "Deliberately does NOT confirm whether the account exists — that would let anyone test which emails are registered."
-  },
-  "emailRequired": "Enter your email address first.",
-  "@emailRequired": {
-    "description": "Shown when a password reset is requested with an empty email field."
-  },
-  "passwordTooShort": "Use at least 8 characters.",
-  "@passwordTooShort": {
-    "description": "Client-side length check before sending a sign-up."
-  },
-  "passwordBreached": "This password has appeared in a data breach. Choose a different one.",
-  "@passwordBreached": {
-    "description": "The auth server refused a new password because it is in a known data breach (GoTrue weak_password reason pwned). Shown instead of any other reason, since adding characters cannot fix it."
-  },
-  "passwordTooWeak": "Choose a stronger password.",
-  "@passwordTooWeak": {
-    "description": "The auth server refused a new password as weak without saying it was too short or breached (GoTrue weak_password reason characters, an unknown reason, or no reason)."
-  },
-  "signUpAgeRefused": "We can't create an account here. Your app store's age setting says you are under 18, and this app is only for people 18 or older.",
-  "@signUpAgeRefused": {
-    "description": "⏱ 2026-09-15 · [ADR 082] §5. Shown when the app store's age signal (Apple Declared Age Range, Google Play Age Signals) says the person is under 18: no account is created and no terms are recorded. Never shown when there is no signal — that case proceeds on the 18+ declaration. Must not invite a retry with a different age: the declaration cannot override a store signal."
-  },
-  "needAccount": "Need an account? Create one",
-  "@needAccount": {
-    "description": "Link from sign-in to sign-up."
-  },
-  "haveAccount": "Already have an account? Sign in",
-  "@haveAccount": {
-    "description": "Link from sign-up to sign-in."
-  },
-  "continueWithApple": "Continue with Apple",
-  "@continueWithApple": {
-    "description": "OAuth sign-in. Shown only where the platform can complete a redirect."
-  },
-  "continueWithGoogle": "Continue with Google",
-  "@continueWithGoogle": {
-    "description": "OAuth sign-in with Google. Shown only where the platform can complete a redirect and the identity server accepts Google."
-  },
-  "signOut": "Sign out",
-  "@signOut": {
-    "description": "Ends the session on this device."
-  },
-  "signOutFailed": "Sign-out did not finish on this device. Please try again.",
-  "@signOutFailed": {
-    "description": "Shown when signing out throws. Says DID NOT FINISH rather than 'failed': the session may already be gone on the server while the persisted copy or the per-user state on this device is not, and the honest instruction for both is to try again."
-  },
-  "notifications": "Notifications",
-  "@notifications": {
-    "description": "Settings section for reminders."
-  },
-  "remindersEnabled": "Reminders",
-  "@remindersEnabled": {
-    "description": "Toggle for scheduled reminders."
-  },
-  "remindersUnavailable": "Reminders are not available on this platform.",
-  "notificationsNoRemindersHere": "This device can't send renewal reminders yet, so check this list for what's due soon.",
-  "@notificationsNoRemindersHere": {
-    "description": "ST-U1 (audit C20). Under the Notifications title on a target that cannot schedule a notification (web, Windows, Linux): the list is derived, and it is the only reminder there is."
-  },
-  "@remindersUnavailable": {
-    "description": "Shown INSTEAD of the toggle where the platform cannot schedule — a switch that silently does nothing is worse than an honest sentence."
-  },
-  "permissionPrimingTitle": "Allow reminders?",
-  "@permissionPrimingTitle": {
-    "description": "Heading of the pre-permission explanation."
-  },
-  "permissionPrimingBody": "We will ask your device for permission to send reminders. You can change this at any time in Settings.",
-  "@permissionPrimingBody": {
-    "description": "Explains WHY before the OS prompt appears. The OS prompt can only be shown once on most platforms, so a refusal there is effectively permanent."
-  },
-  "reminderTitle": "Time for today",
-  "@reminderTitle": {
-    "description": "Title of the scheduled daily notification itself — the text the OS shows on the lock screen, NOT a settings label. Deliberately app-neutral: a stamped app should replace it with its own hook."
-  },
-  "reminderBody": "A minute now keeps your streak going.",
-  "@reminderBody": {
-    "description": "Body of the scheduled daily notification. Kept short — most platforms truncate a collapsed notification to roughly one line."
-  },
-  "catchUpTitle": "Your reminder was due",
-  "@catchUpTitle": {
-    "description": "Heading of the IN-APP catch-up nudge, shown on platforms whose OS cannot schedule a repeating notification (Web, Windows, Linux). It appears the next time the app is opened after the reminder's moment has passed — there is no background work to lean on."
-  },
-  "catchUpBody": "This device cannot deliver scheduled reminders, so here it is now.",
-  "@catchUpBody": {
-    "description": "Says PLAINLY why the reminder arrives inside the app instead of from the system. A vague banner would read as a bug."
-  },
-  "catchUpDismiss": "Got it",
-  "@catchUpDismiss": {
-    "description": "Dismisses the catch-up nudge for this occurrence. It never re-appears for the same day's reminder."
-  },
-  "notNow": "Not now",
-  "@notNow": {
-    "description": "Declines the priming dialog WITHOUT spending the one OS prompt."
-  },
-  "continueLabel": "Continue",
-  "@continueLabel": {
-    "description": "Proceeds to the OS permission prompt."
-  },
-  "legal": "Legal",
-  "@legal": {
-    "description": "Settings section for the policy documents."
-  },
-  "privacyPolicy": "Privacy policy",
-  "@privacyPolicy": {
-    "description": "Opens the privacy policy. Both stores require it to be reachable in-app."
-  },
-  "termsOfService": "Terms of service",
-  "@termsOfService": {
-    "description": "Opens the terms of service."
-  },
-  "refundPolicy": "Refund policy",
-  "@refundPolicy": {
-    "description": "Opens the refund policy. [pipeline 8]K-6 — the third published legal page; the in-app set must equal the published set."
-  },
-  "language": "Language",
-  "@language": {
-    "description": "Settings section for the app language."
-  },
-  "languageSystem": "System",
-  "@languageSystem": {
-    "description": "Follow the device language."
-  },
-  "profile": "Profile",
-  "@profile": {
-    "description": "Settings section for the user's own account details."
-  },
-  "displayName": "Display name",
-  "@displayName": {
-    "description": "The name shown to the user in the app. Editable."
-  },
-  "displayNameNotSet": "No name set",
-  "@displayNameNotSet": {
-    "description": "Shown in place of the display name when the user has not chosen one. An empty line would read as a rendering fault."
-  },
-  "editProfile": "Edit profile",
-  "@editProfile": {
-    "description": "Title of the dialog for changing the display name."
-  },
-  "save": "Save",
-  "@save": {
-    "description": "Commits an edit."
-  },
-  "profileUpdateFailed": "Could not save your name. Nothing was changed.",
-  "@profileUpdateFailed": {
-    "description": "Shown when the profile update fails. Must state plainly that nothing changed: 'saved' on a failed write is a lie the user only discovers at their next launch."
-  },
-  "onboarding1Title": "Welcome",
-  "@onboarding1Title": {
-    "description": "First onboarding page heading. Overridable per app via AppConfig.copy['onboarding.1.title'] — this is the CHASSIS DEFAULT, shown by a freshly stamped app that has overridden nothing, so it must not promise a feature the chassis does not have."
-  },
-  "onboarding1Body": "A quick tour, and then you are done.",
-  "@onboarding1Body": {
-    "description": "First onboarding page body. See onboarding1Title."
-  },
-  "onboarding2Title": "Yours, on every device",
-  "@onboarding2Title": {
-    "description": "Second onboarding page heading. Overridable via AppConfig.copy['onboarding.2.title']."
-  },
-  "onboarding2Body": "Sign in and your settings follow you.",
-  "@onboarding2Body": {
-    "description": "Second onboarding page body."
-  },
-  "onboarding3Title": "You are in control",
-  "@onboarding3Title": {
-    "description": "Third onboarding page heading. Overridable via AppConfig.copy['onboarding.3.title']."
-  },
-  "onboarding3Body": "Change your mind at any time in Settings.",
-  "@onboarding3Body": {
-    "description": "Third onboarding page body. Deliberately points at Settings, which every stamped app really has."
-  },
-  "onboardingSkip": "Skip",
-  "@onboardingSkip": {
-    "description": "Leaves onboarding immediately. Present on EVERY page: onboarding a user cannot leave is a wall, not an introduction."
-  },
-  "onboardingNext": "Next",
-  "@onboardingNext": {
-    "description": "Advances to the next onboarding page."
-  },
-  "onboardingStart": "Get started",
-  "@onboardingStart": {
-    "description": "Finishes onboarding on the last page."
-  },
   "plan": "Subscription",
   "@plan": {
     "description": "Settings section for the money rail. Upgrade and Manage sit side by side so cancelling is never buried deeper than subscribing (ROSCA)."
-  },
-  "paywallTitle": "Upgrade",
-  "@paywallTitle": {
-    "description": "App-bar title of the paywall screen."
-  },
-  "updateRequiredTitle": "Update required",
-  "@updateRequiredTitle": {
-    "description": "Heading on the force-update wall. THE WALL REPLACES THE WHOLE APP when the running version falls below the supported floor, so this is the only text on screen and there is no way past it. Until 2026-09-04 no key existed and ForceUpdateGate's English parameter default shipped to every locale."
-  },
-  "updateRequiredMessage": "This version is no longer supported. Please update to keep using the app.",
-  "@updateRequiredMessage": {
-    "description": "Body of the force-update wall. Says WHY the app stopped and WHAT to do, because the user cannot reach anything else to find out. Names no version number: the floor is served from config and a number baked into a translation would go stale silently."
-  },
-  "updateRequiredAction": "Update now",
-  "@updateRequiredAction": {
-    "description": "The only control on the force-update wall. Opens the store listing. Hidden when the app has no update URL to send the user to, so the wall still blocks rather than offering a dead button."
-  },
-  "paywallHeadline": "Unlock the full experience",
-  "@paywallHeadline": {
-    "description": "Paywall heading, also used as the in-place PaywallGate title. CHASSIS DEFAULT — a freshly stamped app that has overridden nothing shows this, so it must not promise a feature the chassis does not have."
-  },
-  "paywallGateMessage": "This part of the app is included with a subscription.",
-  "@paywallGateMessage": {
-    "description": "Shown in place of a gated surface. States a fact, never a countdown or a discount — the chassis knows neither."
-  },
-  "paywallUpgrade": "Upgrade",
-  "@paywallUpgrade": {
-    "description": "The call to action that opens the checkout."
-  },
-  "paywallOpeningHosted": "Opening the secure checkout in your browser…",
-  "@paywallOpeningHosted": {
-    "description": "Shown while a HOSTED checkout is being handed to the platform — the rail whose kind is paddle, on the web and the desktop builds. Names the BROWSER deliberately: the page opens outside the app, and a user who is not told that reads the app-switch as a crash. Never shown on a store build: see paywallOpeningStore."
-  },
-  "paywallOpeningStore": "Connecting to the store…",
-  "@paywallOpeningStore": {
-    "description": "Shown while a STORE's own purchase sheet is being opened (Play Billing, Apple in-app purchase). 🔴 Names neither the web nor a browser, in any locale: a store build that points its buyer at an outside checkout breaks that store's billing rule. The parity tests fail on either word here."
-  },
-  "paywallPending": "Your payment is being confirmed. This can take a moment — nothing more is needed from you.",
-  "@paywallPending": {
-    "description": "🔴 MUST NEVER READ AS A FAILURE. The user may well have paid; the merchant of record's notification simply has not reached our server yet. Saying 'purchase failed' here tells a paying customer their money vanished. WORDING IS A HUMAN DECISION — a green CI lane proves the mechanism, not this sentence."
-  },
-  "paywallCheckAgain": "Check again",
-  "@paywallCheckAgain": {
-    "description": "Re-reads the entitlement from the server. Present because the automatic wait is BOUNDED — five attempts over about a minute — and a user whose purchase lands after that needs something to press other than the back button."
-  },
-  "paywallUnlocked": "You are all set. Thank you.",
-  "@paywallUnlocked": {
-    "description": "Shown only after the SERVER confirms the entitlement, never on the checkout's return."
-  },
-  "paywallUnavailable": "Purchases are not available here.",
-  "@paywallUnavailable": {
-    "description": "Shown when this build cannot sell here: the store it ships through refuses the purchase, the platform cannot take one, or there are no plans to offer. After a refusal, paywallTryAgain sits beneath it. The engineering reason goes to the log and is NEVER rendered: it is English, and it names mechanisms a buyer has no use for. Store builds show this sentence, so it names neither the web nor a browser."
-  },
-  "paywallRetryMessage": "The purchase could not be started. Please try again.",
-  "@paywallRetryMessage": {
-    "description": "Shown when a purchase could not be started but may start on a second try: the checkout did not open, the rail was not ready, or the account had not yet reached the store. paywallTryAgain sits beneath it. Store builds show it, so it names neither the web nor a browser."
-  },
-  "paywallTryAgain": "Try again",
-  "@paywallTryAgain": {
-    "description": "After a refusal, returns the buyer to the plans so a purchase can be started again."
-  },
-  "paywallTerm": "Billed per {term}",
-  "@paywallTerm": {
-    "description": "The billing period, from the rail config. NOT a price — the price is formatted from the rail's own amount and currency and is never typed into the app.",
-    "placeholders": {
-      "term": {
-        "type": "String"
-      }
-    }
-  },
-  "paywallTermWithTrial": "Billed per {term}, after a {count}-{unit, select, week{week} month{month} year{year} other{day}} free trial",
-  "@paywallTermWithTrial": {
-    "description": "As paywallTerm, with the free trial as the seller states it: a count and a unit (day, week, month or year). In a store build that is the store's trial for this buyer; on a hosted channel it is the rail config's, always in days.",
-    "placeholders": {
-      "term": {
-        "type": "String"
-      },
-      "count": {
-        "type": "int"
-      },
-      "unit": {
-        "type": "String"
-      }
-    }
   },
   "managePlanTitle": "Manage subscription",
   "@managePlanTitle": {
@@ -539,10 +73,6 @@
   "@paywallFeatureSync": {
     "description": "Paywall free feature, config code `sync`. Ruling D-11: sync is FREE, because sign-in is mandatory."
   },
-  "restorePurchases": "Restore purchases",
-  "@restorePurchases": {
-    "description": "On a store build, asks the store for past purchases and then re-reads the entitlement from the server; on the web, the server re-read alone, because there the entitlement is a server row keyed to the account. Apple guideline 3.1.1 makes an explicit Restore control mandatory in a build that sells through StoreKit, and its absence is a documented rejection cause."
-  },
   "restorePurchasesHint": "Signed in on a new device? This re-checks your subscription.",
   "@restorePurchasesHint": {
     "description": "Explains what the control does in terms of the user's situation rather than the mechanism."
@@ -563,17 +93,9 @@
   "@cancelPlan": {
     "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."
   },
-  "keepPlan": "Keep it",
-  "@keepPlan": {
-    "description": "Dismisses the cancellation confirmation."
-  },
   "cancelPlanConfirm": "This will end your subscription. You can subscribe again at any time.",
   "@cancelPlanConfirm": {
     "description": "The confirmation body. States what happens and that it is reversible; makes no retention offer, because a cancel flow that bargains is the pattern ROSCA exists to stop."
-  },
-  "cancelRecorded": "We have recorded your cancellation and passed it on. Your access continues until the end of the period you have paid for.",
-  "@cancelRecorded": {
-    "description": "🔴 THE HONEST SENTENCE FOR THE STATE THAT IS REAL TODAY. Our server recorded the request; the merchant of record has not yet confirmed it. Saying 'cancelled' here would be the app asserting an outcome it has no evidence for, while the billing continues."
   },
   "cancelExecuted": "Your subscription has been cancelled.",
   "@cancelExecuted": {
@@ -599,18 +121,6 @@
   "@preferences": {
     "description": "Section heading above the three notification/behaviour preference toggles."
   },
-  "privacy": "Privacy",
-  "@privacy": {
-    "description": "Section heading above the analytics-consent withdrawal row."
-  },
-  "privacyNotice": "Privacy notice",
-  "@privacyNotice": {
-    "description": "Train ST-D4. Opens Subly's OWN privacy notice, nikatru.com/subscriptiontracker/privacy (generated from apps/subscriptiontracker/privacy.yaml: what it collects, why, for how long). Top of the Privacy section, beside the consent control it informs; distinct from the portfolio privacy policy in the legal card. Same words as the chassis key of the same name."
-  },
-  "privacyNoticeSubtitle": "What this app collects, why, and for how long",
-  "@privacyNoticeSubtitle": {
-    "description": "Second line of the privacy-notice row. Describes the page; makes no claim about its contents."
-  },
   "prefRenewalAlerts": "Renewal alerts",
   "@prefRenewalAlerts": {
     "description": "Preference toggle: notify the user before a subscription renews."
@@ -634,42 +144,6 @@
   "prefWeeklyDigestDesc": "Sunday spending summary",
   "@prefWeeklyDigestDesc": {
     "description": "Sub-label for the weekly-digest toggle."
-  },
-  "usageStatistics": "Usage statistics",
-  "@usageStatistics": {
-    "description": "The DPDP §6(3) consent-withdrawal row. privacy.html promises this switch exists in Settings, so the label must stay findable."
-  },
-  "usageStatisticsOn": "On — helping us improve the app",
-  "@usageStatisticsOn": {
-    "description": "Sub-label shown when analytics consent is granted."
-  },
-  "usageStatisticsOff": "Off — nothing is being collected",
-  "@usageStatisticsOff": {
-    "description": "Sub-label shown when analytics consent is not granted. Says what is NOT happening, because that is the claim the user is relying on."
-  },
-  "promotionalOffers": "Offers and promotions",
-  "@promotionalOffers": {
-    "description": "Heading for the GDPR Art 21 objection row. 🔴 THE VALUE IS THE PAGE'S WORDS, NOT THE OTHER WAY ROUND. sites/nikatru/privacy.html §3 (owner-signed 2026-08-10) tells the reader \"Open the app's Settings and turn Offers and promotions off\", and r4 had shipped this string as \"Promotional offers\" — a person following the published instruction would look for a heading that was not there. The page is the promise and is [ADR 031] class B owner copy; an app label is class A, so the app moved. Changed in apps/subscriptiontracker and in the brick, en and ta together. Named for what it governs (offers), not for the mechanism (consent), because the user is looking for the thing they read about."
-  },
-  "promoObjectionExplain": "You can stop seeing offers for our apps at any time. Nothing else changes.",
-  "@promoObjectionExplain": {
-    "description": "Art 21(4) requires the right to object to be presented clearly and separately. The second sentence is load-bearing: it says objecting costs nothing, so the control is not read as a trade."
-  },
-  "promoStopOffers": "Stop showing offers",
-  "@promoStopOffers": {
-    "description": "The objection action. NEVER confirm-shaming ('No thanks, I don't want to save money') — India's CCPA Dark Patterns Guidelines 2023 forbid it and research/44 V5 lists it as forbidden in all configurations."
-  },
-  "promoResumeOffers": "Show offers again",
-  "@promoResumeOffers": {
-    "description": "The way back. Art 21 gives a right to object, not a duty to stay objected, so a one-way control would be a trap."
-  },
-  "promoOffersOff": "Offers are off",
-  "@promoOffersOff": {
-    "description": "The objected state, stated as an effect. A control whose state the user cannot see is a button that appears to do nothing."
-  },
-  "promoLabel": "Promotion",
-  "@promoLabel": {
-    "description": "THE ONE STRING THE STORES ACTUALLY MANDATE. It is the visible label on PromoSurface, and one word satisfies Apple 2.5.18 ('must clearly indicate that they are an ad'), Microsoft 10.10.4 ('clearly distinguishable from other content'), Play's native-ads trigger and India's Disguised Advertisement dark pattern at once. It exists here with no consumer yet BECAUSE the first promotional card is the caller: PromoSurface's English default would otherwise ship untranslated, and a Tamil user would meet the one word a reviewer checks for in English."
   },
   "connectedAccounts": "Connected accounts",
   "@connectedAccounts": {
@@ -710,10 +184,6 @@
   "helpAndSupport": "Help & support",
   "@helpAndSupport": {
     "description": "Opens the published contact page in a browser. Distinct from contactSupport, which is the mailto route."
-  },
-  "openSourceLicences": "Open-source licences",
-  "@openSourceLicences": {
-    "description": "One-tap route to Flutter's LicensePage. [pipeline 8]K-11. British spelling, matching the live literal."
   },
   "logOut": "Log out",
   "@logOut": {
@@ -835,43 +305,9 @@
   "@addingEllipsis": {
     "description": "Consumed by add_subscription_sheet.dart:251. The submit button while the add is in flight. Horizontal ellipsis U+2026, not three dots. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
   },
-  "cancelSubscriptionFailed": "Could not remove it just now — check your connection and try again.",
-  "@cancelSubscriptionFailed": {
-    "description": "Consumed by cancel_sheet.dart. The remove sheet's failure snackbar. Must never advance the sheet: step 1 says the entry is gone."
-  },
-  "cancelSubscriptionTitle": "Remove {name} from your tracker?",
-  "@cancelSubscriptionTitle": {
-    "description": "Consumed by cancel_sheet.dart. ST-U3 (B32): the sheet's only effect is deleting the row from THIS app's list, so it says remove, never cancel — a user who reads 'Cancel Netflix?' can believe the provider stopped charging them.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Netflix"
-      }
-    }
-  },
-  "cancelledHeading": "Removed from your tracker",
-  "@cancelledHeading": {
-    "description": "Consumed by cancel_sheet.dart. The step-2 heading of the remove sheet. States what happened here and nothing about the provider. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
-  },
   "done": "Done",
   "@done": {
     "description": "Consumed by cancel_sheet.dart:229. Pinned by test/width_cancel_sheet_test.dart:258, integration_test/app_test.dart:491 — the value must not change without moving those."
-  },
-  "removeStep1Body": "This removes it from your list in this app only. It does not cancel your plan with the provider — to stop the charges, cancel with them directly.",
-  "@removeStep1Body": {
-    "description": "Consumed by cancel_sheet.dart, step 0. ST-U3 (B32 interim): no savings figure and no 'access continues until' — the app deletes a row, it does not know the provider's terms. Replaces cancelStep1Body."
-  },
-  "removeStep2Body": "If you still pay for it, remember to cancel it with the provider too.",
-  "@removeStep2Body": {
-    "description": "Consumed by cancel_sheet.dart, step 1. Replaces cancelStep2Body ('You're now saving …'), which congratulated a user on savings from a row deletion."
-  },
-  "cancellingEllipsis": "Removing…",
-  "@cancellingEllipsis": {
-    "description": "Consumed by cancel_sheet.dart. The remove button while the delete is in flight. Pinned by test/sheet_failure_surface_test.dart — the value must not change without moving those."
-  },
-  "confirmCancel": "Yes, remove",
-  "@confirmCancel": {
-    "description": "Consumed by cancel_sheet.dart. The remove sheet's confirm button. Short because the button is half the sheet wide; the title carries 'from your tracker'. Deliberately NOT the detail screen's 'Remove' (cancelPlanButton): the sheet opens over that screen, and two identical labels make every finder — and a screen reader's list of buttons — ambiguous. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
   "byCategory": "By category",
   "@byCategory": {
@@ -927,10 +363,6 @@
   "@dataEmptyBody": {
     "description": "Second line of the genuinely-empty state. Never shown for a failed fetch."
   },
-  "calendarEmpty": "No renewals this month.",
-  "@calendarEmpty": {
-    "description": "Consumed by calendar_screen.dart:243."
-  },
   "calendarByDate": "By date",
   "@calendarByDate": {
     "description": "Consumed by calendar_screen.dart:233."
@@ -946,10 +378,6 @@
   "paymentHistory": "Payment history",
   "@paymentHistory": {
     "description": "Consumed by subscription_detail_screen.dart:237."
-  },
-  "cancelPlanButton": "Remove",
-  "@cancelPlanButton": {
-    "description": "Consumed by subscription_detail_screen.dart. Opens the remove sheet. ST-U3 (B32): it was 'Cancel plan', but nothing here cancels anything at the provider. Pinned by integration_test/app_test.dart — the value must not change without moving those."
   },
   "noPaymentsYet": "No payments yet.",
   "@noPaymentsYet": {
@@ -1020,25 +448,6 @@
   "navInsights": "Insights",
   "@navInsights": {
     "description": "Consumed by app_shell.dart:32. See navCalendar. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
-  },
-  "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
-  "@markedUnusedCount": {
-    "description": "Consumed by home_screen.dart:296. PLURAL.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "cancelToSave": "Cancel to save {amount}/mo",
-  "@cancelToSave": {
-    "description": "Consumed by home_screen.dart:298.",
-    "placeholders": {
-      "amount": {
-        "type": "String",
-        "example": "₹499"
-      }
-    }
   },
   "calendarLink": "Calendar",
   "@calendarLink": {
@@ -1221,42 +630,6 @@
   "@dismiss": {
     "description": "Consumed by auth/login_screen.dart:399. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
   },
-  "authEnterBoth": "Enter your email and password.",
-  "@authEnterBoth": {
-    "description": "The `CredentialsProblem.incomplete` arm. Raised by `core.signInProblem` and rendered by auth/login_screen.dart. A LINE NUMBER WAS HERE AND WENT STALE the first time the screen was edited — name the symbol, not the line."
-  },
-  "authInvalidEmail": "Enter a valid email address.",
-  "@authInvalidEmail": {
-    "description": "The `CredentialsProblem.emailMalformed` arm. Raised by `core.signInProblem` and rendered by auth/login_screen.dart."
-  },
-  "authIncorrect": "Incorrect email or password.",
-  "@authIncorrect": {
-    "description": "Consumed by auth/login_screen.dart:101. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
-  },
-  "authAlreadyRegistered": "That email is already registered — try signing in.",
-  "@authAlreadyRegistered": {
-    "description": "Consumed by auth/login_screen.dart:106."
-  },
-  "authConfirmEmail": "Please confirm your email, then sign in.",
-  "@authConfirmEmail": {
-    "description": "Consumed by auth/login_screen.dart:112."
-  },
-  "authRateLimited": "Too many attempts — please wait a moment and try again.",
-  "@authRateLimited": {
-    "description": "Consumed by auth/login_screen.dart:115."
-  },
-  "authNetworkError": "Network error — check your connection and try again.",
-  "@authNetworkError": {
-    "description": "Consumed by auth/login_screen.dart:121."
-  },
-  "authCaptchaFailed": "Verification expired. Please try again.",
-  "@authCaptchaFailed": {
-    "description": "Consumed by features/auth/auth_error_text.dart. Shown when GoTrue refuses a request with captcha_failed. It deliberately does NOT say 'incorrect password': on a gated endpoint the captcha is checked BEFORE the credentials, and Turnstile tokens are single-use with a ~5 minute life, so an EXPIRED token is the dominant cause and the user's password is usually fine."
-  },
-  "authUnknownError": "Something went wrong. Please try again.",
-  "@authUnknownError": {
-    "description": "Consumed by auth/login_screen.dart:123. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
-  },
   "welcomeBack": "Welcome back",
   "@welcomeBack": {
     "description": "Consumed by auth/login_screen.dart. The sign-in heading on a device where a session has been seen (signedInBeforeProvider). Since ST-T1b nothing pins the words: the e2e, the store capture and the unit suites find the heading by E2EKeys.loginHeading."
@@ -1347,198 +720,13 @@
   "@weeklyDigestTitle": {
     "description": "Consumed by services/notifications/notification_service.dart:182."
   },
-  "weeklyDigestBody": "{count, plural, =1{1 active, {total} a month.} other{{count} active, {total} a month.}}",
-  "@weeklyDigestBody": {
-    "description": "Consumed by services/notifications/notification_service.dart:183. PLURAL. {total} is the real monthly figure computed from the subscriptions actually held.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "total": {
-        "type": "String",
-        "example": "₹2,340"
-      }
-    }
-  },
-  "notificationActionOpen": "Open",
-  "@notificationActionOpen": {
-    "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
-  },
   "a11yAccountSettings": "Account and settings",
   "@a11yAccountSettings": {
     "description": "Consumed by home_screen.dart. The home header's avatar control. Its only visible content is the account INITIAL — a single letter, which a screen reader would otherwise read as the whole button — so the letter is excluded and this replaces it."
   },
-  "a11yPageIndicator": "Page {current} of {total}",
-  "@a11yPageIndicator": {
-    "description": "Consumed by onboarding/onboarding_screen.dart. The carousel's dot row carries the reader's position ENTIRELY in pixel width (24 px active, 7 px inactive) and announces nothing. This is that position as a sentence.",
-    "placeholders": {
-      "current": {
-        "type": "int",
-        "example": "2"
-      },
-      "total": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "promoCardLabel": "OFFER FROM THIS APP",
-  "@promoCardLabel": {
-    "description": "The visible promotional label on the in-app upgrade card. ONE label plus a distinct container is what satisfies Apple 2.5.18, Microsoft Store 10.10.4, Play's native-ads trigger and India's Disguised Advertisement pattern at once — a promotional surface may never be styled as app content. It is deliberately not the word 'Ad': this card promotes THIS app, which matches none of Play's three ads-declaration triggers (research/44 V2), so the honest word is 'offer'. Overridable per app via AppConfig.copy['promo.card.label']."
-  },
-  "promoCardTitle": "Get the full experience",
-  "@promoCardTitle": {
-    "description": "Headline of the same-app upgrade card. Overridable via AppConfig.copy['promo.card.title'] (and ['promo.card.title.b'] for the B variant), so a campaign changes wording with no release."
-  },
-  "promoCardBody": "Everything unlocked, on every device you sign in on.",
-  "@promoCardBody": {
-    "description": "Body of the same-app upgrade card. States a benefit and makes NO claim about urgency, scarcity or a discount: false urgency is unfair in all circumstances under UCPD Annex I(7) and is named by India's CCPA Dark Patterns Guidelines 2023. Overridable via AppConfig.copy['promo.card.body']."
-  },
-  "promoCardPrice": "{price}, billed per {term}",
-  "@promoCardPrice": {
-    "description": "🔴 AN ABSOLUTE PRICE AND NOTHING ELSE. {price} is DERIVED from the rail's own amount and currency (Offering.price, rendered by MoneyFormatter under the reader's locale) — never typed — and there is no 'was', no percentage and no 'save X'. Directive 98/6/EC Art 6a and CJEU C-330/23 require any announced reduction to be computed against the lowest price of the prior 30 days, and this repository holds no price history, so the comparison cannot be made and must not be shown.",
-    "placeholders": {
-      "price": {
-        "type": "String",
-        "example": "$4.99"
-      },
-      "term": {
-        "type": "String",
-        "example": "month"
-      }
-    }
-  },
-  "promoCardDismissA11y": "Dismiss this offer",
-  "@promoCardDismissA11y": {
-    "description": "What a screen reader announces for the card's icon-only close control. An icon-only control with no accessible name is a dismissal a user cannot perform, which turns a dismissible card into an undismissable one for exactly the people least able to work around it."
-  },
-  "legalAcceptTerms": "I am 18 or older, I agree to the Terms of Service, and I have read the Privacy Policy.",
-  "@legalAcceptTerms": {
-    "description": "Consumed by features/auth/legal_consent_fields.dart. The BLOCKING sign-up clickwrap (research/43), and since 2026-09-05 the 18+ ATTESTATION required by [ADR 068] as well - the tick is the affirmative act, so the age floor rides on the control that already blocks registration rather than on a line nobody has to touch. ONE COMPLETE SENTENCE, with the two document links rendered as separate controls beneath it rather than as spans inside it — a rich-text 'I agree to the [Terms] and [Privacy Policy]' fixes English word order and leaves a translator splicing links into the middle of a clause whose verb belongs at the end. The wording distinguishes AGREEING to the terms from having READ the notice, which is the legal difference between the two documents."
-  },
-  "legalMarketingOptIn": "Email me occasional product news and offers. You can unsubscribe at any time.",
-  "@legalMarketingOptIn": {
-    "description": "Consumed by features/auth/legal_consent_fields.dart. The EXPRESS, OPTIONAL, DEFAULT-OFF marketing opt-in (research/44 rider, ADR 040). Must never be pre-ticked and must never block sign-up. Names the unsubscribe route in the same sentence because an opt-in that does not say how to leave is not an informed one."
-  },
-  "legalMustAcceptTerms": "Please accept the Terms of Service to create an account.",
-  "@legalMustAcceptTerms": {
-    "description": "Consumed by features/auth/login_screen.dart. Shown when the sign-up arm is submitted from the KEYBOARD (onSubmitted) with the terms box untouched — the button is already disabled, so this covers the path that does not go through the button."
-  },
-  "verifyEmailTitle": "Confirm your email",
-  "@verifyEmailTitle": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. Title of the only screen an unverified session can reach."
-  },
-  "verifyEmailBody": "We sent a confirmation link to {email}. Open it to finish setting up your account.",
-  "@verifyEmailBody": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. States the address the link went to, so a mistyped one is visible here rather than discovered by an email that never arrives.",
-    "placeholders": {
-      "email": {
-        "type": "String",
-        "example": "alex@example.com"
-      }
-    }
-  },
-  "verifyEmailSpamHint": "No email yet? Check your spam or junk folder.",
-  "@verifyEmailSpamHint": {
-    "description": "Consumed by features/auth/verify_email_screen.dart."
-  },
-  "verifyEmailContinue": "I have confirmed my email",
-  "@verifyEmailContinue": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. Re-reads the user from the identity provider. The control exists because confirmation happens in a MAIL CLIENT on a link the app never sees, so nothing pushes the new state at a running app."
-  },
-  "verifyEmailResend": "Send the email again",
-  "@verifyEmailResend": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. Resends to the address on the CURRENT session — the screen cannot aim it anywhere else."
-  },
-  "verifyEmailResent": "Sent. Have another look in your inbox.",
-  "@verifyEmailResent": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. Shown inline rather than as a SnackBar: a successful confirmation REPLACES this page via the router gate, and a SnackBar on a page being torn down is a message nobody reads."
-  },
-  "verifyEmailStillUnverified": "Not confirmed yet. Open the link in the email, then try again.",
-  "@verifyEmailStillUnverified": {
-    "description": "Consumed by features/auth/verify_email_screen.dart. Still-unverified is a real answer, not an error — the router leaves the user here and this says why."
-  },
-  "checkInboxTitle": "Check your inbox",
-  "@checkInboxTitle": {
-    "description": "Consumed by features/auth/check_inbox_screen.dart. The destination for a sign-up that returned a user and NO SESSION (Supabase 'Confirm email' ON). Distinct from verifyEmailTitle, which serves a session whose address is unconfirmed — this person is signed OUT, so the router's sessionIsUnverified gate never fires for them."
-  },
-  "checkInboxBody": "We sent a confirmation link to {email}. Open it to activate your account.",
-  "@checkInboxBody": {
-    "description": "Consumed by features/auth/check_inbox_screen.dart. Names the address so a mistyped one is visible here — it is the only screen in this flow that can show it, because there is no session to read it back from.",
-    "placeholders": {
-      "email": {
-        "type": "String",
-        "example": "you@example.com"
-      }
-    }
-  },
-  "checkInboxThenSignIn": "Once you have opened the link, come back and sign in. Your account is not active until then.",
-  "@checkInboxThenSignIn": {
-    "description": "Consumed by features/auth/check_inbox_screen.dart. States the SECOND step: confirming happens in a mail client, often on another device, so the app cannot carry the user through it and must say what to do afterwards."
-  },
-  "checkInboxBackToSignIn": "Back to sign in",
   "checkInboxChangeEmail": "Wrong address? Sign up with a different email",
   "@checkInboxChangeEmail": {
     "description": "ST-A5 (audit A-6). On the check-your-inbox screen: the way to fix a mistyped address — it returns to the sign-in door, whose sign-up toggle takes a new address."
-  },
-  "@checkInboxBackToSignIn": {
-    "description": "Consumed by features/auth/check_inbox_screen.dart. The primary action, because signing in is the next thing this app can do for them. Without it the screen is a dead end, which is the defect it exists to remove."
-  },
-  "reacceptTermsTitle": "Our terms have changed",
-  "@reacceptTermsTitle": {
-    "description": "Consumed by features/auth/reaccept_terms_screen.dart. The MATERIAL-CHANGE re-acceptance interstitial (research/43), shown when kTermsVersion or kPrivacyPolicyVersion has moved past what the user accepted."
-  },
-  "reacceptTermsBody": "We have updated our Terms of Service and Privacy Policy. Please review them and accept to carry on.",
-  "@reacceptTermsBody": {
-    "description": "Consumed by features/auth/reaccept_terms_screen.dart."
-  },
-  "reacceptTermsAccept": "Accept and continue",
-  "@reacceptTermsAccept": {
-    "description": "Consumed by features/auth/reaccept_terms_screen.dart. Disabled until the (unticked) box is ticked — the tick is the affirmative act, and a button that works without it makes the box decorative."
-  },
-  "resetPasswordTitle": "Set a new password",
-  "@resetPasswordTitle": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. The screen a password-reset link lands on. `sendPasswordReset` shipped without this screen existing at all, so the mail was delivered and the link had nowhere to go."
-  },
-  "resetPasswordBody": "Choose a new password for your account. You will sign in with it from now on.",
-  "@resetPasswordBody": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. States the consequence rather than the mechanism — the user asked to get back in, not to perform an update."
-  },
-  "resetPasswordNew": "New password",
-  "@resetPasswordNew": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. Field label."
-  },
-  "resetPasswordConfirm": "New password again",
-  "@resetPasswordConfirm": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. The confirmation field. NOT 'Confirm password' — that reads as a button on a screen whose real button is elsewhere, and this is the one field whose purpose has to survive translation intact."
-  },
-  "resetPasswordSubmit": "Save new password",
-  "@resetPasswordSubmit": {
-    "description": "Consumed by features/auth/reset_password_screen.dart."
-  },
-  "resetPasswordEnterOne": "Enter a new password.",
-  "@resetPasswordEnterOne": {
-    "description": "Consumed by features/auth/reset_password_screen.dart for NewPasswordProblem.empty. Distinct from passwordTooShort because an untouched field needs 'fill this in', not 'try harder'."
-  },
-  "resetPasswordMismatch": "The two passwords do not match.",
-  "@resetPasswordMismatch": {
-    "description": "Consumed by features/auth/reset_password_screen.dart for NewPasswordProblem.mismatched. 🔴 THE ONE ERROR THE SERVER CANNOT CATCH: both boxes hold well-formed passwords, so gotrue would accept the wrong one and lock the user out of the account they just recovered."
-  },
-  "resetPasswordDone": "Your password is set. Sign in with it now.",
-  "@resetPasswordDone": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. The terminal state, shown INLINE and left standing until the user taps sign-in — the sign-out that ends the flow would otherwise tear this page down before the sentence could be read ([ADR 027])."
-  },
-  "resetPasswordLinkDead": "This reset link cannot be used here.",
-  "@resetPasswordLinkDead": {
-    "description": "Consumed by features/auth/reset_password_screen.dart when the screen is reached with no recovery session — an expired link, one already used, or one opened where the PKCE code verifier was never stored. Says nothing about whether an account exists."
-  },
-  "resetPasswordLinkExpiredHint": "Reset links stop working after a while, and each one can only be used once. Ask for a new one from the sign-in screen.",
-  "@resetPasswordLinkExpiredHint": {
-    "description": "Consumed by features/auth/reset_password_screen.dart when the arrival is AuthLinkProblem.expiredOrUsed — gotrue answered the link with error_code=otp_expired. Kept SEPARATE from resetPasswordSameDeviceHint because that one tells the user to open the link on the device they asked from, which is useless advice to somebody who did exactly that and simply waited too long. Says nothing about whether an account exists."
-  },
-  "resetPasswordSameDeviceHint": "Open the link on the same device and browser you asked for it from, or ask for a new one from the sign-in screen.",
-  "@resetPasswordSameDeviceHint": {
-    "description": "Consumed by features/auth/reset_password_screen.dart. 🔴 A PROPERTY OF PKCE, NOT A BUG: the code verifier is generated by and kept in the installation that REQUESTED the link, so a link opened elsewhere arrives with nothing to exchange. This sentence is the only thing that turns a dead end into an action."
   },
   "dueOverdue": "Overdue",
   "@dueOverdue": {
@@ -1883,10 +1071,6 @@
       }
     }
   },
-  "reminderChannelsSection": "Email & calendar",
-  "@reminderChannelsSection": {
-    "description": "ST-T4a client. Settings section heading for the reminders that reach every target."
-  },
   "emailRemindersTitle": "Email me before renewals",
   "@emailRemindersTitle": {
     "description": "ST-T4a client. Switch: PUT /v1/reminders/prefs email_opt_in."
@@ -1927,10 +1111,6 @@
   "formOfflineNotice": "You're offline. Your entries are kept — saving needs a connection.",
   "@formOfflineNotice": {
     "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The warn banner at the top of the add/edit sheet while the app knows the network is unreachable. Must not claim the save will happen later: nothing queues it."
-  },
-  "homeReviewUnused": "Review",
-  "@homeReviewUnused": {
-    "description": "The one answer on Home's unused-plans DecisionStrip: opens Insights, where the unused plans are listed with their savings. A verb, short: it sits beside the message on a wide strip."
   },
   "insightsPeriodMonth": "Month",
   "@insightsPeriodMonth": {
@@ -2290,36 +1470,6 @@
   "authPanelFootnote": "No bank login · No SMS reading · Android, iPhone, Mac, Windows, Linux and web",
   "@authPanelFootnote": {
     "description": "ST-D10 (canvas v2) · Foot line of the wide sign-in panel (DesktopSignIn)."
-  },
-  "authShow": "Show",
-  "@authShow": {
-    "description": "ST-D10 (canvas v2) · The painted word on a password field's reveal control (AuthField). Its accessible name is authShowPassword. Byte-identical to the chassis key of the same name."
-  },
-  "authHide": "Hide",
-  "@authHide": {
-    "description": "ST-D10 (canvas v2) · The painted word on the reveal control once the password is shown. Byte-identical to the chassis key of the same name."
-  },
-  "authShowPassword": "Show password",
-  "@authShowPassword": {
-    "description": "ST-D10 (canvas v2) · Accessible name of the reveal control while the password is hidden. Byte-identical to the chassis key of the same name."
-  },
-  "authHidePassword": "Hide password",
-  "@authHidePassword": {
-    "description": "ST-D10 (canvas v2) · Accessible name of the reveal control while the password is shown. Byte-identical to the chassis key of the same name."
-  },
-  "authPasswordRuleLength": "At least {count} characters",
-  "@authPasswordRuleLength": {
-    "description": "ST-D10 (canvas v2) · A rule in the sign-up password checklist. Shows the rule; the refusal sentence is passwordTooShort. Byte-identical to the chassis key of the same name.",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "8"
-      }
-    }
-  },
-  "authPasswordRuleBreach": "Not found in known data breaches",
-  "@authPasswordRuleBreach": {
-    "description": "ST-D10 (canvas v2) · A rule in the sign-up password checklist. The server checks it at sign-up; it reads as failed once the server has refused the password as breached. Byte-identical to the chassis key of the same name."
   },
   "checkInboxResendIn": "Resend link in {time}",
   "@checkInboxResendIn": {

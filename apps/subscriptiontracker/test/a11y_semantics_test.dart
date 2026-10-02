@@ -3123,7 +3123,9 @@ void main() {
           final AppLocalizations l10n = await _load('en');
           expect(
             announced(tester),
-            contains(l10n.a11yPageIndicator(1, 3)),
+            // The chassis key, read through `l10n` (chassis_keys.g.dart):
+            // the carousel is the chassis', and so is its label.
+            contains(l10n.onboardingPageIndicator(1, 3)),
             reason:
                 'the dots encode position in PIXEL WIDTH and nothing else — 24 '
                 'px active, 7 px not, no text anywhere — so without this label '

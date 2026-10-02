@@ -365,12 +365,14 @@ void main() {
       WidgetTester tester,
     ) async {
       final AppLocalizations en = await _l10n('en');
-      // Pins the ARB, not the screen: if `markedUnusedCount` were ever
+      // Pins the ARB, not the screen: if `activeCount` were ever
       // "simplified" back to an interpolation, the two cardinalities would
       // collapse and every assertion above would still pass.
-      expect(en.markedUnusedCount(1), isNot(en.markedUnusedCount(2)));
-      expect(en.markedUnusedCount(1), '1 marked unused');
-      expect(en.markedUnusedCount(2), '2 marked unused');
+      // ⏱ 2026-10-02 · i18n pipeline: `markedUnusedCount` reached no screen
+      // and left the ARB; `activeCount` is the plural Home renders.
+      expect(en.activeCount(1), isNot(en.activeCount(2)));
+      expect(en.activeCount(1), '1 active');
+      expect(en.activeCount(2), '2 active');
     });
 
     testWidgets('the ONE-unused screen asks about one row', (

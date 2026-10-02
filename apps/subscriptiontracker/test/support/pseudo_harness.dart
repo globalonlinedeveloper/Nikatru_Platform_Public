@@ -20,10 +20,13 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
 import 'width_harness.dart';
 
-/// This app's strings in a pseudo-locale.
+/// This app's strings in a pseudo-locale — AND the chassis', because the app
+/// reads every chassis key through its own `l10n` (lib/l10n/chassis_keys.g.dart
+/// answers from a catalogue that `is ChassisLocalizations`), so one object
+/// answering both keeps those strings pseudo too.
 class PseudoAppLocalizations extends PseudoArbMessages
-    implements AppLocalizations {
-  /// [arb] is the decoded `app_en.arb`.
+    implements AppLocalizations, ChassisLocalizations {
+  /// [arb] is the decoded `app_en.arb` merged over `chassis_en.arb`.
   PseudoAppLocalizations(super.arb, super.pseudo);
 }
 
@@ -80,7 +83,10 @@ Future<TextDirection> pumpPseudo(
         locale: pseudo.locale,
         localizationsDelegates: <LocalizationsDelegate<dynamic>>[
           PseudoLocalizationsDelegate<AppLocalizations>(
-            (PseudoLocale p) => PseudoAppLocalizations(kAppArb, p),
+            (PseudoLocale p) => PseudoAppLocalizations(<String, dynamic>{
+              ...kChassisArb,
+              ...kAppArb,
+            }, p),
           ),
           PseudoLocalizationsDelegate<ChassisLocalizations>(
             (PseudoLocale p) => PseudoChassisLocalizations(kChassisArb, p),

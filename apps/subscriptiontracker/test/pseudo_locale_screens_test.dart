@@ -41,6 +41,17 @@ final Map<String, Widget Function()> kMainScreens = <String, Widget Function()>{
 };
 
 void main() {
+  testWidgets('a chassis key read through the app\'s l10n is pseudo too', (
+    WidgetTester tester,
+  ) async {
+    await pumpPseudo(tester, kPseudoLocales.first, const SettingsScreen());
+    // `settingsTitle` is a CHASSIS key the app ARB no longer redeclares; the
+    // forwarding extension must answer it from the pseudo catalogue, not from
+    // English ChassisLocalizations.
+    expect(find.textContaining('Šéţţîñĝš', findRichText: true), findsWidgets);
+    expect(find.text('Settings'), findsNothing);
+  });
+
   test('the register declares both pseudo-locales this file sweeps', () {
     expect(
       kPseudoLocales.map((PseudoLocale p) => p.locale),
