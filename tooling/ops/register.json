@@ -2019,6 +2019,28 @@
       "unverifiedWhy": "The workflow has not run yet. Its first run is the first CI completion on main after this row reaches main."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-MERGES-DEPEND-ON-THE-LAPTOP. Every merge was made by a laptop script run by local daemons, so nothing landed while the laptop was off, rebooting, out of memory or switching accounts. This workflow is the merge actor on GitHub, with the run's own GITHUB_TOKEN and no new credential. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.land.yml",
+      "kind": "duty",
+      "what": "The merge orchestrator: every 10 minutes, on a CI or E2E live completion and on a `land-ok` label, tooling/ci/land-next.mjs reads every open pull request into main and makes at most ONE write — a squash merge of the first eligible PR in land-ok label order (then dispatching ci.yml, codeql.yml and ops-watch.yml on main, because a GITHUB_TOKEN merge starts no run), an update-branch of a head whose skew against main is not disjoint, an E2E live dispatch on a head that needs one, a dispatch of ci.yml for a main head nobody started, or a `land-freeze` issue when main is NEWLY red after a merge. An open `land-freeze` issue stops every merge. Dry until the repository variable LAND_DRY_RUN is `false`.",
+      "detector": "The run's own exit: land-next.mjs exits 1 when a write was refused (merge, update-branch, dispatch, issue) and 2 when it could not look; a red main after a merge is the `land-freeze` issue it opens, which names the run and the failing job. tooling/ci/test/land-next.test.mjs holds every decision, the dispatch parity of ci.yml and the shape of this workflow on every CI run.",
+      "response": "Read the run: it prints every open PR's decision and reason, and the one write it made or was refused. A `land-freeze` issue is closed by the lead once main is fixed or the red is judged not to block; a PR can always be merged by hand meanwhile, after which this workflow dispatches main's pipeline if nothing started it.",
+      "cadence": "trigger",
+      "trigger": "a 10-minute schedule, completion of CI or E2E live, a `land-ok` label on a pull request, or a manual dispatch (dry_run by default)",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/land.yml",
+        "record": "GitHub Actions run history for land.yml (each run prints every decision), the merges and dispatches it makes, and the `land-freeze` issues it opens",
+        "failingValue": "conclusion = failure — a write was refused or the lander could not look; or an open issue labelled `land-freeze`",
+        "readBy": "tooling/ci/test/land-next.test.mjs on every CI run (the decisions and the shell); the lead, through the `land-freeze` issue. NOT graded RED-SINCE on purpose: a transient GitHub read failure (exit 2) would otherwise turn every pull request's ci-gate red until the next slot, the ops-watch freeze class (TRAPS ci-26) one workflow over."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a schedule and a dispatch exist only once the file is on the default branch. Its first runs are DRY, beside the laptop landers, until the lead's cut-over sets LAND_DRY_RUN to false."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",
