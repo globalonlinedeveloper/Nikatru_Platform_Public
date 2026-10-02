@@ -376,12 +376,12 @@ UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
 /// Secure store (auth tokens, the entitlement cache).
 ///
 /// ⚠️ DELIBERATELY *NOT* NAMESPACED, unlike the key-value store above. The
-/// session this holds — and gotrue's own `sb-<project-ref>-auth-token`, which
-/// the Supabase SDK writes straight into the shared origin's `localStorage`
-/// where nothing here can reach it — is meant to be SHARED across every app on
-/// the origin. One login reaching everything is the portfolio's premise, so one
-/// session per origin is the accepted, intended consequence of path routing.
-/// Do not "fix" it by adding a prefix: that would be the regression.
+/// session this holds (`SecureSessionStorage`, key `nikatru.auth.session` — the
+/// only place the Supabase SDK persists it, since `initNikatruAuth` replaces the
+/// SDK's own storage) is meant to be SHARED across every app on the origin. One
+/// login reaching everything is the portfolio's premise, so one session per
+/// origin is the accepted, intended consequence of path routing. Do not "fix"
+/// it by adding a prefix: that would be the regression.
 final Provider<core.SecureStore> secureStoreProvider =
     Provider<core.SecureStore>((ref) => FlutterSecureStore());
 

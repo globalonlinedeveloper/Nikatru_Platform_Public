@@ -3,6 +3,7 @@
 library;
 
 export 'src/licences/vendored_asset_licences.dart';
+export 'src/logging/release_logging.dart';
 // The plumbing under the chassis's persisted controllers ([ADR 072] D1.4).
 export 'src/persisted_notifier.dart';
 export 'src/tokens/app_colors.dart';

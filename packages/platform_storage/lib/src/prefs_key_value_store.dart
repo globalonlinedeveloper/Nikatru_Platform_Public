@@ -17,8 +17,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// passthrough below is PRIVATE so no caller outside this library can obtain an
 /// un-namespaced prefs store at all.
 ///
-/// See `key_value_store.dart` in `packages/core` for why the gotrue session key
-/// `sb-<project-ref>-auth-token` is deliberately NOT namespaced.
+/// The auth session is not in this store at all: `SecureSessionStorage` keeps
+/// it under one secure-store key, deliberately NOT namespaced — see
+/// `key_value_store.dart` in `packages/core` for why.
 class PrefsKeyValueStore implements KeyValueStore {
   /// Wrap an existing [prefs] instance, namespaced to [appId].
   ///

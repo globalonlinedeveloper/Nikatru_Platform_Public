@@ -882,7 +882,7 @@
     5,
 
   "scan-dependencies.test.mjs":
-    25,
+    39,
 
   "scan-secrets.test.mjs":
     22,
@@ -909,7 +909,7 @@
     4,
 
   "signing-inputs-pinned.test.mjs":
-    14,
+    25,
 
   "signing-seam-census.test.mjs":
     9,
@@ -978,7 +978,7 @@
     30,
 
   "stamp-properties.test.mjs":
-    22,
+    24,
 
   "stamp-text-fidelity.test.mjs":
     41,
