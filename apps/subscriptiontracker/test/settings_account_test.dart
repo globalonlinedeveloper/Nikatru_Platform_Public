@@ -148,9 +148,24 @@ class _Auth extends core.AuthRepository {
     signOutCalls++;
     lastScope = scope;
     await gate?.future;
+    if (scope == core.SignOutScope.global && globalFailures > 0) {
+      globalFailures--;
+      // gotrue drops THIS device's session before the global revoke goes
+      // out; a revoke that fails after that leaves this device signed out.
+      if (failAfterLocalSignOut) {
+        signedIn = false;
+        _changes.add(null);
+      }
+      throw core.AuthFailure('Signing out of every device did not finish.');
+    }
     signedIn = false;
     _changes.add(null);
   }
+
+  /// Review 3 of #1129: how many global sign-outs fail, and whether this
+  /// device's session was already gone when they did.
+  int globalFailures = 0;
+  bool failAfterLocalSignOut = false;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -165,20 +180,28 @@ String _jwt(String sessionId) {
 }
 
 class _Sessions implements core.SessionsTransport {
+  _Sessions({this.unavailable = false});
+
+  /// What DioSessionsTransport returns for the host's `503
+  /// sessions_unavailable` — a failure, never an empty list.
+  final bool unavailable;
   final List<String> revoked = <String>[];
 
   @override
   Future<core.Result<List<core.DeviceSession>>> list({
     required String? accessToken,
-  }) async =>
-      core.Result<List<core.DeviceSession>>.ok(const <core.DeviceSession>[
-        core.DeviceSession(
-          id: 'here',
-          current: true,
-          device: 'Chrome on Linux',
-        ),
-        core.DeviceSession(id: 'phone', current: false, device: 'Android'),
-      ]);
+  }) async => unavailable
+      ? const core.Result<List<core.DeviceSession>>.err(
+          core.Failure('sessions read failed'),
+        )
+      : core.Result<List<core.DeviceSession>>.ok(const <core.DeviceSession>[
+          core.DeviceSession(
+            id: 'here',
+            current: true,
+            device: 'Chrome on Linux',
+          ),
+          core.DeviceSession(id: 'phone', current: false, device: 'Android'),
+        ]);
 
   @override
   Future<core.Result<void>> revoke({
@@ -442,6 +465,25 @@ void main() {
       expect(auth.currentUser, isNotNull);
       expect(find.byKey(DevicesSection.row('here')), findsOneWidget);
       expect(find.byKey(DevicesSection.row('phone')), findsNothing);
+    });
+
+    // Review 3 of #1129, finding 5: the live host (Box C) has no sessions RPCs
+    // yet (#1080), so GET /v1/sessions answers 503 sessions_unavailable. The
+    // section SAYS it could not load the list — never "no devices", never an
+    // error page.
+    testWidgets('a 503 from the host says unavailable, never an empty list', (
+      WidgetTester tester,
+    ) async {
+      final _Sessions sessions = _Sessions(unavailable: true);
+      await _pump(tester, _Auth(), sessions: sessions);
+      await tester.ensureVisible(find.byKey(DevicesSection.show));
+      await tester.tap(find.byKey(DevicesSection.show));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(DevicesSection.unavailable), findsOneWidget);
+      expect(find.text('Your devices could not be loaded.'), findsOneWidget);
+      expect(find.byKey(DevicesSection.row('here')), findsNothing);
+      expect(find.byKey(DevicesSection.signOutButton('phone')), findsNothing);
     });
 
     testWidgets('no section off a live backend', (WidgetTester tester) async {
@@ -716,7 +758,109 @@ void main() {
       await tester.pumpAndSettle();
       expect(auth.signOutCalls, 1, reason: 'the old sessions stayed signed in');
       expect(auth.lastScope, core.SignOutScope.global);
-      expect(c.read(emailChangeSignedOutProvider), isTrue);
+      expect(
+        c.read(emailChangeSignedOutProvider),
+        EmailChangeSignOutNotice.everywhere,
+      );
+    });
+
+    // ── review 3 of #1129, finding 1: the sign-out tells the truth ──────
+    testWidgets(
+      '🔴 a revoke that cannot get out is RETRIED, and a final failure says so',
+      (WidgetTester tester) async {
+        final _Auth auth = _Auth()..globalFailures = 99;
+        final ProviderContainer c = await _pump(
+          tester,
+          auth,
+          wrap: (Widget s) => EmailChangeSignOut(child: s),
+        );
+        auth.email = 'new@test.dev';
+        auth._changes.add(auth.currentUser);
+        await tester.pump();
+        // The backoff, run out.
+        for (final Duration d in EmailChangeSignOut.retryBackoff) {
+          await tester.pump(d);
+        }
+        await tester.pump(const Duration(seconds: 1));
+        expect(auth.signOutCalls, 3, reason: 'not retried with backoff');
+        expect(auth.currentUser, isNotNull);
+        expect(
+          c.read(emailChangeSignedOutProvider),
+          isNull,
+          reason: 'it would say every device was signed out — none was',
+        );
+        expect(find.byKey(EmailChangeSignOut.failedKey), findsOneWidget);
+        expect(find.textContaining('could not be signed out'), findsOneWidget);
+
+        // ...and offered again: this time it goes through.
+        auth.globalFailures = 0;
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(auth.signOutCalls, 4);
+        expect(
+          c.read(emailChangeSignedOutProvider),
+          EmailChangeSignOutNotice.everywhere,
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '🔴 a revoke that failed AFTER this device signed out says the others were NOT',
+      (WidgetTester tester) async {
+        final _Auth auth = _Auth()
+          ..globalFailures = 1
+          ..failAfterLocalSignOut = true;
+        final ProviderContainer c = await _pump(
+          tester,
+          auth,
+          wrap: (Widget s) => EmailChangeSignOut(child: s),
+        );
+        auth.email = 'new@test.dev';
+        auth._changes.add(auth.currentUser);
+        await tester.pumpAndSettle();
+        expect(
+          auth.signOutCalls,
+          1,
+          reason: 'no session is left here to retry with',
+        );
+        expect(
+          c.read(emailChangeSignedOutProvider),
+          EmailChangeSignOutNotice.othersStillSignedIn,
+          reason: 'the sign-in screen would claim every device was signed out',
+        );
+      },
+    );
+
+    // ── review 3, finding 6: the notice does not outlive the next sign-in ──
+    testWidgets('🔴 the next sign-in clears the e-mail-changed notice', (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth();
+      final ProviderContainer c = await _pump(tester, auth);
+      c.read(emailChangeSignedOutProvider.notifier).state =
+          EmailChangeSignOutNotice.everywhere;
+      // Signed in again: the shell — and with it this widget — mounts.
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: EmailChangeSignOut(child: SizedBox())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        c.read(emailChangeSignedOutProvider),
+        isNull,
+        reason: 'the next ordinary sign-out would say it again',
+      );
     });
   });
 }

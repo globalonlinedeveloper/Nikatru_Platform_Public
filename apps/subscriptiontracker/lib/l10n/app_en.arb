@@ -4022,5 +4022,13 @@
   "emailChangedSignedOut": "Your e-mail address changed, so every device was signed out — this one too. Sign in with your new address.",
   "@emailChangedSignedOut": {
     "description": "ADR 059 decision 2 · On the sign-in screen after a confirmed e-mail change ended every session (review of #1129, finding 2)."
+  },
+  "emailChangeSignOutFailed": "Your e-mail address changed, but your other devices could not be signed out. They may still be signed in.",
+  "@emailChangeSignOutFailed": {
+    "description": "ADR 059 decision 2 · SnackBar while still signed in, after the global sign-out failed three times (review 3 of #1129, finding 1). Never says the devices were signed out."
+  },
+  "emailChangedOthersStillSignedIn": "Your e-mail address changed and this device was signed out, but your other devices could not be — they may still be signed in. Sign in, then use “Log out of all devices” in Settings.",
+  "@emailChangedOthersStillSignedIn": {
+    "description": "ADR 059 decision 2 · Sign-in screen notice when this device was signed out but the global revoke of the others did not go through (review 3 of #1129, finding 1)."
   }
 }

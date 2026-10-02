@@ -883,10 +883,11 @@ class _AuthArrivalNotice extends ConsumerWidget {
   }
 }
 
-/// ADR 059 decision 2: the account's address changed, so every device —
-/// this one included — was signed out (`EmailChangeSignOut`). Said here, the
-/// screen that sign-out lands on, until dismissed; a live region, like the
-/// deletion outcome below, for the same reason.
+/// ADR 059 decision 2: the account's address changed and this device was
+/// signed out (`EmailChangeSignOut`) — with every other device, or, when the
+/// global revoke did not go through, WITHOUT them, and then it says so and
+/// how to finish. Said here, the screen that sign-out lands on, until
+/// dismissed or the next sign-in; a live region, like the deletion outcome.
 class _EmailChangedNotice extends ConsumerWidget {
   const _EmailChangedNotice();
 
@@ -894,9 +895,10 @@ class _EmailChangedNotice extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(emailChangeSignedOutProvider)) {
-      return const SizedBox.shrink();
-    }
+    final EmailChangeSignOutNotice? notice = ref.watch(
+      emailChangeSignedOutProvider,
+    );
+    if (notice == null) return const SizedBox.shrink();
     final AppLocalizations l10n = AppLocalizations.of(context);
     final ThemeData theme = Theme.of(context);
     return Semantics(
@@ -913,13 +915,18 @@ class _EmailChangedNotice extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(l10n.emailChangedSignedOut, key: text),
+            Text(
+              notice == EmailChangeSignOutNotice.everywhere
+                  ? l10n.emailChangedSignedOut
+                  : l10n.emailChangedOthersStillSignedIn,
+              key: text,
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () =>
                     ref.read(emailChangeSignedOutProvider.notifier).state =
-                        false,
+                        null,
                 child: Text(l10n.dismiss),
               ),
             ),
