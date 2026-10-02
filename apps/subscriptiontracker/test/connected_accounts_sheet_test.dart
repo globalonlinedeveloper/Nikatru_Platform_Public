@@ -192,6 +192,21 @@ void main() {
       throwsA(isA<ApiException>()),
     );
   });
+
+  // The status set assert-analytics-contract pins (`account-identity-change`):
+  // 403 is reauth_required, no answer is the network, and anything else is
+  // rethrown as the ApiException it is.
+  test('the identity-change status mapping', () {
+    expect(
+      signInMethodChangeFailureForStatus(403, offline: false)?.code,
+      core.AuthFailure.reauthRequired,
+    );
+    expect(
+      signInMethodChangeFailureForStatus(0, offline: true)?.code,
+      core.AuthFailure.network,
+    );
+    expect(signInMethodChangeFailureForStatus(500, offline: false), isNull);
+  });
 }
 
 /// A platform client whose every POST is answered with [status].
