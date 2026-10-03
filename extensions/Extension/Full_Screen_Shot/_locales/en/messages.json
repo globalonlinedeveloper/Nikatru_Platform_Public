@@ -2419,7 +2419,7 @@
   },
   "regionHintEnter": {
     "message": "$ENTER$ captures the whole visible area",
-    "description": "Second sentence in the same pill as the region and element instructions, for someone using a keyboard instead of a mouse: pressing the Enter key captures everything currently visible on screen, which can then be cropped in the editor. $ENTER$ is the name of the Enter key — use the name printed on keyboards in your locale.",
+    "description": "Second sentence in the same pill as the region and element instructions, for someone using a keyboard instead of a mouse: pressing the Enter key captures everything currently visible on screen, which can then be cropped in the editor. $ENTER$ is the name of the Enter key.",
     "placeholders": {
       "enter": {
         "content": "Enter"

@@ -63,7 +63,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { api, BASE, ORG, POLICY, requestBodyFrom } from './glitchtip-monitor-api.mjs';
+import { api, BASE, ORG, POLICY, requestBodyFrom } from './monitor-api/index.mjs';
 import { REGISTER_REL, replaceHostRow } from './monitor-register.mjs';
 
 const args = process.argv.slice(2);

@@ -381,9 +381,13 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
   // Only the allowlisted headers go on (GOTRUE_BOUND_HEADERS), each as it
   // arrived, so the user agent and Cloudflare's own stamps reach GoTrue without
   // this Worker reading any of them; then our credentials in, exactly as
-  // sessions.ts builds them.
+  // sessions.ts builds them. x-request-id is the one exception: GoTrue gets the
+  // id request-id.ts accepted or minted, never the caller's raw value, so its
+  // logs carry a validated id that matches our `rid=` (review of #1152, nit 4).
   const headers = new Headers();
-  for (const [name, value] of c.req.raw.headers) if (sentOn(name)) headers.set(name, value);
+  for (const [name, value] of c.req.raw.headers) if (sentOn(name) && name !== 'x-request-id') headers.set(name, value);
+  const rid = c.get('requestId');
+  if (rid) headers.set('x-request-id', rid);
   headers.set('Content-Type', 'application/json');
   headers.set('apikey', serviceRoleKey);
   headers.set('Authorization', `Bearer ${serviceRoleKey}`);

@@ -1,0 +1,142 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "objects",
+  "level": {
+    "claimed": 2,
+    "target": 2
+  },
+  "interface": {
+    "ts": {
+      "file": "services/_shared/src/ports/objects.ts",
+      "symbols": [
+        "ObjectStore"
+      ]
+    }
+  },
+  "adapters": [
+    {
+      "id": "cloudflare-r2",
+      "vendor": "cloudflare",
+      "status": "live",
+      "impl": {
+        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
+        "symbol": "cloudflareR2"
+      },
+      "capabilities": [
+        "put",
+        "get",
+        "head",
+        "delete",
+        "list"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "Leaves with us: every object — the nightly off-vendor export of D1 and KV, gzipped JSON lines that nothing but our own script parses, plus its manifests. Export: COPY WITH RCLONE — R2 speaks the S3 API, so `rclone copy` from the R2 remote to any S3-compatible remote moves the bucket today, and Box B already pulls every night's objects off-vendor. Cannot move: nothing.",
+      "readAt": null,
+      "c8Seam": {
+        "file": "packages/core/lib/src/config/config_loader.dart",
+        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). R2 is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
+        "until": "port-sql"
+      }
+    },
+    {
+      "id": "s3",
+      "vendor": null,
+      "status": "draft",
+      "impl": {},
+      "capabilities": [
+        "put",
+        "get",
+        "head",
+        "delete",
+        "list"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "THE EXIT, DECLARED AND NOT BUILT. An ObjectStore over the S3 API (SigV4-signed fetch) would serve any S3-compatible store — R2 itself through its S3 endpoint included. It is not built because there is no second store to point it at; until one is chosen the exit is `rclone copy` between the two remotes, which needs no code here. Vendor null: no store has been chosen.",
+      "readAt": null
+    },
+    {
+      "id": "memory",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/objects.ts",
+        "symbol": "memoryObjects"
+      },
+      "capabilities": [
+        "put",
+        "get",
+        "head",
+        "delete",
+        "list"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/ports-objects.test.ts"
+      },
+      "exportDuty": "A test double: a Map of byte arrays that lives for one test. Nothing to export.",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "environment",
+    "source": null,
+    "default": {
+      "live": "cloudflare-r2",
+      "sandbox": "cloudflare-r2",
+      "test": "memory"
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": {
+    "suite": {
+      "file": "services/_shared/test/conformance/objects.ts",
+      "runner": "runObjectsConformance"
+    },
+    "pending": [
+      {
+        "adapter": "cloudflare-r2",
+        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      }
+    ]
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#objects",
+    "dryRun": "node tooling/ops/port-switch.mjs objects --to <adapter> --dry-run"
+  },
+  "_why": [
+    "BACKUPS_R2 is declared as ObjectStore in services/platform's `interface Env`, and its one writer — the nightly export, services/platform/src/backup/index.ts (BackupEnv) — takes an ObjectStore. An R2Bucket satisfies it STRUCTURALLY; cloudflareR2 is the identity, kept as the compile-time proof. assert-ports limb 12 refuses an R2Bucket (or R2Objects) type anywhere else under services/*/src.",
+    "L2 claimed, L2 target: selected by environment, no caller imports an adapter, one live adapter. The `s3` adapter is DRAFT on purpose — the exit is already open through rclone, so building it before a second store exists would be code with no subject.",
+    "The conformance suite runs against the memory fake; against the bucket it is PENDING, because no Worker suite runs on workerd."
+  ]
+}

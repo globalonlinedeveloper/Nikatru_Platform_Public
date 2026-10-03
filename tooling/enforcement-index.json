@@ -43,6 +43,27 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/review-gate.yml#label"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/review-paths.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/autopilot-watch.yml#e2e-after-deploy",
+      ".github/workflows/autopilot-watch.yml#watch"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/watch.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 044",
       "ADR 076",
@@ -227,6 +248,7 @@
       "E-3"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
@@ -3127,6 +3149,7 @@
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#security-scan",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/ops-watch.yml#heartbeats",
       ".github/workflows/submit-appstore.yml#dry-run",
@@ -3797,6 +3820,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-apple-signing-expiry.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-box-config-drift.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4665,6 +4698,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",

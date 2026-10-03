@@ -86,6 +86,9 @@ let appBody: unknown = null;
  *  the real thing. */
 let jwksThrows = false;
 let rotatedJwk: Record<string, unknown>;
+/** The private half of `rotatedJwk` (`test-key-2`), so a test can mint a token
+ *  the ROTATED set verifies. */
+let rotatedKey: CryptoKey;
 /** When set, the JWKS endpoint ANSWERS, badly — the shape a Cloudflare Tunnel
  *  with no origin behind it actually returns, and the likeliest real outage.
  *  jose turns a non-200 into a BARE `JOSEError` (`ERR_JOSE_GENERIC`), which is a
@@ -110,6 +113,7 @@ beforeAll(async () => {
   // so a token minted under `test-key-1` finds no match in the fresh key set.
   const rotated = await generateKeyPair('ES256', { extractable: true });
   rotatedJwk = { ...(await exportJWK(rotated.publicKey)), alg: 'ES256', kid: 'test-key-2' };
+  rotatedKey = rotated.privateKey;
 
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -195,10 +199,16 @@ function revocationKv(records: Record<string, unknown> = {}, { throws = false } 
 
 async function token(
   claims: Record<string, unknown>,
-  { issuer = ISSUER, audience = 'authenticated', key = null as CryptoKey | null, alg = 'ES256' } = {},
+  {
+    issuer = ISSUER,
+    audience = 'authenticated',
+    key = null as CryptoKey | null,
+    alg = 'ES256',
+    kid = 'test-key-1',
+  } = {},
 ) {
   let t = new SignJWT(claims)
-    .setProtectedHeader({ alg, kid: alg === 'ES256' ? 'test-key-1' : undefined })
+    .setProtectedHeader({ alg, kid: alg === 'ES256' ? kid : undefined })
     .setIssuedAt()
     .setExpirationTime('1h')
     .setAudience(audience);
@@ -454,6 +464,150 @@ describe('platformAuth SURVIVES a JWKS outage without widening what it accepts',
     // is a SECOND verification attempt. Asserted by the 200 above arriving
     // without the outage switch set.
     void cacheRead;
+  });
+});
+
+/**
+ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13). THE 10-MINUTE COPY
+ * EXPIRES IN AN OUTAGE, AND THE LAST-KNOWN-GOOD COPY IS WHAT IS LEFT.
+ *
+ * The KV copy above expires on a timer only a successful fetch renews, so about
+ * ten minutes into a Box C outage every case in the block above stops applying
+ * and every authenticated request 401s, while every access token in flight is
+ * still valid. The first case below is the RED one: it is 401 without the LKG.
+ * The others hold what the LKG must not widen.
+ *
+ * A Map-backed KV, so what the warm path WRITES is asserted from the store, not
+ * from a spy's say-so. Each case has its own SUPABASE_URL: jose's remote set is
+ * memoised per URL for the life of the module (see `harness`).
+ */
+describe('platformAuth: the LAST-KNOWN-GOOD key set carries signed-in calls through a long JWKS outage', () => {
+  const LKG = 'supabase_jwks_lkg';
+  const SHORT = 'supabase_jwks';
+  function mapKv(seed: Record<string, unknown> = {}) {
+    const store = new Map<string, string>(Object.entries(seed).map(([k, v]) => [k, JSON.stringify(v)]));
+    const reads: string[] = [];
+    const puts: Array<{ key: string; ttl: number | undefined }> = [];
+    const kv = {
+      get: async (key: string) => {
+        reads.push(key);
+        return store.get(key) ?? null;
+      },
+      put: async (key: string, value: string, opts?: { expirationTtl?: number }) => {
+        puts.push({ key, ttl: opts?.expirationTtl });
+        store.set(key, value);
+      },
+    } as unknown as KVNamespace;
+    return { kv, store, reads, puts };
+  }
+  const tokenFor = (url: string, opts: { key?: CryptoKey; kid?: string } = {}) =>
+    token({ sub: 'user-a' }, { issuer: `${url}/auth/v1`, ...opts });
+
+  it('🔴 RED WITHOUT IT: JWKS down + the 10-minute copy EXPIRED + a valid token ⇒ 200 from the LKG', async () => {
+    const URL_ = 'https://lkg-outage.test';
+    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } }); // the 10-minute copy has expired: absent
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { userId: string }).userId).toBe('user-a');
+  });
+
+  it('…and through the shape a dead tunnel returns (a non-200), too', async () => {
+    const URL_ = 'https://lkg-tunnel.test';
+    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksStatus = 530;
+    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
+  });
+
+  it('🔴 a token whose kid is in NEITHER set still 401s', async () => {
+    const URL_ = 'https://lkg-unknown-kid.test';
+    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: foreignKey, kid: 'test-key-9' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 a foreign key under a KNOWN kid still 401s against the LKG — it is the same verify', async () => {
+    const URL_ = 'https://lkg-foreign.test';
+    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksThrows = true;
+    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: foreignKey })}`)).status).toBe(401);
+  });
+
+  it('🔴 a USABLE 10-minute copy wins: a kid it lacks is NOT retried against the older LKG', async () => {
+    // The 10-minute copy is the newer set (it holds the rotated key); the LKG is
+    // stale (a write that failed). A token under the rotated-out kid must 401.
+    const URL_ = 'https://lkg-short-wins.test';
+    const { kv } = mapKv({ [SHORT]: { keys: [rotatedJwk] }, [LKG]: { keys: [publicJwk] } });
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksThrows = true;
+    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(401);
+  });
+
+  it('an EMPTY or corrupt LKG is no LKG: fail closed', async () => {
+    for (const [i, lkg] of [{ keys: [] }, '{not json'].entries()) {
+      const URL_ = `https://lkg-unusable-${i}.test`;
+      const { kv, store } = mapKv();
+      store.set(LKG, typeof lkg === 'string' ? lkg : JSON.stringify(lkg));
+      const h = harness({ kv, supabaseUrl: URL_ });
+      jwksThrows = true;
+      expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status, String(i)).toBe(401);
+    }
+  });
+
+  it('a good fetch WRITES the LKG (no expiry) beside the 10-minute copy, and an unchanged set is not re-put', async () => {
+    const URL_ = 'https://lkg-write.test';
+    const { kv, store, puts } = mapKv();
+    const h = harness({ kv, supabaseUrl: URL_ });
+    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
+    await vi.waitFor(() => expect(store.get(LKG)).toBe(JSON.stringify({ keys: [publicJwk] })));
+    expect(puts.find((p) => p.key === LKG)?.ttl).toBeUndefined();
+    expect(puts.find((p) => p.key === SHORT)?.ttl).toBe(600);
+    // The 10-minute copy expires; the next good fetch publishes the SAME set.
+    store.delete(SHORT);
+    const before = puts.length;
+    expect((await harness({ kv, supabaseUrl: URL_ }).get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
+    await vi.waitFor(() => expect(store.has(SHORT)).toBe(true));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(puts.slice(before).map((p) => p.key)).toEqual([SHORT]);
+  });
+
+  it('🔴 ROTATION WINS: a rotated set replaces the LKG on the next good fetch, and the retired key then 401s in an outage', async () => {
+    const URL_ = 'https://lkg-rotation.test';
+    const { kv, store } = mapKv({ [LKG]: { keys: [publicJwk] } });
+    // A good fetch that publishes the ROTATED set (the 10-minute copy is absent).
+    const h = harness({ kv, supabaseUrl: URL_ });
+    jwksRotated = true;
+    await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: rotatedKey, kid: 'test-key-2' })}`);
+    await vi.waitFor(() => expect(store.get(LKG)).toBe(JSON.stringify({ keys: [rotatedJwk] })));
+    // Box C goes down and the 10-minute copy expires: only the LKG is left.
+    store.delete(SHORT);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11 * 60 * 1000 }); // past jose's own cache window
+    try {
+      const out = harness({ kv, supabaseUrl: URL_ });
+      jwksThrows = true;
+      expect((await out.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status, 'retired key').toBe(401);
+      const live = harness({ kv, supabaseUrl: URL_ });
+      jwksThrows = true;
+      expect(
+        (await live.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: rotatedKey, kid: 'test-key-2' })}`)).status,
+        'rotated key',
+      ).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the LKG is never read on the happy path (a reachable JWKS and a warm 10-minute copy)', async () => {
+    const URL_ = 'https://lkg-happy.test';
+    const { kv, reads } = mapKv({ [SHORT]: { keys: [publicJwk] }, [LKG]: { keys: [publicJwk] } });
+    expect((await harness({ kv, supabaseUrl: URL_ }).get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(reads).not.toContain(LKG);
   });
 });
 

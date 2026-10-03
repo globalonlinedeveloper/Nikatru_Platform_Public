@@ -616,6 +616,26 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'the workflow landed.',
   ],
   [
+    'autopilot-watch.yml',
+    "publishes the autopilot ledger (laptop state, the PR board, every run that ended red) to one issue and " +
+      'dispatches E2E live on main after an unproven web deploy. It builds no app, produces no release artifact and ' +
+      'names no app id: tooling/autopilot/watch.mjs reads runs, pull requests and issues and nothing app-shaped. R-1 ' +
+      'would carry it in the denominator as a permanent empty-set pass, the reason already written out for ' +
+      'ops-watch.yml. The owning stage is stage 14 ops, through the duty row `duty.workflow.autopilot-watch.yml` in ' +
+      'tooling/ops/register.json. What holds its behaviour correct is tooling/ci/test/autopilot-ledger.test.mjs. ' +
+      'Classified 2026-10-02 (O-WATCH-RUNS-ON-THE-LAPTOP), the round the workflow landed.',
+  ],
+  [
+    'review-gate.yml',
+    'labels the pull requests that need an independent review (`needs-review`) and drops a verdict label pinned ' +
+      "to an old head. It builds no app, produces no release artifact and names no app id: " +
+      "tooling/autopilot/review-paths.mjs reads a pull request's file list and nothing app-shaped. R-1 would carry " +
+      'it in the denominator as a permanent empty-set pass, the reason already written out for ops-watch.yml. The ' +
+      'owning stage is stage 14 ops, through the duty row `duty.workflow.review-gate.yml` in tooling/ops/register.json. ' +
+      'What holds its behaviour correct is tooling/ci/test/autopilot-review-gate.test.mjs. Classified 2026-10-02 ' +
+      '(O-REVIEWS-DEPEND-ON-THE-LAPTOP), the round the workflow landed.',
+  ],
+  [
     'apple-expiry-write.yml',
     'writes the Apple signing certificate and App Store profile expiry dates into tooling/ops/register.json ' +
       'from App Store Connect, dispatch-only and never on main, and pushes that one file to the dispatched ' +

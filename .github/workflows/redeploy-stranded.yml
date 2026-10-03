@@ -1,4 +1,7 @@
 name: Redeploy stranded lanes
+# why: this run is green whenever it did its job, so the title carries the verdict
+# of the run that triggered it (assert-workflow-hardening.mjs limb 16).
+run-name: "Redeploy stranded lanes ${{ github.event_name == 'workflow_run' && format('after {0} {1} on {2}', github.event.workflow_run.path, github.event.workflow_run.conclusion, github.event.workflow_run.head_sha) || 'dispatched by hand' }}"
 
 # The measurements, the 2026-09-22 instance and the red controls behind this file
 # are in docs/ci/redeploy-stranded.md. Only `# why:` lines live here, and
@@ -8,8 +11,10 @@ on:
   # zizmor: ignore[dangerous-triggers]
   # why: this is the ONE event that fires when ci-gate turns green on a commit
   # whose paths no deploy lane matches -- the commit that strands them. It is safe
-  # here: no expression reads the triggering event, the checkout is the default
-  # branch, and the only code run is tooling/ops/redeploy-stranded.mjs from it.
+  # here: the one expression that reads the triggering event is `run-name:`'s
+  # path, conclusion and head_sha (a file path, a GitHub enum and a 40-hex sha,
+  # display only, never a shell), the checkout is the default branch, and the
+  # only code run is tooling/ops/redeploy-stranded.mjs from it.
   workflow_run:
     # why: CI, plus every re-enterable lane (push-on-main or scheduled) that
     # gates on ci-gate. The lanes' own completions close the race where a lane

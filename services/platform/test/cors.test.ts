@@ -144,6 +144,12 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
         'GoTrue with the service-role bearer. A web page must not be able to use that door: web sign-in keeps ' +
         'Turnstile at GoTrue, and the route refuses any request carrying Origin.',
     },
+    {
+      prefix: '/v1/ops/',
+      why:
+        'PB-27 (routes/box-manifest.ts): a box cron reports its live config hashes here, authenticated with a ' +
+        'secret scoped to that one box. No browser has any business on it, so it grants no CORS at all.',
+    },
   ];
   const isNoCors = (path: string) => NO_CORS.some((n) => path.startsWith(n.prefix));
   const noCorsEndpoints = endpoints.filter((e) => isNoCors(e.path));
@@ -161,6 +167,7 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
     for (const op of ['token', 'signup', 'recover', 'resend']) {
       expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: `/v1/auth/native/:app/${op}` });
     }
+    expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: '/v1/ops/box-manifest' });
   });
 
   it('every no-CORS route is REFUSED at preflight, from a listed origin, with no allow-origin', async () => {

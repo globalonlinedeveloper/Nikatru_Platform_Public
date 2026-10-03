@@ -296,6 +296,8 @@ const msOf = (t) => (t === null || t === undefined ? NaN : Date.parse(t));
  *     so two concurrent reclaims of one holder resolve lowest-id-wins, like claims.
  *   · RELEASE by the holder's runner id empties the window; anyone else's is ignored.
  *   · PROGRESS is activity (and, after the holder, its launch record); YIELD is neither.
+ *   · A CLAIM (or an invalid RECLAIM) is activity only when its runner is the holder's:
+ *     another claimant's losing line says nothing about whether the holder is alive.
  * The lane PR's `updated_at` is only known as it is NOW, so it counts toward `fresh`
  * (read at `now`) but never toward a RECLAIM's validity, which every reader must judge
  * the same way forever.
@@ -325,8 +327,11 @@ export function claimState(comments, { owner, prUpdatedAt = null, now = Date.now
       continue;
     }
     // CLAIM, or a RECLAIM that was not valid: a plain claim inside the current window.
+    // Only the HOLDER's own claims are activity (review of #1163, minor 1): a losing
+    // CLAIM or an invalid RECLAIM — posted by a claimant whose local clock judged the
+    // holder stale early — must not keep a dead, never-launched holder fresh.
     if (!w.holder) w.holder = e;
-    w.activity.push(e.createdAt);
+    if (e.runner === w.holder.runner) w.activity.push(e.createdAt);
   }
   if (!w.holder) return { holder: null, fresh: false, launched: false, reclaimable: false };
   const times = w.activity.map(msOf).filter(Number.isFinite);
@@ -474,6 +479,7 @@ export function createClient({ repo, token = tokenFromEnv(), fetchImpl = globalT
     getRepo: () => call('GET', R),
     listIssues: (state = 'all', labels = 'cloud-lane') =>
       all(`${R}/issues?state=${state}${labels ? `&labels=${encodeURIComponent(labels)}` : ''}`).then((xs) => xs.filter((i) => !i.pull_request)),
+    getIssue: (n) => call('GET', `${R}/issues/${n}`),
     listComments: (n) => all(`${R}/issues/${n}/comments`),
     createIssue: (title, body, labels) => call('POST', `${R}/issues`, { title, body, labels }),
     updateIssue: (n, patch) => call('PATCH', `${R}/issues/${n}`, patch),
@@ -503,11 +509,17 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
  * not its runner id: two dispatchers sharing the id `laptop` cannot both win). A
  * loser YIELDs, and drops the `claimed:` label unless the winner shares its id.
  * → `{won, winner, posted}`. `prUpdatedAt` is the lane PR's (nextReady returns it);
- * `sleep` and `now` are injectable so the race is testable.
+ * `sleep` and `now` are injectable so the race is testable. Throws, having written
+ * nothing, when the issue is not launchable (assertLaunchable).
  */
 export async function claim(client, number, runner, { prUpdatedAt = null, now = () => new Date(), sleep = sleepMs, settleS = T.CLAIM_SETTLE_S } = {}) {
   const owner = client.owner;
-  const before = claimState(await client.listComments(number), { owner, prUpdatedAt, now: now() });
+  const comments = await client.listComments(number);
+  // A migration stub or an empty prompt is never launched: refused here, before any
+  // write, on a parse of the issue itself (review of #1163, nit 3) — nextReady only
+  // FILTERS stubs out, and a caller that skips it must still be stopped.
+  assertLaunchable(parseIssue(await client.getIssue(number), comments, { owner }));
+  const before = claimState(comments, { owner, prUpdatedAt, now: now() });
   if (!launchable(before)) return { won: false, winner: before.holder, posted: false };
   const at = now().toISOString();
   const previous = before.holder?.runner ?? null;

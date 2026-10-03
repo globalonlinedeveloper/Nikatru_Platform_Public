@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   JWKS_KV_KEY,
+  JWKS_LKG_KV_KEY,
   JWKS_TTL_SECONDS,
   bearer,
   isKeySetUnavailable,
+  lastKnownGoodNeedsWrite,
   usableJwksDocument,
   verifyOptions,
   CLOCK_SKEW_SECONDS,
@@ -150,6 +152,63 @@ describe('the KV constants', () => {
     // constant that breaks the reasoning fails here.
     expect(86400 / JWKS_TTL_SECONDS).toBeLessThan(1000 * 0.2);
     expect(JWKS_TTL_SECONDS).toBeGreaterThan(60);
+  });
+
+  it('keep the last-known-good copy under its OWN key, never the 10-minute one', () => {
+    // One key for both would let the 10-minute expiry delete the LKG, which is
+    // the outage O-JWKS-FALLBACK-LIVES-TEN-MINUTES exists to end.
+    expect(JWKS_LKG_KV_KEY).toBe('supabase_jwks_lkg');
+    expect(JWKS_LKG_KV_KEY).not.toBe(JWKS_KV_KEY);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES — when a fetched body replaces
+// the last-known-good copy. Rotation wins; a body that is not a key set never
+// replaces it; an unchanged set costs no write.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('lastKnownGoodNeedsWrite — a fetched set always replaces the LKG', () => {
+  const A = JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC' }] });
+  const B = JSON.stringify({ keys: [{ kid: 'k2', kty: 'EC' }] });
+
+  it('writes when nothing is stored yet', () => {
+    expect(lastKnownGoodNeedsWrite(A, null)).toBe(true);
+  });
+
+  it('writes a ROTATED set over the old one', () => {
+    expect(lastKnownGoodNeedsWrite(B, A)).toBe(true);
+  });
+
+  it('spends no write when the published set is unchanged', () => {
+    expect(lastKnownGoodNeedsWrite(A, A)).toBe(false);
+  });
+
+  // PR #1174 review nit 6: the KEY SET is compared, not the response text.
+  it('🔴 the same keys in another order, member order or whitespace spend no write', () => {
+    const two = { keys: [{ kid: 'k1', kty: 'EC', x: 'a', y: 'b' }, { kid: 'k2', kty: 'EC', x: 'c', y: 'd' }] };
+    const stored = JSON.stringify(two);
+    const reordered = JSON.stringify({ keys: [{ y: 'd', x: 'c', kty: 'EC', kid: 'k2' }, two.keys[0]] });
+    expect(lastKnownGoodNeedsWrite(reordered, stored)).toBe(false);
+    expect(lastKnownGoodNeedsWrite(JSON.stringify(two, null, 2), stored)).toBe(false);
+  });
+
+  it('a changed key member under the same kid IS a change, and a corrupt stored copy loses', () => {
+    const stored = JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC', x: 'a', y: 'b' }] });
+    expect(lastKnownGoodNeedsWrite(JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC', x: 'z', y: 'b' }] }), stored)).toBe(true);
+    expect(lastKnownGoodNeedsWrite(A, '<html>')).toBe(true);
+  });
+
+  it('an EMPTY published set still replaces the LKG — a stale set must not outlive its successor', () => {
+    expect(lastKnownGoodNeedsWrite('{"keys":[]}', A)).toBe(true);
+    // …and the read path then refuses it, so the outage path fails closed.
+    expect(usableJwksDocument('{"keys":[]}')).toBeNull();
+  });
+
+  it('a body that is not a key-set document never replaces it', () => {
+    for (const body of ['<html>502</html>', '', 'null', '[]', '{}', '{"keys":{}}', '{"keys":"x"}', '{"ke']) {
+      expect(lastKnownGoodNeedsWrite(body, A), body).toBe(false);
+    }
   });
 });
 

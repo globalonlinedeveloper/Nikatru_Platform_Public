@@ -26,6 +26,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { app } from '../src/index';
+import { REQUEST_ID_SHAPE } from '../src/lib/request-id';
 import {
   createNativeAuth,
   isOwnCallback,
@@ -288,6 +289,21 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
     expect(s!.body).not.toHaveProperty('gotrue_meta_security');
     expect(s!.signal).toBeInstanceOf(AbortSignal);
     expect(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+
+  it('🔴 forwards the request id this Worker accepted or minted, never the caller\'s raw x-request-id (review of #1152, nit 4)', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => void lines.push(a.join(' ')));
+    try {
+      await call(`${BASE}/token?grant_type=password`, password(), { headers: { 'X-Request-Id': 'a@b.c' } });
+    } finally {
+      spy.mockRestore();
+    }
+    const sent = gotrue.seen[0]!.headers.get('x-request-id');
+    expect(sent).not.toBe('a@b.c');
+    expect(sent).toMatch(REQUEST_ID_SHAPE);
+    // The id GoTrue logs is the one our own line carries as rid=.
+    expect(lines.some((l) => l.includes(`rid=${sent}`)), lines.join('\n')).toBe(true);
   });
 
   it('forwards the incoming headers as they arrived, minus the caller\'s credentials, cookie, referer, address claims and attestation', async () => {

@@ -41,6 +41,7 @@
 // server config is missing is 503; a challenge is burned by the first request
 // that presents it, pass or fail.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlResult, SqlStatement } from '../../../../_shared/src/ports/sql';
 import type { Env } from '../../types';
 import { b64url, fromB64, fromB64url, sha256 } from './bytes';
 import { appleRootDer, verifyAssertion, verifyAttestation } from './app-attest';
@@ -194,9 +195,9 @@ const iso = (ms: number) => new Date(ms).toISOString();
 export const NATIVE_ATTEST_BATCH_STATEMENTS = 2;
 
 /** The one batch shape: prune what has expired, then write — atomically. Answers the write's result. */
-async function pruneThenWrite<T = unknown>(db: D1Database, prune: D1PreparedStatement, write: D1PreparedStatement): Promise<D1Result<T> | undefined> {
-  const statements: [D1PreparedStatement, D1PreparedStatement] = [prune, write];
-  const results = (await db.batch(statements)) as D1Result<T>[];
+async function pruneThenWrite<T = unknown>(db: SqlDb, prune: SqlStatement, write: SqlStatement): Promise<SqlResult<T> | undefined> {
+  const statements: [SqlStatement, SqlStatement] = [prune, write];
+  const results = (await db.batch(statements)) as SqlResult<T>[];
   return results[NATIVE_ATTEST_BATCH_STATEMENTS - 1];
 }
 
@@ -291,7 +292,7 @@ export async function releaseNonce(env: Env, app: string, nonce: string): Promis
  * Adds one to today's counter for `scope` and answers the new total. Every call
  * first deletes the previous days' rows, so the table holds one UTC day.
  */
-export async function bumpDailyCounter(db: D1Database, scope: string, now: number): Promise<number> {
+export async function bumpDailyCounter(db: SqlDb, scope: string, now: number): Promise<number> {
   const day = iso(now).slice(0, 10);
   const bumped = await pruneThenWrite<{ calls: number }>(
     db,
@@ -396,7 +397,7 @@ export async function verifyOp(
 }
 
 /** A VERIFIED key's daily budget (NATIVE_ATTEST_OPS_PER_KEY_PER_DAY), counted only once its proof has passed. */
-async function withinKeyBudget(db: D1Database, app: string, keyId: string, now: number): Promise<Outcome> {
+async function withinKeyBudget(db: SqlDb, app: string, keyId: string, now: number): Promise<Outcome> {
   return (await bumpDailyCounter(db, `key:${app}:${keyId}`, now)) > NATIVE_ATTEST_OPS_PER_KEY_PER_DAY
     ? overBudget('daily calls for this key')
     : { ok: true };
