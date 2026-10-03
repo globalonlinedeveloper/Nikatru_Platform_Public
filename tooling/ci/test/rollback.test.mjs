@@ -100,6 +100,12 @@ function rollbackReplay(appendFileSync) {
     if (host === 'api.github.com' && method === 'GET' && /^\/repos\/x\/y\/deployments\/9001\/statuses$/.test(pathname)) {
       return json(JSON.parse(process.env.ROLLBACK_REPLAY_STATUSES ?? '[]'), 200);
     }
+    // PB-09: the project read that decides "already live". Its production deployment is
+    // ANOTHER build unless the test names one.
+    if (host === 'api.cloudflare.com' && method === 'GET' && /\/pages\/projects\/[^/]+$/.test(pathname)) {
+      const project = JSON.parse(process.env.ROLLBACK_REPLAY_CF_PROJECT ?? '{"canonical_deployment":{"id":"00000000-0000-4000-8000-000000000000"}}');
+      return json({ success: true, errors: [], result: project }, 200);
+    }
     // ⏱ 2026-10-02 · the rollback floor asks `compare/<floor>...<sha>`; `ahead` unless a case says otherwise.
     if (host === 'api.github.com' && method === 'GET' && /^\/repos\/x\/y\/compare\/[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(pathname)) {
       const status = process.env.ROLLBACK_REPLAY_COMPARE ?? 'ahead';
@@ -122,7 +128,7 @@ after(() => rmSync(TMP, { recursive: true, force: true }));
 
 /** Run the real script against the replay; every request it made, and every
  *  output it wrote, is read back rather than described. */
-function rollback(args, { deployment, statuses, cf, env = {} } = {}) {
+function rollback(args, { deployment, statuses, cf, cfProject, env = {} } = {}) {
   const n = seq++;
   const log = join(TMP, `requests-${n}.log`);
   const output = join(TMP, `github-output-${n}`);
@@ -142,6 +148,7 @@ function rollback(args, { deployment, statuses, cf, env = {} } = {}) {
       ROLLBACK_REPLAY_DEPLOYMENT: JSON.stringify(deployment ?? webDeployment(WEB_PAYLOAD)),
       ROLLBACK_REPLAY_STATUSES: JSON.stringify(statuses ?? WEB_STATUSES),
       ...(cf ? { ROLLBACK_REPLAY_CF: JSON.stringify(cf) } : {}),
+      ...(cfProject ? { ROLLBACK_REPLAY_CF_PROJECT: JSON.stringify(cfProject) } : {}),
       ...env,
     },
   });
@@ -309,8 +316,11 @@ describe('rollback.mjs — re-promotes only what the ledger recorded', () => {
     });
     assert.equal(code, 0, out);
     assert.deepEqual(
-      requests.filter((r) => r.host === 'api.cloudflare.com').map((r) => r.pathname),
-      [`/client/v4/accounts/${CF_ACCOUNT}/pages/projects/nikatru-apex/deployments/${PAGES_ID}/rollback`],
+      requests.filter((r) => r.host === 'api.cloudflare.com').map((r) => `${r.method} ${r.pathname}`),
+      [
+        `GET /client/v4/accounts/${CF_ACCOUNT}/pages/projects/nikatru-apex`,
+        `POST /client/v4/accounts/${CF_ACCOUNT}/pages/projects/nikatru-apex/deployments/${PAGES_ID}/rollback`,
+      ],
     );
   });
 
@@ -333,6 +343,12 @@ describe('rollback.mjs — re-promotes only what the ledger recorded', () => {
     const cf = requests.filter((r) => r.host === 'api.cloudflare.com');
     assert.deepEqual(cf, [
       {
+        method: 'GET',
+        host: 'api.cloudflare.com',
+        pathname: `/client/v4/accounts/${CF_ACCOUNT}/pages/projects/subscriptiontracker`,
+        authorization: `Bearer ${CF_TOKEN}`,
+      },
+      {
         method: 'POST',
         host: 'api.cloudflare.com',
         pathname: `/client/v4/accounts/${CF_ACCOUNT}/pages/projects/subscriptiontracker/deployments/${PAGES_ID}/rollback`,
@@ -350,6 +366,63 @@ describe('rollback.mjs — re-promotes only what the ledger recorded', () => {
       smoke_script: 'tooling/ops/post-deploy-smoke.mjs',
       smoke_args: JSON.stringify(['--url', 'https://nikatru.com/subscriptiontracker/version.json', '--field', 'build_number', '--expect', '101']),
     });
+  });
+
+  // ⏱ 2026-10-02 · PB-09 drill (row O-PAGES-REPROMOTE-OF-LIVE-BUILD-REFUSED). Runs 36970520119
+  // (nikatru-site) and 36970542712 (subscriptiontracker-web) re-promoted the newest record and
+  // went red on Cloudflare's 8000039. RED without the patch: the POST is made and refused.
+  const LIVE_OUTPUTS = (unit, kind, environmentUrl, smokeScript, smokeArgs) => ({
+    dry_run: 'false',
+    unit,
+    kind,
+    sha: SHA,
+    id_flag: '--pages-deployment-id',
+    id: PAGES_ID,
+    environment_url: environmentUrl,
+    smoke_script: smokeScript,
+    smoke_args: JSON.stringify(smokeArgs),
+  });
+  const WEB_LIVE_OUTPUTS = LIVE_OUTPUTS('subscriptiontracker-web', 'web', 'https://nikatru.com/subscriptiontracker', 'tooling/ops/post-deploy-smoke.mjs', [
+    '--url', 'https://nikatru.com/subscriptiontracker/version.json', '--field', 'build_number', '--expect', '101',
+  ]);
+  const REFUSED_AS_LIVE = { success: false, errors: [{ code: 8000039, message: 'You cannot rollback to the deployment that is currently in production.' }] };
+
+  test('🔴 PB-09 — a WEB target that is already the production deployment is "already live", makes NO POST, and writes the re-promotion\'s outputs', () => {
+    const { code, out, requests, outputs } = rollback(['--unit', 'subscriptiontracker-web', '--deployment', '9001'], {
+      cfProject: { canonical_deployment: { id: PAGES_ID.toUpperCase() } },
+      cf: REFUSED_AS_LIVE,
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, new RegExp(`^already live: ${PAGES_ID}$`, 'm'));
+    assert.deepEqual(requests.filter((r) => r.method === 'POST'), []);
+    assert.deepEqual(outputs, WEB_LIVE_OUTPUTS);
+  });
+
+  test('🔴 PB-09 — the SITE unit already live on nikatru-apex is the same no-op, with the site\'s own smoke', () => {
+    const { code, out, requests, outputs } = rollback(['--unit', 'nikatru-site', '--deployment', '9001'], {
+      deployment: webDeployment(SITE_PAYLOAD, 'nikatru-site'),
+      statuses: SITE_STATUSES,
+      cfProject: { canonical_deployment: { id: PAGES_ID } },
+      cf: REFUSED_AS_LIVE,
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, new RegExp(`^already live: ${PAGES_ID}$`, 'm'));
+    assert.deepEqual(
+      requests.filter((r) => r.host === 'api.cloudflare.com').map((r) => `${r.method} ${r.pathname}`),
+      [`GET /client/v4/accounts/${CF_ACCOUNT}/pages/projects/nikatru-apex`],
+    );
+    assert.deepEqual(outputs, LIVE_OUTPUTS('nikatru-site', 'site', 'https://nikatru.com', 'tooling/sites/smoke-site-deploy.mjs', ['--origin', 'https://nikatru.com', '--expect-sha', SHA]));
+  });
+
+  test('🔴 PB-09 — Cloudflare answering 8000039 (live between the read and the POST) is the same no-op success, never a failure', () => {
+    const { code, out, requests, outputs } = rollback(['--unit', 'subscriptiontracker-web', '--deployment', '9001'], {
+      cf: REFUSED_AS_LIVE,
+    });
+    assert.equal(code, 0, out);
+    assert.equal(requests.filter((r) => r.method === 'POST').length, 1, 'the read named another build, so the POST was made');
+    assert.match(out, new RegExp(`^already live: ${PAGES_ID}$`, 'm'));
+    assert.doesNotMatch(out, /Cloudflare refused/);
+    assert.deepEqual(outputs, WEB_LIVE_OUTPUTS);
   });
 
   test('Cloudflare refusing the rollback is exit 1, its errors named, and no output is written', () => {

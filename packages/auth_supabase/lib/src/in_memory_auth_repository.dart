@@ -298,6 +298,69 @@ class InMemoryAuthRepository implements core.AuthRepository {
     return current;
   }
 
+  /// ⏱ 2026-10-01 · SE-04. The one rule (`core.mayUnlinkMethod`) refuses
+  /// first, with GoTrue's own code; otherwise the provider leaves the account.
+  @override
+  Future<core.AuthUser> unlinkIdentity(core.SignInMethod method) async {
+    final core.AuthUser? u = _user;
+    if (!core.mayUnlinkMethod(u, method)) {
+      throw core.AuthFailure(
+        'You cannot remove your only way to sign in.',
+        code: core.AuthFailure.lastSignInMethod,
+      );
+    }
+    final core.AuthUser next = core.AuthUser(
+      id: u!.id,
+      email: u.email,
+      displayName: u.displayName,
+      emailVerified: u.emailVerified,
+      hasPasswordIdentity: u.hasPasswordIdentity,
+      lastSignInAt: u.lastSignInAt,
+      oauthProviders: <String>[
+        for (final String p in u.oauthProviders)
+          if (p != method.id) p,
+      ],
+    );
+    _user = next;
+    _changes.add(next);
+    _events.add(core.AuthEvent(core.AuthEventKind.signedIn, next));
+    return next;
+  }
+
+  /// ⏱ 2026-10-01 · EN-21. There is no mailbox here, so the code every address
+  /// is "sent" is this one; a test reads it rather than a mail.
+  static const String emailCode = '123456';
+
+  /// Every address [sendEmailCode] was asked to mail, newest last.
+  final List<String> emailCodesSent = <String>[];
+
+  @override
+  bool get emailCodeAvailable => true;
+
+  @override
+  Future<void> sendEmailCode(String email, {String? captchaToken}) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    lastCaptchaToken = captchaToken;
+    emailCodesSent.add(email);
+  }
+
+  /// A code for an address that was never sent one, or any other code than
+  /// [emailCode], REFUSES with GoTrue's code — the same answer for both, so
+  /// the refusal says nothing about which addresses exist.
+  @override
+  Future<core.AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    if (!emailCodesSent.contains(email) || code.trim() != emailCode) {
+      throw core.AuthFailure(
+        'Token has expired or is invalid',
+        code: core.AuthFailure.codeInvalid,
+      );
+    }
+    return _signIn(email);
+  }
+
   /// Sets the password, for real — within the limits of a class that never
   /// validates one.
   ///

@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    83,
+    87,
 
   "analytics-liveness.test.mjs":
     28,
@@ -128,14 +128,41 @@
   "auth-cutover-preflight.test.mjs":
     100,
 
+  "autopilot-contract.test.mjs":
+    5,
+
+  "autopilot-heartbeat.test.mjs":
+    22,
+
   "autopilot-issue-queue.test.mjs":
     18,
+
+  "autopilot-land-gate.test.mjs":
+    31,
+
+  "autopilot-ledger.test.mjs":
+    29,
+
+  "autopilot-outage.test.mjs":
+    14,
+
+  "autopilot-post-verdict.test.mjs":
+    11,
+
+  "autopilot-prompts.test.mjs":
+    2,
 
   "autopilot-queue-doc.test.mjs":
     2,
 
   "autopilot-queue-migrate.test.mjs":
     11,
+
+  "autopilot-review-gate.test.mjs":
+    18,
+
+  "autopilot-runner.test.mjs":
+    16,
 
   "availability.test.mjs":
     33,
@@ -705,7 +732,7 @@
     7,
 
   "package-boundaries.test.mjs":
-    33,
+    35,
 
   "package-earned.test.mjs":
     25,
@@ -756,10 +783,10 @@
     16,
 
   "port-switch.test.mjs":
-    37,
+    46,
 
   "ports.test.mjs":
-    73,
+    79,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -903,7 +930,7 @@
     4,
 
   "rollback.test.mjs":
-    44,
+    47,
 
   "rollup-lossless.test.mjs":
     52,
@@ -943,6 +970,9 @@
 
   "self-host-fallback-fonts.test.mjs":
     25,
+
+  "self-review.test.mjs":
+    37,
 
   "session-revocation.test.mjs":
     15,

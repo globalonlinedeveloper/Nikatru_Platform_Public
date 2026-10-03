@@ -11,13 +11,13 @@
                     build phase — a manifest on disk that is not in the bundle is the
                     silent half of this failure.
 
-  NSPrivacyAccessedAPITypes IS EMPTY BY MEASUREMENT, NOT BY DEFAULT. The app target's
-  own code — AppDelegate.swift, SceneDelegate.swift, GeneratedPluginRegistrant.m — calls
-  no Required Reason API. The categories this app depends on are declared by the binaries
-  that use them: FileTimestamp and SystemBootTime by Flutter.framework, UserDefaults by
-  flutter_local_notifications (CA92.1) and shared_preferences_foundation (1C8F.1).
-  Repeating any of those here would be this target swearing to code it does not contain.
-  The full audit, including the one unsettled question, is in the JSON above.
+  NSPrivacyAccessedAPITypes IS NON-EMPTY, AND EVERY ROW BELOW IS A SWORN STATEMENT ABOUT
+  THIS TARGET'S OWN CODE — AppDelegate.swift, SceneDelegate.swift, GeneratedPluginRegistrant.m.
+  A category declared here that this target does not call is a false declaration, not a
+  harmless precaution; the categories other binaries in the bundle use are declared by those
+  binaries, in their own manifests, and must not be repeated here. Declared:
+    NSPrivacyAccessedAPICategoryUserDefaults: 1C8F.1
+  The full audit, including why each row is here, is in the JSON above.
 -->
 <plist version="1.0">
 <dict>
@@ -174,6 +174,15 @@
 		</dict>
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

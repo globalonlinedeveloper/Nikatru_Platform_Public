@@ -126,7 +126,13 @@ const REQUIRED_COVERAGE = [
     // cleared a floor meant to need several and vacuity-b's "packages/ thinned
     // to core" case went green. 80 is above any single package (core 61) and
     // below the tree less its largest-but-one (174 - design_system 27 = 147).
-    floor: 80,
+    // ⏱ 2026-10-02 · club-st-singles: 80 -> 100. packages/core/lib grew 77 -> 81
+    // .dart (sha256_hex, email_code, sign_in_methods, legal_change_notes), so
+    // core alone cleared 80 again and vacuity-b's "thinned to core" case went
+    // red. 100 is above any single package (core 81) and below the tree less
+    // its largest-but-one (268 - design_system 57 = 211), measured with
+    // `find packages/*/lib -name '*.dart'`.
+    floor: 100,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },
   {
