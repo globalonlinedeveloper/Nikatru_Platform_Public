@@ -68,6 +68,9 @@ function withRoot(root, fn) {
 const KIT_AUTH = `${SHARED}/auth-middleware.ts`;
 const IMPORT_LINE = '  revocationRefusal,\n';
 const CALL = 'return revocationRefusal(payload, record) !== null;';
+const PLATFORM_AUTH = `${PLATFORM}/src/middleware/auth.ts`;
+const SUPABASE_CALL = '      if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {';
+const ERASURE_CALL = '\n    if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {';
 const STA_BINDING = '{ "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }';
 const PLATFORM_BINDING = '{ "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" },';
 
@@ -99,6 +102,36 @@ describe('assert-session-revocation over a copy of the real tree', () => {
     withRoot(mutated([[KIT_AUTH, CALL, `// ${CALL}\n  return false;`]]), ({ code, out }) => {
       assert.equal(code, 1, out);
       assert.match(out, /never calls revocationRefusal/);
+    });
+  });
+
+  // ⏱ 2026-10-03 (review of #1152, minor 1): a delegate was exempt from the
+  // call checks, so these three exited 0 at review.
+  test('🔴 platformAuth drops its sessionRevoked import AND call ⇒ exit 1 (it is still a delegate)', () => {
+    withRoot(
+      mutated([
+        [PLATFORM_AUTH, 'import { NO_SYMMETRIC_FALLBACK, sessionRevoked, verifySupabaseToken }', 'import { NO_SYMMETRIC_FALLBACK, verifySupabaseToken }'],
+        [PLATFORM_AUTH, 'if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {', 'if (logPrefix === "") {'],
+      ]),
+      ({ code, out }) => {
+        assert.equal(code, 1, out);
+        assert.match(out, /platform\/src\/middleware\/auth\.ts: calls a kit verifier .* never calls sessionRevoked\(/);
+      },
+    );
+  });
+
+  test('🔴 the kit boundary erasureAuth drops its sessionRevoked call ⇒ exit 1', () => {
+    withRoot(mutated([[KIT_AUTH, ERASURE_CALL, '\n    if (logPrefix === "") {']]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /the kit boundary erasureAuth never calls sessionRevoked\(/);
+    });
+  });
+
+  test('🔴 the kit boundary supabaseAuthWith keeps its call only in a COMMENT ⇒ exit 1', () => {
+    withRoot(mutated([[KIT_AUTH, SUPABASE_CALL, `// ${SUPABASE_CALL}\n      if (logPrefix === "") {`]]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /the kit boundary supabaseAuthWith never calls sessionRevoked\(/);
+      assert.doesNotMatch(out, /erasureAuth never calls/);
     });
   });
 

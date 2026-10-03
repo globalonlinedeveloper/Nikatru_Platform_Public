@@ -275,6 +275,112 @@
       "macos": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
       "windows": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
       "linux": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" }
+    },
+    "oauthReturn": {
+      "_why": [
+        "⏱ 2026-10-01 · AB-A1-02 (O-NATIVE-AUTH-CALLBACK-UNBUILT). READ BY tooling/ci/assert-e2e-legs.mjs limb OAUTH-RETURN,",
+        "and by tooling/ci/assert-deletion-control.mjs, which lets a provider re-auth ship on a native target only where this",
+        "block runs a leg. Since the native route went attested-only (#1070) every job of native-auth-proof.yml ran",
+        "--expect-refusal, which starts no app, so the `--callback` the jobs still passed was never reached: no native build",
+        "had been observed taking an auth callback. The OAuth return needs no sign-in and no attestation, so it is its own",
+        "leg: the drive's --oauth-return mode launches the app on the job's device, has the OS (or, per target below, the",
+        "app's own forwarder) deliver com.nikatru.<app>://auth-callback?nk_auth=oauth&code=<no flow minted it>, and passes",
+        "only when the app logs `nk_auth_callback flow=oauth outcome=failed` — supabase_flutter's handler ran the PKCE",
+        "exchange for an OAuth return and the seam classed it as one. The drive also refuses a target whose own manifest",
+        "does not register the scheme (schemeProblems), before any device is booted.",
+        "",
+        "How each target is reached: android `adb shell am start -d`; macos LaunchServices `open`; linux `xdg-open` through",
+        "a registered .desktop handler; ios the app opens its own callback (simctl openurl stops at a system \"Open in",
+        "app?\" sheet nothing on a runner answers — run 36637965865), which iOS routes through the same scene -> app_links",
+        "path; windows a SECOND copy of the runner's .exe started with the URL, which app_links' SendAppLinkToInstance",
+        "forwards to the running one (WM_COPYDATA) — the single-instance forwarder protocol activation itself ends in.",
+        "⚠️ windows therefore proves the forwarder and the exchange, NOT the OS scheme registration: that needs the MSIX",
+        "installed (msix_config.protocol_activation), and a runner build is not one. Stated, not glossed.",
+        "",
+        "`proofRuns` holds the native-auth-proof.yml run id that first passed each target's leg; null until one has."
+      ],
+      "workflow": ".github/workflows/native-auth-proof.yml",
+      "drive": "tooling/e2e/native_auth_proof.mjs",
+      "suite": "integration_test/native_oauth_return_test.dart",
+      "declaredOn": "2026-10-01",
+      "anchors": [
+        "debugPrint(kAwaitCallbackMarker)",
+        "kOAuthReturnCallbackLine",
+        "debugPrint(kOAuthReturnOkLine)"
+      ],
+      "targets": {
+        "android": { "status": "leg", "job": "android-oauth-return" },
+        "ios": { "status": "leg", "job": "ios-oauth-return" },
+        "macos": { "status": "leg", "job": "macos-oauth-return" },
+        "windows": { "status": "leg", "job": "windows-oauth-return" },
+        "linux": { "status": "leg", "job": "linux-oauth-return" }
+      },
+      "proofRuns": {
+        "android": 36969834609,
+        "ios": 36969834609,
+        "macos": 36969834609,
+        "windows": 36969834609,
+        "linux": 36969834609
+      }
+    }
+  },
+  "deletionReauth": {
+    "_why": [
+      "⏱ 2026-10-01 · AB-A5-01. READ BY tooling/ci/assert-deletion-control.mjs limb 4 (re-auth, graded per target). The",
+      "dialog re-proves an account before DELETE /v1/account by ONE rule, packages/core deletionReauthOf: an account with",
+      "an Apple or Google identity (linked or not) or with no password identity takes its provider sheet",
+      "(confirmIdentityWithProvider); only a password-only account types its password. Until today the rule was",
+      "`hasPasswordIdentity`, so a linked account that signed in with Apple or Google was sent to the captcha-gated password",
+      "grant and refused natively — while the server never asked for the password (services/_shared/src/auth.ts",
+      "deletionRecencyRefusal holds only a password-less token to a recent sign-in).",
+      "",
+      "One row per target the catalog ships an app to (tooling/channel-register.json, web included), one cell per account",
+      "kind. `via` is what deletionReauthOf answers for that kind and the guard holds it to the rule. `ships` on a native",
+      "target via the provider needs that target's nativeTargets.oauthReturn leg; `waits` names the proof it waits for.",
+      "⏱ 2026-10-02 · #1142 review item 1 (lead ruling): a cell says `ships` only with `proofRun`, the id of the recorded",
+      "run that proves that path on that target, and assert-deletion-control limb 4b fails a `ships` cell without one.",
+      "Native linked/passwordless: native-auth-proof.yml run 36969834609, whose <target>-oauth-return leg watched the",
+      "OS hand the app an OAuth return (windows proves the single-instance forwarder, not MSIX protocol registration;",
+      "ios, the app opening its own callback). web/password: e2e.yml run 36971514409, whose suite deleted its",
+      "account from inside the app. Every other cell WAITS for the run its `waitsFor` names."
+    ],
+    "decision": "packages/core/lib/src/auth/account_deletion.dart",
+    "accounts": {
+      "password": "an account whose only way in is an email and a password",
+      "linked": "an email account with an Apple or Google identity linked",
+      "passwordless": "an Apple or Google account with no password identity"
+    },
+    "targets": {
+      "web": {
+        "password": { "via": "password", "status": "ships", "proofRun": 36971514409 },
+        "linked": { "via": "provider", "status": "waits", "waitsFor": "a recorded run of the provider re-auth on web: e2e.yml provisions a password account, and no CI run drives an Apple or Google sheet headless. A linked web account can still type its password (offersPasswordReauth, #1142 item 2), the grant e2e.yml run 36971514409 walks" },
+        "passwordless": { "via": "provider", "status": "waits", "waitsFor": "a recorded run of the provider re-auth on web: e2e.yml provisions a password account, and no CI run drives an Apple or Google sheet headless. A linked web account can still type its password (offersPasswordReauth, #1142 item 2), the grant e2e.yml run 36971514409 walks" }
+      },
+      "android": {
+        "password": { "via": "password", "status": "waits", "waitsFor": "a post-#1070 device run of the attested password grant (Play internal track, TestFlight): emulators and simulators cannot attest, and the channel rows keep nativeAuth false until that run exists" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
+      },
+      "ios": {
+        "password": { "via": "password", "status": "waits", "waitsFor": "a post-#1070 device run of the attested password grant (Play internal track, TestFlight): emulators and simulators cannot attest, and the channel rows keep nativeAuth false until that run exists" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
+      },
+      "macos": {
+        "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
+      },
+      "windows": {
+        "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
+      },
+      "linux": {
+        "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
+      }
     }
   },
   "captchaGatedSurfaces": {

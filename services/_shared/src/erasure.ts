@@ -32,6 +32,7 @@
 // ⚠️ NO BARE IMPORT HERE. See the header of health.ts for the measurement behind
 // that rule; this module imports one sibling, by relative path, and nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from './ports/sql';
 import { allRows, withD1Retry } from './d1';
 
 /** Tables SQLite/D1 own, which must never be a delete target even if some future
@@ -83,7 +84,7 @@ const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;
  * round trips, whatever the table count. The SQLITE_AUTH rule is per STATEMENT,
  * and no batched statement names sqlite_master.
  */
-async function everyColumn(db: D1Database): Promise<Array<{ table: string; column: string }>> {
+async function everyColumn(db: SqlDb): Promise<Array<{ table: string; column: string }>> {
   const listed = await allRows<{ name: string }>(
     db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`),
   );
@@ -122,7 +123,7 @@ const REFERENCES = (column: string): boolean =>
   column.endsWith('_user_id') && column.length > '_user_id'.length && PLAIN_IDENTIFIER.test(column);
 
 export async function columnsMatching(
-  db: D1Database,
+  db: SqlDb,
   match: (column: string) => boolean,
 ): Promise<Array<{ table: string; column: string }>> {
   return (await everyColumn(db)).filter((hit) => match(hit.column));
@@ -132,7 +133,7 @@ export async function columnsMatching(
  * Every table in the bound database that carries a `user_id` column — the rows
  * that ARE this person's, and must be deleted.
  */
-export async function userOwnedTables(db: D1Database): Promise<string[]> {
+export async function userOwnedTables(db: SqlDb): Promise<string[]> {
   const hits = await columnsMatching(db, OWNS);
   return hits.map((h) => h.table);
 }
@@ -146,7 +147,7 @@ export async function userOwnedTables(db: D1Database): Promise<string[]> {
  * subtraction somebody could forget.
  */
 export async function userReferencingColumns(
-  db: D1Database,
+  db: SqlDb,
 ): Promise<Array<{ table: string; column: string }>> {
   return columnsMatching(db, REFERENCES);
 }
@@ -167,7 +168,7 @@ export type ErasureTargets = {
  * deletion path calls THIS; the two single-set functions stay for their other
  * readers.
  */
-export async function erasureTargets(db: D1Database): Promise<ErasureTargets> {
+export async function erasureTargets(db: SqlDb): Promise<ErasureTargets> {
   const all = await everyColumn(db);
   return {
     tables: all.filter((hit) => OWNS(hit.column)).map((hit) => hit.table),
@@ -201,7 +202,7 @@ export async function erasureTargets(db: D1Database): Promise<ErasureTargets> {
  * its own words; this is the line a future caller that forgets cannot get past.
  */
 export async function eraseTargets(
-  db: D1Database,
+  db: SqlDb,
   userId: string,
   targets: ErasureTargets,
 ): Promise<{ deleted: Record<string, number>; unlinked: Record<string, number> }> {

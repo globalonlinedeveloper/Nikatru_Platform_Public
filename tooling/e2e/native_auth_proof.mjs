@@ -55,12 +55,18 @@
 // token in an answer, is the gate open and fails the leg. No device build runs:
 // what is proved is the gate, and a flaky emulator boot must not redden it.
 //
+// ⏱ 2026-10-01 (AB-A1-02): --oauth-return, the per-target OAuth-return leg —
+// see the block above runOAuthReturnLeg. It needs no user and no attestation.
+//
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
 //        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
 //        [--stagger-anchor <epoch ms> --stagger-apps <JSON app list>]
 //        [--sign-in form|token] [--notification-tap] [--pending-flows skip|run]
+//   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t> --oauth-return
+//        [--device <id>] [--log <path>]
 //
-// Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
+// Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL
+// (--oauth-return: SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL only).
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
 // run could not start (bad arguments, a missing define).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +76,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROOF_LOG_END } from './consent_anon_id.mjs';
+import { checkRegistrations, TARGET_DIRS } from '../ci/assert-auth-callbacks.mjs';
 
 const NAME = 'native_auth_proof';
 
@@ -546,11 +553,98 @@ export function readProof(out, { callback, offlineRead = false, coreFlow = false
   return problems;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · AB-A1-02 (O-NATIVE-AUTH-CALLBACK-UNBUILT) · --oauth-return.
+// Since the native route went attested-only (#1070), every job of
+// native-auth-proof.yml runs --expect-refusal, which starts no app — so the
+// `--callback` those jobs still pass is never reached, and no native build had
+// been watched taking an auth callback at all. The OAuth return needs no
+// sign-in and no attestation: the app only has to be running when the OS hands
+// it com.nikatru.<app>://auth-callback?nk_auth=oauth&code=…. So this mode runs
+// OAUTH_RETURN_TEST on the job's device, delivers that URL when the suite
+// prints AWAIT_MARKER, and passes only on OAUTH_RETURN_LINE — supabase_flutter
+// ran the PKCE exchange for it (and failed: no flow minted that code) and the
+// seam classed the return as OAuth, read off the deep link (EN-04). A return
+// read as a reset, or one that never arrived, fails the leg.
+//
+// Before anything starts, the target's own registration of the scheme is read
+// with assert-auth-callbacks.mjs's checkRegistrations (schemeProblems): a
+// target whose manifest does not route the scheme to the app fails here, by
+// name, instead of as a silent 20-minute wait.
+//
+// Windows: a SECOND copy of the runner's .exe started with the URL, which
+// app_links' SendAppLinkToInstance forwards to the running one (WM_COPYDATA) —
+// the single-instance forwarder protocol activation itself ends in. It proves
+// the forwarder and the exchange, not the OS scheme registration (that needs
+// the MSIX installed, msix_config.protocol_activation).
+// ─────────────────────────────────────────────────────────────────────────────
+export const OAUTH_RETURN_TEST = 'integration_test/native_oauth_return_test.dart';
+export const OAUTH_RETURN_LINE = 'nk_auth_callback flow=oauth outcome=failed';
+export const OAUTH_RETURN_OK_LINE = 'NK_PROOF step=oauth-return outcome=ok';
+/** The defines the OAuth-return suite needs: a real GoTrue for the exchange to
+ *  run against, and no user — it signs nobody in. */
+export const OAUTH_RETURN_DEFINES = Object.freeze(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL']);
+/** The unusable OAuth return the OS delivers: a real marker, a code no flow minted. */
+export const oauthReturnUrl = (app) => `com.nikatru.${app}://auth-callback?nk_auth=oauth&code=st-n1-invalid`;
+
+/** This drive's target → assert-auth-callbacks.mjs's TargetPlatform name. */
+const PLATFORM_OF = Object.freeze({ android: 'android', ios: 'iOS', macos: 'macOS', windows: 'windows', linux: 'linux' });
+
+/**
+ * Why [target] cannot route [app]'s callback scheme to the app, from the
+ * target's own manifest — [] when it can. Read by the guard's own reader, so
+ * the leg and the static check cannot disagree about what "registered" means.
+ */
+export function schemeProblems(root, app, target) {
+  const platform = PLATFORM_OF[target];
+  if (!platform) return [`unknown target "${target}" — one of ${TARGETS.join(', ')}`];
+  const r = checkRegistrations(root);
+  const dir = TARGET_DIRS.get(platform);
+  // 🔴 THE TARGET'S PROBLEMS FIRST, NOT ITS ENTRY IN `targets`: a check there
+  // can record a finding and still count the target (checkAndroid ends in
+  // `return true` after a missing filter), so "listed" is not "registered".
+  const mine = r.problems.filter((p) => p.includes(`apps/${app}/${dir}/`) || p.includes(`TargetPlatform.${platform}`) || (target === 'windows' && p.includes(`apps/${app}/pubspec.yaml`)));
+  if (mine.length) return mine;
+  if (r.targets.some((t) => t.app === app && t.target === platform)) return [];
+  return [`apps/${app}: ${target} registers no ${r.schemes.get(app) ?? `com.nikatru.${app}`} callback the guard could prove`];
+}
+
+/** The Debug runner .exe `flutter test -d windows` builds, named by the app's own CMakeLists. */
+export function windowsExeOf(root, app) {
+  const cmake = readFileSync(join(root, 'apps', app, 'windows', 'CMakeLists.txt'), 'utf8');
+  const m = /set\(BINARY_NAME\s+"([^"]+)"\)/.exec(cmake);
+  if (!m) throw new Error(`apps/${app}/windows/CMakeLists.txt sets no BINARY_NAME`);
+  return join(root, 'apps', app, 'build', 'windows', 'x64', 'runner', 'Debug', `${m[1]}.exe`);
+}
+
+/** How [url] reaches the running OAuth-return suite on [target]: the OS, as
+ *  for --callback, and on Windows the single-instance forwarder. */
+export function oauthReturnOpens(target, url, o) {
+  return target === 'windows' ? [[windowsExeOf(o.root, o.app), url]] : openCommands(target, url, o);
+}
+
+/** What an OAuth-return run's output proves, and what it does not. */
+export function readOAuthReturn(out) {
+  const text = String(out ?? '');
+  const problems = [];
+  if (!text.includes(AWAIT_MARKER)) problems.push(`missing "${AWAIT_MARKER}" — the app never reached the point where the return is delivered`);
+  if (!text.includes(OAUTH_RETURN_LINE)) {
+    problems.push(
+      text.includes(FAILED_CALLBACK_LINE)
+        ? `the return was classed as a RESET ("${FAILED_CALLBACK_LINE}"), not "${OAUTH_RETURN_LINE}" — the nk_auth=oauth marker did not survive the hop`
+        : `missing "${OAUTH_RETURN_LINE}" — the OS-delivered OAuth return never reached the session exchange`,
+    );
+  }
+  if (!text.includes(OAUTH_RETURN_OK_LINE)) problems.push(`missing "${OAUTH_RETURN_OK_LINE}" — the suite did not see the exchange report back`);
+  return problems;
+}
+
 function args(argv) {
-  const o = { callback: false, expectRefusal: false, signIn: 'form', notificationTap: false, pendingFlows: 'skip' };
+  const o = { callback: false, expectRefusal: false, oauthReturn: false, signIn: 'form', notificationTap: false, pendingFlows: 'skip' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
+    else if (a === '--oauth-return') o.oauthReturn = true;
     else if (a === '--expect-refusal') o.expectRefusal = true;
     else if (a === '--notification-tap') o.notificationTap = true;
     else if (a === '--sign-in') o.signIn = argv[++i];
@@ -610,7 +704,9 @@ function runOpen(commands, root) {
       continue;
     }
     console.log(`${NAME}: $ ${[cmd, ...rest].join(' ')}`);
-    const r = spawnSync(cmd, rest, { cwd: root, stdio: 'inherit' });
+    // why: bounded — a Windows forwarder that found no running copy starts a
+    // second app and never returns; every other opener answers in seconds.
+    const r = spawnSync(cmd, rest, { cwd: root, stdio: 'inherit', timeout: 60_000 });
     if (r.status !== 0) console.log(`${NAME}: ${cmd} exited ${r.status ?? r.error?.message}`);
   }
 }
@@ -644,6 +740,99 @@ async function tapNotification(o, root) {
   console.error(`${NAME}: no notification titled "${TAP_PROOF_TITLE}" reached the shade within five minutes`);
 }
 
+/**
+ * Runs `flutter test` with [flutterArgs] from the app directory, teeing every
+ * byte to the console and to [log], killing it after SILENCE_LIMIT_MS of
+ * silence, and calling [onAwait] once, 3 s after the suite prints
+ * AWAIT_MARKER (and the target's diagnostics 25 s after that). Ends [log] with
+ * the PROOF_LOG_END line. Returns `{ out, code, hung }`.
+ */
+async function runFlutter(root, o, flutterArgs, log, onAwait) {
+  let out = '';
+  let opened = false;
+  let tapping = false;
+  let hung = false;
+  const child = spawn('flutter', flutterArgs, {
+    cwd: join(root, 'apps', o.app),
+    shell: process.platform === 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let silence;
+  const arm = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => {
+      hung = true;
+      console.error(`${NAME}: flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min — killing it`);
+      // On Windows `shell: true` makes the child cmd.exe, and flutter its child.
+      if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      else child.kill();
+    }, SILENCE_LIMIT_MS);
+  };
+  arm();
+  const onData = (stream) => (chunk) => {
+    const s = chunk.toString();
+    arm();
+    out += s;
+    if (log) appendFileSync(log, s);
+    stream.write(s);
+    if (onAwait && !opened && out.includes(AWAIT_MARKER)) {
+      opened = true;
+      setTimeout(onAwait, 3_000);
+      const diag = afterOpenDiagnostics(o.target, { device: o.device, dir: process.env.RUNNER_TEMP || root });
+      if (diag) setTimeout(() => runDiagnostics(diag, root), 28_000);
+    }
+    if (o.notificationTap && !tapping && out.includes(AWAIT_NOTIFICATION_MARKER)) {
+      tapping = true;
+      tapNotification(o, root).catch((e) => console.error(`${NAME}: the notification tap failed: ${e?.message ?? e}`));
+    }
+  };
+  child.stdout.on('data', onData(process.stdout));
+  child.stderr.on('data', onData(process.stderr));
+  const code = await new Promise((r) => child.on('close', r));
+  clearTimeout(silence);
+  if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
+  return { out, code, hung };
+}
+
+/** The --oauth-return leg. Exit code: 0 the return landed as OAuth, 1 it did
+ *  not (or the target does not register the scheme), 2 it could not start. */
+export async function runOAuthReturnLeg(o, { root = process.cwd(), log = null, env = process.env, flutter = runFlutter } = {}) {
+  const scheme = schemeProblems(root, o.app, o.target);
+  if (scheme.length) {
+    for (const p of scheme) console.error(`FAIL ${p}`);
+    console.error(`${NAME}: ${o.app}/${o.target} OAuth return FAILED — ${o.target} does not route the app's callback scheme to it`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=scheme\n`);
+    return 1;
+  }
+  const missing = OAUTH_RETURN_DEFINES.filter((k) => !env[k]);
+  if (missing.length) {
+    console.error(`${NAME}: missing env ${missing.join(', ')} — without a real GoTrue the return has no exchange to run`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=env\n`);
+    return 2;
+  }
+  const url = oauthReturnUrl(o.app);
+  const flutterArgs = [
+    'test', OAUTH_RETURN_TEST,
+    '--reporter', 'expanded',
+    ...(o.device ? ['-d', o.device] : []),
+    ...OAUTH_RETURN_DEFINES.map((k) => `--dart-define=${k}=${env[k]}`),
+    ...(appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${url}`] : []),
+  ];
+  const { out, code, hung } = await flutter(root, o, flutterArgs, log, () =>
+    runOpen(oauthReturnOpens(o.target, url, { app: o.app, root, device: o.device }), root),
+  );
+  const problems = readOAuthReturn(out);
+  if (code !== 0) problems.unshift(`flutter test exited ${code}`);
+  if (hung) problems.unshift(`flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min and was killed — the app never reported back`);
+  if (problems.length) {
+    for (const p of problems) console.error(`FAIL ${p}`);
+    console.error(`${NAME}: ${o.app}/${o.target} OAuth return FAILED`);
+    return 1;
+  }
+  console.log(`${NAME}: ${o.app}/${o.target} OK — the OS-delivered OAuth return reached the session exchange and was classed as OAuth`);
+  return 0;
+}
+
 async function main() {
   const root = process.cwd();
   let o;
@@ -651,6 +840,7 @@ async function main() {
     o = args(process.argv.slice(2));
     if (!o.app || !TARGETS.includes(o.target)) throw new Error(`--app <id> and --target <${TARGETS.join('|')}> are required`);
     if (o.target === 'windows' && o.callback) throw new Error('windows cannot take --callback here: protocol activation needs the MSIX installed');
+    if (o.oauthReturn && (o.callback || o.expectRefusal)) throw new Error('--oauth-return is its own leg: it takes neither --callback nor --expect-refusal');
     if (!SIGN_IN_MODES.includes(o.signIn)) throw new Error(`--sign-in must be one of ${SIGN_IN_MODES.join(', ')}`);
     if (!PENDING_FLOWS_MODES.includes(o.pendingFlows)) throw new Error(`--pending-flows must be one of ${PENDING_FLOWS_MODES.join(', ')}`);
     if (o.notificationTap && !NOTIFICATION_TAP_TARGETS.includes(o.target)) {
@@ -674,6 +864,13 @@ async function main() {
   // so it finishes the log on every exit and the purge reads "no row".
   if (o.expectRefusal) {
     const code = await runRefusalLeg(o, { log });
+    if (code !== 0) process.exit(code);
+    return;
+  }
+  // ⏱ 2026-10-01 (AB-A1-02): the OAuth return signs nobody in, so it asks for
+  // no user and answers no consent prompt — it writes no row to purge.
+  if (o.oauthReturn) {
+    const code = await runOAuthReturnLeg(o, { root, log });
     if (code !== 0) process.exit(code);
     return;
   }
@@ -717,49 +914,13 @@ async function main() {
     ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
   const url = callbackUrl(o.app);
-  let out = '';
-  let opened = false;
-  let tapping = false;
-  let hung = false;
-  const child = spawn('flutter', flutterArgs, {
-    cwd: join(root, 'apps', o.app),
-    shell: process.platform === 'win32',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let silence;
-  const arm = () => {
-    clearTimeout(silence);
-    silence = setTimeout(() => {
-      hung = true;
-      console.error(`${NAME}: flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min — killing it`);
-      // On Windows `shell: true` makes the child cmd.exe, and flutter its child.
-      if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
-      else child.kill();
-    }, SILENCE_LIMIT_MS);
-  };
-  arm();
-  const onData = (stream) => (chunk) => {
-    const s = chunk.toString();
-    arm();
-    out += s;
-    if (log) appendFileSync(log, s);
-    stream.write(s);
-    if (o.callback && !opened && out.includes(AWAIT_MARKER)) {
-      opened = true;
-      setTimeout(() => runOpen(openCommands(o.target, url, { app: o.app, root, device: o.device }), root), 3_000);
-      const diag = afterOpenDiagnostics(o.target, { device: o.device, dir: process.env.RUNNER_TEMP || root });
-      if (diag) setTimeout(() => runDiagnostics(diag, root), 28_000);
-    }
-    if (o.notificationTap && !tapping && out.includes(AWAIT_NOTIFICATION_MARKER)) {
-      tapping = true;
-      tapNotification(o, root).catch((e) => console.error(`${NAME}: the notification tap failed: ${e?.message ?? e}`));
-    }
-  };
-  child.stdout.on('data', onData(process.stdout));
-  child.stderr.on('data', onData(process.stderr));
-  const code = await new Promise((r) => child.on('close', r));
-  clearTimeout(silence);
-  if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
+  const { out, code, hung } = await runFlutter(
+    root,
+    o,
+    flutterArgs,
+    log,
+    o.callback ? () => runOpen(openCommands(o.target, url, { app: o.app, root, device: o.device }), root) : null,
+  );
 
   const problems = readProof(out, { callback: o.callback, offlineRead, coreFlow, signIn: o.signIn, notificationTap: o.notificationTap, flowsParked });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);

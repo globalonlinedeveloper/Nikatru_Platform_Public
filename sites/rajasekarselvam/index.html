@@ -52,8 +52,9 @@
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   .skip-link{position:absolute;left:12px;top:-52px;z-index:200;background:var(--primary);color:var(--on-accent);padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;transition:top .2s}
   .skip-link:focus{top:12px}
-  /* --ring, not --primary: light --primary (#2563EB) is 2.97:1 on the dark nav and hero, under
-     the 3:1 non-text floor (WCAG 1.4.11). #3B82F6 holds 3:1 on white and on #0B1220 alike. */
+  /* --ring, not --primary: light --primary (#2563EB) is 2.99:1 on the translucent nav composited
+     over the light page (rgba(11,18,32,.92) on #F6F8FC, about #1E2432), under the 3:1 non-text
+     floor (WCAG 1.4.11); on #0B1220 it is about 3.6:1. #3B82F6 holds 3:1 on white and on #0B1220 alike. */
   :focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
 
   nav{position:sticky;top:0;z-index:50;background:rgba(11,18,32,.92);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}
@@ -154,7 +155,7 @@
   .work-list{list-style:none}
   .work-item h3 a{color:var(--strong);text-decoration:none}
   .work-item h3 a:hover{text-decoration:underline}
-  .work-state{margin-top:10px;font-size:13px;font-weight:600;color:var(--strong)}
+  .work-item .work-state{margin-top:10px;font-size:13px;font-weight:600;color:var(--strong)}
 </style>
 </head>
 <body id="top">

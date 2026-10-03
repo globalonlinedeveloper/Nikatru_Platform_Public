@@ -590,3 +590,332 @@ jobs:
           # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
           E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
+
+  # ── THE OAUTH RETURN, PER TARGET (⏱ 2026-10-01 · AB-A1-02) ─────────────────
+  # One job per native target, each running tooling/e2e/native_auth_proof.mjs
+  # --oauth-return on its own device: the app is launched, handed an OAuth
+  # return through the target's own route, and must class it as OAuth
+  # (nk_auth_callback flow=oauth). Read by assert-e2e-legs.mjs limb OAUTH-RETURN.
+  android-oauth-return:
+    name: Android — emulator, adb hands the app an OAuth return
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    # why: the gate's checked output, never inputs.app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      # ⏱ 2026-10-01 · AB-A1-02 — the OAuth-return leg runs the app on this
+      # device, so the gated toolchain, build and device steps run here. A JOB
+      # OF ITS OWN, never a step of the refusal leg above: the third review of
+      # #1070 keeps every refusal leg device-free, so a flaky boot reddens this
+      # leg and never the gate.
+      PROOF_NEEDS_DEVICE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+      - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+
+      # why: the raw SDK tools, as symbolication-proof.yml boots its emulator:
+      # the repository allows only `selected` actions and
+      # reactivecircus/android-emulator-runner is not one. ANDROID_AVD_HOME is
+      # pinned for both tools (run 35451496350). The emulator outlives this
+      # step; the proof step below drives it.
+      - name: Boot an emulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        env:
+          API_LEVEL: '34'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # why: `trigger` only QUEUES the event. Run 36533541325 checked before
+          # the rule applied, failed, then `ls` in the same branch printed
+          # crw-rw-rw-. Settle the queue, then allow the mode a few seconds.
+          sudo udevadm settle --timeout=30
+          for _ in 1 2 3 4 5; do
+            [ -r /dev/kvm ] && [ -w /dev/kvm ] && break
+            sleep 2
+          done
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            ls -l /dev/kvm || true
+            echo "::error title=Emulator::/dev/kvm is not usable by this user; an x86_64 emulator without KVM does not boot inside the ceiling"
+            exit 1
+          fi
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_AVD_HOME="${RUNNER_TEMP}/avd"
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME}" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_AVD_HOME"
+          emu_log="${RUNNER_TEMP}/emulator.log"
+          image="system-images;android-${API_LEVEL};google_apis;x86_64"
+          why() {
+            echo "::error title=Emulator::$1"
+            echo "── emulator.log (tail) ──"
+            tail -n 60 "$emu_log" 2>/dev/null || echo "(no emulator.log)"
+            exit 1
+          }
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          timeout 600 "$sdk/cmdline-tools/latest/bin/sdkmanager" --install emulator platform-tools "$image" > /dev/null
+          echo no | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n proof -k "$image" --device pixel_6
+          "$sdk/emulator/emulator" -list-avds | grep -qx proof || why "avdmanager created no AVD the emulator can see in ANDROID_AVD_HOME=${ANDROID_AVD_HOME}"
+          nohup "$sdk/emulator/emulator" -avd proof -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -accel on > "$emu_log" 2>&1 &
+          emu_pid=$!
+          echo "$sdk/platform-tools" >> "$GITHUB_PATH"
+          adb="$sdk/platform-tools/adb"
+          "$adb" start-server
+          deadline=$((SECONDS + 420))
+          phase="waiting for the device to appear"
+          while :; do
+            kill -0 "$emu_pid" 2>/dev/null || why "the emulator process exited during: ${phase}"
+            state="$("$adb" get-state 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "device" ]; then
+              phase="waiting for sys.boot_completed"
+              [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = "1" ] && break
+            fi
+            [ "$SECONDS" -gt "$deadline" ] && why "not booted within 420 s (last phase: ${phase}; adb state: ${state:-none})"
+            sleep 5
+          done
+          echo "emulator booted at ${SECONDS}s"
+      # ⏱ 2026-10-01 · AB-A1-02 — the leg tooling/e2e-leg-register.json
+      # nativeTargets.oauthReturn names: no user, no attestation, no consent
+      # answered (so no row to purge); the app is handed
+      # com.nikatru.<app>://auth-callback?nk_auth=oauth and must class it as OAuth.
+      - name: The OAuth return — adb hands the app its callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log native-oauth-return.log --oauth-return
+
+  ios-oauth-return:
+    name: iOS — simulator, the app opens its own OAuth return
+    needs: gate
+    # why: a Darwin leg runs only when the gate saw a Darwin input change (or could not tell).
+    if: needs.gate.outputs.darwin == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      # ⏱ 2026-10-01 · AB-A1-02 — the OAuth-return leg runs the app on this
+      # device, so the gated toolchain, build and device steps run here. A JOB
+      # OF ITS OWN, never a step of the refusal leg above: the third review of
+      # #1070 keeps every refusal leg device-free, so a flaky boot reddens this
+      # leg and never the gate.
+      PROOF_NEEDS_DEVICE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+      - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      # why: the first available iPhone of the image's iOS runtime; the proof
+      # needs a phone, not a particular size class.
+      - name: Boot an iPhone simulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        id: sim
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl list devices available -j | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")).devices; for (const [rt, list] of Object.entries(d)) { if (!/iOS/.test(rt)) continue; const p = list.find((x) => /^iPhone/.test(x.name)); if (p) { console.log(p.udid); process.exit(0); } } process.exit(1);')"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=${udid}" >> "$GITHUB_OUTPUT"
+      # ⏱ 2026-10-01 · AB-A1-02 — the leg tooling/e2e-leg-register.json
+      # nativeTargets.oauthReturn names: no user, no attestation, no consent
+      # answered (so no row to purge); the app is handed
+      # com.nikatru.<app>://auth-callback?nk_auth=oauth and must class it as OAuth.
+      - name: The OAuth return — the app opens its own OAuth return
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SIM: ${{ steps.sim.outputs.udid }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log native-oauth-return.log --oauth-return
+      # why: what the simulator showed 25 s after the return was opened.
+      - name: The simulator's screen after the OAuth return was opened
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-oauth-return-ios-after-open
+          path: ${{ runner.temp }}/nk-proof-ios-after-open.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  macos-oauth-return:
+    name: macOS — the .app, LaunchServices hands it an OAuth return
+    needs: gate
+    # why: a Darwin leg runs only when the gate saw a Darwin input change (or could not tell).
+    if: needs.gate.outputs.darwin == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      # ⏱ 2026-10-01 · AB-A1-02 — the OAuth-return leg runs the app on this
+      # device, so the gated toolchain, build and device steps run here. A JOB
+      # OF ITS OWN, never a step of the refusal leg above: the third review of
+      # #1070 keeps every refusal leg device-free, so a flaky boot reddens this
+      # leg and never the gate.
+      PROOF_NEEDS_DEVICE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+      - name: Enable the macOS desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: flutter config --enable-macos-desktop
+      - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      # ⏱ 2026-10-01 · AB-A1-02 — the leg tooling/e2e-leg-register.json
+      # nativeTargets.oauthReturn names: no user, no attestation, no consent
+      # answered (so no row to purge); the app is handed
+      # com.nikatru.<app>://auth-callback?nk_auth=oauth and must class it as OAuth.
+      - name: The OAuth return — LaunchServices hands the app its callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log native-oauth-return.log --oauth-return
+
+  windows-oauth-return:
+    name: Windows — a second copy forwards an OAuth return to the app
+    needs: gate
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      # ⏱ 2026-10-01 · AB-A1-02 — the OAuth-return leg runs the app on this
+      # device, so the gated toolchain, build and device steps run here. A JOB
+      # OF ITS OWN, never a step of the refusal leg above: the third review of
+      # #1070 keeps every refusal leg device-free, so a flaky boot reddens this
+      # leg and never the gate.
+      PROOF_NEEDS_DEVICE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+      # why: sentry_flutter's CMake clones sentry-native with its submodules, and
+      # crashpad's mini_chromium pack path is 262 characters under this repo's
+      # checkout — git refuses it ("Filename too long") unless core.longpaths is
+      # on, which killed run 36525783687's build before the app ever launched.
+      # build-platforms.yml's "Git may write paths past MAX_PATH" measured it;
+      # --global, because CMake's clone is a new repository. Read back so a
+      # config that wrote nothing cannot pass.
+      - name: Git may write paths past MAX_PATH
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: |
+          git config --global core.longpaths true
+          git config --global --get core.longpaths
+      - name: Enable the Windows desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: flutter config --enable-windows-desktop
+      - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      # ⏱ 2026-10-01 · AB-A1-02 — the leg tooling/e2e-leg-register.json
+      # nativeTargets.oauthReturn names: no user, no attestation, no consent
+      # answered (so no row to purge); the app is handed
+      # com.nikatru.<app>://auth-callback?nk_auth=oauth and must class it as OAuth.
+      - name: The OAuth return — a second copy forwards the callback to the app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log native-oauth-return.log --oauth-return
+
+  linux-oauth-return:
+    name: Linux — the bundle under xvfb, xdg-open hands it an OAuth return
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      # ⏱ 2026-10-01 · AB-A1-02 — the OAuth-return leg runs the app on this
+      # device, so the gated toolchain, build and device steps run here. A JOB
+      # OF ITS OWN, never a step of the refusal leg above: the third review of
+      # #1070 keeps every refusal leg device-free, so a flaky boot reddens this
+      # leg and never the gate.
+      PROOF_NEEDS_DEVICE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+      # why: build-platforms.yml's Linux list, plus xvfb (a display), and the
+      # three a signed-in desktop session needs: gnome-keyring (the Secret
+      # Service libsecret stores the session in), desktop-file-utils and
+      # xdg-utils (the scheme handler and the open).
+      - name: Linux build and session deps
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
+            xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
+      - name: Enable the Linux desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: flutter config --enable-linux-desktop
+      - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      # ⏱ 2026-10-01 · AB-A1-02 — the leg tooling/e2e-leg-register.json
+      # nativeTargets.oauthReturn names: no user, no attestation, no consent
+      # answered (so no row to purge); the app is handed
+      # com.nikatru.<app>://auth-callback?nk_auth=oauth and must class it as OAuth.
+      - name: The OAuth return — xdg-open hands the app its callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        # why: one D-Bus session for the keyring, the app and xdg-open, as the
+        # refusal job's device branch has it (GApplication uniqueness rides it).
+        run: |
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            xvfb-run -a -s "-screen 0 1920x1200x24" \
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log native-oauth-return.log --oauth-return
+          '

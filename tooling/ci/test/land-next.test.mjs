@@ -4,7 +4,8 @@
 // would land the wrong thing, or the mutation of the real tree that breaks parity.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -20,7 +21,20 @@ import {
   report,
   queueOrder,
   isDryRun,
+  runMode,
+  budgetProblem,
+  performQueue,
+  perform,
+  workflowRunsOn,
+  readSnapshot,
+  parentBaseline,
+  bindingOf,
+  isUpdateCommit,
+  diffPrint,
+  sameDiff,
   dispatchParityProblems,
+  HEAD_DISPATCH_CAP,
+  API_BUDGET_FLOOR,
   LAND_LABEL,
   FREEZE_LABEL,
   MAIN_RUN_GRACE_MS,
@@ -38,6 +52,10 @@ const sha = (c) => c.repeat(40);
 const MAIN = sha('a');
 const PARENT = sha('b');
 const HEAD = sha('c');
+const H8 = HEAD.slice(0, 8);
+const LABEL_AT = '2026-10-02T08:00:00Z';
+/** A PR commit as readSnapshot normalises it (GET /pulls/N/commits). */
+const commit = (s, parents = [PARENT], over = {}) => ({ sha: s, parents, committer: 'someone', verified: false, ...over });
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 const gate = (run, conclusion = 'success', status = 'completed') => ({
@@ -52,12 +70,17 @@ const pr = (over = {}) => ({
   number: 7,
   state: 'open',
   draft: false,
-  labels: [LAND_LABEL],
-  labeledAt: '2026-10-02T08:00:00Z',
+  labels: [`${LAND_LABEL}:${H8}`],
+  labeledAt: LABEL_AT,
+  labelTimes: { [`${LAND_LABEL}:${H8}`]: LABEL_AT },
+  forcePushes: [],
+  commits: [commit(HEAD)],
+  commitsComplete: true,
   baseRef: 'main',
   headSha: HEAD,
   headRef: 'feat/x',
   headRepo: R,
+  headCommittedAt: '2026-10-02T07:00:00Z',
   mergeable: true,
   mergeableState: 'clean',
   checks: [gate(100)],
@@ -74,7 +97,7 @@ const mainCi = (id, over = {}) => ({ id, path: '.github/workflows/ci.yml', event
 const OLD = '2026-10-02T08:00:00Z';
 const NOW = Date.parse('2026-10-02T09:00:00Z');
 const watch = (runs, extra = {}) => mainWatch({ main: { sha: MAIN, parentSha: PARENT, committedAt: OLD }, runs, now: NOW, ...extra });
-const decide = (over) => decidePr(pr(over), { repo: R, units: UNITS });
+const decide = (over) => decidePr(pr(over), { repo: R, units: UNITS, now: NOW });
 
 describe('the E2E paths', () => {
   test('apps/*/(lib|integration_test|web|assets) and packages/*/lib need E2E', () => {
@@ -163,10 +186,10 @@ describe('one pull request', () => {
     assert.equal(d.action, 'WAIT');
     assert.match(d.why, /STALE/);
   });
-  test('🔴 a red newest gate → SKIP; a running one → WAIT; none → WAIT', () => {
+  test('🔴 a red newest gate → SKIP; a running one → WAIT; none while its run runs → WAIT', () => {
     assert.equal(decide({ checks: [gate(100, 'failure')] }).action, 'SKIP');
     assert.equal(decide({ checks: [gate(100, null, 'in_progress')] }).action, 'WAIT');
-    assert.equal(decide({ checks: [] }).action, 'WAIT');
+    assert.equal(decide({ checks: [], runs: [ciRun(100, { status: 'in_progress', conclusion: null })] }).action, 'WAIT');
   });
   test('🔴 a conflict → SKIP; mergeability not computed → WAIT', () => {
     assert.equal(decide({ mergeable: false }).action, 'SKIP');
@@ -180,6 +203,11 @@ describe('one pull request', () => {
     assert.equal(decide({ behindBy: 2, mainFiles: ['docs/b.md'] }).action, 'MERGE');
     assert.equal(decide({ behindBy: 2, mainFiles: ['.github/workflows/ci.yml'] }).action, 'UPDATE');
     assert.equal(decide({ behindBy: 2, mainFiles: ['docs/b.md'], mainFilesComplete: false }).action, 'UPDATE');
+  });
+  test('🔴 a fork behind main with OVERLAP is SKIPPED for a person: this token could not start its CI after an update', () => {
+    const d = decide({ behindBy: 2, mainFiles: ['.github/workflows/ci.yml'], headRepo: 'someone/fork' });
+    assert.equal(d.action, 'SKIP');
+    assert.match(d.why, /update it by hand/);
   });
   test('E2E paths: green E2E on the head merges; none dispatches; running waits; red skips', () => {
     const files = ['apps/st/lib/a.dart'];
@@ -219,10 +247,10 @@ describe("main after the last merge", () => {
     const codeql = { ...mainCi(10, { status: 'in_progress', conclusion: null }), path: '.github/workflows/codeql.yml' };
     assert.equal(watch([mainCi(9), codeql]).state, 'GREEN');
   });
-  test('a cancelled CI is re-dispatched, but only up to the cap', () => {
-    assert.equal(watch([mainCi(9, { conclusion: 'cancelled' })]).state, 'NO_RUN');
+  test('a cancelled CI with no failed job is re-dispatched, but only up to the cap', () => {
+    assert.equal(watch([mainCi(9, { conclusion: 'cancelled' })], { failedJobs: { 9: [] } }).state, 'NO_RUN');
     const many = Array.from({ length: MAIN_DISPATCH_CAP }, (_, i) => mainCi(9 + i, { conclusion: 'cancelled' }));
-    assert.equal(watch(many).state, 'HOLD');
+    assert.equal(watch(many, { failedJobs: Object.fromEntries(many.map((r) => [r.id, []])) }).state, 'HOLD');
   });
   test('🔴 a NEW failing job against the parent\'s run → FREEZE, naming the run and the job', () => {
     const w = watch([mainCi(9, { conclusion: 'failure' })], { failedJobs: { 9: ['deploy-web / deploy (st)'] }, baseline: { '.github/workflows/ci.yml': [] } });
@@ -271,7 +299,7 @@ describe('the run (one write, in queue order)', () => {
     assert.deepEqual(q.map((x) => x.number), [1, 2, 3]);
   });
   test('a waiting head of the queue does not block the next eligible PR', () => {
-    const p = plan(snap({ prs: [pr({ number: 7, checks: [] }), pr({ number: 8, labeledAt: '2026-10-02T08:05:00Z' })] }));
+    const p = plan(snap({ prs: [pr({ number: 7, checks: [], runs: [ciRun(100, { status: 'in_progress', conclusion: null })] }), pr({ number: 8, labeledAt: '2026-10-02T08:05:00Z' })] }));
     assert.equal(p.act.pr.number, 8);
   });
   test('🔴 an OPEN land-freeze issue stops every merge', () => {
@@ -315,6 +343,332 @@ describe('the run (one write, in queue order)', () => {
   });
 });
 
+// ── FINDING 1 (review of #1158) + review of #1169 items 1 and 3: `land-ok:<sha8>` ──
+// approves exactly that head; a GitHub update-branch merge of it carries the approval.
+describe('land-ok:<sha8> is bound to the reviewed head, and the lander\'s update carries it', () => {
+  const A = sha('1');
+  const B = sha('2');
+  const C = sha('3');
+  const MAIN_NEW = sha('9');
+  const A8 = A.slice(0, 8);
+  const labelA = `${LAND_LABEL}:${A8}`;
+  const update = (s, firstParent, over = {}) => commit(s, [firstParent, MAIN_NEW], { committer: 'web-flow', verified: true, ...over });
+  // The PR's change to coverage-manifest.json, against old main (A) and after an update
+  // from a main that added lines above it (B): the hunk header and context moved.
+  const fileDiff = (patch) => diffPrint({ files: [{ status: 'modified', filename: 'tooling/ci/test/coverage-manifest.json', patch }] });
+  const atA = fileDiff('@@ -522,7 +522,7 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n \n   "land-rules.test.mjs":');
+  const atB = fileDiff('@@ -531,7 +531,7 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n \n   "landing.test.mjs":');
+  const bound = (over) => decide({ labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A)], headSha: A, ...over });
+  test('`land-ok:<sha8>` on the head → MERGE', () => {
+    const d = bound({});
+    assert.equal(d.action, 'MERGE', d.why);
+  });
+  test('🔴 label at A → the lander updates to B, whose diff changed (hunk shift) → B is MERGE-able WITHOUT a re-label', () => {
+    assert.equal(sameDiff(atA, atB), true, 'only hunk headers and context differ');
+    const d = bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: atA, headDiff: atB });
+    assert.equal(d.action, 'MERGE', d.why);
+    assert.match(d.why, /`land-ok:11111111` carried across 1 update-branch merge\(s\) from main with the approved changes unchanged/);
+  });
+  test('two update-branch merges in a row still carry it', () => {
+    const D = sha('4');
+    const d = bound({ headSha: D, commits: [commit(A), update(B, A), update(D, B)], reviewedDiff: atA, headDiff: atB });
+    assert.equal(d.action, 'MERGE', d.why);
+  });
+  test('🔴 a person\'s push C after the label → WAIT naming `land-ok:<C8>`', () => {
+    const d = bound({ headSha: C, commits: [commit(A), commit(C, [A])] });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /head 33333333 is not `land-ok:11111111` nor a GitHub update-branch merge of it: apply `land-ok:33333333`/);
+    const onUpdate = bound({ headSha: C, commits: [commit(A), update(B, A), commit(C, [B])] });
+    assert.equal(onUpdate.action, 'WAIT', 'a push on top of the lander\'s update is a person\'s head too');
+    assert.match(onUpdate.why, /apply `land-ok:33333333`/);
+  });
+  test('…and re-labelling `land-ok:<C8>` releases it: the remedy the WAIT names works', () => {
+    const labelC = `${LAND_LABEL}:${C.slice(0, 8)}`;
+    const d = bound({ headSha: C, labels: [labelA, labelC], labelTimes: { [labelA]: LABEL_AT, [labelC]: '2026-10-02T08:30:00Z' }, commits: [commit(A), commit(C, [A])] });
+    assert.equal(d.action, 'MERGE', d.why);
+  });
+  test('🔴 what is NOT an update-branch merge never carries the binding', () => {
+    const cases = {
+      'not GitHub\'s committer': update(B, A, { committer: 'someone' }),
+      'not verified': update(B, A, { verified: false }),
+      'one parent': commit(B, [A], { committer: 'web-flow', verified: true }),
+      'second parent a PR commit (a merge of another branch)': update(B, A, { parents: [A, C] }),
+      'first parent not the bound head': update(B, C),
+    };
+    for (const [why, c] of Object.entries(cases)) {
+      const d = bound({ headSha: B, commits: [commit(A), commit(C, [A]), c], reviewedDiff: atA, headDiff: atA });
+      assert.equal(d.action, 'WAIT', why);
+      assert.match(d.why, /apply `land-ok:22222222`/, why);
+    }
+    assert.equal(isUpdateCommit(update(B, A), new Map([[A, commit(A)]])), true);
+  });
+  test('🔴 an update-branch merge whose changes against main are NOT the approved ones (a web conflict edit) → WAIT', () => {
+    const injected = fileDiff('@@ -531,7 +531,8 @@\n   "land-next.test.mjs":\n-    85,\n+    97,\n+  "evil": 1,\n \n');
+    const d = bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: atA, headDiff: injected });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /changes against main are not the approved ones: review 22222222 and apply `land-ok:22222222`/);
+    assert.equal(bound({ headSha: B, commits: [commit(A), update(B, A)], reviewedDiff: null, headDiff: atB }).action, 'WAIT', 'uncomparable fails closed');
+  });
+  test('🔴 a bare `land-ok` binds to no head: WAIT with the label that would', () => {
+    const d = decide({ labels: [LAND_LABEL] });
+    assert.equal(d.action, 'WAIT');
+    assert.match(d.why, /a bare `land-ok` binds to no head: apply `land-ok:cccccccc`/);
+  });
+  test('🔴 8 hex naming two commits, a force-push after the label, or an unreadable commit list → WAIT', () => {
+    const twin = A8 + 'f'.repeat(32);
+    assert.match(bound({ commits: [commit(A), commit(twin, [A])] }).why, /names 2 commits of this PR/);
+    assert.match(bound({ forcePushes: ['2026-10-02T08:10:00Z'] }).why, /force-pushed after/);
+    assert.equal(bound({ forcePushes: ['2026-10-02T07:10:00Z'] }).action, 'MERGE', 'a force-push BEFORE the label is what was reviewed');
+    assert.equal(bound({ commitsComplete: false }).action, 'WAIT');
+    assert.equal(bound({ commits: null }).action, 'WAIT');
+    assert.equal(bound({ labelTimes: {} }).action, 'WAIT');
+  });
+  test('the binding names its label and hops', () => {
+    assert.deepEqual(bindingOf({ headSha: B, labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A), update(B, A)] }).sha, A);
+    assert.equal(bindingOf({ headSha: B, labels: [labelA], labelTimes: { [labelA]: LABEL_AT }, commits: [commit(A), update(B, A)] }).hops, 1);
+  });
+  test('🔴 the fingerprint: changed lines only; a cut list is unreadable; a patchless file is its blob; order does not matter', () => {
+    assert.equal(sameDiff(fileDiff('@@ -1 +1 @@\n-a\n+b'), fileDiff('@@ -1 +1 @@\n-a\n+EVIL')), false);
+    assert.equal(sameDiff(fileDiff('@@ -1,2 +1,2 @@\n x\n-a\n+b'), fileDiff('@@ -9,2 +9,2 @@\n y\n-a\n+b')), true);
+    assert.equal(diffPrint({ files: Array.from({ length: 300 }, (_, i) => ({ status: 'added', filename: `f${i}`, patch: '+' })) }), null);
+    assert.equal(diffPrint({}), null);
+    assert.notDeepEqual(diffPrint({ files: [{ status: 'modified', filename: 'a.png', sha: '1' }] }), diffPrint({ files: [{ status: 'modified', filename: 'a.png', sha: '2' }] }));
+    const ab = diffPrint({ files: [{ status: 'added', filename: 'a', patch: '+1' }, { status: 'added', filename: 'b', patch: '+2' }] });
+    const ba = diffPrint({ files: [{ status: 'added', filename: 'b', patch: '+2' }, { status: 'added', filename: 'a', patch: '+1' }] });
+    assert.equal(sameDiff(ab, ba), true);
+    assert.equal(sameDiff(ab, null), false);
+  });
+});
+
+// ── FINDING 2: an update-branch by GITHUB_TOKEN starts no CI — never wait forever ──
+describe('a head no CI run will grade gets ci.yml dispatched, up to a cap', () => {
+  test('no ci-gate and no CI run on a head past the grace → DISPATCH_CI', () => {
+    const d = decide({ checks: [], runs: [] });
+    assert.equal(d.action, 'DISPATCH_CI', d.why);
+  });
+  test('inside the grace it waits for the push run', () => {
+    assert.equal(decide({ checks: [], runs: [], headCommittedAt: new Date(NOW - 30_000).toISOString() }).action, 'WAIT');
+  });
+  test('🔴 a cancelled run that left the gate pending is re-dispatched; at the cap it is SKIPPED for a person, never a wait', () => {
+    const cancelledGate = gate(100, 'cancelled');
+    assert.equal(decide({ checks: [cancelledGate], runs: [ciRun(100, { conclusion: 'cancelled' })] }).action, 'DISPATCH_CI');
+    const many = Array.from({ length: HEAD_DISPATCH_CAP }, (_, i) => ciRun(100 + i, { conclusion: 'cancelled' }));
+    const d = decide({ checks: [gate(100 + HEAD_DISPATCH_CAP - 1, 'cancelled')], runs: many });
+    assert.equal(d.action, 'SKIP');
+    assert.match(d.why, /re-run its CI by hand/);
+  });
+  test('🔴 a fork head is never dispatched: SKIPPED for a person', () => {
+    assert.equal(decide({ checks: [], runs: [], headRepo: 'someone/fork' }).action, 'SKIP');
+  });
+});
+
+// ── FINDING 3: a red main ends `cancelled` under fail-fast ──
+describe('a cancelled main run with a failed job is RED', () => {
+  test('🔴 cancelled with a failed job → FREEZE, not a re-dispatch', () => {
+    const w = watch([mainCi(9, { conclusion: 'cancelled' })], { failedJobs: { 9: ['guards-legal'] }, baseline: { '.github/workflows/ci.yml': [] } });
+    assert.equal(w.state, 'FREEZE', w.why);
+    assert.match(w.freeze.title, /guards-legal/);
+  });
+  test('🔴 cancelled with its jobs unread → FREEZE (fail closed)', () => {
+    assert.equal(watch([mainCi(9, { conclusion: 'cancelled' })]).state, 'FREEZE');
+  });
+  test('cancelled with a failed job already red on the parent → RED, merges continue', () => {
+    assert.equal(watch([mainCi(9, { conclusion: 'cancelled' })], { failedJobs: { 9: ['x'] }, baseline: { '.github/workflows/ci.yml': ['x'] } }).state, 'RED');
+  });
+});
+
+// ── FINDING 4: main's run is read from ci.yml's own listing, on main, on the sha ──
+describe("main's runs come from each workflow's own listing", () => {
+  const fresh = (id, head) => ({ id, head_sha: head, created_at: new Date(NOW - 60_000).toISOString(), updated_at: new Date(NOW - 30_000).toISOString() });
+  const on = (read, branch = 'main') => workflowRunsOn(read, { repo: R, workflowPath: '.github/workflows/ci.yml', sha: MAIN, branch, nowMs: NOW });
+  test('the query names the workflow, the sha and the branch, read through the anchored reader', async () => {
+    const asked = [];
+    const rows = await on(async (u) => (asked.push(u), { workflow_runs: [fresh(1, MAIN)] }));
+    assert.deepEqual(asked, [`https://api.github.com/repos/${R}/actions/workflows/ci.yml/runs?head_sha=${MAIN}&branch=main&per_page=100`]);
+    assert.equal(rows[0].path, '.github/workflows/ci.yml');
+  });
+  test('🔴 a row on another sha, or no run array, is COULD NOT LOOK — never a verdict', async () => {
+    await assert.rejects(on(async () => ({ workflow_runs: [fresh(2, PARENT)] })), /answered run 2 on bbbb/);
+    await assert.rejects(on(async () => ({})), /without a workflow_runs array/);
+  });
+});
+
+// ── review of #1169 item 5 (X7): a stale page is COULD NOT LOOK, never read as current ──
+describe('a run listing proven stale is refused', () => {
+  test('🔴 X7: the page ends at an old run while the cross-read holds a newer one → COULD NOT LOOK', async () => {
+    const at = (h) => new Date(NOW - h * 3_600_000).toISOString();
+    const read = async (u) => ({ workflow_runs: /created=/.test(u) || !/branch=/.test(u) ? [{ id: 2, head_sha: MAIN, created_at: at(5), updated_at: at(5) }] : [{ id: 1, head_sha: MAIN, created_at: at(10), updated_at: at(10) }] });
+    await assert.rejects(workflowRunsOn(read, { repo: R, workflowPath: '.github/workflows/ci.yml', sha: MAIN, branch: 'main', nowMs: NOW }), /stale page/);
+  });
+});
+
+// ── review of #1169 items 2, 4 and 5 (X5): readSnapshot, through a stubbed fetch ──
+describe('readSnapshot, against a stubbed GitHub', () => {
+  const fresh = (iso = new Date(NOW - 60_000).toISOString()) => ({ created_at: iso, updated_at: iso });
+  const stub = async (routes, fn) => {
+    const asked = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = new URL(String(url));
+      const path = u.pathname.replace(`/repos/${R}`, '') + u.search;
+      asked.push(path);
+      const hit = routes.find(([re]) => re.test(path));
+      if (!hit) return new Response('{"message":"Not Found"}', { status: 404 });
+      return new Response(JSON.stringify(hit[1]), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    try {
+      return { r: await fn(), asked };
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const labelC = `${LAND_LABEL}:${H8}`;
+  const openPr = (labels) => ({ number: 7, title: 't', state: 'open', draft: false, labels: labels.map((name) => ({ name })), base: { ref: 'main' }, head: { sha: HEAD, ref: 'feat/x', repo: { full_name: R } } });
+  const job = (name, conclusion) => ({ name, conclusion });
+  const routes = ({ parentRuns }) => [
+    [/^\/pulls\?state=open/, [openPr([labelC])]],
+    [/^\/commits\/main$/, { sha: MAIN, parents: [{ sha: PARENT }], commit: { committer: { date: OLD } } }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${MAIN}`), { workflow_runs: [{ ...mainCi(9, { conclusion: 'cancelled' }), ...fresh() }] }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${PARENT}`), { workflow_runs: parentRuns }],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${HEAD}`), { workflow_runs: [{ ...ciRun(100), ...fresh() }] }],
+    [/^\/actions\/workflows\/(codeql|e2e)\.yml\/runs/, { workflow_runs: [] }],
+    [/^\/actions\/runs\/9\/jobs/, { jobs: [job('guards-legal', 'failure'), job('deploy', 'cancelled')] }],
+    [/^\/actions\/runs\/5\/jobs/, { jobs: [job('guards-legal', 'failure'), job('deploy', 'cancelled')] }],
+    [/^\/actions\/runs\/4\/jobs/, { jobs: [job('guards-legal', 'success')] }],
+    [/^\/issues\?labels=land-freeze/, []],
+    [/^\/pulls\/7$/, { mergeable: true, mergeable_state: 'clean' }],
+    [/^\/issues\/7\/events/, [{ event: 'labeled', label: { name: labelC }, created_at: LABEL_AT }]],
+    [/^\/commits\/c+\/check-runs/, { check_runs: [gate(100)] }],
+    [/^\/pulls\/7\/commits/, [{ sha: HEAD, parents: [{ sha: PARENT }], committer: { login: 'someone' }, commit: { committer: { date: OLD }, verification: { verified: false } } }]],
+    [/^\/pulls\/7\/files/, [{ filename: 'tooling/ci/x.mjs' }]],
+    [/^\/compare\//, { ahead_by: 0, files: [] }],
+  ];
+  const parentRed = [
+    { ...mainCi(5, { head_sha: PARENT, conclusion: 'cancelled' }), ...fresh() },
+    { ...mainCi(4, { head_sha: PARENT, conclusion: 'success' }), ...fresh() },
+  ];
+  test('🔴 item 2 / X5: main cancelled with a failed job, its PARENT cancelled with the same failed job → RED, merges continue (not FREEZE)', async () => {
+    const { r: snap } = await stub(routes({ parentRuns: parentRed }), () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.deepEqual(snap.failedJobs, { 9: ['guards-legal'] }, "X5: a cancelled main run's jobs are read");
+    assert.deepEqual(snap.baseline, { '.github/workflows/ci.yml': ['guards-legal'] }, "the parent's cancelled red run is the baseline, not its older green one");
+    const p = plan(snap);
+    assert.equal(p.watch.state, 'RED', p.watch.why);
+    assert.equal(p.act?.kind, 'merge', JSON.stringify(p.act));
+  });
+  test('…a new failing job against that baseline still FREEZEs', async () => {
+    const r = routes({ parentRuns: parentRed });
+    r.unshift([/^\/actions\/runs\/9\/jobs/, { jobs: [job('guards-legal', 'failure'), job('guards-platform', 'failure')] }]);
+    const { r: snap } = await stub(r, () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.equal(plan(snap).watch.state, 'FREEZE');
+  });
+  test('parentBaseline passes over a cancel with no failed job, and is null with no verdict at all', async () => {
+    const jobs = { 5: [], 4: ['x'] };
+    const runs = [{ id: 5, status: 'completed', conclusion: 'cancelled' }, { id: 4, status: 'completed', conclusion: 'failure' }];
+    assert.deepEqual(await parentBaseline(runs, async (r) => jobs[r.id]), ['x']);
+    assert.equal(await parentBaseline([{ id: 5, status: 'completed', conclusion: 'cancelled' }], async () => []), null);
+    assert.equal(await parentBaseline([], async () => []), null);
+  });
+  test('🔴 item 4: no open PR carries land-ok → it stops after the PR list: main\'s runs are never read', async () => {
+    const r = routes({ parentRuns: parentRed });
+    r.unshift([/^\/pulls\?state=open/, [openPr(['other']), { ...openPr([labelC]), number: 8, draft: true }]]);
+    const { r: snap, asked } = await stub(r, () => readSnapshot({ repo: R, token: 't', now: new Date(NOW) }));
+    assert.equal(snap.idle, true);
+    assert.deepEqual(asked, ['/pulls?state=open&base=main&per_page=100&page=1']);
+    const p = plan(snap);
+    assert.equal(p.watch.state, 'IDLE');
+    assert.equal(p.act, null);
+    assert.deepEqual(p.decisions.map((d) => d.action), ['SKIP', 'SKIP']);
+  });
+});
+
+// ── FINDING 5 (mutation M7): every write is pinned to the head the decision read ──
+describe('the merge and the update are pinned to the head sha', () => {
+  const capture = async (act, status) => {
+    const calls = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ url: String(url), method: opts.method ?? 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+      const answer = String(url).includes('/dispatches') ? 204 : status;
+      return new Response(answer === 204 ? null : '{}', { status: answer });
+    };
+    try {
+      return { r: await perform(act, { repo: R, token: 't' }), calls };
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const act = (kind) => ({ kind, pr: { number: 7, headSha: HEAD, headRef: 'feat/x' }, why: 'test' });
+  test('🔴 M7: the squash merge sends `sha` = the head read', async () => {
+    const { r, calls } = await capture(act('merge'), 200);
+    const merge = calls.find((c) => c.url.endsWith('/pulls/7/merge'));
+    assert.deepEqual(merge.body, { merge_method: 'squash', sha: HEAD });
+    assert.equal(r.wrote, true);
+    assert.deepEqual(calls.filter((c) => c.url.includes('/dispatches')).map((c) => c.body), POST_MERGE_DISPATCH.map(() => ({ ref: 'main' })));
+  });
+  test('🔴 M7: update-branch sends `expected_head_sha` = the head read', async () => {
+    const { r, calls } = await capture(act('update'), 202);
+    assert.deepEqual(calls[0].body, { expected_head_sha: HEAD });
+    assert.equal(r.wrote, true);
+  });
+  test('a CI dispatch names the PR branch; a refused merge wrote nothing', async () => {
+    const { calls } = await capture(act('dispatch-ci'), 204);
+    assert.match(calls[0].url, /\/actions\/workflows\/ci\.yml\/dispatches$/);
+    assert.deepEqual(calls[0].body, { ref: 'feat/x' });
+    const refused = await capture(act('merge'), 405);
+    assert.equal(refused.r.wrote, false);
+    assert.equal(refused.r.code, 1);
+  });
+});
+
+// ── FINDING 6: one refused write does not block the queue ──
+describe('a refused write skips that PR and tries the next', () => {
+  const a = (n, kind = 'merge') => ({ kind, pr: { number: n, headSha: HEAD, headRef: 'x' }, why: '' });
+  test('🔴 #7 refused → #8 is tried and merged; still exit 1, with the reason', async () => {
+    const tried = [];
+    const r = await performQueue([a(7), a(8)], async (act) => (tried.push(act.pr.number), act.pr.number === 7 ? { code: 1, lines: ['refused 7'], wrote: false } : { code: 0, lines: ['merged 8'], wrote: true }));
+    assert.deepEqual(tried, [7, 8]);
+    assert.equal(r.code, 1);
+    assert.ok(r.lines.some((l) => /skipped #7: its merge was refused/.test(l)), r.lines.join('\n'));
+  });
+  test('only ONE write: the first that writes ends the run', async () => {
+    const tried = [];
+    const r = await performQueue([a(7), a(8)], async (act) => (tried.push(act.pr.number), { code: 0, lines: [], wrote: true }));
+    assert.deepEqual(tried, [7]);
+    assert.equal(r.code, 0);
+  });
+  test('🔴 a refused main write (freeze) stops the run: nothing passes it', async () => {
+    const tried = [];
+    await performQueue([{ kind: 'freeze', why: '' }, a(8)], async (act) => (tried.push(act.kind), { code: 1, lines: [], wrote: false }));
+    assert.deepEqual(tried, ['freeze']);
+  });
+  test('the plan carries every PR write in queue order', () => {
+    const p = plan({ repo: R, now: new Date(NOW).toISOString(), main: { sha: MAIN, parentSha: PARENT, committedAt: OLD }, mainRuns: [mainCi(9)], units: UNITS, prs: [pr({ number: 8, labeledAt: '2026-10-02T08:05:00Z' }), pr({ number: 7 })] });
+    assert.deepEqual(p.candidates.map((c) => c.pr.number), [7, 8]);
+    assert.equal(p.act, p.candidates[0]);
+  });
+});
+
+// ── FINDING 7 / NIT 10: the budget floor, and a live dispatch during the dry period ──
+describe('the run refuses to start without budget, and to act while the repository is dry', () => {
+  test('🔴 below the floor, or unreadable, is a refusal', () => {
+    assert.equal(budgetProblem({ remaining: API_BUDGET_FLOOR, limit: 1000 }), null);
+    assert.match(budgetProblem({ remaining: API_BUDGET_FLOOR - 1, limit: 1000, reset: 0 }), /below the floor/);
+    assert.match(budgetProblem(null), /unreadable/);
+  });
+  test('🔴 a `dry_run=false` dispatch while the variable is not `false` is REFUSED and runs dry', () => {
+    for (const v of [undefined, '', 'true']) {
+      const m = runMode({ LAND_DRY_RUN: v, LAND_DISPATCH_DRY_RUN: 'false' });
+      assert.equal(m.dry, true, String(v));
+      assert.match(m.refusal, /REFUSED while the repository is in its dry-run period/);
+    }
+  });
+  test('a dispatch can only make a run drier', () => {
+    assert.deepEqual(runMode({ LAND_DRY_RUN: 'false', LAND_DISPATCH_DRY_RUN: 'true' }), { dry: true, refusal: null });
+    assert.deepEqual(runMode({ LAND_DRY_RUN: 'false', LAND_DISPATCH_DRY_RUN: 'false' }), { dry: false, refusal: null });
+    assert.deepEqual(runMode({ LAND_DRY_RUN: 'false', LAND_DISPATCH_DRY_RUN: '' }), { dry: false, refusal: null });
+  });
+});
+
 describe('the CLI', () => {
   const runCli = (args, env = {}) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: REPO, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
   test('--snapshot decides from a recorded snapshot and writes nothing (exit 0)', () => {
@@ -328,6 +682,33 @@ describe('the CLI', () => {
       assert.match(r.stdout, /DRY RUN, would act: merge #7/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('🔴 item 4: a live (dry) run with no land-ok PR prints its API budget lines and reads nothing of main', async () => {
+    const asked = [];
+    const server = createServer((req, res) => {
+      asked.push(req.url);
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('x-ratelimit-remaining', '897');
+      if (req.url === '/rate_limit') return res.end(JSON.stringify({ resources: { core: { remaining: 900, limit: 1000, reset: 0 } } }));
+      if (req.url.startsWith(`/repos/${R}/pulls?state=open`)) return res.end('[]');
+      res.statusCode = 404;
+      return res.end('{}');
+    });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    try {
+      const child = spawn(process.execPath, [SCRIPT], { cwd: REPO, env: { PATH: process.env.PATH, GITHUB_REPOSITORY: R, GITHUB_TOKEN: 't', GITHUB_API_URL: `http://127.0.0.1:${server.address().port}` } });
+      let out = '';
+      child.stdout.on('data', (d) => (out += d));
+      child.stderr.on('data', (d) => (out += d));
+      const code = await new Promise((ok) => child.on('close', ok));
+      assert.equal(code, 0, out);
+      assert.match(out, /^API budget: 900\/1000 remaining at the start \(floor 200\)$/m);
+      assert.match(out, /^main: IDLE — no open pull request carries `land-ok`/m);
+      assert.match(out, /^API budget: this run made 2 request\(s\); 897 remaining$/m);
+      assert.deepEqual(asked, ['/rate_limit', `/repos/${R}/pulls?state=open&base=main&per_page=100&page=1`]);
+    } finally {
+      server.close();
     }
   });
   test('🔴 an unreadable snapshot, or no token, is COULD NOT LOOK (exit 2)', () => {
@@ -429,12 +810,13 @@ describe('.github/workflows/land.yml is a thin, least-privilege shell with one a
     assert.deepEqual(scopes, ['actions: write', 'checks: read', 'contents: write', 'issues: write', 'pull-requests: write']);
     assert.doesNotMatch(text, /secrets\./, 'NO secret: the run\'s own GITHUB_TOKEN only');
   });
-  test('🔴 an unattended run is DRY until the variable says `false`', () => {
-    assert.match(text, /LAND_DRY_RUN: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('\{0\}', inputs\.dry_run\) \|\| vars\.LAND_DRY_RUN \|\| 'true' \}\}/);
+  test('🔴 every run is DRY until the variable says `false`; a dispatch\'s input is passed apart, never in its place', () => {
+    assert.match(text, /^ {10}LAND_DRY_RUN: \$\{\{ vars\.LAND_DRY_RUN \|\| 'true' \}\}$/m);
+    assert.match(text, /^ {10}LAND_DISPATCH_DRY_RUN: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('\{0\}', inputs\.dry_run\) \|\| '' \}\}$/m);
     assert.match(text, /run: node tooling\/ci\/land-next\.mjs$/m);
   });
-  test('the job runs only main\'s copy, and a labeled wake only for land-ok', () => {
-    assert.match(text, /if: github\.ref == 'refs\/heads\/main' && \(github\.event_name != 'pull_request_target' \|\| github\.event\.label\.name == 'land-ok'\)/);
+  test('the job runs only main\'s copy, and a labeled wake only for land-ok or land-ok:<sha8>', () => {
+    assert.match(text, /if: github\.ref == 'refs\/heads\/main' && \(github\.event_name != 'pull_request_target' \|\| startsWith\(github\.event\.label\.name, 'land-ok'\)\)/);
   });
   test('the labels it reads are the ones it names', () => {
     assert.equal(LAND_LABEL, 'land-ok');

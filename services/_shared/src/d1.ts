@@ -34,8 +34,16 @@
 // step.
 //
 // 🔴 services/_shared MAY HOLD NO BARE IMPORT. Its header states the measured
-// reason in full; this file obeys it by importing nothing at all.
+// reason in full; this file obeys it by importing nothing but the SQL port's
+// TYPES, a sibling module.
+//
+// ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql). The helpers below
+// take the SQL PORT (ports/sql.ts), never a `D1Database`: a D1 binding satisfies
+// it structurally, and so does the node:sqlite engine (ports/fakes/sql.ts). The
+// classification keeps D1's name and D1's words, because the port is D1-shaped
+// and its wording is what workerd throws; ports/sql.ts re-exports it.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlResult, SqlStatement } from './ports/sql';
 
 /** 🔴 NARROW BY CONSTRUCTION, BECAUSE A BROAD RETRY IS WORSE THAN NONE. Only the
  *  messages Cloudflare documents as transient are retried. A constraint
@@ -122,13 +130,13 @@ export async function withD1Retry<T>(
 
 /** Return all rows of a prepared statement, typed as T[].
  *  A read is idempotent, so a transient reset is retried unconditionally. */
-export async function allRows<T = Record<string, unknown>>(stmt: D1PreparedStatement): Promise<T[]> {
+export async function allRows<T = Record<string, unknown>>(stmt: SqlStatement): Promise<T[]> {
   const { results } = await withD1Retry(() => stmt.all<T>());
   return results ?? [];
 }
 
 /** Return the first row of a prepared statement, or null. A read, so retried. */
-export async function firstRow<T = Record<string, unknown>>(stmt: D1PreparedStatement): Promise<T | null> {
+export async function firstRow<T = Record<string, unknown>>(stmt: SqlStatement): Promise<T | null> {
   return (await withD1Retry(() => stmt.first<T>())) ?? null;
 }
 
@@ -159,7 +167,7 @@ export async function firstRow<T = Record<string, unknown>>(stmt: D1PreparedStat
  *  the earlier attempt did. Reporting 1 would claim a write this invocation did
  *  not perform. No caller reads `meta` today, and if one starts, 0 is the honest
  *  number. */
-export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
+export async function run(stmt: SqlStatement): Promise<SqlResult> {
   let sawTransient = false;
   try {
     return await withD1Retry(() => stmt.run(), {
@@ -173,7 +181,7 @@ export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
         success: true,
         results: [],
         meta: { changes: 0, duplicate_of_committed_attempt: true },
-      } as unknown as D1Result;
+      } as SqlResult;
     }
     throw err;
   }
@@ -202,9 +210,9 @@ export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
  *  committed rows has broken the contract above, and surfacing that is the honest
  *  answer: the conflict names a caller to fix, not a write that succeeded. */
 export async function batchIdempotent<T = unknown>(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-): Promise<D1Result<T>[]> {
+  db: SqlDb,
+  statements: SqlStatement[],
+): Promise<SqlResult<T>[]> {
   return withD1Retry(() => db.batch<T>(statements));
 }
 
