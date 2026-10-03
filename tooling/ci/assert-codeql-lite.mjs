@@ -19,12 +19,20 @@
 //                                open of the SAME path expression later in the same
 //                                function, where the check dominates the use — except
 //                                exists() then a READ, which CodeQL does not report (as
-//                                tooling/ci/test/fixtures/fs-spy-preload.mjs measured)
+//                                tooling/ci/test/fixtures/fs-spy-preload.mjs measured).
+//                                A check in an `if (…)` condition guards only its own
+//                                branches, and the code after the `if` only when a branch
+//                                ends in return/throw/break/continue: `if (!existsSync(p))
+//                                coverageLost(…)` falls through, so a later read of p is
+//                                not on a checked branch (assert-elf-page-alignment.mjs).
 //                                → read once in a try (ENOENT = missing), or write 'wx'.
-//   js/regex/missing-regexp-anchor  a regex used to test (`.test`/`.exec`/`.match`/
-//                                `.search`) holding a host on a common TLD with neither
-//                                `^` nor `$`; or `^a|b` / `a|b$`, an anchor that binds to
-//                                one alternative only.
+//   js/regex/missing-regexp-anchor  a regex that VALIDATES a URL or host — tested (`.test`/
+//                                `.exec`/`.match`/`.search`) and holding a host on a common
+//                                TLD or a `//`, or tested against a URL-named value — with
+//                                neither `^` nor `$`; or `^a|b` / `a|b$`, an anchor that
+//                                binds to one alternative while no other alternative carries
+//                                one (`^`, `$`, `\b`, `(^|\/)`). Not in a test file (CodeQL
+//                                leaves tests out of this rule) and not an assertion's pattern.
 //   js/incomplete-hostname-regexp   an UNESCAPED `.` inside a host on a common TLD in a
 //                                regex literal or a `new RegExp('…')` string.
 //   js/incomplete-url-substring-sanitization  includes/startsWith/endsWith of a URL or
@@ -37,31 +45,41 @@
 //                                the first; and a backslash escape (`c` → `\c`, `\$&`)
 //                                with no earlier step escaping backslashes (#540, 581).
 //   js/incomplete-multi-character-sanitization  `.replace(re, '')` done once, where re
-//                                can begin `<!--`, `<script`/`<style`/`<iframe` (an `<`
-//                                then s/i or a wildcard) or `../`: the removal can splice
-//                                one back together. A fixed-point loop, or a later replace
-//                                of the same opener in the chain, passes.
+//                                can begin `<!--` or `../` followed by no literal text, or
+//                                `<` (or `</`) then a tag NAME it does not spell — a class or
+//                                wildcard — or then script/style/iframe: the removal can
+//                                splice one back together. `<string>…` cannot re-form
+//                                `<script`, and a removal anchored to the end (or start) of
+//                                the string has nothing on that side to splice with. A
+//                                fixed-point loop, or a later replace of the same opener in
+//                                the chain, passes.
 //   js/insecure-temporary-file   a write/open of a path built from `tmpdir()` (directly
 //                                or through a const) that is not under `mkdtemp…` and
 //                                carries no exclusive `wx` flag.
 //   js/unused-local-variable     an `import` binding the file never names again (#1187).
 //
 // ── SCOPE: WHAT CodeQL WOULD SEE ON THIS PR, NOT THE WHOLE TREE ──────────────
-// Default: the .js/.mjs/.cjs/.ts/.mts/.cts/.jsx/.tsx files this branch changed against
-// merge-base(HEAD, origin/main) — committed, uncommitted and untracked — minus the
-// `paths-ignore` of .github/codeql/codeql-config.yml (read, never restated). CodeQL's
+// Default: the TRACKED .js/.mjs/.cjs/.ts/.mts/.cts/.jsx/.tsx files (any case of the
+// extension, any script in the path) this branch changed against merge-base(HEAD,
+// origin/main) — committed, staged or not — minus the `paths-ignore` of
+// .github/codeql/codeql-config.yml (read, never restated). An UNTRACKED file is not part
+// of the change a push carries (affected-guards and the pre-push hook leave it out too; a
+// main checkout can hold hundreds of scratch files), so it is graded, whole, only under
+// `--untracked`. CodeQL's
 // PR analysis is diff-informed and so is the CI step this pre-empts, so a finding
 // counts only on a CHANGED line; the one exception is an unused import, which a fix
 // creates by deleting the LAST use on another line (the #1187 shape), so it counts
 // anywhere in a changed file. `--all` grades every tracked file whole (a report: the
 // tree is not clean, and the default stays diff-scoped so old code blocks nobody);
-// `--files a b c` grades those files whole. `--base <ref>` (or CODEQL_LITE_BASE, which
+// `--files a b c` grades those files whole, and grading none of them (each not JS/TS, or
+// in paths-ignore) is COVERAGE LOST, never a green. `--base <ref>` (or CODEQL_LITE_BASE, which
 // ci.yml sets to origin/<the PR's base branch> so a stacked PR is graded against its own
 // base) replaces origin/main.
 //
-// A line may carry `// codeql-lite: allow <rule> — <reason of 10+ characters>` (or the
-// line directly above may) to suppress that one rule there; each suppression is
-// printed with its reason. A suppression with a short reason is itself a finding.
+// A line may carry `// codeql-lite: allow <rule> — <reason of 10+ characters>` in a
+// COMMENT to suppress that one rule on THAT line only (never the next one, and never from
+// inside a string, template or regex literal); each suppression is printed with its
+// reason. A suppression with a short reason is itself a finding.
 //
 // ⚠️ THIS IS A TOKEN-LEVEL APPROXIMATION OF CodeQL, NOT CodeQL. No JavaScript parser
 // ships to tooling/ (no root package.json; every guard here is dependency-free), so
@@ -79,11 +97,17 @@
 // exists-then-read, a check inside a block the write is outside of, a `<meta …>`
 // removal, an indexOf kept for later, a `.replace('%', '')`.
 //
-// Exit 0 = clean. 1 = a finding. 2 = COVERAGE LOST: git could not name the change, the
-// CodeQL config could not be read, or a file it should grade could not be read or
-// tokenized (an unterminated string, comment, template or regex; unbalanced brackets).
+// ⏱ 2026-10-03 (the post-merge review of #1199): `--all` on main gave 13 findings, every
+// one a line CodeQL analysed and never flagged — an exists check whose `if` falls through,
+// an alternation whose other alternatives carry their own anchor (or that validates no URL),
+// a `<string>…</string>` removal. Each shape is now a green test; `--all` on main is 0.
 //
-// Usage: node tooling/ci/assert-codeql-lite.mjs [--base <ref>] [--all | --files <f>…] [--root <dir>] [--quiet]
+// Exit 0 = clean. 1 = a finding. 2 = COVERAGE LOST: git could not name the change, the
+// CodeQL config could not be read, a file it should grade could not be read or tokenized
+// (an unterminated string, comment, template or regex; unbalanced brackets), or `--files`
+// named nothing it grades.
+//
+// Usage: node tooling/ci/assert-codeql-lite.mjs [--base <ref>] [--untracked] [--all | --files <f>…] [--root <dir>] [--quiet]
 // Tests: tooling/ci/test/codeql-lite.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
@@ -96,7 +120,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..', '..');
 export const CODEQL_CONFIG_REL = '.github/codeql/codeql-config.yml';
 /** The extensions CodeQL's javascript-typescript extractor reads, as this guard grades them. */
-export const CODE_FILE = /\.(?:m|c)?[jt]sx?$/;
+export const CODE_FILE = /\.(?:m|c)?[jt]sx?$/i;
 export const DEFAULT_BASE = 'origin/main';
 export const ALLOW = 'codeql-lite: allow';
 export const MIN_REASON = 10;
@@ -490,12 +514,21 @@ function urlShaped(blanked) {
   return /^(?:[a-z0-9-]|\\\.|\(\?:|[()?*+])+$/i.test(s);
 }
 
+/** A regex that names a URL or a host: a host on a common TLD, or a `//`. */
+const URLISH_REGEX = new RegExp(`${HOST_IN_REGEX.source}|\\\\\\/\\\\\\/`, 'i');
+/** A tested value whose name says it holds a URL, a host or an origin. */
+export const URL_SUBJECT = /(?:url|uri|href|host|origin|domain|referr?er|redirect|location|endpoint|callback|link)/i;
+/** Any anchor or pseudo-anchor in a (class-blanked) alternative: ^ $ \b \B or a lookbehind. */
+const HAS_ANCHOR = /(?<!\\)[\^$]|\\[bB]|\(\?<[=!]/;
+
 /**
  * One regex source's own shape findings: [{ rule, message }]. `use` is how the regex is
  * used: 'test' (.test/.exec, or the pattern of .match/.search), 'replace' (the pattern of
  * .replace/.replaceAll/.split — CodeQL's precedence check skips those) or 'other'.
+ * `urlSubject`: the tested value is named like a URL. `testFile`: CodeQL's anchor query
+ * leaves test files out, so the anchor rule does too.
  */
-export function regexFindings(source, use = 'other') {
+export function regexFindings(source, use = 'other', { urlSubject = false, testFile = false } = {}) {
   const out = [];
   const s = blankClasses(source);
   if (UNESCAPED_HOST_DOT.test(s)) {
@@ -504,16 +537,21 @@ export function regexFindings(source, use = 'other') {
   const alts = topAlternatives(source);
   const startAnchored = (a) => a.startsWith('^');
   const endAnchored = (a) => /(?<!\\)\$$/.test(a);
+  // the anchor rule is about a regex that VALIDATES a URL or host, as CodeQL's is
+  const validates = !testFile && use === 'test' && (URLISH_REGEX.test(s) || urlSubject);
   if (alts.length > 1) {
     const first = startAnchored(alts[0]);
     const last = endAnchored(alts[alts.length - 1]);
-    // `^a|b$` is the trim idiom, anchored at both ends on purpose; only a ONE-sided anchor misleads
-    if (use !== 'replace' && first !== last && !(first ? alts.every(startAnchored) : alts.every(endAnchored))) {
+    // `^a|b$` is the trim idiom, anchored at both ends on purpose; only a ONE-sided anchor
+    // misleads, and only when no OTHER alternative carries an anchor of its own
+    // (`(^|\/)x(\/|$)|\.md$`, `\bload\b|^\s*more`, `REPLACE|\.example$|^$` are deliberate)
+    const others = first ? alts.slice(1) : alts.slice(0, -1);
+    if (validates && first !== last && !others.some((a) => HAS_ANCHOR.test(a))) {
       out.push({ rule: RULES.anchor, message: `the regex /${source}/ anchors only ${first ? 'its first' : 'its last'} alternative: '|' binds looser than '^'/'$' — group the alternatives, ^(?:a|b)$` });
     }
     return out;
   }
-  if (use === 'test' && HOST_IN_REGEX.test(s) && urlShaped(s) && !startAnchored(s) && !endAnchored(s)) {
+  if (!testFile && use === 'test' && HOST_IN_REGEX.test(s) && urlShaped(s) && !startAnchored(s) && !endAnchored(s)) {
     out.push({ rule: RULES.anchor, message: `the regex /${source}/ tests for a host with neither '^' nor '$', so it matches anywhere in a URL (https://evil.example/?x=<host>) — anchor it` });
   }
   return out;
@@ -551,16 +589,37 @@ function literalOfRegex(source) {
   if (/^(?:\\\.){2}(?:\\?\/)?$/.test(source)) return source.startsWith('\\.\\.') && source.length > 4 ? '../' : '..';
   return null;
 }
+/** Literal text (a letter, digit or `_`) a regex spells outside its classes and escapes. */
+const spellsText = (blanked) => /[A-Za-z0-9]/.test(blanked.replace(/\\./g, '').replace(/\(\?(?:[:=!]|<[=!])/g, '').replace(/\{\d+(?:,\d*)?\}/g, '').replace(/_+/g, ''));
+
 /**
- * The dangerous string a removal regex can begin with — CodeQL's DangerousPrefix set:
- * `<!--`, `<script`/`<style`/`<iframe` (an `<` then s/i, or then any wildcard or class),
- * `../` and `/..` — or null. A specific tag (`<meta …>`, `<p>…</p>`) cannot re-form one.
+ * The dangerous string a removal regex can begin with — CodeQL's DangerousPrefix model —
+ * or null:
+ *   `<!--`, and `../` / `/..`, when what follows spells no literal text (CodeQL: a regex
+ *     matching the explicit content of a comment or a path is not a sanitizer —
+ *     `<!--\s*email_off\s*-->` cannot be spliced from its own pieces);
+ *   `<script` when `<` (or `</`) is followed by script/style/iframe (or cript/scrip), or by
+ *     a NAME it does not spell — a class, a wildcard, `\w`/`\S`/`\s`. A specific tag
+ *     (`<meta …>`, `<p>…</p>`, `<string>…</string>`) cannot re-form one.
+ * A regex anchored to the end (or the start) of the string, without the m flag, removes
+ * everything on that side, so nothing is left there to splice with: null.
  */
-export function dangerousOpener(source) {
-  const s = blankClasses(source).replace(/^(?:\^|\(\?:|\()+/, '');
-  if (/^\\?<!--/.test(s) || /^\\?<!(?:\.|_|\\[sSwW])/.test(s)) return '<!--';
-  if (/^\\?<(?:\\?\/)?(?:[sSiI]|_|\.|\\[sSwW])/.test(s)) return '<script';
-  if (/^(?:\\\.){2}(?:\\?\/|_)/.test(s) || /^\\?\/(?:\\\.){2}/.test(s)) return '../';
+export function dangerousOpener(source, flags = '') {
+  const s = blankClasses(source).replace(/^(?:\(\?:|\()+/, '');
+  if (!flags.includes('m') && topAlternatives(source).length === 1 && (s.startsWith('^') || /(?<!\\)\$\)*$/.test(s))) return null;
+  const rest = (m) => s.slice(m[0].length);
+  let m = /^\\?<!--/.exec(s);
+  if (m) return spellsText(rest(m)) ? null : '<!--';
+  if (/^\\?<!(?:\.|_|\\[sSwW])/.test(s)) return '<!--';
+  m = /^\\?<(?:\\?\/\??)?/.exec(s);
+  if (m) {
+    const r = rest(m).replace(/^(?:\(\?:|\()+/, '');
+    if (/^(?:[a-z]+\|)*(?:script|style|iframe|scrip|cript)/i.test(r)) return '<script';
+    if (/^(?:_|\.|\\[sSwW])/.test(r)) return '<script';
+    return null;
+  }
+  m = /^(?:\\\.){2}(?:\\?\/|_)/.exec(s) ?? /^\\?\/(?:\\\.){2}/.exec(s);
+  if (m) return spellsText(rest(m)) ? null : '../';
   return null;
 }
 
@@ -574,8 +633,15 @@ const FS_CHECK = new Set(['open', 'openSync', 'exists', 'existsSync', 'stat', 's
 const FS_USE = new Set(['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync']);
 const TMP_SINK = new Set(['writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'createWriteStream']);
 
-/** Every finding in one file's source: [{ line, rule, message }]. Throws TokenizeError. */
-export function analyse(src) {
+/** A test file, as CodeQL's anchor query leaves them out: a test/tests/__tests__ directory, or *.test.* / *.spec.*. */
+export const TEST_FILE = /(?:^|\/)(?:test|tests|__tests__)\/|\.(?:test|spec)\.[^/]+$/i;
+const EXITS = new Set(['return', 'throw', 'break', 'continue']);
+
+/**
+ * Every finding in one file's source: [{ line, rule, message }]. Throws TokenizeError.
+ * `testFile`: the source is a test (TEST_FILE), so the anchor rule does not apply.
+ */
+export function analyse(src, { testFile = false } = {}) {
   const toks = tokenize(src);
   const { match, fn, blk } = structure(toks);
   const consts = constStrings(toks);
@@ -616,10 +682,83 @@ export function analyse(src) {
     return false;
   };
 
+  /** Is token k inside the arguments of `assert(…)`, `assert.x(…)`, `t.assert.x(…)` or `expect(…)`?
+   *  An assertion on output validates nothing, so its regex is no URL check. */
+  const inAssertion = (k) => {
+    for (let j = k - 1; j >= 0; j--) {
+      const x = toks[j];
+      if (x.t !== 'p') continue;
+      if ((x.v === ')' || x.v === ']' || x.v === '}') && match[j] < j) { j = match[j]; continue; }
+      if (x.v === ';' || x.v === '{' || x.v === '}') return false;
+      if (x.v === '(' && toks[j - 1]?.t === 'id') {
+        const callee = toks[j - 1].v;
+        if (callee === 'assert' || callee === 'expect') return true;
+        if (isMember(toks, j - 1) && toks[j - 3]?.t === 'id' && toks[j - 3].v === 'assert') return true;
+      }
+    }
+    return false;
+  };
+
+  /** One past the last token of the statement (a `{…}` block, or up to its `;`) starting at b. */
+  const bodyEnd = (b) => {
+    if (toks[b]?.t === 'p' && toks[b].v === '{') return match[b] + 1;
+    let e = b;
+    while (e < toks.length && !(toks[e].t === 'p' && (toks[e].v === ';' || toks[e].v === '}'))) {
+      if (toks[e].t === 'p' && (toks[e].v === '(' || toks[e].v === '[' || toks[e].v === '{') && match[e] > e) {
+        const o = e;
+        e = match[e] + 1;
+        // a block statement's `{…}` (`if (…) {…}`, `else {…}`, `try {…}`) ends it, unless it continues
+        const blockOf = toks[o].v === '{' && (toks[o - 1]?.v === ')' || /^(?:else|try|finally|do)$/.test(toks[o - 1]?.v ?? ''));
+        if (blockOf && !/^(?:else|catch|finally|while)$/.test(toks[e]?.v ?? '')) return e;
+        continue;
+      }
+      e++;
+    }
+    return toks[e]?.v === ';' ? e + 1 : e;
+  };
+  /** Does the statement [b, e) end by leaving — its last statement a return/throw/break/continue? */
+  const leaves = (b, e) => {
+    if (toks[b]?.v === '{' && toks[b].t === 'p') {
+      let last = -1;
+      for (let j = b + 1; j < e - 1; j = Math.max(j + 1, bodyEnd(j))) if (toks[j].v !== ';') last = j;
+      return last !== -1 && toks[last].t === 'id' && EXITS.has(toks[last].v);
+    }
+    return toks[b]?.t === 'id' && EXITS.has(toks[b].v);
+  };
+  /** The `if` whose condition holds token k: { then: [a, b), else: [a, b) | null, end }, or null. */
+  const ifOf = (k) => {
+    for (let j = k - 1; j >= 0; j--) {
+      const x = toks[j];
+      if (x.t !== 'p') continue;
+      if ((x.v === ')' || x.v === ']' || x.v === '}') && match[j] < j) { j = match[j]; continue; }
+      if (x.v === ';' || x.v === '{') return null;
+      if (x.v === '(' && toks[j - 1]?.t === 'id' && toks[j - 1].v === 'if') {
+        const tb = match[j] + 1;
+        const te = bodyEnd(tb);
+        const hasElse = toks[te]?.t === 'id' && toks[te].v === 'else';
+        const eb = hasElse ? te + 1 : -1;
+        const ee = hasElse ? (toks[eb]?.v === 'if' ? bodyEnd(match[eb + 1] + 1) : bodyEnd(eb)) : -1;
+        return { then: [tb, te], else: hasElse ? [eb, ee] : null, end: hasElse ? ee : te };
+      }
+    }
+    return null;
+  };
+  /** Is the use at u on a branch the check at c decided? Not when c is an `if` condition and u
+   *  sits after an `if` none of whose branches leaves — the use runs whatever the check said. */
+  const onCheckedBranch = (c, u) => {
+    const g = ifOf(c);
+    if (!g) return true;
+    const within = ([a, b]) => u >= a && u < b;
+    if (within(g.then) || (g.else && within(g.else))) return true;
+    if (u < g.end) return true;
+    return leaves(...g.then) || (g.else !== null && leaves(...g.else));
+  };
+
   // js/file-system-race — what CodeQL reports, as measured by this repo's own runtime
   // spy (tooling/ci/test/fixtures/fs-spy-preload.mjs): every check→use pair on one path
   // in one function where the check dominates the use, EXCEPT exists() followed by a
-  // READ (a vanished file makes that read throw; it cannot act on stale state).
+  // READ (a vanished file makes that read throw; it cannot act on stale state), and a use
+  // after an `if (check)` that falls through (assert-elf-page-alignment.mjs:300→308).
   const checks = [];
   for (let k = 0; k < toks.length; k++) {
     const name = fsCallName(toks, k, fsb);
@@ -631,7 +770,7 @@ export function analyse(src) {
       const flag = args[1] ? stringValue(toks, args[1], consts) : null;
       const read = /^readFile/.test(name) || (/^open/.test(name) && (!args[1] || (flag !== null && /^(?:r|rs|sr)$/.test(flag))));
       const dominates = (c) => c.blk === -1 || (c.blk < k && match[c.blk] > k);
-      const hit = checks.findLast((c) => c.fn === fn[k] && c.pathText === pathText && dominates(c) && !(read && /^exists/.test(c.name)));
+      const hit = checks.findLast((c) => c.fn === fn[k] && c.pathText === pathText && dominates(c) && !(read && /^exists/.test(c.name)) && onCheckedBranch(c.k, k));
       if (hit) {
         add(toks[k].line, RULES.race, `${name}(${pathText}) acts on a path ${hit.name}() checked on line ${toks[hit.k].line}; the file can change in between — ${read ? "read once in a try and treat err.code === 'ENOENT' as missing" : "write with flag 'wx' (or read once in a try) instead of deciding on an earlier look"}`);
       }
@@ -646,8 +785,11 @@ export function analyse(src) {
     if (t.t === 're') {
       const nextIsTest = toks[k + 1]?.v === '.' && isCallAt(toks, k + 2) && (toks[k + 2].v === 'test' || toks[k + 2].v === 'exec');
       const argOf = toks[k - 1]?.v === '(' && isCallAt(toks, k - 2) && isMember(toks, k - 2) ? toks[k - 2].v : null;
-      const use = nextIsTest || ['match', 'search', 'matchAll'].includes(argOf) ? 'test' : ['replace', 'replaceAll', 'split'].includes(argOf) ? 'replace' : 'other';
-      for (const f of regexFindings(t.v.source, use)) add(t.line, f.rule, f.message);
+      const asserts = inAssertion(k);
+      const use = nextIsTest || ['match', 'search', 'matchAll'].includes(argOf) ? (asserts ? 'other' : 'test') : ['replace', 'replaceAll', 'split'].includes(argOf) ? 'replace' : 'other';
+      // the tested value: .test(<arg>), or the receiver of .match(/re/)
+      const subject = nextIsTest ? rangeText(src, toks, argRanges(toks, match, k + 3)[0] ?? [0, 0]) : argOf ? (toks[k - 4]?.v ?? '') : '';
+      for (const f of regexFindings(t.v.source, use, { urlSubject: URL_SUBJECT.test(String(subject)), testFile })) add(t.line, f.rule, f.message);
       continue;
     }
     if (t.t !== 'id' || !isCallAt(toks, k)) continue;
@@ -704,11 +846,11 @@ export function analyse(src) {
           if (!escapedFirst) add(t.line, RULES.sanit, `.replace(/${source}/${flags}, ${JSON.stringify(replacement)}) escapes with a backslash, but no earlier step escapes backslashes, so an input holding \\ un-escapes it — replace(/\\\\/g, '\\\\\\\\') first`);
         }
         const removes = replacement === '';
-        const opener = dangerousOpener(source);
+        const opener = dangerousOpener(source, flags);
         if (removes && opener) {
           // …and a LATER replace in the same chain of the same opener handles what this one re-forms
           const later = toks.slice(match[k + 1], statementEnd(k)).some((x, i, arr) => x.t === 're' && arr[i - 2]?.v === 'replace' &&
-            dangerousOpener(x.v.source) === opener);
+            dangerousOpener(x.v.source, x.v.flags) === opener);
           if (!later) add(t.line, RULES.multi, `.replace(/${source}/${flags}, '') removes a pattern that can start '${opener}' once; the removal can splice a new one together ('<!<!---->--' → '<!--') — repeat it to a fixed point, or escape instead of stripping`);
         }
       }
@@ -792,22 +934,33 @@ export function analyse(src) {
   return out.sort((x, y) => x.line - y.line || x.rule.localeCompare(y.rule));
 }
 
-/** Split findings by the suppression comments on their line or the line above. */
+/**
+ * Split findings by the suppression comments on THEIR OWN line — never the line above
+ * (an allow there would also cover a second, unreviewed shape on the next line), and
+ * never an `codeql-lite: allow` that sits inside a string, template or regex literal.
+ */
 export function applyAllows(src, findings) {
-  const lines = src.split(/\r?\n/);
+  if (!findings.length) return { kept: [], allowed: [] };
+  const lines = src.split('\n');
+  const lineStart = [0];
+  for (let k = 0; k < lines.length; k++) lineStart.push(lineStart[k] + lines[k].length + 1);
+  const literals = tokenize(src).filter((t) => t.t === 'str' || t.t === 'tpl' || t.t === 're');
+  const inLiteral = (off) => literals.some((t) => t.start <= off && off < t.end);
   const allowOn = (n) => {
-    const text = lines[n - 1] ?? '';
-    const at = text.indexOf(ALLOW);
-    if (at === -1) return [];
-    const rest = text.slice(at + ALLOW.length);
-    const m = /^\s+(\S+)\s*(?:—|--|-|:)?\s*(.*)$/.exec(rest);
-    if (!m) return [{ rule: '', reason: '' }];
-    return [{ rule: m[1], reason: m[2].replace(/\s*\*\/\s*$/, '').trim() }];
+    const text = (lines[n - 1] ?? '').replace(/\r$/, '');
+    for (let at = text.indexOf(ALLOW); at !== -1; at = text.indexOf(ALLOW, at + 1)) {
+      if (inLiteral(lineStart[n - 1] + at)) continue;
+      const rest = text.slice(at + ALLOW.length);
+      const m = /^\s+(\S+)\s*(?:—|--|-|:)?\s*(.*)$/.exec(rest);
+      if (!m) return [{ rule: '', reason: '' }];
+      return [{ rule: m[1], reason: m[2].replace(/\s*\*\/\s*$/, '').trim() }];
+    }
+    return [];
   };
   const kept = [];
   const allowed = [];
   for (const f of findings) {
-    const a = [...allowOn(f.line), ...allowOn(f.line - 1)].find((x) => x.rule === f.rule);
+    const a = allowOn(f.line).find((x) => x.rule === f.rule);
     if (!a) { kept.push(f); continue; }
     if (a.reason.length < MIN_REASON) {
       kept.push({ line: f.line, rule: RULES.allow, message: `the allow for ${f.rule} gives no reason of ${MIN_REASON}+ characters (${JSON.stringify(a.reason)}), so it suppresses nothing; ${f.message}` });
@@ -847,14 +1000,29 @@ function git(root, args) {
   return r.stdout;
 }
 
+/** A path as git prints it: "C-quoted" (octal UTF-8 bytes, \t \" \\) when it had to be, else as is. */
+export function unquoteGitPath(p) {
+  if (!(p.startsWith('"') && p.endsWith('"') && p.length >= 2)) return p;
+  const bytes = [];
+  const body = p.slice(1, -1);
+  for (let k = 0; k < body.length; k++) {
+    const c = body[k];
+    if (c !== '\\') { bytes.push(...Buffer.from(c, 'utf8')); continue; }
+    const e = body[++k];
+    if (/[0-7]/.test(e)) { bytes.push(parseInt(body.slice(k, k + 3), 8)); k += 2; continue; }
+    bytes.push(({ n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11 })[e] ?? e.charCodeAt(0));
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
 /** Parse `git diff -U0` output into Map<rel, Set<line>> of added/changed new-side lines. */
 export function changedLines(diff) {
   const out = new Map();
   let file = null;
   for (const l of diff.split('\n')) {
     if (l.startsWith('+++ ')) {
-      const p = l.slice(4).replace(/\t.*$/, '');
-      file = p === '/dev/null' ? null : p.replace(/^"?b\//, '').replace(/"$/, '');
+      const p = unquoteGitPath(l.slice(4).replace(/\t$/, ''));
+      file = p === '/dev/null' ? null : p.replace(/^b\//, '');
       if (file && !out.has(file)) out.set(file, new Set());
       continue;
     }
@@ -868,23 +1036,31 @@ export function changedLines(diff) {
   return out;
 }
 
-/** The change: Map<rel, Set<line> | 'all'> of the code files this branch changed. */
-export function changedSet(root, base) {
+/**
+ * The change: Map<rel, Set<line> | 'all'> of the TRACKED code files this branch changed
+ * (committed, staged or not). Untracked files only when asked (`untracked`), whole.
+ */
+export function changedSet(root, base, { untracked = false } = {}) {
   const mb = git(root, ['merge-base', 'HEAD', base]).trim();
   const out = new Map();
-  for (const [f, lines] of changedLines(git(root, ['diff', '-U0', '--no-color', '--no-ext-diff', '--diff-filter=AMR', '-M', mb, '--']))) out.set(f, lines);
-  for (const f of git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) out.set(f, 'all');
+  for (const [f, lines] of changedLines(git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', '--no-color', '--no-ext-diff', '--diff-filter=AMR', '-M', mb, '--']))) out.set(f, lines);
+  if (untracked) for (const f of git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) out.set(f, 'all');
   return { files: out, mergeBase: mb };
 }
 
-/** Grade a set: { findings, allowed, files, lost } where lost names a file that could not be graded. */
+/**
+ * Grade a set: { findings, allowed, files, lost, skipped } where lost names a file that
+ * could not be graded and skipped one that is not CodeQL's (not JS/TS, or in paths-ignore).
+ */
 export function grade(root, set, { ignores = [] } = {}) {
   const findings = [];
   const allowed = [];
   const lost = [];
+  const skipped = [];
   let files = 0;
   for (const [rel, scope] of [...set.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    if (!CODE_FILE.test(rel) || ignores.some((re) => re.test(rel))) continue;
+    if (!CODE_FILE.test(rel)) { skipped.push(`${rel} (not a JavaScript/TypeScript file)`); continue; }
+    if (ignores.some((re) => re.test(rel))) { skipped.push(`${rel} (in ${CODEQL_CONFIG_REL} paths-ignore)`); continue; }
     let src;
     try {
       src = readFileSync(path.join(root, ...rel.split('/')), 'utf8');
@@ -895,7 +1071,7 @@ export function grade(root, set, { ignores = [] } = {}) {
     }
     let all;
     try {
-      all = analyse(src);
+      all = analyse(src, { testFile: TEST_FILE.test(rel) });
     } catch (e) {
       if (e instanceof TokenizeError) { lost.push(`${rel}: could not be tokenized — ${e.message}`); continue; }
       throw e;
@@ -906,16 +1082,17 @@ export function grade(root, set, { ignores = [] } = {}) {
     for (const f of r.kept) findings.push({ file: rel, ...f });
     for (const f of r.allowed) allowed.push({ file: rel, ...f });
   }
-  return { findings, allowed, files, lost };
+  return { findings, allowed, files, lost, skipped };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 export function parseArgs(argv, env = process.env) {
-  const o = { base: env.CODEQL_LITE_BASE || DEFAULT_BASE, all: false, files: null, root: DEFAULT_ROOT, quiet: false };
+  const o = { base: env.CODEQL_LITE_BASE || DEFAULT_BASE, all: false, files: null, root: DEFAULT_ROOT, quiet: false, untracked: false };
   for (let k = 0; k < argv.length; k++) {
     const a = argv[k];
     if (a === '--all') o.all = true;
+    else if (a === '--untracked') o.untracked = true;
     else if (a === '--quiet') o.quiet = true;
     else if (a === '--base') o.base = argv[++k];
     else if (a === '--root') o.root = path.resolve(argv[++k]);
@@ -925,6 +1102,7 @@ export function parseArgs(argv, env = process.env) {
   if (!o.base) throw new Error('--base needs a ref');
   if (o.all && o.files) throw new Error('--all and --files are exclusive');
   if (o.files && !o.files.length) throw new Error('--files needs at least one path');
+  if (o.untracked && (o.all || o.files)) throw new Error('--untracked adds to the changed set; --all and --files name their own');
   return o;
 }
 
@@ -947,9 +1125,9 @@ export function main(argv = process.argv.slice(2), log = console.log, err = cons
       set = new Map(git(o.root, ['ls-files', '-z']).split('\0').filter(Boolean).map((f) => [f, 'all']));
       what = 'every tracked file, whole';
     } else {
-      const c = changedSet(o.root, o.base);
+      const c = changedSet(o.root, o.base, { untracked: o.untracked });
       set = c.files;
-      what = `the changed lines since merge-base(HEAD, ${o.base}) ${c.mergeBase.slice(0, 10)}`;
+      what = `the changed lines since merge-base(HEAD, ${o.base}) ${c.mergeBase.slice(0, 10)}${o.untracked ? ', and every untracked file whole' : ''}`;
     }
   } catch (e) {
     err(`codeql-lite: COVERAGE LOST — the change could not be named: ${e.message}`);
@@ -964,6 +1142,8 @@ export function main(argv = process.argv.slice(2), log = console.log, err = cons
     for (const [rule, count] of [...by.entries()].sort()) log(`codeql-lite: --all ${rule} ${count}`);
   }
   const ms = Date.now() - t0;
+  if (o.files) for (const s of r.skipped) log(`codeql-lite: not graded ${s}`);
+  if (o.files && r.files === 0 && !r.lost.length) r.lost.push(`--files named ${set.size} file(s) and none is one CodeQL grades (${r.skipped.join('; ')}), so nothing was checked`);
   if (r.lost.length) {
     for (const l of r.lost) err(`codeql-lite: COVERAGE LOST — ${l}`);
     return 2;
