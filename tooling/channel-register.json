@@ -2253,7 +2253,7 @@
             "would hand app #1's key to every later app: their genuine installs would be called modified",
             "copies. The fingerprint is apps/<id>/app.yaml `stores.android-play.appSigningSha256` (app #1:",
             "98:FA:…:3A:3C, read 2026-10-03 off the Play Developer API generatedApks/1), and",
-            "assert-runtime-signer-check.mjs --write compiles each app's own into kSignerPinsByApp. This field",
+            "tooling/app-yaml/render.mjs renders each app's own into its lib/core/signer_pins.g.dart. This field",
             "keeps the reasoning and names where the value is (`perApp`); it holds no sha256, so nothing reads",
             "a second copy.",
             "",

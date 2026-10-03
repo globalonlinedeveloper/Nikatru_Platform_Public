@@ -9,6 +9,14 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'support/width_harness.dart';
 
+// ⏱ 2026-10-03 (ADR 030): the app's OWN pins, as its generated
+// `kAppSignerPins` hands them over — app #1's Play app signing digest.
+const Map<String, List<String>> _appPins = <String, List<String>>{
+  'android-play': <String>[
+    '98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',
+  ],
+};
+
 /// The app SHELL — `NikatruApp` and the four surfaces it hosts.
 ///
 /// 🏗️ The widget half of the brick's `theme-triplet-supplied`,
@@ -503,7 +511,7 @@ void main() {
       final _OrderRecorder notifications = _OrderRecorder();
       final List<String> steps = notifications.steps;
       await bootstrapNikatru(
-        appId: 'subscriptiontracker',
+        appPins: _appPins,
         releaseChannel: releaseChannel,
         integrityProbe: probe,
         recordIntegrity: probe == null
@@ -545,7 +553,7 @@ void main() {
       Future<bool>? emptyAtRun;
       final _OrderRecorder notifications = _OrderRecorder();
       await bootstrapNikatru(
-        appId: 'subscriptiontracker',
+        appPins: _appPins,
         releaseChannel: '',
         integrityProbe: null,
         notifications: notifications,
@@ -609,7 +617,7 @@ void main() {
         probe: core.FixedDeviceIntegrityProbe(
           certificates: core.SigningCertificates(
             sha256: core
-                .signerPinsFor('android-play', appId: 'subscriptiontracker')!
+                .signerPinsFor('android-play', appPins: _appPins)!
                 .digests,
           ),
         ),

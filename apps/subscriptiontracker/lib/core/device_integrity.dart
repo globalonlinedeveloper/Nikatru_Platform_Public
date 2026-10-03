@@ -13,6 +13,7 @@ import '../features/shared/chassis_adapters.dart'
         modifiedCopyBlocked,
         reauthenticateUser;
 import 'app_config.dart';
+import 'signer_pins.g.dart';
 
 /// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — this app's boot step for root
 /// detection and the runtime signature check: the chassis step 3½ that
@@ -31,7 +32,7 @@ import 'app_config.dart';
 Future<bool> integrityBootBlocks(TelemetryConfig telemetry) {
   final TelemetryClient sink = TelemetryBootstrap.clientFor(telemetry);
   return modifiedCopyBlocked(
-    appId: AppConfig.appId,
+    appPins: kAppSignerPins,
     releaseChannel: AppConfig.releaseChannel,
     integrityProbe: platformDeviceIntegrityProbe(),
     record: integrityRecorder(sink.addBreadcrumb, sink.captureMessage),

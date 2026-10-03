@@ -49,8 +49,10 @@
 // signing key PER APP, while the upload key is factory-wide). A channel entry may
 // name `perAppPin`, a field of each app's apps/<id>/app.yaml store record. The
 // generated file then has two tables: the channel default (factory pins only,
-// never complete while a per-app pin is declared) and kSignerPinsByApp (factory
-// pins + the app's own); the binary looks itself up by AppConfig.appId.
+// never complete while a per-app pin is declared, with `appPinCompletes`)
+// in nikatru_core, and each app's OWN pins in its lib/core/signer_pins.g.dart
+// (`kAppSignerPins`, rendered by tooling/app-yaml/render.mjs from its app.yaml:
+// shared code may name no app, [C-10]); the app hands its own to the check.
 //   S8 per app   each app's own pin is a colon-separated uppercase SHA-256 and
 //                no other app's; an app ON the store (a `listings` URL or an
 //                `issued` record) that records none FAILS — its installs carry a
@@ -70,6 +72,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { composeReleaseBuild, signerPinsOf, appPinsAt, unpinnedReleaseRefusal, RELEASE_SIGNING_ENV } from './flutter-release-build.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
+import { SIGNER_PINS_DART } from '../app-yaml/render.mjs';
 
 export const REGISTER = 'tooling/channel-register.json';
 const SHA256_COLON = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/;
@@ -80,8 +83,8 @@ const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 export const WIRING = [
   {
     file: 'packages/core/lib/src/integrity/device_integrity.dart',
-    must: [/import 'signer_pins\.g\.dart';/, /kSignerPinsByApp\[appId\]\?\[releaseChannel\]/, /kSignerPinsByChannel\[releaseChannel\]/],
-    why: 'the comparison reads the GENERATED pins, never a literal — the app\'s own set first, then the channel default',
+    must: [/import 'signer_pins\.g\.dart';/, /kSignerPinsByChannel\[releaseChannel\]/, /appPins\[releaseChannel\]/],
+    why: 'the comparison reads the GENERATED pins, never a literal — the channel default, plus the app\'s own',
   },
   {
     file: 'packages/core/lib/nikatru_core.dart',
@@ -105,7 +108,7 @@ export const WIRING = [
   },
   {
     file: 'packages/chassis_screens/lib/integrity/device_integrity_gate.dart',
-    must: [/core\.assessDeviceIntegrity\(/, /appId:\s*appId/, /checksSigner:\s*isAndroid/],
+    must: [/core\.assessDeviceIntegrity\(/, /appPins:\s*appPins/, /checksSigner:\s*isAndroid/],
     order: [/Future<bool> modifiedCopyBlocked\(/, /await checkDeviceIntegrity\(/, /\.blocksDataAccess\) return false;/, /runApp\(const TamperedBuildApp\(\)\)/, /return true;/],
     why: 'the gate runs the check on android, and a blocked copy runs the modified-copy app and nothing else',
   },
@@ -116,18 +119,18 @@ export const WIRING = [
   },
   {
     file: 'packages/chassis_screens/lib/shell/bootstrap.dart',
-    order: [/if \(await modifiedCopyBlocked\(/, /appId:\s*appId/, /return;/, /await notifications\.init\(\)/, /await initialiseIdentity\(\)/],
+    order: [/if \(await modifiedCopyBlocked\(/, /appPins:\s*appPins/, /return;/, /await notifications\.init\(\)/, /await initialiseIdentity\(\)/],
     why: 'the boot step blocks a re-signed copy BEFORE the notification adapter and identity (and so any data) are touched',
   },
 ];
 
 /** A main() on the chassis bootstrap passes its app id, the compiled channel
  *  and the probe — the app id selects its own per-app pins. */
-const BOOTSTRAP_MAIN = [/bootstrapNikatru\(/, /appId:\s*AppConfig\.appId/, /releaseChannel:\s*AppConfig\.releaseChannel/, /integrityProbe:\s*platformDeviceIntegrityProbe\(\)/];
+const BOOTSTRAP_MAIN = [/bootstrapNikatru\(/, /appPins:\s*kAppSignerPins/, /releaseChannel:\s*AppConfig\.releaseChannel/, /integrityProbe:\s*platformDeviceIntegrityProbe\(\)/];
 /** A main() that predates it calls ONE app helper first, and returns when it blocks. */
 const DIRECT_MAIN_CALL = /if \(await (\w+)\(\w*\)\) return;/;
 /** ...and that helper, in a file main() imports, runs the chassis step. */
-const DIRECT_HELPER = [/modifiedCopyBlocked\(/, /appId:\s*AppConfig\.appId/, /releaseChannel:\s*AppConfig\.releaseChannel/, /integrityProbe:\s*platformDeviceIntegrityProbe\(\)/];
+const DIRECT_HELPER = [/modifiedCopyBlocked\(/, /appPins:\s*kAppSignerPins/, /releaseChannel:\s*AppConfig\.releaseChannel/, /integrityProbe:\s*platformDeviceIntegrityProbe\(\)/];
 
 function inOrder(text, patterns) {
   let from = 0;
@@ -145,76 +148,56 @@ function inOrder(text, patterns) {
 export const bareHex = (sha) => sha.replaceAll(':', '');
 
 /** One `'<key>': SignerPins(…),` entry at `indent`, shaped as `dart format`
- *  leaves it, so formatting the file is not a diff. */
-function pinsEntry(indent, key, digests, complete) {
-  const oneLine = `${indent}'${key}': SignerPins(digests: <String>[], complete: ${complete}),`;
+ *  leaves it, so formatting the file is not a diff. `appPinCompletes` is
+ *  emitted only for a channel that takes a per-app pin. */
+function pinsEntry(indent, key, digests, complete, appPinCompletes = null) {
+  const tail = appPinCompletes === null ? '' : `, appPinCompletes: ${appPinCompletes}`;
+  const oneLine = `${indent}'${key}': SignerPins(digests: <String>[], complete: ${complete}${tail}),`;
   if (digests.length === 0 && oneLine.length <= 80) return [oneLine];
   const out = [`${indent}'${key}': SignerPins(`];
   if (digests.length === 0) out.push(`${indent}  digests: <String>[],`);
   else out.push(`${indent}  digests: <String>[`, ...digests.map((d) => `${indent}    '${bareHex(d)}',`), `${indent}  ],`);
-  out.push(`${indent}  complete: ${complete},`, `${indent}),`);
+  out.push(`${indent}  complete: ${complete},`);
+  if (appPinCompletes !== null) out.push(`${indent}  appPinCompletes: ${appPinCompletes},`);
+  out.push(`${indent}),`);
   return out;
 }
 
-/** THE GENERATED FILE, rendered from the register and each app's per-app pin.
- *  Deterministic: channels in the register's order, apps sorted, pins in their
- *  declared order, set pins only.
+/** THE GENERATED FILE, rendered from the register. Deterministic: channels in
+ *  the register's order, pins in their declared order, set pins only.
  *
- *  ⏱ 2026-10-03 (ruling on PR #1198, ADR 030 — Play App Signing holds one key
- *  PER APP). Two tables. `kSignerPinsByChannel` is the CHANNEL DEFAULT: the
- *  factory-wide pins only, never complete while the channel declares a
- *  `perAppPin`, so an app with no row of its own reports and is never blocked.
- *  `kSignerPinsByApp` holds, for each app that records its per-app pin, the
- *  factory-wide pins plus its own. `appPins` is `{ <app>: { <channel>: [sha…] } }`. */
-export function renderSignerPins(register, appPins = {}) {
+ *  ⏱ 2026-10-03 (ruling on PR #1198, ADR 030 — Play App Signing holds one app
+ *  signing key PER APP). This is the CHANNEL DEFAULT: the factory-wide pins
+ *  only. A channel whose entry names a `perAppPin` is never complete here, so
+ *  an app that records no pin of its own reports and is never blocked; its
+ *  `appPinCompletes` says whether the app's own pin (each app's
+ *  lib/core/signer_pins.g.dart, rendered by tooling/app-yaml/render.mjs from
+ *  its app.yaml — shared code may name no app, [C-10]) completes the set. */
+export function renderSignerPins(register) {
   const channels = register?.runtimeSignerCheck?.channels ?? {};
   const lines = [
     '// GENERATED by `node tooling/ci/assert-runtime-signer-check.mjs --write` from',
-    '// tooling/channel-register.json `runtimeSignerCheck` and each app\'s per-app pin',
-    '// in apps/<id>/app.yaml. NEVER HAND-EDIT: the guard fails CI when this file and',
-    '// those sources disagree.',
+    '// tooling/channel-register.json `runtimeSignerCheck`. NEVER HAND-EDIT: the',
+    '// guard fails CI when this file and the register disagree.',
     '//',
-    '// The expected signing-certificate digests (SHA-256, uppercase hex) an Android',
-    '// build compiles in. `complete` is true only when EVERY pin the set declares is',
-    '// set; an incomplete set reports and never blocks. A per-app pin (Play App',
-    '// Signing holds one key per app) is never in a channel default.',
+    '// The expected signing-certificate digests (SHA-256, uppercase hex) each',
+    '// Android channel\'s build compiles in. `complete` is true only when EVERY pin',
+    '// the channel declares is set; an incomplete set reports and never blocks.',
+    '// A per-app pin (Play holds one app signing key per app) is never here: each',
+    '// app renders its own, and `appPinCompletes` says whether it completes the set.',
     "import 'device_integrity.dart' show SignerPins;",
     '',
-    '/// The CHANNEL DEFAULT by `RELEASE_CHANNEL`: the factory-wide pins, for an app',
-    '/// with no row of its own in [kSignerPinsByApp].',
+    '/// The pins by `RELEASE_CHANNEL`: the factory-wide CHANNEL DEFAULT.',
     'const Map<String, SignerPins> kSignerPinsByChannel = <String, SignerPins>{',
   ];
   for (const id of Object.keys(channels)) {
     const p = signerPinsOf(register, id);
     for (const x of p.pins) lines.push(`  // ${x.path}${x.value === null ? ' — not set' : ''}`);
-    if (p.perAppPin !== null) lines.push(`  // per app: ${p.perAppPin} — kSignerPinsByApp`);
-    lines.push(...pinsEntry('  ', id, p.pins.filter((x) => x.value !== null).map((x) => x.value), p.complete));
-  }
-  lines.push('};', '');
-  lines.push(
-    '/// The pins by app id, then `RELEASE_CHANNEL`: the factory-wide pins plus the',
-    '/// app\'s own, for each app whose apps/<id>/app.yaml records its per-app pin.',
-  );
-  const apps = Object.keys(appPins)
-    .filter((a) => Object.values(appPins[a] ?? {}).some((v) => Array.isArray(v) && v.length > 0))
-    .sort();
-  if (apps.length === 0) {
-    lines.push('const Map<String, Map<String, SignerPins>> kSignerPinsByApp =', '    <String, Map<String, SignerPins>>{};', '');
-    return lines.join('\n');
-  }
-  // Shaped as `dart format` leaves a non-empty map here (measured 3.47.5).
-  lines.push('const Map<String, Map<String, SignerPins>>', 'kSignerPinsByApp = <String, Map<String, SignerPins>>{');
-  for (const app of apps) {
-    lines.push(`  '${app}': <String, SignerPins>{`);
-    for (const id of Object.keys(channels)) {
-      const own = appPins[app]?.[id];
-      if (!Array.isArray(own) || own.length === 0) continue;
-      const p = signerPinsOf(register, id, own);
-      lines.push(`    // apps/${app}/app.yaml ${p.perAppPin}`);
-      const digests = [...p.pins.filter((x) => x.value !== null).map((x) => x.value), ...own];
-      lines.push(...pinsEntry('    ', id, digests, p.complete));
-    }
-    lines.push('  },');
+    const factoryComplete = p.pins.length > 0 && p.pins.every((x) => x.value !== null);
+    if (p.perAppPin !== null) lines.push(`  // + per app: ${p.perAppPin} (the app's kAppSignerPins)`);
+    lines.push(
+      ...pinsEntry('  ', id, p.pins.filter((x) => x.value !== null).map((x) => x.value), p.complete, p.perAppPin === null ? null : factoryComplete),
+    );
   }
   lines.push('};', '');
   return lines.join('\n');
@@ -440,10 +423,17 @@ export function check(root) {
     } catch {
       have = null;
     }
-    const want = renderSignerPins(register, appPins);
+    const want = renderSignerPins(register);
     if (have !== want) {
-      problems.push(`S3 ${genRel} ${have === null ? 'does not exist' : 'is not what the register and the apps\' per-app pins render'}: the binary would compile in pins they do not hold. Run \`node tooling/ci/assert-runtime-signer-check.mjs --write\`.`);
+      problems.push(`S3 ${genRel} ${have === null ? 'does not exist' : 'is not what the register renders'}: the binary would compile in pins the register does not hold. Run \`node tooling/ci/assert-runtime-signer-check.mjs --write\`.`);
     }
+  }
+  // ...and each app's own pins file is what its app.yaml renders. render.mjs
+  // owns the file and assert-app-yaml grades it fresh; this limb only refuses an
+  // app whose file is MISSING, because the app imports it unconditionally.
+  for (const app of appIds) {
+    if (!existsSync(join(root, 'apps', app, 'lib', 'core'))) continue;
+    if (!existsSync(join(root, 'apps', app, SIGNER_PINS_DART))) problems.push(`S3 apps/${app}/${SIGNER_PINS_DART} does not exist: the app's own signer pins are never compiled in. Run \`node tooling/app-yaml/render.mjs\`.`);
   }
 
   // S4 refusal and S5 stamp.
@@ -503,7 +493,7 @@ export function check(root) {
     if (!/RootedDeviceNoticeHost\(/.test(shell)) problems.push(`S6 ${appRoot}/lib/app.dart mounts no RootedDeviceNoticeHost: a rooted device would never see its once-per-session notice.`);
     if (/bootstrapNikatru\(/.test(main)) {
       const miss = inOrder(main, BOOTSTRAP_MAIN);
-      if (miss !== null) problems.push(`S6 ${appRoot}/lib/main.dart: /${miss.source}/ is missing or out of order — bootstrapNikatru must get AppConfig.appId (its own per-app pins), the compiled channel and the platform probe.`);
+      if (miss !== null) problems.push(`S6 ${appRoot}/lib/main.dart: /${miss.source}/ is missing or out of order — bootstrapNikatru must get kAppSignerPins (its own per-app pins), the compiled channel and the platform probe.`);
       continue;
     }
     const call = DIRECT_MAIN_CALL.exec(main);
@@ -516,7 +506,7 @@ export function check(root) {
       .map((m) => read(join('lib', m[1])))
       .find((t) => t !== null && new RegExp(`Future<bool> ${call[1]}\\(`).test(t));
     const miss = helper === undefined ? DIRECT_HELPER[0] : inOrder(helper, DIRECT_HELPER);
-    if (miss !== null) problems.push(`S6 ${appRoot}: ${call[1]}() is not defined in a file lib/main.dart imports, or lacks /${miss.source}/ — it must run modifiedCopyBlocked with AppConfig.appId, AppConfig.releaseChannel and the platform probe.`);
+    if (miss !== null) problems.push(`S6 ${appRoot}: ${call[1]}() is not defined in a file lib/main.dart imports, or lacks /${miss.source}/ — it must run modifiedCopyBlocked with kAppSignerPins, AppConfig.releaseChannel and the platform probe.`);
   }
   if (appIds.length === 0) lost.push('no apps/<app>/app.yaml exists, so no app\'s boot could be graded.');
 
@@ -542,12 +532,7 @@ function main(args) {
       console.error(`COVERAGE LOST ${REGISTER} names no runtimeSignerCheck.generated file to write.`);
       return 2;
     }
-    const read = readAppPins(root, register, appIdsAt(root));
-    if (read.problems.length) {
-      console.error(`FAIL ${read.problems[0]}`);
-      return 1;
-    }
-    writeFileSync(join(root, rel), renderSignerPins(register, read.appPins));
+    writeFileSync(join(root, rel), renderSignerPins(register));
     console.log(`wrote ${rel}`);
   }
   const { problems, lost, counts } = check(root);

@@ -206,9 +206,9 @@ listings:
 # com.nikatru.subscriptiontracker/generatedApks/1 (version code 1, internal
 # track release "1 (2026-09-22)", status completed) -> certificateSha256Hash.
 # This is the ONE copy: Play holds one app signing key PER APP (ADR 030), so
-# it lives here, and `node tooling/ci/assert-runtime-signer-check.mjs --write`
-# compiles it into THIS app's own signer pins (kSignerPinsByApp). declaredOn
-# stays null.
+# it lives here; tooling/ci/assert-runtime-signer-check.mjs (S8) grades it and
+# tooling/app-yaml/render.mjs renders it into THIS app's own
+# lib/core/signer_pins.g.dart (kAppSignerPins). declaredOn stays null.
 # ST-R4: what this app mints for itself on Windows — not a console id, so not
 # under `stores`. The toast activator's CLSID: ours, never reissued; rendered
 # into msix_config.toast_activator and lib/core/windows_notification_identity.g.dart.

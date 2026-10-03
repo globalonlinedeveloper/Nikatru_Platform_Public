@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { check, renderSignerPins, WIRING, REGISTER } from '../assert-runtime-signer-check.mjs';
 import { unpinnedReleaseRefusal, signerPinsOf, RELEASE_SIGNING_ENV } from '../flutter-release-build.mjs';
+import { appSignerPinsOf, renderAppSignerPinsDart, SIGNER_PINS_DART } from '../../app-yaml/render.mjs';
+import { parseYaml } from '../../app-yaml/yaml.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -37,7 +39,7 @@ function filesToCopy() {
   const set = new Set([
     REGISTER, realRegister.runtimeSignerCheck.generated, ...WIRING.map((w) => w.file),
     BRICK_MAIN, `${BRICK}/lib/app.dart`,
-    `${APP}/app.yaml`, `${APP}/lib/main.dart`, `${APP}/lib/app.dart`, `${APP}/lib/core/device_integrity.dart`,
+    `${APP}/app.yaml`, `${APP}/lib/main.dart`, `${APP}/lib/app.dart`, `${APP}/lib/core/device_integrity.dart`, `${APP}/${SIGNER_PINS_DART}`,
   ]);
   for (const row of realRegister.channels) for (const a of row.storeReview?.answers ?? []) for (const f of a.evidence ?? []) set.add(f);
   return [...set];
@@ -159,7 +161,7 @@ describe('S3 the generated pins are the register', () => {
     const r = readReg();
     r.channels.find((c) => c.id === 'apps-gov-in').signing.signingCertificate.sha256 = Array(32).fill('AB').join(':');
     writeReg(r);
-    assert.match(findings(), /S3 .*signer_pins\.g\.dart is not what the register and the apps' per-app pins render/);
+    assert.match(findings(), /S3 .*signer_pins\.g\.dart is not what the register renders/);
   });
 
   test('a digest hand-edited in the generated file', () => {
@@ -179,21 +181,23 @@ describe('S3 the generated pins are the register', () => {
     assert.match(gen, /'apps-gov-in': SignerPins\(\n {4}digests: <String>\[\n {6}'(AB){32}',\n {4}\],\n {4}complete: true,/);
   });
 
-  test('the channel default carries the factory pins only and is never complete while a per-app pin is declared', () => {
-    const text = renderSignerPins(realRegister, {});
-    const channelDefault = text.slice(0, text.indexOf('kSignerPinsByApp ='));
-    assert.match(channelDefault, /'android-play': SignerPins\([\s\S]*?'43C84D11[0-9A-F]+',\n {4}\],\n {4}complete: false,/);
-    assert.doesNotMatch(channelDefault, /98FA5FDC/);
-    assert.match(channelDefault, /per app: stores\.android-play\.appSigningSha256/);
-    assert.match(text, /kSignerPinsByApp =\n {4}<String, Map<String, SignerPins>>\{\};/);
+  test('the channel default carries the factory pins only, and says the app\'s own pin completes it', () => {
+    const text = renderSignerPins(realRegister);
+    assert.match(text, /'android-play': SignerPins\(\n {4}digests: <String>\[\n {6}'43C84D11[0-9A-F]+',\n {4}\],\n {4}complete: false,\n {4}appPinCompletes: true,\n {2}\),/);
+    assert.doesNotMatch(text, /98FA5FDC/);
+    assert.match(text, /\+ per app: stores\.android-play\.appSigningSha256/);
+    // ...and it names no app ([C-10]: shared code carries no app vocabulary).
+    assert.doesNotMatch(text, /subscriptiontracker/);
   });
 
-  test('the real app\'s own set is the upload pin plus ITS app signing pin, complete — and unchanged', () => {
-    const gen = readFileSync(join(REPO, realRegister.runtimeSignerCheck.generated), 'utf8');
-    assert.match(
-      gen,
-      /'subscriptiontracker': <String, SignerPins>\{\n {4}\/\/ apps\/subscriptiontracker\/app\.yaml stores\.android-play\.appSigningSha256\n {4}'android-play': SignerPins\(\n {6}digests: <String>\[\n {8}'43C84D1162C4D19C0FA0C5E001905B89523DC082A68083C993069B863C28A616',\n {8}'98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',\n {6}\],\n {6}complete: true,/,
-    );
+  test('the real app\'s OWN file holds ITS app signing pin — and is unchanged', () => {
+    const own = readFileSync(join(REPO, APP, SIGNER_PINS_DART), 'utf8');
+    assert.match(own, /const Map<String, List<String>> kAppSignerPins = <String, List<String>>\{\n {2}'android-play': <String>\[\n {4}'98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',\n {2}\],\n\};/);
+  });
+
+  test('🔴 an app whose own pins file is missing', () => {
+    rmSync(join(ROOT, APP, SIGNER_PINS_DART));
+    assert.match(findings(), /S3 apps\/subscriptiontracker\/lib\/core\/signer_pins\.g\.dart does not exist/);
   });
 });
 
@@ -203,7 +207,7 @@ describe('S3 the generated pins are the register', () => {
 const SECOND = 'apps/second';
 const KEY2 = Array(32).fill('CD').join(':');
 function stampSecond(storesPlay, listing = null) {
-  for (const rel of ['app.yaml', 'lib/main.dart', 'lib/app.dart', 'lib/core/device_integrity.dart']) {
+  for (const rel of ['app.yaml', 'lib/main.dart', 'lib/app.dart', 'lib/core/device_integrity.dart', SIGNER_PINS_DART]) {
     mkdirSync(dirname(join(ROOT, SECOND, rel)), { recursive: true });
     copyFileSync(join(ROOT, APP, rel), join(ROOT, SECOND, rel));
   }
@@ -217,21 +221,28 @@ function stampSecond(storesPlay, listing = null) {
     y = y.replace('\nlistings:\n', `\nlistings:\n  play: ${listing}\n`);
   }
   writeFileSync(p, y);
+  // Its own pins file, as tooling/app-yaml/render.mjs writes it.
+  writeFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), renderAppSignerPinsDart(appSignerPinsOf(realRegister, parseYaml(y))));
+  return y;
 }
 
 describe('S8 per-app pins', () => {
   test('a second app with ITS OWN key gets its own pin, and app #1\'s is unchanged', () => {
     stampSecond(['state: issued', 'declaredOn: null', 'appSigningSha256:', `  - "${KEY2}"`]);
-    assert.match(findings(), /S3 /, 'the new app\'s pin is not compiled in until --write');
-    const out = run('--write');
-    assert.equal(out.status, 0, out.stderr + out.stdout);
-    const gen = readFileSync(join(ROOT, realRegister.runtimeSignerCheck.generated), 'utf8');
-    assert.match(gen, /'second': <String, SignerPins>\{[\s\S]*?'43C84D11[0-9A-F]+',\n {8}'(CD){32}',\n {6}\],\n {6}complete: true,/);
-    assert.match(gen, /'subscriptiontracker': <String, SignerPins>\{[\s\S]*?'98FA5FDC[0-9A-F]+',\n {6}\],\n {6}complete: true,/);
-    // Neither app's key is in the other's set, nor in the channel default.
-    const second = gen.slice(gen.indexOf("'second':"), gen.indexOf("'subscriptiontracker':"));
+    assert.equal(findings(), '');
+    const second = readFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), 'utf8');
+    assert.match(second, /'android-play': <String>\[\n {4}'(CD){32}',\n {2}\],/);
     assert.doesNotMatch(second, /98FA5FDC/);
-    assert.doesNotMatch(gen.slice(0, gen.indexOf('kSignerPinsByApp =')), /98FA5FDC|CDCDCDCD/);
+    const first = readFileSync(join(ROOT, APP, SIGNER_PINS_DART), 'utf8');
+    assert.equal(first, readFileSync(join(REPO, APP, SIGNER_PINS_DART), 'utf8'));
+    assert.doesNotMatch(first, /CDCDCDCD/);
+    // The shared channel default carries neither app's key.
+    assert.doesNotMatch(readFileSync(join(ROOT, realRegister.runtimeSignerCheck.generated), 'utf8'), /98FA5FDC|CDCDCDCD/);
+  });
+
+  test('a second app with no key renders an EMPTY own-pins file', () => {
+    stampSecond(['state: pending', 'declaredOn: null']);
+    assert.match(readFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), 'utf8'), /kAppSignerPins = <String, List<String>>\{\};/);
   });
 
   test('🔴 a second app ON Play (a listing) with no recorded key FAILS', () => {
@@ -386,19 +397,19 @@ describe('S6 wiring', () => {
     assert.match(findings(), /S6 apps\/subscriptiontracker: integrityBootBlocks\(\) .*platformDeviceIntegrityProbe/);
   });
 
-  test('🔴 the app helper stops passing ITS app id (it would get another app\'s pins)', () => {
-    edit(`${APP}/lib/core/device_integrity.dart`, 'appId: AppConfig.appId', "appId: 'other'");
-    assert.match(findings(), /S6 apps\/subscriptiontracker: integrityBootBlocks\(\) .*appId/);
+  test('🔴 the app helper stops passing ITS OWN pins', () => {
+    edit(`${APP}/lib/core/device_integrity.dart`, 'appPins: kAppSignerPins', 'appPins: const <String, List<String>>{}');
+    assert.match(findings(), /S6 apps\/subscriptiontracker: integrityBootBlocks\(\) .*appPins/);
   });
 
-  test('🔴 the brick main() stops passing its app id', () => {
-    edit(BRICK_MAIN, 'appId: AppConfig.appId', "appId: 'subscriptiontracker'");
-    assert.match(findings(), /S6 tooling\/bricks\/.*main\.dart: \/appId/);
+  test('🔴 the brick main() stops passing its own pins', () => {
+    edit(BRICK_MAIN, 'appPins: kAppSignerPins', 'appPins: const <String, List<String>>{}');
+    assert.match(findings(), /S6 tooling\/bricks\/.*main\.dart: \/appPins/);
   });
 
-  test('🔴 the comparison stops reading the per-app table', () => {
-    edit('packages/core/lib/src/integrity/device_integrity.dart', 'kSignerPinsByApp[appId]?[releaseChannel]', 'null');
-    assert.match(findings(), /S6 .*device_integrity\.dart lacks .*kSignerPinsByApp/);
+  test('🔴 the comparison stops adding the app\'s own pins', () => {
+    edit('packages/core/lib/src/integrity/device_integrity.dart', 'appPins[releaseChannel]', 'const <String, List<String>>{}[releaseChannel]');
+    assert.match(findings(), /S6 .*device_integrity\.dart lacks .*appPins/);
   });
 
   test('the app app.dart stops mounting the rooted notice', () => {
