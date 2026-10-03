@@ -166,9 +166,7 @@ class AppConfig {
   static const int reminderHour = 20;
   static const int reminderMinute = 0;
 
-  // Shared identity (portfolio-wide). ⏱ 2026-10-03 · port-auth: named for what
-  // they ARE — the identity provider's endpoint and its public key — not for
-  // the vendor that serves them today (tooling/ports/auth.json).
+  // Shared identity (portfolio-wide), named for what it is (port-auth).
   static const String authEndpoint = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: '',
@@ -177,13 +175,9 @@ class AppConfig {
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   );
-
-  // ⏱ 2026-10-03 · port-auth — THE OLD, VENDOR-SHAPED NAMES, kept ONE release
-  // so a caller outside this tree still compiles. The dart-defines keep their
-  // names (SUPABASE_URL, SUPABASE_ANON_KEY): they are the build's interface.
-  @Deprecated('Use authEndpoint. Removed one release after port-auth.')
+  @Deprecated('Use authEndpoint; removed one release after port-auth.')
   static const String supabaseUrl = authEndpoint;
-  @Deprecated('Use authPublicKey. Removed one release after port-auth.')
+  @Deprecated('Use authPublicKey; removed one release after port-auth.')
   static const String supabaseAnonKey = authPublicKey;
 
   // Whether this build has a real IDENTITY to talk to the backend with. Absent
