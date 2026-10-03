@@ -141,6 +141,25 @@ describe('GET /config/:app', () => {
     ]);
   });
 
+  // ⏱ 2026-10-03 · merge of main into club/rt-ports: main's `?market=` (PR #1149)
+  // changes the answer, so it is part of the key. RED CONTROL: key on ['channel']
+  // alone and the no-market buyer is served the India (INR) book from the cache.
+  it('🔴 `?market=` is part of the key: an India answer is never served to a buyer who declared no market', async () => {
+    const kv = new FakeKv();
+    const currencies = async (res: Response) =>
+      ((await res.json()) as { paywall: { offerings: Array<{ currency_code: string }> } }).paywall.offerings.map((o) => o.currency_code);
+    const india = await get(kv, '/config/subscriptiontracker?market=IN');
+    expect(india.status).toBe(200);
+    expect(new Set(await currencies(india))).toEqual(new Set(['INR']));
+    const world = await get(kv, '/config/subscriptiontracker');
+    expect(world.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+    expect(await currencies(world)).not.toContain('INR');
+    expect(cache.puts).toEqual([
+      'https://platform.nikatru.com/config/subscriptiontracker?market=IN',
+      'https://platform.nikatru.com/config/subscriptiontracker',
+    ]);
+  });
+
   it('an unknown app or channel is answered before the cache is even asked', async () => {
     const kv = new FakeKv();
     expect((await get(kv, '/config/__proto__')).status).toBe(404);

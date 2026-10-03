@@ -1555,17 +1555,20 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
     }
   });
 
-  test('🔴 two 52x in a row are refused with the second status, after exactly two requests', async () => {
+  // ⏱ 2026-10-03 · merge of main into club/rt-ports: main's EDGE_RETRY_STATUSES retry
+  // (tooling/e2e/magic_link.mjs) replaced this branch's 52x-only one; a second fault
+  // names BOTH statuses, and 502 is an edge status there, so it is retried.
+  test('🔴 two 52x in a row are refused naming both statuses, after exactly two requests', async () => {
     const { f, calls } = sequence([520, 524]);
     await assert.rejects(
       mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f, log: () => {}, ...quiet }),
-      (e) => e instanceof MagicLinkRefused && /generate_link failed: HTTP 524/.test(e.message),
+      (e) => e instanceof MagicLinkRefused && /generate_link failed: HTTP 520, then HTTP 524 on the one retry/.test(e.message),
     );
     assert.equal(calls.length, 2);
   });
 
-  test('🔴 a definite refusal is never retried: a 500, 502 or 403 is ONE request', async () => {
-    for (const status of [500, 502, 403]) {
+  test('🔴 a definite refusal is never retried: a 500, 501 or 403 is ONE request', async () => {
+    for (const status of [500, 501, 403]) {
       const { f, calls } = sequence([status, 200]);
       await assert.rejects(
         mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f, log: () => {}, ...quiet }),

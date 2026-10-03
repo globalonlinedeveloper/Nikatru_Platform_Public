@@ -9,7 +9,10 @@
 // capabilities) and each rail's cancel path, DERIVED from its capabilities (`cancel`
 // → api, `cancel-store` → store, neither → none). The Worker's composition root
 // (services/platform/src/ports.ts) and lib/mor/registry.ts read these tables; no
-// hand array restates them. The rail PRICE map (RAIL_PRICE_IDS[railId][appId][offeringId])
+// hand array restates them. ⏱ 2026-10-01 · fix-india-rail-tax-data: the web checkout rail PER
+// MARKET is rendered too, from the register payments.json `selection.source` cites
+// (tooling/channel-register.json, the `web` row's purchaseRail) — so --check reads that file
+// as well, and an unreadable one is LOST. The rail PRICE map (RAIL_PRICE_IDS[railId][appId][offeringId])
 // is rendered by the generator that already owns the price ids,
 // tooling/catalog/render-rail-prices.mjs, into routes/rail-price-ids.ts — one renderer
 // per source register, never a hand merge.
@@ -85,7 +88,44 @@ const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const list = (xs) => `[${xs.map(q).join(', ')}]`;
 
 /** The generated module's bytes for one payments registry document. */
-export function renderPortsTs(doc) {
+/**
+ * ⏱ 2026-10-01 · fix-india-rail-tax-data · THE WEB CHECKOUT RAIL PER MARKET, from the register
+ * `selection.source` names (tooling/channel-register.json#purchaseRails). The rail answer lives on
+ * each channel row's `purchaseRail` (the `purchaseRails` block is its vocabulary and its `_why`);
+ * POST /v1/checkout sells the `web` channel, so its row is read: `rail` is the default and each
+ * `regionRails[{region, rail}]` the rail for a buyer who DECLARES that market. A rail renders only
+ * when it is a payments adapter that declares `checkout` (and is not fake, draft or retired): a
+ * region whose rail cannot sell yet is simply absent, so the default sells there as before.
+ *
+ * Returns `{ ok, table, detail }`; not ok (the caller's LOST) when the source cannot be resolved.
+ */
+export const CHECKOUT_CHANNEL = 'web';
+export function checkoutRailsOf(doc, register) {
+  const source = doc?.selection?.source;
+  if (typeof source !== 'string' || !source.includes('#')) return { ok: false, table: null, detail: 'selection.source names no <file>#<pointer>' };
+  const rows = Array.isArray(register?.channels) ? register.channels : null;
+  if (rows === null) return { ok: false, table: null, detail: `${source.split('#')[0]} carries no channels[]` };
+  const row = rows.find((c) => c && c.id === CHECKOUT_CHANNEL);
+  const pr = row?.purchaseRail;
+  if (!pr || typeof pr.rail !== 'string') return { ok: false, table: null, detail: `${source.split('#')[0]} channel '${CHECKOUT_CHANNEL}' carries no purchaseRail.rail` };
+  const sellers = new Set((doc?.adapters ?? [])
+    .filter((a) => a && a.status !== 'fake' && a.status !== 'retired' && a.status !== 'draft' && (a.capabilities ?? []).includes('checkout'))
+    .map((a) => a.id));
+  const table = { default: sellers.has(pr.rail) ? pr.rail : null };
+  for (const r of Array.isArray(pr.regionRails) ? pr.regionRails : []) {
+    if (typeof r?.region === 'string' && /^[A-Z]{2}$/.test(r.region) && sellers.has(r.rail)) table[r.region] = r.rail;
+  }
+  return { ok: true, table, detail: `${CHECKOUT_CHANNEL} → ${JSON.stringify(table)}` };
+}
+
+/** The register `selection.source` names, parsed, or throws (the callers turn it into LOST). */
+export function readSelectionSource(root, doc) {
+  const source = doc?.selection?.source;
+  if (typeof source !== 'string' || !source.includes('#')) throw new Error('selection.source names no <file>#<pointer>');
+  return JSON.parse(readFileSync(join(root, source.split('#')[0]), 'utf8'));
+}
+
+export function renderPortsTs(doc, register) {
   const adapters = (doc?.adapters ?? []).filter((a) => a && typeof a.id === 'string');
   const ids = adapters.map((a) => a.id);
   const L = [
@@ -125,12 +165,19 @@ export function renderPortsTs(doc) {
   const moneyRails = adapters.filter((a) => a.status !== 'fake' && a.status !== 'retired' && (a.capabilities ?? []).includes('verify'));
   L.push('// The inbound rails that verify real money (non-fake adapters declaring `verify`), in registry order.');
   L.push(`export const MOR_VERIFIER_IDS = ${list(moneyRails.map((a) => a.id))} as const satisfies readonly PaymentsAdapterId[];`, '');
-  // The web checkout rail: the ONE real adapter that declares `checkout`. Two would need a per-channel
-  // selection (channel-register purchaseRails) the checkout route does not read yet, so two render null
-  // and the route refuses rather than guessing.
-  const sellers = adapters.filter((a) => a.status !== 'fake' && a.status !== 'retired' && a.status !== 'draft' && (a.capabilities ?? []).includes('checkout'));
-  L.push('// The web checkout rail: the one non-fake adapter declaring `checkout` (null when zero or several do).');
-  L.push(`export const CHECKOUT_RAIL_ID: PaymentsAdapterId | null = ${sellers.length === 1 ? q(sellers[0].id) : 'null'};`, '');
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data · The web checkout rail is no longer "the ONE real adapter
+  // declaring `checkout`" (two sell now: paddle and razorpay). It is the `web` channel's purchaseRail,
+  // per buyer-declared market, from the register selection.source cites (checkoutRailsOf above).
+  const rails = checkoutRailsOf(doc, register);
+  if (!rails.ok) throw new Error(`the checkout selection cannot be rendered: ${rails.detail}`);
+  L.push(`// The web checkout rail per BUYER-DECLARED market: the \`${CHECKOUT_CHANNEL}\` channel's purchaseRail in ${doc.selection.source}`);
+  L.push('// (`default` = its `rail`; each ISO 3166-1 alpha-2 key = a `regionRails` entry whose rail declares `checkout`).');
+  L.push('// Read ONLY through src/ports.ts `checkoutRailFor(market)`; never keyed by cf.country.');
+  L.push('export const CHECKOUT_RAIL_BY_MARKET: Readonly<Record<string, PaymentsAdapterId | null>> = {');
+  for (const [k, v] of Object.entries(rails.table)) L.push(`  ${k}: ${v === null ? 'null' : q(v)},`);
+  L.push('};', '');
+  L.push('// The default web checkout rail (CHECKOUT_RAIL_BY_MARKET.default): what a buyer who declares no market, or one with no region rail, pays through.');
+  L.push(`export const CHECKOUT_RAIL_ID: PaymentsAdapterId | null = ${rails.table.default === null ? 'null' : q(rails.table.default)};`, '');
   L.push('// The adapter ids per environment: the set a deploy of that environment may select.');
   L.push('export const PAYMENTS_ADAPTERS_BY_ENVIRONMENT: Readonly<Record<PortEnvironment, readonly PaymentsAdapterId[]>> = {');
   for (const e of ENV_ORDER) L.push(`  ${e}: ${list(adapters.filter((a) => (a.environments ?? []).includes(e)).map((a) => a.id))},`);
@@ -397,7 +444,12 @@ export function renderPortsCheck(root) {
   if (!Array.isArray(doc?.adapters) || doc.adapters.length === 0) {
     return { ok: false, lost: true, detail: `${PAYMENTS_REGISTRY} lists no adapter; a table of zero rows is current by construction` };
   }
-  const want = renderPortsTs(doc);
+  let want;
+  try {
+    want = renderPortsTs(doc, readSelectionSource(root, doc));
+  } catch (e) {
+    return { ok: false, lost: true, detail: `${doc?.selection?.source ?? 'selection.source'} could not be read or resolved (${e.message})` };
+  }
   const abs = join(root, RENDERED_PORTS);
   let have;
   try {
@@ -454,6 +506,13 @@ function main() {
     console.error(`LOST render — ${rails.lost}`);
     process.exit(2);
   }
+  let portsTs;
+  try {
+    portsTs = renderPortsTs(doc, readSelectionSource(root, doc));
+  } catch (e) {
+    console.error(`LOST render — ${doc?.selection?.source ?? 'selection.source'} could not be read or resolved (${e.message})`);
+    process.exit(2);
+  }
   const issuerSrc = readIssuerSource(root);
   if (issuerSrc.lost) {
     console.error(`LOST render — ${issuerSrc.lost}`);
@@ -465,7 +524,7 @@ function main() {
     process.exit(2);
   }
   for (const [rel, want] of [
-    [RENDERED_PORTS, renderPortsTs(doc)],
+    [RENDERED_PORTS, portsTs],
     [RENDERED_RAILS_DART, rails.text],
     [RENDERED_ISSUERS, renderIssuersTs(issuerSrc.doc)],
     [RENDERED_CODEHOST_TS, renderCodehostTs(codehostSrc.names)],

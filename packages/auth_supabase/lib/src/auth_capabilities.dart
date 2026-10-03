@@ -35,6 +35,7 @@ class AuthCapabilities {
     required this.oauthRedirect,
     required this.secureSessionStorage,
     required this.note,
+    this.passwordReauth = false,
   });
 
   /// Email + password sign-in. Pure REST, so it works everywhere.
@@ -51,6 +52,15 @@ class AuthCapabilities {
 
   /// Why this platform differs, in one line. Empty when it does not.
   final String note;
+
+  /// ⏱ 2026-10-02 · #1142 review item 2. Whether a typed password can re-prove
+  /// an account HERE: web carries the Turnstile token, and Android and iOS the
+  /// attested native route (#1070). A desktop build cannot pass the password
+  /// grant until the system-browser hand-off takes email accounts
+  /// (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH), so it is false there. Read
+  /// by core `offersPasswordReauth`: a linked account is offered its password
+  /// next to its provider only where this is true.
+  final bool passwordReauth;
 
   /// The matrix for the platform this build is running on.
   ///
@@ -86,6 +96,7 @@ class AuthCapabilities {
         oauthRedirect: true,
         // A browser exposes no OS keychain to a page. Stated, not hidden.
         secureSessionStorage: false,
+        passwordReauth: true,
         note:
             'Web: full-page redirect, never a popup (COOP/COEP blocks popups, '
             'and they break in embedded webviews and standalone PWAs). The '
@@ -99,6 +110,7 @@ class AuthCapabilities {
           emailPassword: true,
           oauthRedirect: registered,
           secureSessionStorage: true,
+          passwordReauth: true,
           note: registered
               ? ''
               : 'No auth callback scheme is registered for this target, so an '

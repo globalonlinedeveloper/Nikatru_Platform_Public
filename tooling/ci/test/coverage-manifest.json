@@ -354,7 +354,7 @@
     25,
 
   "deletion-control.test.mjs":
-    39,
+    54,
 
   "deploy-ref.test.mjs":
     31,
@@ -375,7 +375,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    168,
+    179,
 
   "dod-sync.test.mjs":
     20,
@@ -393,13 +393,16 @@
     27,
 
   "e2e-legs.test.mjs":
-    52,
+    59,
 
   "e2e-parity.test.mjs":
     37,
 
   "e2e-proof-fresh.test.mjs":
     71,
+
+  "e2e-provision-leak.test.mjs":
+    34,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -609,7 +612,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    29,
+    30,
 
   "licence-register.test.mjs":
     80,
@@ -681,7 +684,7 @@
     41,
 
   "native-auth-proof.test.mjs":
-    42,
+    51,
 
   "native-symbol-upload.test.mjs":
     26,
@@ -777,7 +780,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    13,
+    23,
 
   "personal-site.test.mjs":
     20,
@@ -804,13 +807,13 @@
     35,
 
   "policy-claims.test.mjs":
-    62,
+    63,
 
   "port-render.test.mjs":
-    24,
+    27,
 
   "port-switch.test.mjs":
-    61,
+    62,
 
   "ports.test.mjs":
     114,
@@ -897,7 +900,7 @@
     136,
 
   "rail-prices.test.mjs":
-    61,
+    71,
 
   "redeploy-stranded.test.mjs":
     50,

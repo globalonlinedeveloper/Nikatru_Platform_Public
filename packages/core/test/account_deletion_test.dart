@@ -347,6 +347,81 @@ void main() {
     });
   });
 
+  // ⏱ 2026-10-01 · AB-A5-01. The decision was `hasPasswordIdentity`, so an
+  // email account that linked Apple or Google was sent to the password grant —
+  // which a native build cannot pass without attestation, and a desktop build
+  // cannot pass at all.
+  group('deletionReauthOf', () {
+    AuthUser user({
+      bool password = true,
+      List<String> providers = const <String>[],
+    }) => AuthUser(
+          id: 'u1',
+          email: 'a@b.test',
+          hasPasswordIdentity: password,
+          oauthProviders: providers,
+        );
+
+    test('🔴 a password account LINKED to Apple re-proves at its provider', () {
+      expect(
+        deletionReauthOf(user(providers: const <String>['apple'])),
+        DeletionReauth.provider,
+      );
+    });
+
+    test('🔴 a password account LINKED to Google re-proves at its provider',
+        () {
+      expect(
+        deletionReauthOf(user(providers: const <String>['google'])),
+        DeletionReauth.provider,
+      );
+    });
+
+    test('a password-only account still types its password', () {
+      expect(deletionReauthOf(user()), DeletionReauth.password);
+    });
+
+    test('a password-less account re-proves at its provider, as before', () {
+      expect(
+        deletionReauthOf(
+          user(password: false, providers: const <String>['google']),
+        ),
+        DeletionReauth.provider,
+      );
+      expect(deletionReauthOf(user(password: false)), DeletionReauth.provider);
+    });
+
+    test('an identity with no sheet to open does not pull a password account '
+        'off its password', () {
+      expect(
+        deletionReauthOf(user(providers: const <String>['phone'])),
+        DeletionReauth.password,
+      );
+    });
+
+    // ⏱ 2026-10-02 · #1142 review item 2: a linked account keeps its password
+    // NEXT to the provider where the grant passes, so a dead provider account
+    // does not end its in-app deletion.
+    test('🔴 offersPasswordReauth: a LINKED account is offered its password '
+        'where the grant passes, and not where it does not', () {
+      final AuthUser linked = user(providers: const <String>['google']);
+      expect(offersPasswordReauth(linked, passwordGrant: true), isTrue);
+      expect(offersPasswordReauth(linked, passwordGrant: false), isFalse);
+    });
+
+    test('offersPasswordReauth: no password to offer an OAuth-only account, '
+        'and nothing extra for a password-only one', () {
+      expect(
+        offersPasswordReauth(
+          user(password: false, providers: const <String>['apple']),
+          passwordGrant: true,
+        ),
+        isFalse,
+      );
+      expect(offersPasswordReauth(user(), passwordGrant: true), isFalse);
+    });
+  });
+
   group('AuthUser carries the password identity and the last sign-in', () {
     test('both survive a JSON round trip', () {
       final AuthUser u = AuthUser(

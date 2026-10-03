@@ -3646,6 +3646,11 @@
       "firstSeen": "2026-07-21",
       "evidence": []
     },
+    "tooling/e2e/purge_stale.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/e2e/sign_in_via.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-02",

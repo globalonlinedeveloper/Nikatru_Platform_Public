@@ -292,4 +292,8 @@ arrive on) print on every run.
 `services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`
 from `channel-register.json` and the store-billed rails `payments.json` derives, and
 `services/_shared/src/generated/ports.ts` from `auth.json` `issuers`); `--check` exits 1 on any difference,
-and limb 3 runs the same check on every build.
+and limb 3 runs the same check on every build. ⏱ 2026-10-01 · fix-india-rail-tax-data: `ports.ts` also carries
+`CHECKOUT_RAIL_BY_MARKET` — the web checkout rail per BUYER-DECLARED market, from the register `selection.source`
+cites (`tooling/channel-register.json`, the `web` row's `purchaseRail.rail` and `regionRails`, restricted to adapters
+declaring `checkout`); an unreadable one is LOST (exit 2). The Worker reads it only through
+`services/platform/src/ports.ts` `checkoutRailFor(market)`; never `cf.country`.

@@ -243,11 +243,21 @@ describe('port-switch — the payments additions over a copy of the REAL registe
       cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     }
   });
-  it('red: --to razorpay prints every pending case as FAIL and exits 1', () => {
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay's 15 pending cases cleared (O-RAZORPAY-CHECKOUT-ADAPTER),
+  // so its C5 passes; the per-case FAIL lines are held on revenuecat, which still pends two.
+  it('red: --to revenuecat prints every pending case as FAIL and exits 1', () => {
+    const r = run(['payments', '--to', 'revenuecat', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: 2 pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: dispute holds \(O-REVENUECAT-VERIFIER\)$/m);
+  });
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: razorpay keeps ONE case pending — the refund's payment →
+  // subscription link, unproven on a real test-mode event — so its C5 fails on exactly that case.
+  it('red: --to razorpay fails C5 on its one pending case and exits 1 on the owner step too (C10: no plan created yet)', () => {
     const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /^FAIL  C5 conformance: \d+ pending case\(s\)/m);
-    assert.match(r.out, /^FAIL  C5 pending: purchase grants \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
+    assert.match(r.out, /^FAIL  C5 conformance: 1 pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: refund revokes \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
     // Counted off the real tree: subscriptiontracker's 3 offerings and, since #1117, FullShot Pro's 2.
     assert.match(r.out, /^FAIL  C10 prices: 5 of 5 offering\(s\) have no razorpay price id yet/m);
     assert.match(r.out, /to create on razorpay: subscriptiontracker pro_monthly/);

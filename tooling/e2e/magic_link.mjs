@@ -17,25 +17,36 @@
 // for every drive: mint the next one only after the previous drive has run.
 //
 // ⚠️ The service-role key goes in and nothing but the hashed token comes out.
-// The caller masks and redacts the token; this module prints nothing.
+// The caller masks and redacts the token; this module prints nothing but the
+// one retry's status line, through `log`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
+import { REQUEST_TIMEOUT_MS } from '../ops/bounded-retry.mjs';
+
+// ⏱ 2026-10-03 — 🔴 ONE BOUNDED RETRY, ON AN EDGE 5xx ONLY. E2E run 37076032926
+// (job 111066194562) died at "Provision the throwaway user the delete leg
+// destroys" on `generate_link failed: HTTP 520` — a Cloudflare "Web server is
+// returning an unknown error" page for auth-api.nikatru.com, nine seconds after
+// the first user's mint passed. Run 37081275953 died on the same 520 an hour
+// later, and a run at 00:42Z was green: the ORIGIN was briefly unhealthy. So a
+// 502/503/504/520-524 is asked once more after RETRY_GAP_MS, and a second one
+// fails naming BOTH statuses. Every other answer is final on first sight: a 4xx
+// is GoTrue's verdict, not a blip. A retried mint is safe: generate_link REPLACES
+// the user's one live token (the 🔴 above), so a lost first answer leaves only
+// the second token live. (Measured 2026-10-01 15:00:51Z on the same path: a 520
+// after 12.9 s with no line in Box C's GoTrue or envoy log — the request never
+// reached the identity server; club/rt-ports' own one-retry fix merged into this.)
+
+/** The statuses that are the edge's report of an unhealthy origin, not GoTrue's answer. */
+export const EDGE_RETRY_STATUSES = Object.freeze([502, 503, 504, 520, 521, 522, 523, 524]);
+/** The gap before the one retry: long enough for a blip to pass, short beside a step. */
+export const RETRY_GAP_MS = 5_000;
+
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The shape GoTrue issues a `hashed_token` in: lowercase hex (a SHA-224 digest
  *  today, 56 characters; the range leaves room for another digest). */
 export const TOKEN_HASH_SHAPE = /^[0-9a-f]{40,128}$/;
-
-/**
- * ⏱ 2026-10-02 — Cloudflare's origin-fault answers (520-529): the request was
- * lost between the edge and the identity server, and the server never saw it.
- * Measured 2026-10-01 15:00:51Z: `POST /admin/generate_link` answered 520 after
- * 12.9 s with no line in Box C's GoTrue or envoy log, and main's E2E went red on
- * it. The user is a throwaway and a second mint replaces the first token, so the
- * mint is asked ONCE more on one of these, and says so in the log.
- */
-export const ORIGIN_FAULT = (status) => status >= 520 && status <= 529;
-/** The pause before the one retry. */
-export const MINT_RETRY_DELAY_MS = 2_000;
 
 /** Thrown for every way the mint can fail, with the message a caller prints. */
 export class MagicLinkRefused extends Error {
@@ -58,6 +69,11 @@ export class MagicLinkRefused extends Error {
  * then deletes by. Held to TOKEN_HASH_SHAPE, no text from the response but a
  * hex digest can reach that file (CodeQL js/http-to-file-access, answered in
  * code, as tooling/e2e/backend.mjs answers #467).
+ *
+ * An EDGE_RETRY_STATUSES answer is asked ONCE more after RETRY_GAP_MS; each
+ * attempt carries a REQUEST_TIMEOUT_MS ceiling, and the retry is named in `log`
+ * (stderr by default). `log`, `sleep` and `timeoutMs` are the test seams;
+ * production passes none of them.
  */
 export async function mintMagicLinkTokenHash({
   url,
@@ -65,7 +81,8 @@ export async function mintMagicLinkTokenHash({
   email,
   fetchImpl = fetch,
   log = (line) => console.error(line),
-  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  sleep = nap,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 }) {
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
     if (typeof v !== 'string' || v === '') throw new MagicLinkRefused(`cannot mint a magic-link token: ${name} is empty`);
@@ -81,23 +98,41 @@ export async function mintMagicLinkTokenHash({
     if (!(e instanceof CredentialOriginRefused)) throw e;
     throw new MagicLinkRefused(`cannot mint a magic-link token: ${e.message}`);
   }
-  const mint = () =>
-    fetchImpl(`${origin}/auth/v1/admin/generate_link`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({ type: 'magiclink', email }),
-    });
-  let res = await mint();
-  if (ORIGIN_FAULT(res.status)) {
+  const post = async () => {
+    try {
+      return await fetchImpl(`${origin}/auth/v1/admin/generate_link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ type: 'magiclink', email }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      if (e?.name !== 'TimeoutError') throw e;
+      throw new MagicLinkRefused(`generate_link did not answer within ${timeoutMs} ms`);
+    }
+  };
+  let res = await post();
+  if (EDGE_RETRY_STATUSES.includes(res.status)) {
+    const first = res.status;
     // Nothing from the response, and never the key or the address: the status is the fact.
-    log(`generate_link answered HTTP ${res.status}, an origin fault (the request was lost before the identity server); retrying once`);
+    log(`generate_link answered HTTP ${first}, an origin fault (the request was lost before the identity server); retrying once`);
     await res.body?.cancel().catch(() => {});
-    await sleep(MINT_RETRY_DELAY_MS);
-    res = await mint();
+    await sleep(RETRY_GAP_MS);
+    // The retry's own timeout or network error keeps the FIRST status in its
+    // message (PR #1177 review, finding 4): both attempts are named, always.
+    try {
+      res = await post();
+    } catch (e) {
+      const why = e instanceof MagicLinkRefused ? e.message : `${e?.name ?? 'Error'}: ${e?.message ?? e}`;
+      throw new MagicLinkRefused(`generate_link failed: HTTP ${first}, then on the one retry: ${why}`);
+    }
+    if (!res.ok) {
+      throw new MagicLinkRefused(`generate_link failed: HTTP ${first}, then HTTP ${res.status} on the one retry\n${await res.text()}`);
+    }
   }
   if (!res.ok) {
     throw new MagicLinkRefused(`generate_link failed: HTTP ${res.status}\n${await res.text()}`);

@@ -59,6 +59,7 @@ import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
 import boxConfigManifest0025 from '../migrations/0025_box_config_manifest.sql?raw';
+import providerPaymentLinks0026 from '../migrations/0026_provider_payment_links.sql?raw';
 
 /**
  * platform_db's migration set, IN APPLICATION ORDER, exactly as
@@ -130,6 +131,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
   // (routes/box-manifest.ts).
   boxConfigManifest0025,
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
+  // subscription, so a refund or dispute resolves by payment id.
+  providerPaymentLinks0026,
 ];
 
 /**
@@ -183,6 +187,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   nativeAttest0022,
   // 0025 is one CREATE TABLE IF NOT EXISTS — it replays.
   boxConfigManifest0025,
+  // 0026_provider_payment_links is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  providerPaymentLinks0026,
 ];
 
 /**
