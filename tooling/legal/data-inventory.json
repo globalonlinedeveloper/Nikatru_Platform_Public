@@ -180,6 +180,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -217,6 +229,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -245,6 +269,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -273,6 +309,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your AI credits and your AI opt-in, and a count of each AI request",
+        "purpose": "To meter the AI features you pay for. What you write to an AI feature is not kept.",
+        "ta": {
+          "item": "உங்கள் AI கிரெடிட்கள், AI-க்கான உங்கள் ஒப்புதல், ஒவ்வொரு AI கோரிக்கையின் எண்ணிக்கை",
+          "purpose": "நீங்கள் பணம் செலுத்தும் AI அம்சங்களை அளவிட. ஒரு AI அம்சத்துக்கு நீங்கள் எழுதுவது வைத்திருக்கப்படுவதில்லை."
+        },
+        "hi": {
+          "item": "आपके AI क्रेडिट, AI के लिए आपकी सहमति, और हर AI अनुरोध की गिनती",
+          "purpose": "जिन AI सुविधाओं के लिए आप भुगतान करते हैं उन्हें मापने के लिए। किसी AI सुविधा को आप जो लिखते हैं, वह रखा नहीं जाता।"
+        }
       }
     },
     {
@@ -301,6 +349,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your AI credits and your AI opt-in, and a count of each AI request",
+        "purpose": "To meter the AI features you pay for. What you write to an AI feature is not kept.",
+        "ta": {
+          "item": "உங்கள் AI கிரெடிட்கள், AI-க்கான உங்கள் ஒப்புதல், ஒவ்வொரு AI கோரிக்கையின் எண்ணிக்கை",
+          "purpose": "நீங்கள் பணம் செலுத்தும் AI அம்சங்களை அளவிட. ஒரு AI அம்சத்துக்கு நீங்கள் எழுதுவது வைத்திருக்கப்படுவதில்லை."
+        },
+        "hi": {
+          "item": "आपके AI क्रेडिट, AI के लिए आपकी सहमति, और हर AI अनुरोध की गिनती",
+          "purpose": "जिन AI सुविधाओं के लिए आप भुगतान करते हैं उन्हें मापने के लिए। किसी AI सुविधा को आप जो लिखते हैं, वह रखा नहीं जाता।"
+        }
       }
     },
     {
@@ -329,6 +389,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -357,6 +429,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -388,6 +472,21 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "The row is NOT the person's: it references them through a `*_user_id` column and holds the buyer's address only as a SHA-256 digest. An access request that asks about a payment is answered by hand from this row (docs/ops/privacy-requests.md), never by a bulk export of other people's unattributed money."
+      },
+      "notice": {
+        "item": "A payment we could not yet match to an account (your email address only as a one-way fingerprint)",
+        "purpose": "To give the purchase to its owner when they sign in, or refund it.",
+        "kept": "until it is claimed or refunded",
+        "ta": {
+          "item": "இன்னும் எந்தக் கணக்குடனும் பொருத்த முடியாத ஒரு பணப்பரிவர்த்தனை (உங்கள் மின்னஞ்சல் முகவரி ஒருவழி அடையாளக்குறியாக மட்டும்)",
+          "purpose": "அதன் உரிமையாளர் உள்நுழையும்போது கொள்முதலை அவருக்கு வழங்க, அல்லது பணத்தைத் திருப்பித் தர.",
+          "kept": "உரிமைகோரப்படும் வரை அல்லது பணம் திருப்பித் தரப்படும் வரை"
+        },
+        "hi": {
+          "item": "ऐसा भुगतान जिसे हम अभी किसी खाते से नहीं जोड़ पाए (आपका ईमेल पता केवल एक-तरफ़ा फ़िंगरप्रिंट के रूप में)",
+          "purpose": "इसके मालिक के साइन इन करने पर खरीद उन्हें देने, या रिफ़ंड करने के लिए।",
+          "kept": "जब तक उस पर दावा न हो या रिफ़ंड न हो"
+        }
       }
     },
     {
@@ -416,6 +515,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -447,6 +558,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Reports you make about AI-generated content",
+        "purpose": "To review and act on the report.",
+        "ta": {
+          "item": "AI உருவாக்கிய உள்ளடக்கம் பற்றி நீங்கள் அளிக்கும் புகார்கள்",
+          "purpose": "புகாரைப் பரிசீலித்து நடவடிக்கை எடுக்க."
+        },
+        "hi": {
+          "item": "AI से बनी सामग्री के बारे में आपकी रिपोर्ट",
+          "purpose": "रिपोर्ट की समीक्षा करने और उस पर कार्रवाई करने के लिए।"
+        }
       }
     },
     {
@@ -478,6 +601,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "The link between your account and a browser extension",
+        "purpose": "To let the extension check your plan, and to let you unlink it.",
+        "ta": {
+          "item": "உங்கள் கணக்குக்கும் ஓர் உலாவி நீட்டிப்புக்கும் இடையிலான இணைப்பு",
+          "purpose": "நீட்டிப்பு உங்கள் திட்டத்தைச் சரிபார்க்கவும், நீங்கள் இணைப்பை நீக்கவும்."
+        },
+        "hi": {
+          "item": "आपके खाते और किसी ब्राउज़र एक्सटेंशन के बीच का लिंक",
+          "purpose": "एक्सटेंशन को आपकी योजना जाँचने देने के लिए, और आपको लिंक हटाने देने के लिए।"
+        }
       }
     },
     {
@@ -510,6 +645,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "The link between your account and a browser extension",
+        "purpose": "To let the extension check your plan, and to let you unlink it.",
+        "ta": {
+          "item": "உங்கள் கணக்குக்கும் ஓர் உலாவி நீட்டிப்புக்கும் இடையிலான இணைப்பு",
+          "purpose": "நீட்டிப்பு உங்கள் திட்டத்தைச் சரிபார்க்கவும், நீங்கள் இணைப்பை நீக்கவும்."
+        },
+        "hi": {
+          "item": "आपके खाते और किसी ब्राउज़र एक्सटेंशन के बीच का लिंक",
+          "purpose": "एक्सटेंशन को आपकी योजना जाँचने देने के लिए, और आपको लिंक हटाने देने के लिए।"
+        }
       }
     },
     {
@@ -540,6 +687,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "The link between your account and a browser extension",
+        "purpose": "To let the extension check your plan, and to let you unlink it.",
+        "ta": {
+          "item": "உங்கள் கணக்குக்கும் ஓர் உலாவி நீட்டிப்புக்கும் இடையிலான இணைப்பு",
+          "purpose": "நீட்டிப்பு உங்கள் திட்டத்தைச் சரிபார்க்கவும், நீங்கள் இணைப்பை நீக்கவும்."
+        },
+        "hi": {
+          "item": "आपके खाते और किसी ब्राउज़र एक्सटेंशन के बीच का लिंक",
+          "purpose": "एक्सटेंशन को आपकी योजना जाँचने देने के लिए, और आपको लिंक हटाने देने के लिए।"
+        }
       }
     },
     {
@@ -631,6 +790,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your renewal reminder choices, the reminders we sent, and your private calendar link",
+        "purpose": "To send the reminders you asked for, once each.",
+        "ta": {
+          "item": "புதுப்பிப்பு நினைவூட்டல் தொடர்பான உங்கள் தேர்வுகள், நாங்கள் அனுப்பிய நினைவூட்டல்கள், உங்கள் தனிப்பட்ட நாள்காட்டி இணைப்பு",
+          "purpose": "நீங்கள் கேட்ட நினைவூட்டல்களை, ஒவ்வொன்றையும் ஒருமுறை, அனுப்ப."
+        },
+        "hi": {
+          "item": "नवीनीकरण रिमाइंडर के आपके विकल्प, हमारे भेजे रिमाइंडर, और आपका निजी कैलेंडर लिंक",
+          "purpose": "आपके माँगे रिमाइंडर, हर एक को एक बार, भेजने के लिए।"
+        }
       }
     },
     {
@@ -661,6 +832,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your renewal reminder choices, the reminders we sent, and your private calendar link",
+        "purpose": "To send the reminders you asked for, once each.",
+        "ta": {
+          "item": "புதுப்பிப்பு நினைவூட்டல் தொடர்பான உங்கள் தேர்வுகள், நாங்கள் அனுப்பிய நினைவூட்டல்கள், உங்கள் தனிப்பட்ட நாள்காட்டி இணைப்பு",
+          "purpose": "நீங்கள் கேட்ட நினைவூட்டல்களை, ஒவ்வொன்றையும் ஒருமுறை, அனுப்ப."
+        },
+        "hi": {
+          "item": "नवीनीकरण रिमाइंडर के आपके विकल्प, हमारे भेजे रिमाइंडर, और आपका निजी कैलेंडर लिंक",
+          "purpose": "आपके माँगे रिमाइंडर, हर एक को एक बार, भेजने के लिए।"
+        }
       }
     },
     {
@@ -689,6 +872,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your renewal reminder choices, the reminders we sent, and your private calendar link",
+        "purpose": "To send the reminders you asked for, once each.",
+        "ta": {
+          "item": "புதுப்பிப்பு நினைவூட்டல் தொடர்பான உங்கள் தேர்வுகள், நாங்கள் அனுப்பிய நினைவூட்டல்கள், உங்கள் தனிப்பட்ட நாள்காட்டி இணைப்பு",
+          "purpose": "நீங்கள் கேட்ட நினைவூட்டல்களை, ஒவ்வொன்றையும் ஒருமுறை, அனுப்ப."
+        },
+        "hi": {
+          "item": "नवीनीकरण रिमाइंडर के आपके विकल्प, हमारे भेजे रिमाइंडर, और आपका निजी कैलेंडर लिंक",
+          "purpose": "आपके माँगे रिमाइंडर, हर एक को एक बार, भेजने के लिए।"
+        }
       }
     },
     {
@@ -719,6 +914,21 @@
         "by": "withheld",
         "reader": "services/platform/src/routes/account-data.ts",
         "reason": "A completion ledger of an erasure IN PROGRESS, under a neutral subject reference; it exists only while a deletion runs and holds nothing about the person beyond that a deletion was asked for."
+      },
+      "notice": {
+        "item": "An account deletion still in progress, and the Apple or Google sign-in link it must cancel",
+        "purpose": "To finish deleting your account everywhere, including the sign-in link.",
+        "kept": "until the deletion is complete",
+        "ta": {
+          "item": "இன்னும் நடைபெற்றுக்கொண்டிருக்கும் ஒரு கணக்கு நீக்கம், அது ரத்துசெய்ய வேண்டிய Apple அல்லது Google உள்நுழைவு இணைப்பு",
+          "purpose": "உங்கள் கணக்கை உள்நுழைவு இணைப்பு உட்பட எல்லா இடங்களிலும் நீக்கி முடிக்க.",
+          "kept": "நீக்கம் முடியும் வரை"
+        },
+        "hi": {
+          "item": "खाता हटाने की चल रही प्रक्रिया, और वह Apple या Google साइन-इन लिंक जिसे इसे रद्द करना है",
+          "purpose": "आपका खाता, साइन-इन लिंक सहित, हर जगह से हटाना पूरा करने के लिए।",
+          "kept": "हटाना पूरा होने तक"
+        }
       }
     },
     {
@@ -749,6 +959,21 @@
         "by": "withheld",
         "reader": "services/platform/src/routes/account-data.ts",
         "reason": "A sealed sign-in-provider credential kept only to revoke it on deletion. A credential is never exported: the export is what we hold ABOUT the person, and a token is not that."
+      },
+      "notice": {
+        "item": "An account deletion still in progress, and the Apple or Google sign-in link it must cancel",
+        "purpose": "To finish deleting your account everywhere, including the sign-in link.",
+        "kept": "until the deletion is complete",
+        "ta": {
+          "item": "இன்னும் நடைபெற்றுக்கொண்டிருக்கும் ஒரு கணக்கு நீக்கம், அது ரத்துசெய்ய வேண்டிய Apple அல்லது Google உள்நுழைவு இணைப்பு",
+          "purpose": "உங்கள் கணக்கை உள்நுழைவு இணைப்பு உட்பட எல்லா இடங்களிலும் நீக்கி முடிக்க.",
+          "kept": "நீக்கம் முடியும் வரை"
+        },
+        "hi": {
+          "item": "खाता हटाने की चल रही प्रक्रिया, और वह Apple या Google साइन-इन लिंक जिसे इसे रद्द करना है",
+          "purpose": "आपका खाता, साइन-इन लिंक सहित, हर जगह से हटाना पूरा करने के लिए।",
+          "kept": "हटाना पूरा होने तक"
+        }
       }
     },
     {
@@ -779,6 +1004,21 @@
         "by": "withheld",
         "reader": "services/platform/src/routes/account-data.ts",
         "reason": "A sealed sign-in-provider credential kept only to revoke it on deletion. A credential is never exported: the export is what we hold ABOUT the person, and a token is not that."
+      },
+      "notice": {
+        "item": "An account deletion still in progress, and the Apple or Google sign-in link it must cancel",
+        "purpose": "To finish deleting your account everywhere, including the sign-in link.",
+        "kept": "until the deletion is complete",
+        "ta": {
+          "item": "இன்னும் நடைபெற்றுக்கொண்டிருக்கும் ஒரு கணக்கு நீக்கம், அது ரத்துசெய்ய வேண்டிய Apple அல்லது Google உள்நுழைவு இணைப்பு",
+          "purpose": "உங்கள் கணக்கை உள்நுழைவு இணைப்பு உட்பட எல்லா இடங்களிலும் நீக்கி முடிக்க.",
+          "kept": "நீக்கம் முடியும் வரை"
+        },
+        "hi": {
+          "item": "खाता हटाने की चल रही प्रक्रिया, और वह Apple या Google साइन-इन लिंक जिसे इसे रद्द करना है",
+          "purpose": "आपका खाता, साइन-इन लिंक सहित, हर जगह से हटाना पूरा करने के लिए।",
+          "kept": "हटाना पूरा होने तक"
+        }
       }
     },
     {
@@ -813,6 +1053,18 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "Keyed by an e-mail address, not an account. A launch-list sign-up asks through nikatru.com/privacy-rights, proves the address by the e-mailed link, and is answered by hand with the one row that address has (docs/ops/privacy-requests.md)."
+      },
+      "notice": {
+        "item": "Your email address and sign-up time, if you ask to hear when an app launches",
+        "purpose": "To tell you once when the app launches.",
+        "ta": {
+          "item": "ஒரு செயலி வெளியாகும்போது தெரிவிக்குமாறு நீங்கள் கேட்டால், உங்கள் மின்னஞ்சல் முகவரியும் பதிவுசெய்த நேரமும்",
+          "purpose": "செயலி வெளியாகும்போது ஒருமுறை உங்களுக்குத் தெரிவிக்க."
+        },
+        "hi": {
+          "item": "अगर आप ऐप लॉन्च होने पर सूचना माँगते हैं, तो आपका ईमेल पता और साइन-अप का समय",
+          "purpose": "ऐप लॉन्च होने पर आपको एक बार बताने के लिए।"
+        }
       }
     },
     {
@@ -858,6 +1110,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you bought and what it entitles you to",
+        "purpose": "To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.",
+        "ta": {
+          "item": "நீங்கள் வாங்கியவையும், அவை உங்களுக்கு அளிக்கும் உரிமைகளும்",
+          "purpose": "நீங்கள் பணம் செலுத்தியதை உங்களுக்கு வழங்கவும், பணத்திருப்பங்களையும் ரத்துகளையும் கையாளவும், சட்டம் கோரும் கொள்முதல் பதிவுகளை வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "आपने क्या खरीदा और उससे आपको क्या मिलता है",
+          "purpose": "आपने जिसके लिए भुगतान किया वह आपको देने, रिफ़ंड और रद्दीकरण संभालने, और कानून के अनुसार ज़रूरी खरीद रिकॉर्ड रखने के लिए।"
+        }
       }
     },
     {
@@ -951,6 +1215,18 @@
       "export": {
         "by": "anon_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Usage statistics, only if you allow them: which features are used and when, with a random install identifier",
+        "purpose": "To see what works in our apps and what does not.",
+        "ta": {
+          "item": "பயன்பாட்டுப் புள்ளிவிவரங்கள், நீங்கள் அனுமதித்தால் மட்டுமே: எந்த அம்சங்கள் எப்போது பயன்படுத்தப்படுகின்றன என்பது, ஒரு சீரற்ற நிறுவல் அடையாளங்காட்டியுடன்",
+          "purpose": "எங்கள் செயலிகளில் எது சரியாகச் செயல்படுகிறது, எது இல்லை என்பதை அறிய."
+        },
+        "hi": {
+          "item": "उपयोग के आँकड़े, केवल आपकी अनुमति से: कौन-सी सुविधाएँ कब उपयोग होती हैं, एक यादृच्छिक इंस्टॉल पहचानकर्ता के साथ",
+          "purpose": "यह देखने के लिए कि हमारे ऐप में क्या काम करता है और क्या नहीं।"
+        }
       }
     },
     {
@@ -981,6 +1257,18 @@
       "export": {
         "by": "anon_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Usage statistics, only if you allow them: which features are used and when, with a random install identifier",
+        "purpose": "To see what works in our apps and what does not.",
+        "ta": {
+          "item": "பயன்பாட்டுப் புள்ளிவிவரங்கள், நீங்கள் அனுமதித்தால் மட்டுமே: எந்த அம்சங்கள் எப்போது பயன்படுத்தப்படுகின்றன என்பது, ஒரு சீரற்ற நிறுவல் அடையாளங்காட்டியுடன்",
+          "purpose": "எங்கள் செயலிகளில் எது சரியாகச் செயல்படுகிறது, எது இல்லை என்பதை அறிய."
+        },
+        "hi": {
+          "item": "उपयोग के आँकड़े, केवल आपकी अनुमति से: कौन-सी सुविधाएँ कब उपयोग होती हैं, एक यादृच्छिक इंस्टॉल पहचानकर्ता के साथ",
+          "purpose": "यह देखने के लिए कि हमारे ऐप में क्या काम करता है और क्या नहीं।"
+        }
       }
     },
     {
@@ -1029,6 +1317,21 @@
       "export": {
         "by": "anon_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "A record of each consent choice you make, and which version of this Policy you were shown",
+        "purpose": "To show that the choice was yours.",
+        "kept": "as the record of your choice",
+        "ta": {
+          "item": "நீங்கள் செய்யும் ஒவ்வொரு ஒப்புதல் தேர்வின் பதிவும், இந்தக் கொள்கையின் எந்தப் பதிப்பு உங்களுக்குக் காட்டப்பட்டது என்பதும்",
+          "purpose": "அந்தத் தேர்வு உங்களுடையது என்பதைக் காட்ட.",
+          "kept": "உங்கள் தேர்வின் பதிவாக"
+        },
+        "hi": {
+          "item": "आपके हर सहमति-विकल्प का रिकॉर्ड, और आपको इस नीति का कौन-सा संस्करण दिखाया गया",
+          "purpose": "यह दिखाने के लिए कि वह विकल्प आपका था।",
+          "kept": "आपके विकल्प के रिकॉर्ड के रूप में"
+        }
       }
     },
     {
@@ -1097,6 +1400,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your problem reports: what you write, an optional screenshot, the diagnostics you saw, and your email address only if you ask us to reply",
+        "purpose": "To fix the problem, and to tell you about it if you asked.",
+        "ta": {
+          "item": "உங்கள் சிக்கல் புகார்கள்: நீங்கள் எழுதுவது, விருப்பத்தேர்வான ஒரு திரைப்பிடிப்பு, நீங்கள் பார்த்த கண்டறிதல் தகவல்கள், பதில் அனுப்புமாறு கேட்டால் மட்டும் உங்கள் மின்னஞ்சல் முகவரி",
+          "purpose": "சிக்கலைச் சரிசெய்யவும், நீங்கள் கேட்டிருந்தால் அதைப் பற்றி உங்களுக்குத் தெரிவிக்கவும்."
+        },
+        "hi": {
+          "item": "आपकी समस्या रिपोर्ट: आप जो लिखते हैं, एक वैकल्पिक स्क्रीनशॉट, आपको दिखी डायग्नोस्टिक जानकारी, और आपका ईमेल पता केवल तब जब आप जवाब माँगें",
+          "purpose": "समस्या ठीक करने के लिए, और अगर आपने माँगा हो तो आपको उसके बारे में बताने के लिए।"
+        }
       }
     },
     {
@@ -1189,6 +1504,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "Your privacy rights requests: what you asked and where our answer goes",
+        "purpose": "To answer your request on time, and to show that we did.",
+        "ta": {
+          "item": "உங்கள் தனியுரிமை உரிமைக் கோரிக்கைகள்: நீங்கள் கேட்டதும், எங்கள் பதில் செல்லும் முகவரியும்",
+          "purpose": "உங்கள் கோரிக்கைக்கு உரிய நேரத்தில் பதிலளிக்கவும், அதைச் செய்தோம் என்பதைக் காட்டவும்."
+        },
+        "hi": {
+          "item": "आपके गोपनीयता-अधिकार अनुरोध: आपने क्या माँगा और हमारा जवाब कहाँ जाता है",
+          "purpose": "आपके अनुरोध का समय पर जवाब देने के लिए, और यह दिखाने के लिए कि हमने दिया।"
+        }
       }
     },
     {
@@ -1217,6 +1544,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "The name and email address of the person you nominate",
+        "purpose": "So that they can use your rights if you die or cannot act yourself.",
+        "ta": {
+          "item": "நீங்கள் நியமிக்கும் நபரின் பெயரும் மின்னஞ்சல் முகவரியும்",
+          "purpose": "நீங்கள் இறந்தாலோ நீங்களே செயல்பட முடியாவிட்டாலோ, அவர் உங்கள் உரிமைகளைப் பயன்படுத்துவதற்காக."
+        },
+        "hi": {
+          "item": "आपके नामित व्यक्ति का नाम और ईमेल पता",
+          "purpose": "ताकि आपकी मृत्यु होने या आपके स्वयं काम न कर पाने पर वे आपके अधिकारों का उपयोग कर सकें।"
+        }
       }
     },
     {
@@ -1246,6 +1585,18 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "A screenshot is a binary object keyed by its report id; the report row (feedback_reports, exported) names it. On an access request the screenshots of that person's reports are sent by hand (docs/ops/privacy-requests.md)."
+      },
+      "notice": {
+        "item": "Your problem reports: what you write, an optional screenshot, the diagnostics you saw, and your email address only if you ask us to reply",
+        "purpose": "To fix the problem, and to tell you about it if you asked.",
+        "ta": {
+          "item": "உங்கள் சிக்கல் புகார்கள்: நீங்கள் எழுதுவது, விருப்பத்தேர்வான ஒரு திரைப்பிடிப்பு, நீங்கள் பார்த்த கண்டறிதல் தகவல்கள், பதில் அனுப்புமாறு கேட்டால் மட்டும் உங்கள் மின்னஞ்சல் முகவரி",
+          "purpose": "சிக்கலைச் சரிசெய்யவும், நீங்கள் கேட்டிருந்தால் அதைப் பற்றி உங்களுக்குத் தெரிவிக்கவும்."
+        },
+        "hi": {
+          "item": "आपकी समस्या रिपोर्ट: आप जो लिखते हैं, एक वैकल्पिक स्क्रीनशॉट, आपको दिखी डायग्नोस्टिक जानकारी, और आपका ईमेल पता केवल तब जब आप जवाब माँगें",
+          "purpose": "समस्या ठीक करने के लिए, और अगर आपने माँगा हो तो आपको उसके बारे में बताने के लिए।"
+        }
       }
     },
     {
@@ -1277,6 +1628,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1305,6 +1668,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1333,6 +1708,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1362,6 +1749,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1391,6 +1790,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1419,6 +1830,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1447,6 +1870,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1475,6 +1910,18 @@
       "export": {
         "by": "user_id",
         "reader": "services/platform/src/routes/account-data.ts"
+      },
+      "notice": {
+        "item": "What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings",
+        "purpose": "To run the app for you and keep your data in step across your devices.",
+        "ta": {
+          "item": "Subscription Tracker-இல் நீங்கள் வைத்திருப்பவை: உங்கள் சந்தாக்கள், வரவுசெலவுத் திட்டங்கள், வகைகள், பணப்பரிவர்த்தனைகள், விலை மாற்றங்கள், அமைப்புகள்",
+          "purpose": "உங்களுக்காகச் செயலியை இயக்கவும், உங்கள் சாதனங்கள் அனைத்திலும் உங்கள் தரவை ஒத்திசைவில் வைத்திருக்கவும்."
+        },
+        "hi": {
+          "item": "Subscription Tracker में आप जो रखते हैं: आपकी सदस्यताएँ, बजट, श्रेणियाँ, भुगतान, कीमत में बदलाव और सेटिंग्स",
+          "purpose": "आपके लिए ऐप चलाने और आपके सभी डिवाइस पर आपका डेटा एक जैसा रखने के लिए।"
+        }
       }
     },
     {
@@ -1532,6 +1979,21 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "The signed-out-session list: an account id, session ids and times, expiring on its own. Its content is the account's own sign-out history and is read by hand on an access request (docs/ops/privacy-requests.md); the list is a security control, not a profile."
+      },
+      "notice": {
+        "item": "Which of your sign-in sessions you signed out",
+        "purpose": "To keep a signed-out session signed out.",
+        "kept": "until the session would have ended anyway",
+        "ta": {
+          "item": "உங்கள் உள்நுழைவு அமர்வுகளில் எவற்றிலிருந்து நீங்கள் வெளியேறினீர்கள் என்பது",
+          "purpose": "வெளியேறிய ஓர் அமர்வு வெளியேறிய நிலையிலேயே இருக்க.",
+          "kept": "அந்த அமர்வு எப்படியும் முடிந்திருக்கும் நேரம் வரை"
+        },
+        "hi": {
+          "item": "आपके कौन-से साइन-इन सत्रों से आपने साइन आउट किया",
+          "purpose": "साइन आउट किया गया सत्र साइन आउट ही रहे, इसके लिए।",
+          "kept": "जब तक वह सत्र वैसे भी समाप्त हो जाता"
+        }
       }
     },
     {
@@ -1560,6 +2022,21 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "The same namespace as kv:nikatru-signups, read-only from the platform Worker: a one-hour rate-limit counter that no person can be found in. Answered by hand as \"nothing addressable\" (docs/ops/privacy-requests.md)."
+      },
+      "notice": {
+        "item": "A short-lived counter against sign-up abuse (a one-way fingerprint of the network, never your email address)",
+        "purpose": "To stop the sign-up form being abused.",
+        "kept": "one hour",
+        "ta": {
+          "item": "பதிவுப் படிவத் தவறான பயன்பாட்டுக்கு எதிரான குறுகிய கால எண்ணி (வலையமைப்பின் ஒருவழி அடையாளக்குறி; உங்கள் மின்னஞ்சல் முகவரி ஒருபோதும் இல்லை)",
+          "purpose": "பதிவுப் படிவம் தவறாகப் பயன்படுத்தப்படுவதைத் தடுக்க.",
+          "kept": "ஒரு மணி நேரம்"
+        },
+        "hi": {
+          "item": "साइन-अप के दुरुपयोग के विरुद्ध एक अल्पकालिक काउंटर (नेटवर्क का एक-तरफ़ा फ़िंगरप्रिंट, आपका ईमेल पता कभी नहीं)",
+          "purpose": "साइन-अप फ़ॉर्म का दुरुपयोग रोकने के लिए।",
+          "kept": "एक घंटा"
+        }
       }
     },
     {
@@ -1590,6 +2067,18 @@
         "by": "withheld",
         "reader": "services/platform/src/routes/account-data.ts",
         "reason": "A nightly COPY of the stores above, held for disaster recovery: its content about a person is exactly what the live export already returns, and it is overwritten on its own schedule."
+      },
+      "notice": {
+        "item": "Nightly backup copies of the records above",
+        "purpose": "To recover from a failure.",
+        "ta": {
+          "item": "மேலே உள்ள பதிவுகளின் இரவுநேரக் காப்புப் பிரதிகள்",
+          "purpose": "ஒரு கோளாறிலிருந்து மீள."
+        },
+        "hi": {
+          "item": "ऊपर दिए रिकॉर्ड की रात में बनने वाली बैकअप प्रतियाँ",
+          "purpose": "किसी विफलता से उबरने के लिए।"
+        }
       }
     },
     {
@@ -1618,6 +2107,21 @@
         "by": "manual",
         "reader": "docs/ops/privacy-requests.md",
         "reason": "Holds only a one-hour rate-limit counter keyed by a salted HMAC of a network address and no e-mail; nothing in it can be found for a person. Answered by hand as \"nothing addressable\" (docs/ops/privacy-requests.md)."
+      },
+      "notice": {
+        "item": "A short-lived counter against sign-up abuse (a one-way fingerprint of the network, never your email address)",
+        "purpose": "To stop the sign-up form being abused.",
+        "kept": "one hour",
+        "ta": {
+          "item": "பதிவுப் படிவத் தவறான பயன்பாட்டுக்கு எதிரான குறுகிய கால எண்ணி (வலையமைப்பின் ஒருவழி அடையாளக்குறி; உங்கள் மின்னஞ்சல் முகவரி ஒருபோதும் இல்லை)",
+          "purpose": "பதிவுப் படிவம் தவறாகப் பயன்படுத்தப்படுவதைத் தடுக்க.",
+          "kept": "ஒரு மணி நேரம்"
+        },
+        "hi": {
+          "item": "साइन-अप के दुरुपयोग के विरुद्ध एक अल्पकालिक काउंटर (नेटवर्क का एक-तरफ़ा फ़िंगरप्रिंट, आपका ईमेल पता कभी नहीं)",
+          "purpose": "साइन-अप फ़ॉर्म का दुरुपयोग रोकने के लिए।",
+          "kept": "एक घंटा"
+        }
       }
     },
     {
@@ -1646,6 +2150,21 @@
         "by": "withheld",
         "reader": "services/platform/src/routes/account-data.ts",
         "reason": "A SHA-256 digest of an address that pressed unsubscribe, with nothing else; it cannot be listed for a person without the address, and its whole content is the fact \"this address said stop\"."
+      },
+      "notice": {
+        "item": "Addresses that asked for no more mail about their reports (as a one-way fingerprint)",
+        "purpose": "So that we never mail them about a report again.",
+        "kept": "for as long as the request for no more mail stands",
+        "ta": {
+          "item": "தங்கள் புகார்கள் பற்றி இனி மின்னஞ்சல் வேண்டாம் எனக் கேட்ட முகவரிகள் (ஒருவழி அடையாளக்குறியாக)",
+          "purpose": "ஒரு புகார் பற்றி அவர்களுக்கு மீண்டும் ஒருபோதும் மின்னஞ்சல் அனுப்பாமல் இருக்க.",
+          "kept": "இனி மின்னஞ்சல் வேண்டாம் என்ற கோரிக்கை நீடிக்கும் வரை"
+        },
+        "hi": {
+          "item": "वे पते जिन्होंने अपनी रिपोर्ट के बारे में और मेल न भेजने को कहा (एक-तरफ़ा फ़िंगरप्रिंट के रूप में)",
+          "purpose": "ताकि उन्हें किसी रिपोर्ट के बारे में फिर कभी मेल न भेजें।",
+          "kept": "जब तक और मेल न भेजने का अनुरोध बना रहे"
+        }
       }
     }
   ],

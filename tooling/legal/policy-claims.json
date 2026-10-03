@@ -123,6 +123,106 @@
     },
     {
       "page": "privacy.html",
+      "claim": "notice",
+      "type": "descriptive",
+      "why": "⏱ 2026-10-03 · lane dpdp-rights. Names what the document is (DPDP Rules 2025, rule 3): a notice the reader is informed by, replacing the three consent-by-use sentences the lead's Tamil legal review found (E1). No store or behaviour to check."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "How to use them.",
+      "type": "descriptive",
+      "why": "⏱ 2026-10-03 · lane dpdp-rights. A paragraph heading; the paths it names are each asserted by their own row (Your privacy rights, 48 hours, 30 days)."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Your privacy rights",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": [
+          "packages/feedback/lib/l10n/feedback_en.arb"
+        ],
+        "pattern": "\"privacyRights\": \"Your privacy rights\"",
+        "why": "The page sends a reader to Settings › Your privacy rights; this is the row's label in the one rights screen every app, the brick and the chassis SettingsView open (packages/feedback PrivacyRightsPage). Renaming it without the page reds here."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "48 hours",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": [
+          "services/platform/src/feedback/privacy.ts"
+        ],
+        "pattern": "export const ACK_HOURS = 48;",
+        "why": "The acknowledgement promise is the rights intake's clock: a request unacknowledged past ACK_HOURS is RED and pages the owner (services/platform/test/privacy-requests.test.ts). The page and the clock move together or this row reds."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "30 days",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": [
+          "services/platform/src/feedback/privacy.ts"
+        ],
+        "pattern": "export const RESOLVE_DAYS = 30;",
+        "why": "The resolution promise is the rights intake's clock: day 29 amber, day 31 red, the owner paged (services/platform/test/privacy-requests.test.ts)."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Your nominee.",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": [
+          "services/platform/src/routes/account-data.ts"
+        ],
+        "pattern": "accountData\\.put\\('/account/nominee'",
+        "why": "The nomination the paragraph describes is PUT /v1/account/nominee (a name and an address, nothing more), erased with the account (services/platform/test/account-data.test.ts)."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Data Protection Board of India",
+      "type": "descriptive",
+      "why": "⏱ 2026-10-03 · lane dpdp-rights. Names the statutory authority a complaint escalates to (DPDP Act s.13, Rules 2025 rule 3). No behaviour of ours to check."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "This website sets no cookies.",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "walk": {
+          "root": "sites/nikatru",
+          "filenameRe": "\\.(js|html)$",
+          "minFiles": 20
+        },
+        "pattern": "(?i)(document\\.cookie|set-cookie)",
+        "why": "Nothing served from sites/nikatru (pages, scripts, Pages Functions) writes a cookie. Walked so a new page or Function is covered the day it lands; floored at 20 files so a walk that stops finding them is COVERAGE LOST."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Our web apps set no cookies either.",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "walk": {
+          "root": "packages",
+          "filenameRe": "\\.dart$",
+          "minFiles": 50
+        },
+        "pattern": "(?i)document\\.cookie",
+        "why": "The web apps are the Flutter apps built for the web; their storage seams (packages/platform_storage, auth_supabase) use the browser's local storage, and no shared package touches document.cookie. Walked over every package's Dart so a new one is covered."
+      }
+    },
+    {
+      "page": "privacy.html",
       "claim": "Information collected automatically",
       "type": "descriptive",
       "why": "A section heading. Same as above — the inventory carries the store-level facts."

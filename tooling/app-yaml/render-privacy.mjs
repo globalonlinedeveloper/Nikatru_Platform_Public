@@ -93,6 +93,10 @@ import { validate } from './schema-validate.mjs';
 // PUBLISHED claim, and a new page without them fails SC 2.4.1 and SC 2.4.7 on
 // the day it ships.
 import { REGIONS, openMarker, closeMarker, isCssRegion } from '../sites/chrome.mjs';
+// ⏱ 2026-10-03 · lane dpdp-rights (Do 5): section 6's itemised notice is the same
+// table the portfolio policy carries, rendered from tooling/legal/data-inventory.json
+// and filtered to the shared stores plus this app's own database.
+import { INVENTORY, renderTable } from '../legal/itemised-notice.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -224,7 +228,7 @@ const region = (name) => {
  * it is the same for every app and belongs in one place rather than in each
  * declaration.
  */
-export function renderAppPage(doc, { appName, appId, providerNames, portfolioPolicyPath = '/privacy' }) {
+export function renderAppPage(doc, { appName, appId, providerNames, inventory = null, portfolioPolicyPath = '/privacy' }) {
   if (!(providerNames instanceof Map)) {
     throw new TypeError(`renderAppPage needs providerNames, the ${PROVIDER_REGISTER} id → name map`);
   }
@@ -364,13 +368,19 @@ export function renderAppPage(doc, { appName, appId, providerNames, portfolioPol
   p('<p>This section is the itemised notice: what is processed, for what purpose, how a consent is withdrawn, and how a complaint is made. It is generated from the same declaration as the table above, so the notice and the practice are one document.</p>');
   p('<h3>What is processed, and for what purpose</h3>');
   p('<p>Exactly the categories in section 1, each for exactly the purposes listed beside it, and for no other purpose. Consent is recorded separately for each purpose and the record is append-only: a consent given for one purpose is never treated as a consent for another, and withdrawing one leaves the others as they were.</p>');
+  if (inventory !== null) {
+    p('<h3>Item by item, on our servers</h3>');
+    p(`<p>Every kind of personal data our servers hold for ${esc(appName)} and for the services every Nikatru app shares, why, and for how long. It is rendered from the inventory our systems are checked against (<code>tooling/legal/data-inventory.json</code>).</p>`);
+    p(renderTable(inventory, { appId, indent: '' }));
+  }
   p('<h3>How to withdraw a consent</h3>');
   p('<p>Every consent given in the app can be withdrawn in the app, at any time, with the same number of taps it took to give. Withdrawal stops the processing that depended on it; it does not undo processing that had already happened, and it does not affect the categories marked as needed to use the app, which are held for as long as the account exists.</p>');
+  p('<h3>How to use your other rights</h3>');
+  p(`<p>In the app, open Settings, then “Your privacy rights”: download a copy of everything our servers hold about your account, ask for a correction, name a nominee to act for you if you die or cannot act yourself, withdraw a consent, or make a complaint. Signed out, use <a href="/privacy-rights">nikatru.com/privacy-rights</a>. We acknowledge a request within 48 hours and resolve it within 30 days.</p>`);
   p('<h3>How to have your data erased</h3>');
   p(`<p>Deleting the account erases everything keyed to it. The reach of that deletion is derived from the database schema rather than from a list somebody keeps up to date by hand, so a new table cannot be silently missed. Start at <a href="/delete-account">nikatru.com/delete-account</a>.</p>`);
   p('<h3>How to reach a person, and how to complain</h3>');
-  p(`<p>The grievance contact is on <a href="/contact">nikatru.com/contact</a>. A complaint that we do not resolve can be taken to the data-protection authority for your jurisdiction; for India that is the Data Protection Board established under the Digital Personal Data Protection Act, 2023.</p>`);
-  p('<p class="meta">This section states what this app actually does, itemised from its declaration. It is written to be plain and complete rather than to a statutory checklist: the applicable notice-content provisions have not been read line by line against it, and that gap is tracked as an open item rather than papered over with a claim of compliance.</p>');
+  p(`<p>The grievance contact is on <a href="/contact">nikatru.com/contact</a>; a complaint is acknowledged within 48 hours and resolved within 30 days. A complaint that we do not resolve can be taken to the data-protection authority for your jurisdiction; for India that is the Data Protection Board of India, established under the Digital Personal Data Protection Act, 2023.</p>`);
 
   p('');
   p(`<p class="meta">Generated from <code>apps/${esc(appId)}/privacy.yaml</code>, declaration date ${esc(doc.asOf)}.</p>`);
@@ -619,6 +629,19 @@ export function planPrivacy(root) {
     problems.push(`${PROVIDER_REGISTER}: not valid JSON (${e.message}), so no processor on an app notice can be named.`);
     return { declarations, files, problems, lost };
   }
+  // The itemised notice's source (lane dpdp-rights). Unreadable is COVERAGE LOST:
+  // an app notice rendered without it would silently drop its itemised table.
+  let inventory;
+  try {
+    inventory = JSON.parse(readIf(join(root, INVENTORY)) ?? 'null');
+  } catch (e) {
+    problems.push(`${INVENTORY}: not valid JSON (${e.message}), so no app notice can itemise its data.`);
+    return { declarations, files, problems, lost };
+  }
+  if (!inventory || !Array.isArray(inventory.stores)) {
+    lost.push(`${INVENTORY} is missing or has no stores, so the app notices' itemised tables would range over nothing.`);
+    return { declarations, files, problems, lost };
+  }
   for (const [id, text] of appDeclarations) {
     const rel = `${APPS_DIR}/${id}/privacy.yaml`;
     const doc = gradeDoc(rel, text);
@@ -643,7 +666,7 @@ export function planPrivacy(root) {
     try {
       page = doc.state === 'pending'
         ? renderPendingPage({ appName, appId: id })
-        : renderAppPage(doc, { appName, appId: id, providerNames });
+        : renderAppPage(doc, { appName, appId: id, providerNames, inventory });
     } catch (e) {
       problems.push(`${rel}: ${e.message}`);
       continue;

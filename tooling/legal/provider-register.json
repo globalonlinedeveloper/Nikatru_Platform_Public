@@ -99,6 +99,9 @@
     ],
     "segments": [
       "v1",
+      "export",
+      "nominee",
+      "verify",
       "health",
       "config",
       "webhooks",

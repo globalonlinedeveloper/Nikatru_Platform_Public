@@ -435,9 +435,11 @@ if (archived.size === 0) {
   // ⏱ 2026-10-02 (O-TAMIL-NOTICE-REVIEW) — the first translated notice landed (ta, 2026-09-26),
   // so a translation is now held to more than its declared version:
   //   · LAG. A locale that has EVER had a notice and has none at the version in force means
-  //     the English moved on and the translation did not. PRINTED, NOT FAILED, for now: failing
-  //     it makes every English bump wait on a reviewed translation, and whether to do that is
-  //     the lead's call (PR #1173) — the next English bump (DPDP E1/E2) is already queued.
+  //     the English moved on and the translation did not. ⏱ 2026-10-03 · LEAD DECISION (club
+  //     club-rt-rights, addendum 2): this FAILS for every supported notice locale. It printed
+  //     ("TRANSLATION BEHIND") from #1173 until the DPDP bump (2026-10-04) landed its ta and hi
+  //     notices in the same commit; from then on no English bump can silently leave a locale on
+  //     an older notice.
   //   · STRUCTURE. Only `en` is text-compared (limb 1), so a translation is held to the English
   //     snapshot of the same version on what does not translate: the count of each block
   //     element, the link targets, and how often the age floor 18 is stated. A dropped
@@ -447,11 +449,11 @@ if (archived.size === 0) {
   for (const locale of locales) {
     if (!current.has(locale) && everNoticed(locale)) {
       const had = [...archived].filter(([, m]) => m.has(locale)).map(([v]) => v).sort();
-      prints.push(
+      problems.push(
         `TRANSLATION BEHIND: ${ARCHIVE_ROOT}/${published}/${locale}/${DOC} is missing, but ${locale} has had a notice ` +
           `before (${had.join(', ')}). The English notice moved to ${published} and the ${locale} translation did not: ` +
-          'its readers are left with a superseded document. Translate the new version; turning this print into a ' +
-          "build failure is the lead's call.",
+          'its readers are left with a superseded document. Translate the new version and file it in the same commit ' +
+          'as the English bump (lead decision, club-rt-rights addendum 2).',
       );
     }
   }

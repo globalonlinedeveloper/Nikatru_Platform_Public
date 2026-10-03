@@ -542,7 +542,7 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish.
-const String kPrivacyPolicyVersion = '2026-10-03';
+const String kPrivacyPolicyVersion = '2026-10-04';
 
 /// 🔒 The Terms-of-Service version the sign-up clickwrap accepts.
 ///

@@ -439,7 +439,8 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
     assert.match(r.stderr, /<p> 1 vs en 2/);
   });
 
-  test('a translation LEFT BEHIND by an English version bump PRINTS (failing it is the lead\'s call)', () => {
+  // ⏱ 2026-10-03 · lead decision (club-rt-rights addendum 2): the lag limb FAILS.
+  test('🔴 a translation LEFT BEHIND by an English version bump FAILS', () => {
     // ta had a notice at 2026-07-26; the English moved to 2026-08-01 and ta did not follow.
     const root = repo({
       snapshots: [
@@ -449,9 +450,23 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
       ],
     });
     const r = run(root);
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /TRANSLATION BEHIND: .*2026-08-01\/ta\/privacy\.html is missing, but ta has had a notice before \(2026-07-26\)/);
+    assert.doesNotMatch(r.stdout + r.stderr, /NO NOTICE IN ta/);
+  });
+
+  test('GREEN CONTROL: the same bump WITH its translation passes', () => {
+    const root = repo({
+      snapshots: [
+        ['2026-07-26', 'en', snapshot('2026-07-26')],
+        ['2026-07-26', 'ta', snapshot('2026-07-26')],
+        ['2026-08-01', 'en', snapshot('2026-08-01')],
+        ['2026-08-01', 'ta', snapshot('2026-08-01')],
+      ],
+    });
+    const r = run(root);
     assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.match(r.stdout, /TRANSLATION BEHIND: .*2026-08-01\/ta\/privacy\.html is missing, but ta has had a notice before \(2026-07-26\)/);
-    assert.doesNotMatch(r.stdout, /NO NOTICE IN ta/);
+    assert.doesNotMatch(r.stdout + r.stderr, /TRANSLATION BEHIND/);
   });
 
   test('a tree that has lost its locale declarations is COVERAGE LOST', () => {

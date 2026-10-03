@@ -232,13 +232,37 @@
 <p>This section is the itemised notice: what is processed, for what purpose, how a consent is withdrawn, and how a complaint is made. It is generated from the same declaration as the table above, so the notice and the practice are one document.</p>
 <h3>What is processed, and for what purpose</h3>
 <p>Exactly the categories in section 1, each for exactly the purposes listed beside it, and for no other purpose. Consent is recorded separately for each purpose and the record is append-only: a consent given for one purpose is never treated as a consent for another, and withdrawing one leaves the others as they were.</p>
+<h3>Item by item, on our servers</h3>
+<p>Every kind of personal data our servers hold for Nikatru Subscription Tracker and for the services every Nikatru app shares, why, and for how long. It is rendered from the inventory our systems are checked against (<code>tooling/legal/data-inventory.json</code>).</p>
+<table class="itemised">
+  <tr><th>What we hold</th><th>Why</th><th>How long we keep it</th></tr>
+  <tr><td>What you bought and what it entitles you to</td><td>To give you what you paid for, handle refunds and cancellations, and keep the purchase records the law requires.</td><td>while your account exists; 730 days</td></tr>
+  <tr><td>Your AI credits and your AI opt-in, and a count of each AI request</td><td>To meter the AI features you pay for. What you write to an AI feature is not kept.</td><td>while your account exists</td></tr>
+  <tr><td>A payment we could not yet match to an account (your email address only as a one-way fingerprint)</td><td>To give the purchase to its owner when they sign in, or refund it.</td><td>until it is claimed or refunded</td></tr>
+  <tr><td>Reports you make about AI-generated content</td><td>To review and act on the report.</td><td>400 days</td></tr>
+  <tr><td>The link between your account and a browser extension</td><td>To let the extension check your plan, and to let you unlink it.</td><td>1 day; 30 days; while your account exists</td></tr>
+  <tr><td>Your renewal reminder choices, the reminders we sent, and your private calendar link</td><td>To send the reminders you asked for, once each.</td><td>while your account exists; 400 days</td></tr>
+  <tr><td>An account deletion still in progress, and the Apple or Google sign-in link it must cancel</td><td>To finish deleting your account everywhere, including the sign-in link.</td><td>until the deletion is complete</td></tr>
+  <tr><td>Your email address and sign-up time, if you ask to hear when an app launches</td><td>To tell you once when the app launches.</td><td>400 days</td></tr>
+  <tr><td>Usage statistics, only if you allow them: which features are used and when, with a random install identifier</td><td>To see what works in our apps and what does not.</td><td>400 days; 1100 days</td></tr>
+  <tr><td>A record of each consent choice you make, and which version of this Policy you were shown</td><td>To show that the choice was yours.</td><td>as the record of your choice</td></tr>
+  <tr><td>Your problem reports: what you write, an optional screenshot, the diagnostics you saw, and your email address only if you ask us to reply</td><td>To fix the problem, and to tell you about it if you asked.</td><td>90 days</td></tr>
+  <tr><td>Your privacy rights requests: what you asked and where our answer goes</td><td>To answer your request on time, and to show that we did.</td><td>400 days</td></tr>
+  <tr><td>The name and email address of the person you nominate</td><td>So that they can use your rights if you die or cannot act yourself.</td><td>while your account exists</td></tr>
+  <tr><td>What you keep in Subscription Tracker: your subscriptions, budgets, categories, payments, price changes and settings</td><td>To run the app for you and keep your data in step across your devices.</td><td>while your account exists</td></tr>
+  <tr><td>Which of your sign-in sessions you signed out</td><td>To keep a signed-out session signed out.</td><td>until the session would have ended anyway</td></tr>
+  <tr><td>A short-lived counter against sign-up abuse (a one-way fingerprint of the network, never your email address)</td><td>To stop the sign-up form being abused.</td><td>one hour</td></tr>
+  <tr><td>Nightly backup copies of the records above</td><td>To recover from a failure.</td><td>30 days</td></tr>
+  <tr><td>Addresses that asked for no more mail about their reports (as a one-way fingerprint)</td><td>So that we never mail them about a report again.</td><td>for as long as the request for no more mail stands</td></tr>
+</table>
 <h3>How to withdraw a consent</h3>
 <p>Every consent given in the app can be withdrawn in the app, at any time, with the same number of taps it took to give. Withdrawal stops the processing that depended on it; it does not undo processing that had already happened, and it does not affect the categories marked as needed to use the app, which are held for as long as the account exists.</p>
+<h3>How to use your other rights</h3>
+<p>In the app, open Settings, then “Your privacy rights”: download a copy of everything our servers hold about your account, ask for a correction, name a nominee to act for you if you die or cannot act yourself, withdraw a consent, or make a complaint. Signed out, use <a href="/privacy-rights">nikatru.com/privacy-rights</a>. We acknowledge a request within 48 hours and resolve it within 30 days.</p>
 <h3>How to have your data erased</h3>
 <p>Deleting the account erases everything keyed to it. The reach of that deletion is derived from the database schema rather than from a list somebody keeps up to date by hand, so a new table cannot be silently missed. Start at <a href="/delete-account">nikatru.com/delete-account</a>.</p>
 <h3>How to reach a person, and how to complain</h3>
-<p>The grievance contact is on <a href="/contact">nikatru.com/contact</a>. A complaint that we do not resolve can be taken to the data-protection authority for your jurisdiction; for India that is the Data Protection Board established under the Digital Personal Data Protection Act, 2023.</p>
-<p class="meta">This section states what this app actually does, itemised from its declaration. It is written to be plain and complete rather than to a statutory checklist: the applicable notice-content provisions have not been read line by line against it, and that gap is tracked as an open item rather than papered over with a claim of compliance.</p>
+<p>The grievance contact is on <a href="/contact">nikatru.com/contact</a>; a complaint is acknowledged within 48 hours and resolved within 30 days. A complaint that we do not resolve can be taken to the data-protection authority for your jurisdiction; for India that is the Data Protection Board of India, established under the Digital Personal Data Protection Act, 2023.</p>
 
 <p class="meta">Generated from <code>apps/subscriptiontracker/privacy.yaml</code>, declaration date 2026-09-11.</p>
 

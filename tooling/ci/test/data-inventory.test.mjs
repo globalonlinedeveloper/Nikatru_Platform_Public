@@ -70,10 +70,11 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { withRegion } from '../../legal/itemised-notice.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-data-inventory.mjs');
@@ -144,6 +145,14 @@ const DEFAULT_STORES = [
     writtenBy: ['services/api/migrations/0001_init.sql'],
     erasure: { kind: 'purge', route: 'services/api/src/routes/account.ts', reason: 'the row is theirs' },
     disclosure: { page: 'privacy.html', quote: 'we store your email address' },
+    // ⏱ 2026-10-03 · lane dpdp-rights: the access reader and the itemised notice.
+    export: { by: 'user_id', reader: 'services/api/src/routes/export.ts' },
+    notice: {
+      item: 'Your email address',
+      purpose: 'To run your account.',
+      ta: { item: 'உங்கள் மின்னஞ்சல் முகவரி', purpose: 'உங்கள் கணக்கை இயக்க.' },
+      hi: { item: 'आपका ईमेल पता', purpose: 'आपका खाता चलाने के लिए।' },
+    },
   },
   {
     id: 'kv:abc123',
@@ -162,8 +171,23 @@ const DEFAULT_STORES = [
     erasure: { kind: 'no-route', blockedBy: 'nothing in this tree deletes a signup key' },
     writtenBy: ['sites/nikatru/functions/api/subscribe.js'],
     disclosure: { page: 'privacy.html', quote: 'we store your email address' },
+    export: { by: 'manual', reader: 'docs/ops/privacy-requests.md', reason: 'keyed by an address; answered by hand under the procedure' },
+    notice: {
+      item: 'Your sign-up address',
+      purpose: 'To tell you when the app launches.',
+      kept: 'until you ask us to delete it',
+      ta: { item: 'பதிவு முகவரி', purpose: 'செயலி வெளியாகும்போது தெரிவிக்க.', kept: 'நீக்கச் சொல்லும் வரை' },
+      hi: { item: 'साइन-अप पता', purpose: 'ऐप लॉन्च होने पर बताने के लिए।', kept: 'जब तक आप हटाने को न कहें' },
+    },
   },
 ];
+
+const EXPORT_KINDS = {
+  user_id: 'read through the derived walk',
+  anon_id: 'read for the install',
+  manual: 'answered by hand',
+  withheld: 'deliberately not exported',
+};
 
 const WRANGLER = `{
   // A comment mentioning r2_buckets must NOT read as a binding.
@@ -187,25 +211,25 @@ const SUBSCRIBE = `export async function onRequestPost({ env }) {
 }
 `;
 
-const PRIVACY = '<html><body><main><h1>Privacy</h1><p>we store your email address and nothing else.</p></main></body></html>\n';
+const PRIVACY =
+  '<html><body><main><h1>Privacy</h1><p>we store your email address and nothing else.</p>\n  <!-- ITEMISED-NOTICE -->\n  <!-- /ITEMISED-NOTICE -->\n</main></body></html>\n';
 
 function fixture({ stores, derivation = {}, wrangler = WRANGLER, migration = MIGRATION, subscribe = SUBSCRIBE, privacy = PRIVACY, retentionKinds = RETENTION_KINDS, extraFiles = {} } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(root, { recursive: true });
-  write(
-    root,
-    join('tooling', 'legal', 'data-inventory.json'),
-    JSON.stringify(
-      {
-        derivation: { ...DERIVATION, ...derivation },
-        retentionKinds,
-        erasureKinds: ERASURE_KINDS,
-        stores: stores ?? structuredClone(DEFAULT_STORES),
-      },
-      null,
-      2,
-    ),
-  );
+  const inventory = {
+    derivation: { ...DERIVATION, ...derivation },
+    retentionKinds,
+    erasureKinds: ERASURE_KINDS,
+    exportKinds: EXPORT_KINDS,
+    stores: stores ?? structuredClone(DEFAULT_STORES),
+  };
+  write(root, join('tooling', 'legal', 'data-inventory.json'), JSON.stringify(inventory, null, 2));
+  // The published notice carries the itemised table rendered from THIS inventory
+  // (lane dpdp-rights), so every case is a one-edit difference from a green tree.
+  if (privacy !== null) privacy = withRegion(privacy, inventory) ?? privacy;
+  write(root, join('services', 'api', 'src', 'routes', 'export.ts'), 'export const read = (db, u) => exportUserRows(db, u);\n');
+  write(root, join('docs', 'ops', 'privacy-requests.md'), '# procedure\n');
   if (wrangler !== null) write(root, join('services', 'api', 'wrangler.jsonc'), wrangler);
   if (migration !== null) write(root, join('services', 'api', 'migrations', '0001_init.sql'), migration);
   if (subscribe !== null) write(root, join('sites', 'nikatru', 'functions', 'api', 'subscribe.js'), subscribe);
@@ -562,6 +586,8 @@ const tableRow = (stores) => stores.find((s) => s.id === 'table:main_db.people')
 const LEDGER_MIGRATION = MIGRATION.replace(', user_id TEXT', ', subject_ref TEXT');
 const asLedger = (stores, erasure) => {
   tableRow(stores).erasure = { kind: 'completion-ledger', column: 'subject_ref', deletedBy: 'services/api/src/routes/account.ts', reason: 'finishes the erasure', ...erasure };
+  // A ledger is not read by the user_id walk (lane dpdp-rights): withheld, with its reason.
+  tableRow(stores).export = { by: 'withheld', reader: 'docs/ops/privacy-requests.md', reason: 'a ledger of an erasure in progress, not a record about the person' };
 };
 describe('completion-ledger — a ledger the sweep must not reach', () => {
   test('passes when the neutral column exists, nothing is user-shaped, and deletedBy is a file', () => {
@@ -784,6 +810,8 @@ const asAddressKeyed = (stores, erasure) => {
     blockedBy: 'a person with no account is served by the operator',
     ...erasure,
   };
+  // Address-keyed: answered by hand on an access request (lane dpdp-rights).
+  tableRow(stores).export = { by: 'manual', reader: 'docs/ops/privacy-requests.md', reason: 'keyed by an address; answered by hand for the proven address' };
 };
 describe('purge-by-verified-email — an address-keyed table reached by confirmed email', () => {
   test('passes when the address column exists, nothing is user-shaped, and both files exist', () => {
@@ -867,5 +895,67 @@ describe('a consent claim names the server code that enforces it', () => {
     );
     assert.equal(r.status, 1);
     assert.match(out(r), /never mentions "consent_artifacts"/);
+  });
+});
+
+// ⏱ 2026-10-03 · lane dpdp-rights (Do 3 and Do 5).
+describe('every personal-data row names its ACCESS reader (Do 3)', () => {
+  test('🔴 a personal-data row with no export reader FAILS', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    delete stores[1].export;
+    const r = run(fixture({ stores }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /table:main_db\.people.*names no `export\.reader`/);
+  });
+
+  test('🔴 a user_id reader that never calls the derived walk FAILS', () => {
+    const r = run(fixture({ extraFiles: {} }));
+    assert.equal(r.status, 0, out(r));
+    const root = fixture();
+    write(root, join('services', 'api', 'src', 'routes', 'export.ts'), '// exportUserRows( is only mentioned here\nexport const read = () => [];\n');
+    const bad = run(root);
+    assert.equal(bad.status, 1, out(bad));
+    assert.match(out(bad), /never calls exportUserRows/);
+  });
+
+  test('🔴 `manual` with no written reason FAILS', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    delete stores[3].export.reason;
+    const r = run(fixture({ stores }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares export `by: manual` without a written `reason`/);
+  });
+});
+
+describe('the itemised notice is the render of this file (Do 5)', () => {
+  test('🔴 a personal-data row with no notice FAILS', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    delete stores[1].notice;
+    const r = run(fixture({ stores }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /itemised notice — table:main_db\.people: no notice\.item/);
+  });
+
+  test('🔴 a row with no Tamil or Hindi notice FAILS (every notice locale carries the table)', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    delete stores[1].notice.hi;
+    const r = run(fixture({ stores }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no notice\.hi\.item/);
+  });
+
+  test('🔴 a hand edit inside the region FAILS', () => {
+    const root = fixture();
+    const page = join(root, 'sites', 'nikatru', 'privacy.html');
+    write(root, join('sites', 'nikatru', 'privacy.html'), readFileSync(page, 'utf8').replace('To run your account.', 'To run your account, and more.'));
+    const r = run(root);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /itemised notice is not the render/);
+  });
+
+  test('🔴 a notice with no region FAILS', () => {
+    const r = run(fixture({ privacy: '<html><body><main><p>we store your email address</p></main></body></html>\n' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /carries no single <!-- ITEMISED-NOTICE -->/);
   });
 });

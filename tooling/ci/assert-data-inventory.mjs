@@ -52,6 +52,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep, extname } from 'node:path';
 import { visibleText, normaliseForMatch, stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { CLOSE as ITEMISED_CLOSE, OPEN as ITEMISED_OPEN, missingNotice, noticeLines, ownedPages, withRegion } from '../legal/itemised-notice.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const REGISTER = join(repoRoot, 'tooling', 'legal', 'data-inventory.json');
@@ -890,6 +891,37 @@ if (columnsByTable.size === 0 && problems.length === 0) {
   );
 }
 
+// ── THE ITEMISED NOTICE (lane dpdp-rights, Do 5; O-DPDP-ITEMISED-NOTICE-MISSING) ──
+// DPDP Rules 2025 rule 3: the notice itemises the personal data and the purpose of
+// each. Every personal-data row above carries its public `notice` (in every notice
+// locale), and the published notices carry the table tooling/legal/itemised-notice.mjs
+// renders from this file — the live privacy.html and the in-force translations. A
+// row with no notice, a row added without re-rendering, or a hand edit inside the
+// region FAILS here.
+let itemisedPagesChecked = 0;
+for (const m of missingNotice(register)) {
+  problems.push(`itemised notice — ${m}. Every store holding personal data is itemised on the published notice (DPDP Rules 2025, rule 3).`);
+}
+if (missingNotice(register).length === 0) {
+  for (const { rel: page, locale } of ownedPages(repoRoot)) {
+    const html = readFileSync(join(repoRoot, ...page.split('/')), 'utf8');
+    const next = withRegion(html, register, locale);
+    if (next === null) {
+      problems.push(`${page} carries no single ${ITEMISED_OPEN} … ${ITEMISED_CLOSE} region, so the itemised notice is not published there.`);
+    } else if (next !== html) {
+      problems.push(
+        `${page}'s itemised notice is not the render of tooling/legal/data-inventory.json (${noticeLines(register, { locale }).length} item(s)). ` +
+          'Either a row changed without re-rendering or the region was edited by hand. Run node tooling/legal/itemised-notice.mjs --write.',
+      );
+    } else {
+      itemisedPagesChecked++;
+    }
+  }
+  if (itemisedPagesChecked === 0 && problems.length === 0) {
+    coverageLost('NOT ONE published notice carried the itemised region, so "every row is itemised" ranged over nothing.');
+  }
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ data inventory — ${problems.length} problem(s):`);
@@ -914,6 +946,9 @@ console.log(
   `    ${erasureRowsChecked} erasure declaration(s) checked against the columns of ${columnsByTable.size} table(s): ` +
     'every `purge` names a table that really has a `user_id`, every `unlink` a column that really ends in ' +
     '`_user_id`, and every "unreachable" a table that really has neither',
+);
+console.log(
+  `    ${itemisedPagesChecked} published notice(s) carry the itemised table rendered from this file (lane dpdp-rights)`,
 );
 console.log(
   `    ${readersChecked} export reader(s) checked: every personal-data row names the code or procedure that answers an ` +
