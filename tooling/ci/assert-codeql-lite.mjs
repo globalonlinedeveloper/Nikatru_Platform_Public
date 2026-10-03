@@ -5,7 +5,7 @@
 // 🔴 WHY THIS EXISTS, MEASURED (lane codeql-lite, lead brief 2026-10-03). Three PRs
 // in one day went red only on the security job's "This pull request adds no CodeQL
 // alert its own dispositions do not answer" step (assert-codeql-pr-no-new-high.mjs):
-// #1189 (alert 602, js/file-system-race — `existsSync(p) ? readFileSync(p)`),
+// #1189 (alert 602, js/file-system-race — `existsSync(p)`, then a write of p),
 // #1187 (alert 596, an import a fix left unused) and #1176 (a new alert after a fix
 // round). Each cost a CI cycle and a fix round. The repo's FIXED high/critical
 // alerts by rule were missing-regexp-anchor 29, file-system-race 27,
@@ -14,28 +14,33 @@
 // insecure-temporary-file 5: about a hundred alerts a local check could have stopped.
 //
 // ── WHAT IT FLAGS (each printed `file:line <CodeQL rule id> message`) ─────────
-//   js/file-system-race          an fs check (exists/stat/lstat/fstat/access/open, Sync
-//                                or not) of a path, then a readFile/writeFile/appendFile
-//                                of the SAME path expression later in the same function
-//                                → read once in a try and treat ENOENT as "missing".
+//   js/file-system-race          an fs check (exists/stat/lstat/access/open, Sync
+//                                or not) of a path, then a readFile/writeFile/appendFile/
+//                                open of the SAME path expression later in the same
+//                                function, where the check dominates the use — except
+//                                exists() then a READ, which CodeQL does not report (as
+//                                tooling/ci/test/fixtures/fs-spy-preload.mjs measured)
+//                                → read once in a try (ENOENT = missing), or write 'wx'.
 //   js/regex/missing-regexp-anchor  a regex used to test (`.test`/`.exec`/`.match`/
 //                                `.search`) holding a host on a common TLD with neither
 //                                `^` nor `$`; or `^a|b` / `a|b$`, an anchor that binds to
 //                                one alternative only.
 //   js/incomplete-hostname-regexp   an UNESCAPED `.` inside a host on a common TLD in a
 //                                regex literal or a `new RegExp('…')` string.
-//   js/incomplete-url-substring-sanitization  includes/indexOf/lastIndexOf/startsWith/
-//                                endsWith of a URL or host literal (or a const naming
-//                                one) — `startsWith('https://h/')` with its trailing
-//                                slash and `endsWith('.h.com')` with its leading dot pass.
+//   js/incomplete-url-substring-sanitization  includes/startsWith/endsWith of a URL or
+//                                host literal (or a const naming one), or an indexOf of
+//                                one COMPARED with -1/0 — `startsWith('https://h/')` with
+//                                its slash and `endsWith('.h.com')` with its dot pass.
 //   js/incomplete-sanitization   `.replace(<string or non-global regex>, …)` of an
-//                                escaping meta-character (CodeQL's set: ' " \ & < > \n
-//                                \r \t * | { } [ ] % $) or `..`, which replaces only the
-//                                first; and a quote escaped with a backslash by a
-//                                statement that never escapes the backslash itself.
-//   js/incomplete-multi-character-sanitization  `.replace(/<…/, '')` (a tag, comment or
-//                                `<script`) or `.replace(/\.\.\//, '')` done once: the
-//                                removal can splice the pattern back together.
+//                                escaping meta-character (CodeQL's set less `%`: ' " \ &
+//                                < > \n \r \t * | { } [ ] $) or `..`, which replaces only
+//                                the first; and a backslash escape (`c` → `\c`, `\$&`)
+//                                with no earlier step escaping backslashes (#540, 581).
+//   js/incomplete-multi-character-sanitization  `.replace(re, '')` done once, where re
+//                                can begin `<!--`, `<script`/`<style`/`<iframe` (an `<`
+//                                then s/i or a wildcard) or `../`: the removal can splice
+//                                one back together. A fixed-point loop, or a later replace
+//                                of the same opener in the chain, passes.
 //   js/insecure-temporary-file   a write/open of a path built from `tmpdir()` (directly
 //                                or through a const) that is not under `mkdtemp…` and
 //                                carries no exclusive `wx` flag.
@@ -63,6 +68,16 @@
 // it tokenizes (comments, strings, templates, regex literals) and matches shapes.
 // It misses what needs data flow across functions; CI's CodeQL step stays the sweep.
 // What it does flag, CodeQL flags too, so the fix (or the allow line) costs seconds.
+//
+// ── HOW IT WAS CALIBRATED (2026-10-03) ───────────────────────────────────────
+// RECALL: the pre-fix files of eight real alerts each give exactly the alert —
+// #1189/602 at listing-qa.mjs:105, #547 render.mjs, #1148 new-channel.mjs (races);
+// #579 (url substring); #596 (unused import); 581 ledger.mjs (backslash escape);
+// #569 and #1154 (comment strip once). PRECISION: the changed lines of #1161, #1164,
+// #1154 and #1148 — merged with the CodeQL PR rule live, so CodeQL reported nothing
+// on them — give nothing. Each exclusion above is one of those merged lines: an
+// exists-then-read, a check inside a block the write is outside of, a `<meta …>`
+// removal, an indexOf kept for later, a `.replace('%', '')`.
 //
 // Exit 0 = clean. 1 = a finding. 2 = COVERAGE LOST: git could not name the change, the
 // CodeQL config could not be read, or a file it should grade could not be read or
@@ -284,7 +299,29 @@ export function structure(toks) {
     fn[k] = scopes.length ? scopes[scopes.length - 1] : -1;
     if (toks[k].t === 'p' && toks[k].v === '{' && isFnBody(k)) scopes.push(k);
   }
-  return { match, fn };
+  // an expression-bodied arrow `(x) => expr` is a function too: its scope is the `=>`,
+  // and it runs to the first `,` `;` or unmatched closer at its own level
+  for (let a = 0; a < toks.length; a++) {
+    if (!(toks[a].t === 'p' && toks[a].v === '=>') || toks[a + 1]?.v === '{') continue;
+    let e = a + 1;
+    while (e < toks.length) {
+      const t = toks[e];
+      if (t.t === 'p' && (t.v === '(' || t.v === '[' || t.v === '{') && match[e] > e) { e = match[e] + 1; continue; }
+      if (t.t === 'p' && (t.v === ',' || t.v === ';' || t.v === ')' || t.v === ']' || t.v === '}')) break;
+      e++;
+    }
+    for (let k = a + 1; k < e; k++) if (fn[k] === fn[a]) fn[k] = a;
+  }
+  // blk[k] = the innermost '{' of any kind enclosing token k, or -1 (a check inside a
+  // block the use is outside of does not dominate it)
+  const blk = new Array(toks.length).fill(-1);
+  const open = [];
+  for (let k = 0; k < toks.length; k++) {
+    while (open.length && match[open[open.length - 1]] < k) open.pop();
+    blk[k] = open.length ? open[open.length - 1] : -1;
+    if (toks[k].t === 'p' && toks[k].v === '{') open.push(k);
+  }
+  return { match, fn, blk };
 }
 
 // ── helpers over tokens ──────────────────────────────────────────────────────
@@ -498,8 +535,9 @@ export function urlSubstringUnsafe(method, target) {
   return true;
 }
 
-/** CodeQL IncompleteSanitization's metachar() set, plus its path and %XX shapes. */
-const META = new Set([...'\'"\\&<>\n\r\t*|{}[]%$']);
+/** CodeQL IncompleteSanitization's metachar() set, less `%` (a `.replace('%', '')` merged
+ *  unflagged in #1148), plus its path and %XX shapes. */
+const META = new Set([...'\'"\\&<>\n\r\t*|{}[]$']);
 function sanitizedChar(value) {
   if (META.has(value)) return true;
   if (['..', '/..', '../', '/../'].includes(value)) return true;
@@ -513,25 +551,75 @@ function literalOfRegex(source) {
   if (/^(?:\\\.){2}(?:\\?\/)?$/.test(source)) return source.startsWith('\\.\\.') && source.length > 4 ? '../' : '..';
   return null;
 }
+/**
+ * The dangerous string a removal regex can begin with — CodeQL's DangerousPrefix set:
+ * `<!--`, `<script`/`<style`/`<iframe` (an `<` then s/i, or then any wildcard or class),
+ * `../` and `/..` — or null. A specific tag (`<meta …>`, `<p>…</p>`) cannot re-form one.
+ */
+export function dangerousOpener(source) {
+  const s = blankClasses(source).replace(/^(?:\^|\(\?:|\()+/, '');
+  if (/^\\?<!--/.test(s) || /^\\?<!(?:\.|_|\\[sSwW])/.test(s)) return '<!--';
+  if (/^\\?<(?:\\?\/)?(?:[sSiI]|_|\.|\\[sSwW])/.test(s)) return '<script';
+  if (/^(?:\\\.){2}(?:\\?\/|_)/.test(s) || /^\\?\/(?:\\\.){2}/.test(s)) return '../';
+  return null;
+}
+
 /** Does a regex source match a backslash? */
 const matchesBackslash = (source) => source.includes('\\\\');
 
 // ── the rules ────────────────────────────────────────────────────────────────
 
-const FS_CHECK = new Set(['open', 'openSync', 'exists', 'existsSync', 'stat', 'statSync', 'lstat', 'lstatSync', 'fstat', 'fstatSync', 'access', 'accessSync']);
-const FS_USE = new Set(['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync']);
+/** fstat is not here: it takes a descriptor, and open-then-fstat(fd)-then-read(fd) is the FIXED shape. */
+const FS_CHECK = new Set(['open', 'openSync', 'exists', 'existsSync', 'stat', 'statSync', 'lstat', 'lstatSync', 'access', 'accessSync']);
+const FS_USE = new Set(['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync']);
 const TMP_SINK = new Set(['writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'createWriteStream']);
 
 /** Every finding in one file's source: [{ line, rule, message }]. Throws TokenizeError. */
 export function analyse(src) {
   const toks = tokenize(src);
-  const { match, fn } = structure(toks);
+  const { match, fn, blk } = structure(toks);
   const consts = constStrings(toks);
   const fsb = fsBindings(toks);
   const out = [];
   const add = (line, rule, message) => out.push({ line, rule, message });
 
-  // js/file-system-race
+  /** The first token of the expression statement holding k: back over `(…)`/`[…]` groups, to the
+   *  nearest `;` `{` `}` `,` or an unclosed `(`/`[` (the start of an argument). */
+  const statementStart = (k) => {
+    let s = k;
+    while (s > 0) {
+      const x = toks[s - 1];
+      if (x.t === 'p' && (x.v === ')' || x.v === ']') && match[s - 1] >= 0) { s = match[s - 1]; continue; }
+      if (x.t === 'p' && (x.v === ';' || x.v === '{' || x.v === '}' || x.v === ',' || x.v === '(' || x.v === '[')) break;
+      s--;
+    }
+    return s;
+  };
+  /** One past the last token of the statement holding k. */
+  const statementEnd = (k) => {
+    let e = k;
+    while (e < toks.length && !(toks[e].t === 'p' && (toks[e].v === ';' || ((toks[e].v === '}' || toks[e].v === ')') && match[e] < k)))) {
+      if (toks[e].t === 'p' && (toks[e].v === '(' || toks[e].v === '[' || toks[e].v === '{') && match[e] > e) { e = match[e] + 1; continue; }
+      e++;
+    }
+    return e;
+  };
+  /** `x = x.replace(…)` (or `x = x.trim().replace(…)`) with an enclosing for/while/do loop. */
+  const inFixpointLoop = (k) => {
+    const s = statementStart(k);
+    if (!(toks[s]?.t === 'id' && toks[s + 1]?.v === '=' && toks[s + 2]?.t === 'id' && toks[s + 2].v === toks[s].v)) return false;
+    for (let b = blk[k]; b !== -1; b = blk[b]) {
+      const prev = toks[b - 1];
+      if (prev?.t === 'id' && prev.v === 'do') return true;
+      if (prev?.t === 'p' && prev.v === ')' && match[b - 1] > 0 && ['for', 'while'].includes(toks[match[b - 1] - 1]?.v)) return true;
+    }
+    return false;
+  };
+
+  // js/file-system-race — what CodeQL reports, as measured by this repo's own runtime
+  // spy (tooling/ci/test/fixtures/fs-spy-preload.mjs): every check→use pair on one path
+  // in one function where the check dominates the use, EXCEPT exists() followed by a
+  // READ (a vanished file makes that read throw; it cannot act on stale state).
   const checks = [];
   for (let k = 0; k < toks.length; k++) {
     const name = fsCallName(toks, k, fsb);
@@ -539,13 +627,16 @@ export function analyse(src) {
     const args = argRanges(toks, match, k + 1);
     if (!args.length) continue;
     const pathText = rangeText(src, toks, args[0]);
-    if (FS_CHECK.has(name)) checks.push({ k, name, pathText, fn: fn[k] });
-    else if (FS_USE.has(name)) {
-      const hit = checks.find((c) => c.k < k && c.fn === fn[k] && c.pathText === pathText);
+    if (FS_USE.has(name)) {
+      const flag = args[1] ? stringValue(toks, args[1], consts) : null;
+      const read = /^readFile/.test(name) || (/^open/.test(name) && (!args[1] || (flag !== null && /^(?:r|rs|sr)$/.test(flag))));
+      const dominates = (c) => c.blk === -1 || (c.blk < k && match[c.blk] > k);
+      const hit = checks.findLast((c) => c.fn === fn[k] && c.pathText === pathText && dominates(c) && !(read && /^exists/.test(c.name)));
       if (hit) {
-        add(toks[k].line, RULES.race, `${name}(${pathText}) uses a path ${hit.name}() checked on line ${toks[hit.k].line}; the file can change in between — read once in a try and treat err.code === 'ENOENT' as missing`);
+        add(toks[k].line, RULES.race, `${name}(${pathText}) acts on a path ${hit.name}() checked on line ${toks[hit.k].line}; the file can change in between — ${read ? "read once in a try and treat err.code === 'ENOENT' as missing" : "write with flag 'wx' (or read once in a try) instead of deciding on an earlier look"}`);
       }
     }
+    if (FS_CHECK.has(name)) checks.push({ k, name, pathText, fn: fn[k], blk: blk[k] });
   }
 
   for (let k = 0; k < toks.length; k++) {
@@ -573,10 +664,16 @@ export function analyse(src) {
     const method = t.v;
     const args = argRanges(toks, match, k + 1);
 
-    // js/incomplete-url-substring-sanitization
+    // js/incomplete-url-substring-sanitization — CodeQL's InclusionTest: includes(), or an
+    // indexOf() COMPARED with -1/0 (or under `~`); an indexOf() stored for later is not a check
     if (['includes', 'indexOf', 'lastIndexOf', 'startsWith', 'endsWith'].includes(method) && args.length) {
       const v = stringValue(toks, args[0], consts);
-      if (urlSubstringUnsafe(method, v)) {
+      const close = match[k + 1];
+      const after = toks[close + 1];
+      const tested = !/indexOf$/i.test(method) ||
+        (after?.t === 'p' && /^(?:[!=]==?|[<>]=?)$/.test(after.v) && /^-?[01]$/.test(`${toks[close + 2]?.v === '-' ? '-' : ''}${toks[close + (toks[close + 2]?.v === '-' ? 3 : 2)]?.v ?? ''}`)) ||
+        (statementStart(k) < k && toks.slice(statementStart(k), k).some((x) => x.t === 'p' && x.v === '~'));
+      if (tested && urlSubstringUnsafe(method, v)) {
         add(t.line, RULES.urlSub, `.${method}(${JSON.stringify(v)}) is not a URL check: '${v}' can sit anywhere in a hostile URL (https://evil.example/?${v}) — parse with new URL() and compare the host whole`);
       }
       continue;
@@ -584,6 +681,8 @@ export function analyse(src) {
 
     // js/incomplete-sanitization and js/incomplete-multi-character-sanitization
     if (method === 'replace' && args.length >= 2) {
+      // CodeQL skips a replace repeated to a fixed point: `x = x.replace(…)` inside a loop
+      if (inFixpointLoop(k)) continue;
       const [a0, a1] = args;
       const first = toks[a0[0]];
       const replacement = stringValue(toks, a1, consts);
@@ -596,19 +695,21 @@ export function analyse(src) {
         if (!flags.includes('g') && lit !== null && sanitizedChar(lit)) {
           add(t.line, RULES.sanit, `.replace(/${source}/${flags}, …) has no g flag, so it replaces only the FIRST occurrence`);
         }
-        if (flags.includes('g') && typeof replacement === 'string' && /^\\./.test(replacement) && /['"`]/.test(lit ?? (source.length <= 4 ? source : '')) && !matchesBackslash(source)) {
-          // a quote escaped with a backslash: the statement must escape the backslash too
-          let s = k;
-          while (s > 0 && !(toks[s - 1].t === 'p' && (toks[s - 1].v === ';' || toks[s - 1].v === '{' || toks[s - 1].v === '}'))) s--;
-          let e = k;
-          while (e < toks.length && !(toks[e].t === 'p' && toks[e].v === ';') && toks[e].line - t.line < 6) e++;
-          const escapesBackslash = toks.slice(s, e).some((x) => x.t === 're' && matchesBackslash(x.v.source));
-          if (!escapesBackslash) add(t.line, RULES.sanit, `.replace(/${source}/${flags}, ${JSON.stringify(replacement)}) escapes a quote but nothing in the statement escapes backslashes first, so an input ending in \\ unescapes it`);
+        // a backslash escape (`c` → `\c`, or `\$&`): the backslashes must be escaped first,
+        // earlier in the chain (or by this same regex, or by JSON.stringify)
+        const escapes = typeof replacement === 'string' && (/^\\\$(?:&|\d)$/.test(replacement) || (lit !== null && replacement === `\\${lit}`));
+        if (flags.includes('g') && escapes && !matchesBackslash(source)) {
+          const before = toks.slice(statementStart(k), k);
+          const escapedFirst = before.some((x, i) => (x.t === 're' && matchesBackslash(x.v.source)) || (x.t === 'id' && x.v === 'stringify' && before[i - 2]?.v === 'JSON'));
+          if (!escapedFirst) add(t.line, RULES.sanit, `.replace(/${source}/${flags}, ${JSON.stringify(replacement)}) escapes with a backslash, but no earlier step escapes backslashes, so an input holding \\ un-escapes it — replace(/\\\\/g, '\\\\\\\\') first`);
         }
-        const blanked = blankClasses(source).replace(/^(?:\(\?:|\()+/, '');
         const removes = replacement === '';
-        if (removes && (/^\\?<(?:[a-zA-Z!/_]|\\\/|\\w|\.)/.test(blanked) || /^(?:\\\.){2}/.test(blanked) || /^-->/.test(blanked))) {
-          add(t.line, RULES.multi, `.replace(/${source}/${flags}, '') removes a multi-character pattern once; the removal can splice a new one together ('<scr<script>ipt>') — remove to a fixpoint, or escape instead of stripping`);
+        const opener = dangerousOpener(source);
+        if (removes && opener) {
+          // …and a LATER replace in the same chain of the same opener handles what this one re-forms
+          const later = toks.slice(match[k + 1], statementEnd(k)).some((x, i, arr) => x.t === 're' && arr[i - 2]?.v === 'replace' &&
+            dangerousOpener(x.v.source) === opener);
+          if (!later) add(t.line, RULES.multi, `.replace(/${source}/${flags}, '') removes a pattern that can start '${opener}' once; the removal can splice a new one together ('<!<!---->--' → '<!--') — repeat it to a fixed point, or escape instead of stripping`);
         }
       }
     }

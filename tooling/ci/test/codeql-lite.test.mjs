@@ -22,37 +22,55 @@ import { analyse, applyAllows, changedLines, parseArgs, RULES, toRepoRel, tokeni
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-codeql-lite.mjs');
-const FS = "import { existsSync, readFileSync, writeFileSync, openSync, mkdtempSync } from 'node:fs';\nimport { join } from 'node:path';\nimport { tmpdir } from 'node:os';\n";
+const FS = "import { existsSync, readFileSync, writeFileSync, openSync, mkdtempSync, statSync } from 'node:fs';\nimport { join } from 'node:path';\nimport { tmpdir } from 'node:os';\n";
 /** The rules a source trips, its imports used so the unused-import rule stays out of the way. */
-const rulesOf = (src) => analyse(`${FS}${src}\nexport const _use = [existsSync, readFileSync, writeFileSync, openSync, mkdtempSync, join, tmpdir];\n`).map((f) => f.rule);
+const rulesOf = (src) => analyse(`${FS}${src}\nexport const _use = [existsSync, readFileSync, writeFileSync, openSync, mkdtempSync, statSync, join, tmpdir];\n`).map((f) => f.rule);
 const run = (args, cwd = REPO) => spawnSync(process.execPath, [GUARD, ...args], { cwd, encoding: 'utf8' });
 
 describe('js/file-system-race', () => {
-  test('red control: the real #1189 line — existsSync(p) ? readFileSync(p), then writeFileSync(p)', () => {
+  test('red control: the real #1189 code — alert 602 was the WRITE on listing-qa.mjs:105, after existsSync on :100', () => {
     const src = [
       'function main() {',
       '  const sheetAbs = join(ROOT, sheetRel);',
       "  const previous = existsSync(sheetAbs) ? readSheet(readFileSync(sheetAbs, 'utf8')) : null;",
-      '  writeFileSync(sheetAbs, sheetText(r, previous));',
+      "  if (argv.includes('--sheet')) {",
+      '    writeFileSync(sheetAbs, sheetText(r, previous));',
+      '  }',
       '}',
     ].join('\n');
-    const f = analyse(`${FS}${src}\nexport const _u = [openSync, mkdtempSync, tmpdir];`).filter((x) => x.rule === RULES.race);
-    assert.deepEqual(f.map((x) => x.line), [6, 7]);
+    const f = analyse(`${FS}${src}\nexport const _u = [openSync, mkdtempSync, statSync, tmpdir];`).filter((x) => x.rule === RULES.race);
+    assert.deepEqual(f.map((x) => x.line), [8], 'the write, and only the write: exists-then-READ is not reported');
     assert.match(f[0].message, /existsSync\(\) checked on line 6/);
   });
 
-  test('red: a check through the fs namespace, then a read in the same function', () => {
-    assert.ok(analyse("import fs from 'node:fs';\nfunction f(p) { if (!fs.existsSync(p)) return null; return fs.readFileSync(p, 'utf8'); }").some((x) => x.rule === RULES.race));
+  test('red: a stat through the fs namespace, then a read of the same path in the same function', () => {
+    assert.ok(analyse("import fs from 'node:fs';\nfunction f(p) { if (!fs.statSync(p).isFile()) return null; return fs.readFileSync(p, 'utf8'); }").some((x) => x.rule === RULES.race));
   });
 
-  test('green: the try/ENOENT form #1189 shipped', () => {
-    const src = "const readOrNull = (abs) => { try { return readFileSync(abs, 'utf8'); } catch (err) { if (err && err.code === 'ENOENT') return null; throw err; } };\nfunction f() { return existsSync(a) ? 1 : 0; }";
+  test('green: the try/ENOENT form #1189 shipped, and the exclusive write #1148 shipped', () => {
+    const src = "const readOrNull = (abs) => { try { return readFileSync(abs, 'utf8'); } catch (err) { if (err && err.code === 'ENOENT') return null; throw err; } };\nfunction f(p) { try { writeFileSync(p, 'x', { flag: 'wx' }); } catch (e) { if (e.code !== 'EEXIST') throw e; } }";
     assert.deepEqual(rulesOf(src), []);
   });
 
+  test('green: existsSync then a READ — CodeQL does not report it (fs-spy-preload.mjs measured it)', () => {
+    assert.deepEqual(rulesOf("function f(p) { if (!existsSync(p)) return null; return readFileSync(p, 'utf8'); }"), []);
+  });
+
+  test('green: a check that does not dominate the write (gen-start-here.mjs: the check is inside if (CHECK) { … exit })', () => {
+    assert.deepEqual(rulesOf("if (CHECK) {\n  const on = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null;\n  process.exit(on === card ? 0 : 1);\n}\nwriteFileSync(OUT, card, 'utf8');"), []);
+  });
+
+  test('green: a check in an expression-bodied arrow, the write outside it (render-platform-app-block.mjs)', () => {
+    assert.deepEqual(rulesOf("function f(root, targets) {\n  const differ = targets.filter(([rel, text]) => !existsSync(join(root, rel)));\n  for (const [rel, text] of differ) writeFileSync(join(root, rel), text);\n}"), []);
+  });
+
+  test('green: a descriptor is not a path — openSync, fstatSync(fd), readFileSync(fd) is the fixed shape', () => {
+    assert.deepEqual(rulesOf("import { fstatSync } from 'node:fs';\nfunction f(p) { const fd = openSync(p, 'r'); const n = fstatSync(fd).size; return readFileSync(fd, 'utf8') + n; }"), []);
+  });
+
   test('green: a check and a use in DIFFERENT functions, or of different paths', () => {
-    assert.deepEqual(rulesOf('function a(p) { return existsSync(p); }\nfunction b(p) { return readFileSync(p); }'), []);
-    assert.deepEqual(rulesOf('function a(p, q) { if (existsSync(p)) return readFileSync(q); }'), []);
+    assert.deepEqual(rulesOf('function a(p) { return statSync(p); }\nfunction b(p) { return writeFileSync(p, 1); }'), []);
+    assert.deepEqual(rulesOf('function a(p, q) { if (existsSync(p)) return writeFileSync(q, 1); }'), []);
   });
 });
 
@@ -96,6 +114,14 @@ describe('js/incomplete-url-substring-sanitization', () => {
     assert.deepEqual(rulesOf("const ok = u.startsWith('https://nikatru.com');"), [RULES.urlSub]);
   });
 
+  test('red: indexOf compared with -1 is an inclusion test', () => {
+    assert.deepEqual(rulesOf("if (u.indexOf('https://nikatru.com') !== -1) ok();"), [RULES.urlSub]);
+  });
+
+  test('green: an indexOf stored for later, or searched in a loop, is no check (auth-callbacks.test.mjs, assert-ads-declarations.mjs)', () => {
+    assert.deepEqual(rulesOf("const i = list.indexOf('https://nikatru.com/app/connect');\nfor (let j = t.indexOf('microsoft.com/'); j !== -1; j = t.indexOf('microsoft.com/', j + 1)) n++;"), []);
+  });
+
   test('green: startsWith with the slash, endsWith with the leading dot, and a file name', () => {
     assert.deepEqual(rulesOf("const ok = u.startsWith('https://nikatru.com/') && h.endsWith('.nikatru.com') && f.endsWith('package.json');"), []);
   });
@@ -114,8 +140,18 @@ describe('js/incomplete-sanitization', () => {
     assert.deepEqual(rulesOf("const e = s.replace(/\"/g, '\\\\\"');"), [RULES.sanit]);
   });
 
-  test('green: replaceAll, a /g regex, and backslashes escaped first', () => {
+  test('red: a markdown cell escapes | before backslashes are (alert 581), and a regex escape misses the backslash (#540)', () => {
+    assert.deepEqual(rulesOf("const esc = (s) => String(s).replace(/\\|/g, '\\\\|');"), [RULES.sanit]);
+    assert.deepEqual(rulesOf("const re = key.replace(/[.*+?^${}()|[\\]-]/g, '\\\\$&');"), [RULES.sanit]);
+  });
+
+  test('green: replaceAll, a /g regex, and backslashes escaped first (ledger.mjs, assert-analytics-contract.mjs)', () => {
     assert.deepEqual(rulesOf("const a = s.replaceAll('\"', '&quot;');\nconst b = s.replace(/</g, '&lt;');\nconst c = s.replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');"), []);
+    assert.deepEqual(rulesOf("const esc = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/\\|/g, '\\\\|');\nconst re = n.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');"), []);
+  });
+
+  test('green: a number parse dropping a % (box-declaration.mjs, merged unflagged in #1148)', () => {
+    assert.deepEqual(rulesOf("const pct = Number.parseFloat(String(cpu).replace('%', ''));"), []);
   });
 });
 
@@ -131,6 +167,19 @@ describe('js/incomplete-multi-character-sanitization', () => {
 
   test('green: escaping instead of stripping', () => {
     assert.deepEqual(rulesOf("const t = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');"), []);
+  });
+
+  test('green: the same removal repeated to a fixed point (apple-provisioning.mjs, stamp-native.mjs)', () => {
+    assert.deepEqual(rulesOf("let x = s;\nfor (let prev = null; prev !== x; ) {\n  prev = x;\n  x = x.replace(/<!--[\\s\\S]*?-->/g, '');\n}"), []);
+    assert.deepEqual(rulesOf("let out = s; let prev;\ndo {\n  prev = out;\n  out = out.replace(/<[^>]+>/g, '');\n} while (out !== prev);"), []);
+  });
+
+  test('green: a specific tag that cannot re-form <script, <!-- or ../ (discovery-surface.test.mjs, policy-archive.test.mjs)', () => {
+    assert.deepEqual(rulesOf("const a = h.replace(/<meta property=\"og:image:width\"[^>]*>\\n/, '');\nconst b = t.replace(/<p>x\\.<\\/p>/, '');"), []);
+  });
+
+  test('green: a later replace in the same chain strips the same opener again (text-reductions.mjs)', () => {
+    assert.deepEqual(rulesOf("const v = s\n  .replace(/<!-- \\/?FACT:[a-z0-9-]+ -->/g, '')\n  .replace(/<!--[\\s\\S]*?-->/g, ' ');"), []);
   });
 });
 
