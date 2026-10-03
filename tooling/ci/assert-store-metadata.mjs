@@ -585,10 +585,11 @@ for (const { row, app, dir } of expected) {
       }
     }
 
-    // CHARACTERS, not entries — Apple's App Name and Subtitle are the only two
-    // store field limits this repo has a primary source for. Everything else on
-    // every Apple listing (keywords, description, promotional text) is recorded
-    // as COULD-NOT-ESTABLISH in the tree README and carries no number here.
+    // CHARACTERS, not entries. Every number here carries its fetched source in
+    // the register. ⏱ 2026-10-03 (lane aso-listings): Apple's description and
+    // promotional text joined App Name and Subtitle, read from the page that
+    // carries them; the keywords field is a BYTE limit, so it is `maxBytes`,
+    // graded with every locale folder by assert-store-listings.mjs limb M.
     const chars = maxChars[rel];
     if (chars && (Number.isInteger(chars.max) || Number.isInteger(chars.min))) {
       if (typeof chars.source !== 'string' || chars.source.trim() === '') {

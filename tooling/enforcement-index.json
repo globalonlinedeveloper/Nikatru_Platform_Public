@@ -2674,6 +2674,19 @@
   {
     "claims": [
       "ADR 068",
+      "ADR 078"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-listings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 068",
       "ADR 078",
       "ADR 093",
       "ADR 094",
@@ -3868,6 +3881,18 @@
     ],
     "kind": "script",
     "ref": "tooling/kit/new-product.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/rehearse-app2.yml#rehearse"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/rehearse-app2.mjs",
     "references": [],
     "state": "WIRED"
   },

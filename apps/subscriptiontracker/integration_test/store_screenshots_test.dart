@@ -1547,6 +1547,32 @@ void main() {
       };
     }
 
+    // ── ⏱ 2026-10-03 · THE LISTING'S LANGUAGE (lane aso-listings) ───────────
+    // `capture-play-screenshots.mjs --locale <code>` passes STORE_CAPTURE_LOCALE
+    // for a listing in another language. It is applied HERE, after the board is
+    // seeded (the seeding finds English labels) and before the first frame
+    // (every frame below is reached by icon, type or key, never by a word).
+    // The app's own Settings path sets it — `localeProvider`, the control a
+    // user changes — and the frames are refused unless the app then RENDERS in
+    // that locale: a set recorded as Hindi that shows English is the failure
+    // this exists to make impossible, never a silent fallback.
+    const String captureLocale = String.fromEnvironment('STORE_CAPTURE_LOCALE');
+    if (captureLocale.isNotEmpty) {
+      await container.read(localeProvider.notifier).set(Locale(captureLocale));
+      await pumpFor(tester, const Duration(seconds: 2));
+      final Locale shown = Localizations.localeOf(
+        tester.element(find.byType(AppShell)),
+      );
+      expect(
+        shown.languageCode,
+        captureLocale,
+        reason:
+            'STORE_CAPTURE_LOCALE=$captureLocale was asked for and the app '
+            'renders $shown. Every frame would be filed under '
+            '$captureLocale and show another language.',
+      );
+    }
+
     // ── the set, in listing order ────────────────────────────────────────────
     // Play shows screenshots in UPLOAD ORDER and the order is part of the
     // listing, so the number is the listing's rather than the filesystem's.

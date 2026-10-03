@@ -31,8 +31,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `subtitle.txt` | Subtitle | hand-written; condensed from `short-description.txt` | ✅ **≤ 30 chars** |
 | `short-description.txt` | *(no Apple field of this name)* | `sites/_shared/_data/apps.json` → `tagline` | ✅ exact match |
 | `long-description.txt` | Description | the app's differentiation line (`app_brick` var `description`), expanded | non-empty, **and its `Terms of use:` line states the `terms-of-use-url.txt` URL word for word** |
-| `keywords.txt` | Keywords | listing copy, comma-separated | non-empty — **limit UNVERIFIED** |
-| `promotional-text.txt` | Promotional Text | listing copy | non-empty — **limit UNVERIFIED** |
+| `keywords.txt` | Keywords | listing copy, comma-separated | non-empty, **and ≤ 100 BYTES** (`assert-store-listings.mjs` limb M) |
+| `promotional-text.txt` | Promotional Text | listing copy | non-empty, **and ≤ 170 chars** |
 | `category.txt` | Primary Category | `app_brick` var `category` | non-empty |
 | `privacy-policy-url.txt` | Privacy Policy URL | `apps/subscriptiontracker/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
 | `support-url.txt` | Support URL | `apps/subscriptiontracker/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
@@ -161,9 +161,9 @@ it is the **attribution** that is unproven.
 |---|---|---|
 | App Name | **30** characters, minimum **2** | `developer.apple.com/help/app-store-connect/reference/app-information/` — fetched **2026-07-29**, recorded against D-5 and now `Private/requirements/ledger.json`’s `[10]D-5` entry |
 | Subtitle | **30** characters | *ibid.* |
-| Keywords field | ⚠️ **COULD-NOT-ESTABLISH** | the fetched page carries **Name and Subtitle only**. The corpus's *"100 chars"* is **not** on it, so it is not used here |
-| Description | ⚠️ **COULD-NOT-ESTABLISH** | not on the fetched page |
-| Promotional text | ⚠️ **COULD-NOT-ESTABLISH** | not on the fetched page |
+| Keywords field | **100 bytes** — "You can provide up to 100 bytes of content." | https://developer.apple.com/help/app-store-connect/reference/platform-version-information, read **2026-10-03** (lane aso-listings). A byte limit: a Hindi or Tamil character is three |
+| Description | **4000** characters — "Limited to 4000 characters." | https://developer.apple.com/help/app-store-connect/reference/platform-version-information, read **2026-10-03** (lane aso-listings) |
+| Promotional text | **170** characters — "This property can't be longer than 170 characters." | https://developer.apple.com/help/app-store-connect/reference/platform-version-information, read **2026-10-03** (lane aso-listings) |
 | *"≤ 70 CPPs"* (Custom Product Pages) | ⚠️ **UNVERIFIED** | carried from MASTER_PLAN §3's raw extract; **no primary source read** |
 | Screenshot / preview dimensions, counts, video specs | ⚠️ **COULD-NOT-ESTABLISH** | see `screenshots/README.md` |
 | Category vocabulary (the exact list App Store Connect accepts) | ⚠️ **UNVERIFIED** | `Productivity` is used because it is the obvious fit; the authoritative list was not fetched |

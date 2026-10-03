@@ -1,0 +1,37 @@
+{
+  "_readme": [
+    "Play custom store listings and Apple custom product pages, AS DATA. [lane aso-listings]",
+    "Nothing here exists in a console. `node tooling/store/custom-listings.mjs --app subscriptiontracker` prints the exact payload",
+    "each entry would be created with, and exits non-zero for any entry with `publish: true` unless --publish is passed — which is the",
+    "owner's approval at the publish sitting, never an agent's. Creating them in Play Console / App Store Connect is a lead step.",
+    "Graded by tooling/ci/assert-store-listings.mjs: limb A (shape), M (the channel's sourced limits) and C (claims) over every field."
+  ],
+  "listings": [
+    {
+      "id": "play-india-no-bank-login",
+      "channel": "android-play",
+      "kind": "custom store listing (country-targeted)",
+      "audience": "Play users in India, where the research found no top listing that leads with 'no bank login' (aso/research-2026-10-03.md §3)",
+      "targeting": { "countries": ["IN"] },
+      "locale": "en",
+      "fields": {
+        "short-description.txt": "Every subscription and renewal in one list. No bank login, no card number."
+      },
+      "screenshotSet": "apps/subscriptiontracker/store/android-play/screenshots",
+      "publish": false
+    },
+    {
+      "id": "apple-renewal-reminders",
+      "channel": "ios-appstore",
+      "kind": "custom product page",
+      "audience": "people arriving from a link or Apple Search Ads ad about renewal reminders (aso/research-2026-10-03.md §4)",
+      "targeting": { "deepLink": null, "searchAdsKeywords": ["renewal reminder", "subscription reminder"] },
+      "locale": "en",
+      "fields": {
+        "promotional-text.txt": "A reminder before every renewal, and the month's total at a glance. Add each subscription once; no bank login."
+      },
+      "screenshotSet": "apps/subscriptiontracker/store/ios-appstore/screenshots",
+      "publish": false
+    }
+  ]
+}

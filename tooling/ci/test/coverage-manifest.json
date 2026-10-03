@@ -926,6 +926,9 @@
   "regen-gradle-verify-workflow.test.mjs":
     11,
 
+  "rehearse-app2.test.mjs":
+    20,
+
   "release-durable.test.mjs":
     200,
 
@@ -1150,6 +1153,9 @@
 
   "store-key-secret.test.mjs":
     8,
+
+  "store-listings.test.mjs":
+    29,
 
   "store-metadata.test.mjs":
     171,

@@ -128,6 +128,8 @@ export const CAPTURE_DEFINE_ALLOWLIST = Object.freeze([
   'STORE_CAPTURE_ALLOW_DEMO',
   'SKIP_REMOTE_CONFIG',
   'STORE_CAPTURE_VIEW',
+  // The listing language of a non-English set (capture-play-screenshots.mjs --locale).
+  'STORE_CAPTURE_LOCALE',
 ]);
 
 export class CaptureBackendRefused extends Error {

@@ -482,10 +482,11 @@
     {
       "customType": "regex",
       "description": [
-        "Second copy of the mason_cli pin: the ci.yml app-brick install line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
+        "Second copy of the mason_cli pin: the ci.yml app-brick install line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY),",
+        "and its third, the rehearse-app2.yml install line (the app #2 rehearsal stamps with the same mason).",
         "SAME depNameTemplate as the tooling/versions.json manager above ON PURPOSE: Renovate puts upgrades with one",
-        "branch name on one branch, so both copies move in one PR. tooling/ci/assert-renovate-reach.mjs proves it.",
-        "⏱ 2026-10-01: a third copy, the time-travel.yml brick leg's install line, which stamps the backend the way",
+        "branch name on one branch, so every copy moves in one PR. tooling/ci/assert-renovate-reach.mjs proves it.",
+        "⏱ 2026-10-01: a fourth copy, the time-travel.yml brick leg's install line, which stamps the backend the way",
         "ci.yml's app-brick job does and so must move with it."
       ],
       "matchStrings": [
@@ -495,6 +496,7 @@
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/ci\\.yml$/",
+        "/^\\.github\\/workflows\\/rehearse-app2\\.yml$/",
         "/^\\.github\\/workflows\\/time-travel\\.yml$/"
       ]
     },

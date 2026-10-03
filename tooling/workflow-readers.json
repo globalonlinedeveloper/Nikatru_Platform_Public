@@ -330,6 +330,12 @@
       "reads": "every deploy-*.yml, for a line naming sites/<id>, to say whether a workflow deploys a site (new-product.mjs's site deploy step)"
     },
     {
+      "path": "tooling/kit/rehearse-app2.mjs",
+      "property": "refuses-blind",
+      "evidence": "a rehearsal nobody schedules is a snapshot, not a trend.",
+      "reads": "workflowProblems() only: .github/workflows/rehearse-app2.yml, for a secrets reference, a write permission, the top-level permissions: {}, the schedule and dispatch triggers and the run of this script; each missing detail is a named problem, never a pass"
+    },
+    {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
       "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit), each job's timeout-minutes and a site job's --project-name, to derive a direct-upload Pages project, its expected commit and its deploy-lane window"
