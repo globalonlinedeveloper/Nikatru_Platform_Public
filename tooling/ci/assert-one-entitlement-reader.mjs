@@ -133,6 +133,12 @@ const DECLARED = [
       'it erases the person; decides nothing about access.',
   },
   {
+    file: 'services/platform/src/routes/refund.ts',
+    role: 'lookup',
+    counts: { entitlements: 1 },
+    why: '⏱ 2026-10-02 refund-finish (MF-5) — finds the rail and the purchase reference POST /v1/plan/refund refunds; decides nothing about access (the rail\'s own refund notification revokes).',
+  },
+  {
     file: 'services/platform/src/routes/receipts.ts',
     role: 'lookup',
     counts: { entitlements: 1 },

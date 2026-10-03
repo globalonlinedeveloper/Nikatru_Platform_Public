@@ -231,8 +231,8 @@ cancellation.post('/plan/cancel', async (c) => {
     c.env.PLATFORM_DB.prepare(
       `INSERT INTO cancellation_requests
          (request_id, user_id, app_id, environment, provider,
-          provider_subscription_id, requested_at, executed_at, not_executed_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          provider_subscription_id, requested_at, executed_at, not_executed_reason, backlog)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     ).bind(
       crypto.randomUUID(),
       userId,

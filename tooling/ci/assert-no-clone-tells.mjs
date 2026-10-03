@@ -143,8 +143,10 @@ const REQUIRED_COVERAGE = [
     // in CI run 37092405549). Measured: core 80, design_system 53, api_client 27,
     // tree 259. 100 is above any single package and below the tree less its
     // largest-but-one (259 - 53 = 206).
-    // ⏱ 2026-10-03 · the merged tree (club apply-platform + main): core 88, tree 284;
-    // 100 still clears core alone and sits below 284 - 53 = 231. Unchanged.
+    // ⏱ 2026-10-03 · the merged tree (club apply-platform + main + #1176): floor
+    // stays 100. Measured with `find packages/*/lib -name '*.dart'`: core 89,
+    // design_system 56, tree 290; 100 still clears core alone and sits below
+    // 290 - 56 = 234. Unchanged.
     floor: 100,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },

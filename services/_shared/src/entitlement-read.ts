@@ -198,6 +198,10 @@ export interface BundleGrantRow {
   superseded_by: string | null;
   /** The version whose members this grant is SERVED — `bundleGrantsServed` says which, by term. */
   served_version: number | null;
+  /** The rail's trial end, if the grant is in or had one. Not on the wire; `liveBundlePaidTerms` reads it. */
+  trial_end: string | null;
+  /** `bundle_sources.requires_receipt` of the grant's source: 1 a paid rail, 0 `promo_code` / `owner_comp`, null unknown. */
+  requires_receipt: number | null;
 }
 
 /** A sentinel that can never parse, so an undecidable date DENIES rather than defaults. */
@@ -289,6 +293,7 @@ async function bundleGrantsServed(
            SELECT g.grant_id, g.feature_set_name, g.feature_set_version, g.source,
                   g.provider, g.provider_environment, g.provider_status,
                   g.expires_at, g.grace_until, g.revoked_at, g.superseded_by,
+                  g.trial_end, s.requires_receipt,
                   CASE COALESCE(g.term, s.term)
                     WHEN 'subscription' THEN COALESCE(
                       (SELECT MAX(f.version) FROM feature_sets f
@@ -321,6 +326,37 @@ export async function bundleGrantsForProduct(
   productSlug: string,
 ): Promise<BundleGrantRow[]> {
   return bundleGrantsServed(deps, userId, productSlug);
+}
+
+/** How a LIVE bundle grant was paid for — the terms a question narrower than
+ *  access needs (the AI meter's "is this a payment", review 2026-10-03), read
+ *  HERE so no second reader of the money tables exists. */
+export interface LiveBundlePaidTerms {
+  grant_id: string;
+  source: string;
+  provider_status: string | null;
+  trial_end: string | null;
+  /** `bundle_sources.requires_receipt`: 1 for a paid rail, 0 for `promo_code` / `owner_comp`, null for an unknown source. */
+  requires_receipt: number | null;
+}
+
+/**
+ * The bundle grants that GRANT ACCESS to `productSlug` right now — the same
+ * `grantsAccess` decision `readProductEntitlement` makes, on the same rows of the
+ * same ONE `bundle_grants` statement (`bundleGrantsServed`) — with their trial and
+ * receipt terms. Decides nothing itself: access is still
+ * `readProductEntitlement`'s; this says only how a live grant was paid.
+ */
+export async function liveBundlePaidTerms(
+  deps: Pick<EntitlementReadDeps, 'db' | 'allRows' | 'warn' | 'nowMs'>,
+  userId: string,
+  productSlug: string,
+  environment: string,
+): Promise<LiveBundlePaidTerms[]> {
+  const nowMs = (deps.nowMs ?? Date.now)();
+  return (await bundleGrantsForProduct(deps, userId, productSlug))
+    .filter((g) => grantsAccess(bundleRowToGrantable(g), environment, nowMs, deps.warn))
+    .map((g) => ({ grant_id: g.grant_id, source: g.source, provider_status: g.provider_status, trial_end: g.trial_end, requires_receipt: g.requires_receipt }));
 }
 
 /** Every bundle grant this user holds, member-filtered by nothing — the subject read. */
