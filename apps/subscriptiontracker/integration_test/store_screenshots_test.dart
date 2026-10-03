@@ -1012,35 +1012,70 @@ void main() {
         );
         await tester.tap(find.byKey(E2EKeys.fabAdd));
         await pumpFor(tester, const Duration(seconds: 2));
+
+        // ── ⏱ 2026-10-03 · THE PICK STEP COMES FIRST (ST-T9, AD-03, #1130) ──
+        //
+        // Since #1130 the FAB opens the catalogue PICK step ("Search services |
+        // POPULAR | …") and the form carrying `addName` is one tap further,
+        // behind "Add by hand". Runs 36955800549 (Snap), 36955811141 (macOS)
+        // and 36955814987 (iOS) all reached Home and stopped here with "The
+        // add sheet did not open". The rows below are illustrative and not in
+        // the catalogue, so the drive goes the way a user with an unlisted
+        // plan goes — the walk `app_test.dart`'s `openAddFormByHand` and
+        // `flow_steps.dart`'s `addPlanThroughSheet` already take.
+        final Finder byHand = find.byKey(E2EKeys.addByHand);
         expect(
-          find.byKey(E2EKeys.addName),
+          await waitFor(tester, byHand, timeout: const Duration(seconds: 10)),
+          isTrue,
+          reason:
+              'The add FAB opened no pick step offering "Add by hand" for '
+              '"${row[0]}". On screen: ${onScreen(tester)}',
+        );
+        await tester.ensureVisible(byHand);
+        await pumpFor(tester, const Duration(milliseconds: 400));
+        expect(
+          byHand.hitTestable(),
           findsOneWidget,
           reason:
-              'The add sheet did not open for "${row[0]}". On screen: '
-              '${onScreen(tester)}',
+              'The pick step\'s "Add by hand" is in the tree but a finger '
+              'could not reach it for "${row[0]}", even after ensureVisible. '
+              'On screen: ${onScreen(tester)}',
         );
+        await tester.tap(byHand);
+        expect(
+          await waitFor(
+            tester,
+            find.byKey(E2EKeys.addName),
+            timeout: const Duration(seconds: 10),
+          ),
+          isTrue,
+          reason:
+              'The add sheet did not open for "${row[0]}": "Add by hand" did '
+              'not lead to the form. On screen: ${onScreen(tester)}',
+        );
+        await pumpFor(tester, const Duration(milliseconds: 500));
         await tester.enterText(find.byKey(E2EKeys.addName), row[0]);
         await tester.enterText(find.byKey(E2EKeys.addPrice), row[1]);
         await pumpFor(tester, const Duration(milliseconds: 400));
 
         // ── THE CATEGORY, CHOSEN IN THE SHEET'S OWN DROPDOWN ────────────────
         //
-        // 🔴 THE SHEET HAS NO `E2EKeys` ENTRY FOR THIS FIELD, so it is found by
-        // TYPE. `add_subscription_sheet.dart`'s `_categoryField()` builds
-        // exactly one `DropdownButtonFormField<String>` and the sheet is the
-        // only thing on screen that builds one at all, so the type is unique
-        // here — but it is a weaker handle than a key, and the `findsOneWidget`
-        // below is what turns "the sheet changed shape" into a named failure
-        // instead of a tap on whatever else matched first. Adding the key is an
-        // `apps/subscriptiontracker/lib/` change this increment does not own.
+        // 🔴 FOUND BY KEY, `E2EKeys.addCategory`, which `_categoryField()` in
+        // `add_subscription_sheet.dart` passes to the dropdown itself.
+        //
+        // ⚠️ THIS USED TO BE FOUND BY TYPE, AND THAT WENT FALSE (2026-10-03).
+        // The comment here said the sheet built exactly one
+        // `DropdownButtonFormField<String>`; since ST-E2 it also builds one for
+        // the row's CURRENCY, so the type matched two fields and the
+        // `findsOneWidget` below would have refused a correct sheet. The
+        // `findsOneWidget` stays: it is what turns "the sheet changed shape"
+        // into a named failure instead of a tap on whatever matched first.
         //
         // ⚠️ IT IS `ensureVisible`d FOR THE SAME REASON THE SUBMIT BUTTON IS,
         // and the reason is measured two blocks below: at 360x640 this sheet
         // lays its lower controls out past the bottom of the screen. The
         // dropdown sits BELOW both text fields, so it is in that region.
-        final Finder categoryField = find.byType(
-          DropdownButtonFormField<String>,
-        );
+        final Finder categoryField = find.byKey(E2EKeys.addCategory);
         expect(
           categoryField,
           findsOneWidget,
