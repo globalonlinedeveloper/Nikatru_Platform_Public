@@ -162,7 +162,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';

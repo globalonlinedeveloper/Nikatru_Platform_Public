@@ -438,7 +438,7 @@ msix_config:
   # ⏱ 2026-10-01 · one language-REGION per arb in lib/l10n/ (C-18); MSIX's
   # Resource Language wants the region, gen-l10n does not carry one.
   # tooling/ci/assert-bundle-locales.mjs fails when this and the arbs disagree.
-  languages: en-us, hi-in, ta-in
+  languages: en-us, ta-in, hi-in
   capabilities: internetClient
   output_path: build/windows/msix
   output_name: subscriptiontracker

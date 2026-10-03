@@ -54,7 +54,7 @@ import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/width_harness.dart';
@@ -242,7 +242,7 @@ Future<AppLocalizations> _l10n(String code) =>
 void main() {
   // ───────────────────────────────────────────────────────────────────────────
   group('home reads its copy from the arb', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] greeting · plurals · hero · rows', (
         WidgetTester tester,
       ) async {
@@ -425,7 +425,7 @@ void main() {
       }
     });
 
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] five tab labels, the demo banner and the FAB', (
         WidgetTester tester,
       ) async {
@@ -551,7 +551,7 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('notifications reads its copy from the arb', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] whole-clause plurals and a formatted date', (
         WidgetTester tester,
       ) async {

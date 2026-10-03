@@ -129,7 +129,7 @@
 
 <div class="callout">
 <span class="tag">In one line</span>
-<p style="margin:8px 0 0">Nikatru Subscription Tracker collects 12 categories of personal data for 3 stated purposes, keeps each for a fixed period, shares none of it with anyone beyond the service providers named below, and records no network address at all.</p>
+<p style="margin:8px 0 0">Nikatru Subscription Tracker collects 12 categories of personal data for 3 stated purposes, keeps each for a fixed period, shares none of it with anyone beyond the service providers named below, and keeps no network address with any of it.</p>
 </div>
 
 <h2>1. What is collected</h2>
@@ -159,8 +159,8 @@
 <p>Login is mandatory in the apps (ADR 058) and identity is one Supabase auth project for the whole portfolio (C-ONE-IDENTITY-PER-USER), so an address is the account. It is held for the account's life and erased by the schema-derived erasure route, identity last.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
 <h3>Personal info — Name</h3>
-<p>Optional. The user can enter a name in Settings, and if the user chooses Sign in with Apple, an optional way to sign in, Apple shares the name on that account as the user allows; an account needs no name. It sits on the identity record beside the address, is held for the account's life and is erased with the identity.</p>
-<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-25.</p>
+<p>Optional. The user can enter a name in Settings, and if the user chooses Sign in with Apple or Sign in with Google, optional ways to sign in, Apple or Google shares the name on that account as the user allows; an account needs no name. It sits on the identity record beside the address, is held for the account's life and is erased with the identity.</p>
+<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-10-02.</p>
 <h3>Personal info — User IDs</h3>
 <p>The one identity per user across every app is a user id issued by the auth project; every app row keys on it, which is what makes erasure reach derivable from the schema rather than from a hand-kept list of tables.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
@@ -197,23 +197,27 @@
 </ul>
 
 <h2>4. Who else touches it</h2>
-<p>10 service providers. Services Nikatru runs on its own machines are deliberately not listed: they are infrastructure this company operates, not a party the data is disclosed to.</p>
+<p>11 service providers. Services Nikatru runs on its own machines are deliberately not listed: they are infrastructure this company operates, not a party the data is disclosed to.</p>
 <table>
 <tr><th>Who</th><th>Role</th><th>What they do with it</th></tr>
 <tr><td>Cloudflare</td><td>infrastructure</td><td>Serves the web app, runs the Workers and holds the D1 rows.</td></tr>
 <tr><td>Oracle Cloud</td><td>infrastructure</td><td>Stores an encrypted copy of the backups; it runs none of the services.</td></tr>
-<tr><td>Hostinger</td><td>infrastructure</td><td>Hosts the machines the self-hosted identity stack and crash-report service run on.</td></tr>
-<tr><td>Supabase</td><td>identity</td><td>Runs the hosted account and sign-in service the app's servers are still configured to use.</td></tr>
+<tr><td>Hostinger</td><td>infrastructure</td><td>Hosts the machines our own sign-in service and crash-report service run on, so it holds the account records (your email address and user id) and the crash reports those services store.</td></tr>
+<tr><td>Supabase</td><td>identity</td><td>Ran the account and sign-in service until 27 September 2026, and still holds a fallback copy of the account and sign-in records from before that date until it is retired; the app no longer uses it.</td></tr>
 <tr><td>Paddle</td><td>merchant of record</td><td>Takes the payment and is the seller of record for the web channel.</td></tr>
 <tr><td>RevenueCat</td><td>iap aggregator</td><td>Records which store purchase entitles the account to Pro, on our behalf; it is never the seller.</td></tr>
 <tr><td>Apple App Store</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
 <tr><td>Google Play</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
 <tr><td>Razorpay</td><td>payment gateway</td><td>When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.</td></tr>
+<tr><td>Google (Google Workspace and Google Drive)</td><td>infrastructure</td><td>Hosts our support mailbox, so it holds what you write to support, and stores our backups, which contain a copy of the account, subscription and usage records listed above.</td></tr>
 <tr><td>Resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist, and the renewal reminder emails you choose to receive, which list the subscriptions about to renew.</td></tr>
 </table>
 
 <h2>5. What is never collected</h2>
-<p>No network address is recorded anywhere, for any of the rows above. This is not a setting: there is no column to put one in, the declaration cannot say otherwise, and a build fails if the words appear in it. It is the one identifier that would turn every analytics row into personal data, and it is the one this portfolio does not keep.</p>
+<p>Apart from a pending sign-in verification, described next, no network address is kept with any of the rows above, or with your account. Our sign-in service records the address a request comes from, and since 2 October 2026 the database it writes to empties that field on every write, so the account and sign-in records hold none.</p>
+<p>A pending sign-in verification briefly holds the network address it was requested from: if you use a second sign-in step, the one-time code is accepted only from the address that asked for it, so that address is kept until the code is used. It is erased when the verification succeeds, or, if it is never completed, within a day of the code expiring, 5 minutes after it was requested.</p>
+<p>Two things see the address a connection comes from, and neither keeps it with your data. Cloudflare, at the network edge, uses it to deliver the request, to stop abuse and to infer the approximate location in section 1, and then discards it, apart from Cloudflare’s own security logs. The request log of our sign-in service, on a server we run, records it for security and fault diagnosis and deletes it after 7 days.</p>
+<p>Copies made before 2 October 2026 remain until they age out: a sign-in session opened before that date keeps the address it was opened from until it next refreshes, which the app does whenever it is used; the encrypted backups of the sign-in records taken before that date contain those addresses; and so does the fallback copy of the sign-in records Supabase holds from before 27 September 2026, until it is retired.</p>
 <p>Nothing on this page is collected from anyone under 18. Nikatru does not offer any app, extension or site to children, and does not knowingly collect data from them.</p>
 
 <h2>6. Notice, consent and your rights</h2>
