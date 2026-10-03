@@ -250,7 +250,7 @@ describe('--out on Windows', () => {
 
 describe('--apply with fetch stubbed', () => {
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
-  const TOKEN = 'ya29.TEST-TOKEN-must-never-be-printed';
+  const TOKEN = 'stub-access-token-must-never-be-printed';
   const sa = { type: 'service_account', client_email: 'ci@example.iam.gserviceaccount.com', private_key: privateKey };
   const stub = (dataSafetyStatus = 200) => {
     const calls = [];
