@@ -15,7 +15,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -324,7 +324,9 @@ globalThis.fetch = async (url, init = {}) => {
 `,
       );
       const out = join(dir, 'nested', 'ds.csv');
-      const r = run(['--app', 'subscriptiontracker', '--out', out, '--apply'], { PLAY_SERVICE_ACCOUNT_FILE: saFile }, ['--import', pathToFileURL(preload).href]);
+      const tpl = join(dir, 'export.csv');
+      writeFileSync(tpl, render(realDs(), LIVE).csv); // a stand-in export: our own render round-trips as one
+      const r = run(['--app', 'subscriptiontracker', '--out', out, '--template', tpl, '--apply'], { PLAY_SERVICE_ACCOUNT_FILE: saFile }, ['--import', pathToFileURL(preload).href]);
       const printed = r.stdout + r.stderr;
       assert.equal(r.status, 0, printed);
       assert.ok(!printed.includes(TOKEN));
@@ -337,6 +339,96 @@ globalThis.fetch = async (url, init = {}) => {
       assert.ok(calls.every((c) => c.redirect === 'manual' && c.hasSignal));
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--apply WITHOUT --template is refused before any network call (the built-in template is for dry runs)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'play-ds-'));
+    try {
+      const saFile = join(dir, 'sa.json');
+      writeFileSync(saFile, JSON.stringify(sa));
+      const record = join(dir, 'calls.json');
+      const preload = join(dir, 'stub-fetch.mjs');
+      writeFileSync(preload, `import { writeFileSync } from 'node:fs';\nglobalThis.fetch = async (url) => { writeFileSync(${JSON.stringify(record)}, String(url)); return new Response('{}', { status: 200 }); };\n`);
+      const r = run(['--app', 'subscriptiontracker', '--out', join(dir, 'ds.csv'), '--apply'], { PLAY_SERVICE_ACCOUNT_FILE: saFile }, ['--import', pathToFileURL(preload).href]);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /--apply needs --template <the Play Console Data safety export/);
+      assert.ok(!existsSync(record), 'a network call was made');
+      assert.ok(!existsSync(join(dir, 'ds.csv')), 'nothing is rendered either');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a refused token exchange prints the status and Google\'s OAuth error code — never error_description', async () => {
+    const logs = [];
+    const fetchImpl = async () => new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid JWT Signature. secret-ish detail' }), { status: 400 });
+    await assert.rejects(
+      applyDataSafety({ csv: 'x', packageName: 'com.nikatru.subscriptiontracker', serviceAccount: sa, fetchImpl, log: (l) => logs.push(l) }),
+      (e) => /token exchange answered HTTP 400 invalid_grant\./.test(e.message) && !e.message.includes('Invalid JWT'),
+    );
+    assert.match(logs.join('\n'), /token exchange → HTTP 400 invalid_grant/);
+    assert.ok(!logs.join('\n').includes('Invalid JWT'));
+    // a body that is not Google's shape adds nothing (and is never echoed)
+    const odd = [];
+    await assert.rejects(
+      applyDataSafety({ csv: 'x', packageName: 'p', serviceAccount: sa, fetchImpl: async () => new Response(`{"error":"Bearer ${TOKEN}"}`, { status: 401 }), log: (l) => odd.push(l) }),
+      (e) => /HTTP 401\.$/.test(e.message) && !e.message.includes(TOKEN),
+    );
+  });
+});
+
+describe('the posture refusals (the guard decides the column; the CLI never re-derives it)', () => {
+  // A minimal repo root whose assert-play-declarations is a stand-in that
+  // prints a chosen line and exits a chosen code: the CLI runs exactly that file.
+  const fakeRoot = (guardBody) => {
+    const dir = mkdtempSync(join(tmpdir(), 'play-ds-root-'));
+    const put = (rel, body) => {
+      mkdirSync(dirname(join(dir, rel)), { recursive: true });
+      writeFileSync(join(dir, rel), body);
+    };
+    for (const rel of ['tooling/channel-register.json', 'apps/subscriptiontracker/store/android-play/data-safety.json', 'apps/subscriptiontracker/store/android-play/privacy-policy-url.txt']) {
+      put(rel, readFileSync(join(ROOT, rel), 'utf8'));
+    }
+    put('tooling/ci/assert-play-declarations.mjs', guardBody);
+    return dir;
+  };
+  const okLine = (posture) => `console.log(${JSON.stringify(`ok   apps/subscriptiontracker — 38/38 Play data type(s) answered across 2 build posture(s); lane posture "${posture}" confirmed against .github/workflows/build-platforms.yml (defines: X)`)});\n`;
+  const runIn = (root, out) => run(['--app', 'subscriptiontracker', '--out', out, '--repo-root', root], { PLAY_SERVICE_ACCOUNT_FILE: '' });
+
+  test('green control: the stand-in guard confirming buildPosture.current renders', () => {
+    const root = fakeRoot(okLine(LIVE));
+    try {
+      const r = runIn(root, join(root, 'ds.csv'));
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, new RegExp(`posture "${LIVE}" — confirmed`));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('the guard RED (exit 1) is refused (exit 1), naming the guard, and nothing is written', () => {
+    const root = fakeRoot(`${okLine(LIVE)}console.error('FAIL something');\nprocess.exitCode = 1;\n`);
+    try {
+      const r = runIn(root, join(root, 'ds.csv'));
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /assert-play-declarations\.mjs did not confirm a posture for apps\/subscriptiontracker \(exit 1\)/);
+      assert.ok(!existsSync(join(root, 'ds.csv')));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('a confirmed posture that is not buildPosture.current is refused (exit 1), and nothing is written', () => {
+    const other = Object.keys(realDs().buildPosture.postures).find((p) => p !== LIVE);
+    const root = fakeRoot(okLine(other));
+    try {
+      const r = runIn(root, join(root, 'ds.csv'));
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, new RegExp(`confirmed posture "${other}" and apps/subscriptiontracker/store/android-play/data-safety\\.json buildPosture\\.current is "${LIVE}"`));
+      assert.ok(!existsSync(join(root, 'ds.csv')));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
@@ -355,15 +447,21 @@ describe('the CLI, dry', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  test('no --app is COVERAGE LOST (exit 2)', () => {
-    const r = run(['--out', join(tmpdir(), 'never.csv')]);
-    assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stderr, /COVERAGE LOST — --app <id> and --out <file> are both required/);
+  test('no --app, or no --out, is a USAGE error (exit 2, "usage"), not COVERAGE LOST', () => {
+    for (const args of [['--out', join(tmpdir(), 'never.csv')], ['--app', 'subscriptiontracker']]) {
+      const r = run(args);
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /--app <id> and --out <file> are both required/);
+      assert.match(r.stderr, /usage: node tooling\/release\/play-data-safety\.mjs --app <id> --out <file\.csv>/);
+      assert.doesNotMatch(r.stderr, /COVERAGE LOST/);
+    }
   });
   test('--apply with no PLAY_SERVICE_ACCOUNT_FILE is refused before any network call', () => {
     const dir = mkdtempSync(join(tmpdir(), 'play-ds-'));
     try {
-      const r = run(['--app', 'subscriptiontracker', '--out', join(dir, 'ds.csv'), '--apply'], { PLAY_SERVICE_ACCOUNT_FILE: '' });
+      const tpl = join(dir, 'export.csv');
+      writeFileSync(tpl, render(realDs(), LIVE).csv);
+      const r = run(['--app', 'subscriptiontracker', '--out', join(dir, 'ds.csv'), '--template', tpl, '--apply'], { PLAY_SERVICE_ACCOUNT_FILE: '' });
       assert.equal(r.status, 1, r.stdout + r.stderr);
       assert.match(r.stderr, /PLAY_SERVICE_ACCOUNT_FILE is not set/);
     } finally {
