@@ -32,7 +32,11 @@ import 'dart:io';
 // integrity check runs rather than being handed a digest it cannot refuse.
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart'
-    show debugDefaultTargetPlatformOverride, defaultTargetPlatform;
+    show
+        DebugPrintCallback,
+        debugDefaultTargetPlatformOverride,
+        debugPrint,
+        defaultTargetPlatform;
 import 'package:flutter/material.dart';
 // SemanticsNode — the icon-label limb asserts on what a SCREEN READER receives,
 // not on a widget field a screen reader never sees.
@@ -989,6 +993,33 @@ Future<String> _pumpAt(
 }
 
 void main() {
+  // ── PROPERTY: release-silences-debugprint ─────────────────────────────────
+  // [rv2-security-006] `debugPrint` writes to the device log (and the browser
+  // console) in a RELEASE build. The chassis makes it a no-op there, first thing
+  // in main() — bootstrapNikatru for a stamped app. Tests run in debug mode, so
+  // the release branch is driven through the function's `release` parameter.
+  group('property: release-silences-debugprint', () {
+    late DebugPrintCallback original;
+    setUp(() => original = debugPrint);
+    tearDown(() => debugPrint = original);
+
+    test('a release build prints nothing through debugPrint', () {
+      final List<String?> printed = <String?>[];
+      debugPrint = (String? message, {int? wrapWidth}) => printed.add(message);
+      silenceDebugPrintInRelease(release: true);
+      debugPrint('a session token, a user id, an email');
+      expect(printed, isEmpty);
+    });
+
+    test('a debug or profile build keeps debugPrint', () {
+      final List<String?> printed = <String?>[];
+      debugPrint = (String? message, {int? wrapWidth}) => printed.add(message);
+      silenceDebugPrintInRelease(release: false);
+      debugPrint('kept');
+      expect(printed, <String?>['kept']);
+    });
+  });
+
   // ── PROPERTY: theme-mode-persisted ────────────────────────────────────────
   // DoD §4-D requires theme + darkTheme + a PERSISTED themeMode. MaterialApp
   // defaults to ThemeMode.system, so dark mode appears to work while the user's

@@ -4161,5 +4161,139 @@
   "glanceAppLocked": "Open the app to see your renewals",
   "@glanceAppLocked": {
     "description": "XP-04 (#1155 review, finding 7): what the home-screen widget shows instead of the figures while the app lock is on."
+  },
+  "trendTitle": "Last 12 months",
+  "@trendTitle": {
+    "description": "Consumed by features/insights/forecast_card.dart. The Pro card's trend heading: what was actually CHARGED (payment_history), month by month."
+  },
+  "trendSummary": "{total} charged over the last 12 months.",
+  "@trendSummary": {
+    "description": "Consumed by features/insights/forecast_card.dart. The trend's sentence, and the bars' accessible name.",
+    "placeholders": {
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "trendNone": "No charges recorded yet.",
+  "@trendNone": {
+    "description": "Consumed by features/insights/forecast_card.dart. The trend when payment_history holds no charge in the last 12 months."
+  },
+  "setAsideTitle": "Set aside each month",
+  "@setAsideTitle": {
+    "description": "Consumed by features/insights/forecast_card.dart and features/insights/month_report.dart. Heading over the plans that bill less often than monthly (ST-P6)."
+  },
+  "setAsideRow": "{amount} a month for {name} ({charge})",
+  "@setAsideRow": {
+    "description": "Consumed by features/insights/forecast_card.dart and features/insights/month_report.dart. One plan: what to put aside each month so its charge is covered.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      },
+      "charge": {
+        "type": "String"
+      }
+    }
+  },
+  "reportExport": "Export month report (PDF)",
+  "@reportExport": {
+    "description": "Consumed by features/insights/forecast_card.dart. The Pro card's action: the month report as a PDF (ST-P5)."
+  },
+  "reportTitle": "Subscription report",
+  "@reportTitle": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF's title. The PDF is written in English (Latin-1 font); see month_report.dart."
+  },
+  "reportTotals": "Totals",
+  "@reportTotals": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF's totals heading."
+  },
+  "reportChargedIn": "Charged in {month}: {amount}",
+  "@reportChargedIn": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF: what the plans charge in the report's month.",
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "reportPerMonth": "Per month (your share): {amount}",
+  "@reportPerMonth": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF: the per-month spend, the user's share of shared plans (ST-P4).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "reportPerYear": "Per year (your share): {amount}",
+  "@reportPerYear": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF: the per-year spend, the user's share of shared plans.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "reportPlans": "{count, plural, =1{1 plan} other{{count} plans}}",
+  "@reportPlans": {
+    "description": "Consumed by features/insights/month_report.dart. The PDF's table heading.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reportColumnName": "Name",
+  "@reportColumnName": {
+    "description": "Consumed by features/insights/month_report.dart. PDF table column."
+  },
+  "reportColumnCharge": "Charge",
+  "@reportColumnCharge": {
+    "description": "Consumed by features/insights/month_report.dart. PDF table column."
+  },
+  "reportColumnShare": "Your share",
+  "@reportColumnShare": {
+    "description": "Consumed by features/insights/month_report.dart. PDF table column: e.g. 1/3 for a plan split three ways."
+  },
+  "reportColumnNext": "Next charge",
+  "@reportColumnNext": {
+    "description": "Consumed by features/insights/month_report.dart. PDF table column."
+  },
+  "reportExportFailed": "Could not export the report.",
+  "@reportExportFailed": {
+    "description": "Consumed by features/insights/forecast_card.dart. Snack bar when the platform could not export the PDF."
+  },
+  "signalPriceRiseTitle": "{name} went up {percent}%",
+  "@signalPriceRiseTitle": {
+    "description": "Consumed by features/insights/signals.dart. A plan's latest price edit RAISED it (price_change, ST-I4).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "signalPriceRiseBody": "{before} → {after}, changed {date}",
+  "@signalPriceRiseBody": {
+    "description": "Consumed by features/insights/signals.dart. The rise: old price, new price, and the CLDR date of the edit.",
+    "placeholders": {
+      "before": {
+        "type": "String"
+      },
+      "after": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -82,7 +82,7 @@ METHOD.** The chain that looks like a caller is
 stops there. Measured 2026-08-17 over `apps packages tooling sites` (1059 files):
 `rg "\.entitlements\("` returns **zero** call sites, and `rg "getEntitlements"`
 returns five matches in five files, none of them a use — the abstract method
-(`api_client.dart:26`), two implementations (`seed_api_client.dart:80`,
+(`api_client.dart:31`), two implementations (`seed_api_client.dart:80`,
 `dio_api_client.dart:113`), the single call inside the unreached repository
 method (`subscription_repository.dart:20`), and one line of prose in
 `apps/subscriptiontracker/README.md:94`. No screen, controller, provider or test reaches any of

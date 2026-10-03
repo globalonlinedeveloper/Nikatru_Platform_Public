@@ -7,6 +7,7 @@ import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 
@@ -273,6 +274,18 @@ class DioApiClient
         'currency': amount.currencyCode,
       },
       idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
+  Future<SpendHistory> getSpendHistory() async {
+    final Object? data = await _rest.get('/insights');
+    return _rest.decode(
+      data,
+      (Object? b) => SpendHistory.fromJson(
+        b! as Map<String, dynamic>,
+        fallbackCurrencyCode: _currencyCode(),
+      ),
     );
   }
 

@@ -18,6 +18,7 @@ import 'core/router.dart' show installAppErrorScreen;
 import 'state/providers.dart';
 
 Future<void> main() async {
+  silenceDebugPrintInRelease();
   WidgetsFlutterBinding.ensureInitialized();
   // NO-04 · the XDG autostart entry runs this binary with `--remind` at login:
   // it shows the reminders that fell due while the app was closed, and exits.
@@ -150,9 +151,8 @@ Future<void> main() async {
           // Same string the define still calls SUPABASE_ANON_KEY; the SDK
           // renamed the parameter, which is why the deprecation is now gone.
           publishableKey: AppConfig.supabaseAnonKey,
-          // Keychain / KeyStore / DPAPI / libsecret. On web there is no OS
-          // keychain a page can reach, so this degrades to ordinary web storage
-          // — stated in SecureSessionStorage rather than papered over.
+          // Keychain / KeyStore / DPAPI / libsecret; on web, ordinary web storage
+          // (SecureSessionStorage says what does, and does not, bound it there).
           secureStore: FlutterSecureStore(),
         );
       }

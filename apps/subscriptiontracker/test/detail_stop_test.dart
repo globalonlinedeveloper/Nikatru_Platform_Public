@@ -18,6 +18,7 @@ import 'package:subscriptiontracker/data/api/seed_api_client.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
 import 'package:subscriptiontracker/data/models/price_change.dart';
+import 'package:subscriptiontracker/data/models/spend_history.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -90,6 +91,8 @@ class _Api implements ApiClient, PaymentWrites {
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       payments.values.toList();
+  @override
+  Future<SpendHistory> getSpendHistory() async => SpendHistory.empty;
   @override
   Future<PaymentRecord> recordPayment(
     String id, {

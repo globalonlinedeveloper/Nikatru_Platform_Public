@@ -4,6 +4,7 @@ import { nowIso } from '../lib/d1';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { requestGeo } from '../../../_shared/src/geo';
+import type { SqlStatement } from '../../../_shared/src/ports/sql';
 // ONE registry predicate for the whole Worker. `routes/config.ts`,
 // `routes/entitlements.ts` and both write routes here now ask the same question
 // of the same source — an app the shared server will answer for is one thing,
@@ -13,7 +14,11 @@ import { UNRELEASED_BUILD, refusesStamp } from '../lib/build-stamp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G-12 — first-party product analytics ingest ([ADR 011]).
-//   PUBLIC POST /v1/events   — batched, pseudonymous, consent-gated CLIENT-side.
+//   PUBLIC POST /v1/events   — batched, pseudonymous, consent-gated on BOTH
+//                              sides: the client collects nothing before a
+//                              grant, and this route stores nothing for an
+//                              install whose latest analytics artifact is
+//                              missing or a withdrawal (see `consentVerdicts`).
 //   PUBLIC POST /v1/consent  — the DPDP consent artifact each event references.
 //
 // Both are unauthenticated on purpose: analytics is pseudonymous and pre-login
@@ -55,15 +60,26 @@ import { UNRELEASED_BUILD, refusesStamp } from '../lib/build-stamp';
  * cap takes the worst case.
  *
  * AND IT COSTS NOTHING. The first-party client flushes at `kFlushBatchSize = 20`
- * (`packages/core/lib/src/analytics/analytics_recorder.dart:14`), so 50 still
- * leaves 2.5× headroom over the largest batch any shipped app actually sends.
+ * (`packages/core/lib/src/analytics/analytics_recorder.dart`), so the cap still
+ * leaves over 2× headroom over the largest batch any shipped app actually sends.
  * The alternative — leaving 100 in place until someone runs the miniflare probe
  * — meant shipping a server whose own cap exceeded its platform's documented
  * limit, indefinitely, to avoid a change that no client can notice.
  *
+ * 🔴 50 → 49 ON 2026-10-01: THE CONSENT READ IS A QUERY TOO. The handler now
+ * issues ONE indexed read of `consent_artifacts` per batch before the write
+ * (`CONSENT_READS_PER_BATCH`, below), so a full batch is 1 + N statements. At
+ * 50 that was 51 against the worst-case reading of the 50 — the B-6 defect
+ * again, one query over. test/events.test.ts counts a full batch's statements
+ * against `tooling/ceilings.json` and fails when the sum passes the ceiling.
+ *
  * @ceiling d1.queriesPerInvocation lte
  */
-export const MAX_EVENTS_PER_BATCH = 50;
+export const MAX_EVENTS_PER_BATCH = 49;
+/** @ceiling none — a COUNT of statements this handler issues besides its
+ *  inserts, not a vendor limit. It is the `+ 1` that MAX_EVENTS_PER_BATCH above
+ *  is sized against, exported so the test that sums the two cannot drift. */
+export const CONSENT_READS_PER_BATCH = 1;
 /** @ceiling none — bounds the WIDTH of one `events.event` value, not a platform
  *  resource. Sized to the locked event taxonomy, which has no name near 64. */
 const MAX_EVENT_NAME_LEN = 64;
@@ -95,8 +111,8 @@ export const MAX_PARAM_VALUE_LEN = 64;
  * Byte ceilings on the RAW REQUEST BODY, enforced before it is parsed.
  *
  * `MAX_EVENTS_BODY_BYTES` is sized from the caps above rather than picked: at the
- * cap of 50 events × (2048 bytes of params + ~400 bytes of ids, name and
- * timestamps) it is ≈ 123 KB, so 256 KiB accepts every batch the caps permit and
+ * cap of 49 events × (2048 bytes of params + ~400 bytes of ids, name and
+ * timestamps) it is ≈ 120 KB, so 256 KiB accepts every batch the caps permit and
  * nothing beyond. (It was sized against the old cap of 100 at ≈ 245 KB and is
  * deliberately NOT tightened alongside it: the headroom is now 2×, and a byte
  * ceiling that tracked the event cap exactly would reject a legitimate batch of
@@ -191,6 +207,45 @@ const RATE_LIMITED = { ok: false, error: 'rate_limited' } as const;
 const UNRELEASED_BATCH = { ok: false, error: UNRELEASED_BUILD, received: 0 } as const;
 const UNRELEASED = { ok: false, error: UNRELEASED_BUILD } as const;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 CONSENT IS ENFORCED HERE, NOT ONLY IN THE APP (2026-10-01).
+//
+// Until this date the handler never read `consent_artifacts`: `consent_id` was
+// optional and stored unverified, and a batch from an install whose latest
+// artifact was `granted=0` was stored like any other. "Only after consent"
+// (tooling/legal/data-inventory.json, `table:platform_db.events`) was true of
+// OUR client and of nothing else — a stamped app that forgot the gate, an old
+// or forked build of this public repo, or a queue flushed after withdrawal all
+// stored usage rows for people who had not consented.
+//
+// The rule, per (app_id, anon_id) — the LATEST `purpose='analytics'` artifact
+// decides, because the trail is append-only and a withdrawal is a newer row:
+//   none            → the event is dropped; 409 `consent_not_recorded` when
+//                     nothing in the batch survives. RETRYABLE: the client
+//                     keeps its queue, posts its artifact, and re-sends.
+//   granted = 0     → the event is dropped; 403 `consent_withdrawn` when
+//                     nothing survives. NOT retryable: the client drops its
+//                     queue, because nothing collected under it may land.
+//   granted = 1     → stored, exactly as before.
+// A batch whose survivors are not empty is a 200 for the survivors. Our client
+// sends one install per batch, so a split batch is not a real client — but
+// dropping a stranger's rows must not cost an install with consent its own.
+//
+// ⚠️ ONE READ, NOT ONE PER EVENT. The batch's distinct anon_ids travel as ONE
+// bound JSON array through `json_each` (inline at its `.prepare`, where
+// assert-d1-sql-inventory reads it), each resolved by a correlated
+// `ORDER BY server_ts DESC LIMIT 1` that `idx_consent_lookup`
+// (migrations/0002_analytics.sql) serves as an index search with no sort —
+// test/events.test.ts asserts the plan. `rowid DESC` breaks a same-millisecond
+// tie toward the row inserted last, which is the decision taken last.
+// ─────────────────────────────────────────────────────────────────────────────
+export const CONSENT_NOT_RECORDED = 'consent_not_recorded';
+export const CONSENT_WITHDRAWN = 'consent_withdrawn';
+const CONSENT_NOT_RECORDED_BATCH = { ok: false, error: CONSENT_NOT_RECORDED, received: 0 } as const;
+const CONSENT_WITHDRAWN_BATCH = { ok: false, error: CONSENT_WITHDRAWN, received: 0 } as const;
+
+type ConsentVerdict = 'granted' | typeof CONSENT_NOT_RECORDED | typeof CONSENT_WITHDRAWN;
+
 events.post('/events', async (c) => {
   // 1 · SHED FIRST, ON A KEY THAT NEEDS NO BODY. Nothing below this line runs
   //     for a caller already over the per-(colo, asn) ceiling — including the
@@ -269,7 +324,9 @@ events.post('/events', async (c) => {
      ON CONFLICT(event_id) DO NOTHING`,
   );
 
-  const rows = [];
+  // Each bound row keeps the install it belongs to, so the consent verdict
+  // below can drop exactly the rows it refuses and no others.
+  const rows: Array<{ anonId: string; stmt: SqlStatement }> = [];
   for (const e of list as AnalyticsEvent[]) {
     const eventId = str(e?.event_id, MAX_ID_LEN);
     const name = str(e?.event, MAX_EVENT_NAME_LEN);
@@ -283,8 +340,9 @@ events.post('/events', async (c) => {
     // not a real client, and a partial write would leave the rows the
     // provenance monitor reddens on.
     if (refusesStamp(c.env, 'events', appVersion)) return c.json(UNRELEASED_BATCH, 422);
-    rows.push(
-      stmt.bind(
+    rows.push({
+      anonId,
+      stmt: stmt.bind(
         eventId,
         appId,
         anonId,
@@ -300,12 +358,58 @@ events.post('/events', async (c) => {
         geo.city ?? null,
         str(e?.consent_id, MAX_ID_LEN),
       ),
-    );
+    });
   }
   if (rows.length === 0) return c.json({ ok: true, received: 0 });
 
+  // 4 · CONSENT, AFTER THE FAIRNESS LIMITER AND BEFORE ANY WRITE. Placed after
+  //     the stamp refusal on purpose: that one costs no query, this one does.
+  //     The prepare stays OUTSIDE the try, like the INSERT's above, so an
+  //     unbound PLATFORM_DB still reaches `app.onError` rather than a 503.
+  // The latest analytics decision for each install named in the batch.
+  const lookup = c.env.PLATFORM_DB.prepare(
+    `SELECT j.value AS anon_id,
+       (SELECT ca.granted FROM consent_artifacts AS ca
+         WHERE ca.app_id = ? AND ca.anon_id = j.value AND ca.purpose = 'analytics'
+         ORDER BY ca.server_ts DESC, ca.rowid DESC
+         LIMIT 1) AS granted
+       FROM json_each(?) AS j`,
+  );
+  let verdicts: Map<string, ConsentVerdict>;
   try {
-    await c.env.PLATFORM_DB.batch(rows);
+    verdicts = await consentVerdicts(lookup, appId, rows.map((r) => r.anonId));
+  } catch (err) {
+    console.error(
+      `[events] rid=${c.get('requestId') ?? '-'} app=${appId} release=${c.env.RELEASE ?? '-'} consent read failed`,
+      err,
+    );
+    // 503, the same answer as a failed write: nothing was stored, so the
+    // client KEEPS the batch and retries.
+    return c.json({ error: 'ingest_failed' }, 503);
+  }
+  const permitted = rows.filter((r) => verdicts.get(r.anonId) === 'granted');
+  const dropped = rows.length - permitted.length;
+  if (dropped > 0) {
+    let notRecorded = 0;
+    for (const r of rows) if (verdicts.get(r.anonId) === CONSENT_NOT_RECORDED) notRecorded++;
+    // Counts and the app only. An anon_id is never logged: the log would then
+    // be a second, unswept copy of the identifier this table is keyed on.
+    console.warn(
+      `[events] rid=${c.get('requestId') ?? '-'} app=${appId} release=${c.env.RELEASE ?? '-'} consent refused ` +
+        `${CONSENT_NOT_RECORDED}=${notRecorded} ${CONSENT_WITHDRAWN}=${dropped - notRecorded}`,
+    );
+    if (permitted.length === 0) {
+      // A missing artifact wins over a withdrawal in a split batch: 409 is the
+      // answer the client can ACT on (post consent, re-send), and the re-send
+      // drops the withdrawn install's rows again on its own.
+      return notRecorded > 0
+        ? c.json(CONSENT_NOT_RECORDED_BATCH, 409)
+        : c.json(CONSENT_WITHDRAWN_BATCH, 403);
+    }
+  }
+
+  try {
+    await c.env.PLATFORM_DB.batch(permitted.map((r) => r.stmt));
   } catch (err) {
     // [pipeline B-16] `app=` and `release=`. This line was the plan's recorded
     // failing input: an ingest failure on the shared Worker logged a request id
@@ -322,9 +426,32 @@ events.post('/events', async (c) => {
   // in, which is not the number of rows inserted — duplicates are dropped by
   // ON CONFLICT and D1's batch does not report per-statement row counts. Live
   // verification sent 2 events sharing one event_id and correctly stored 1, so
-  // a field named "accepted" would have overstated what happened.
-  return c.json({ ok: true, received: rows.length });
+  // a field named "accepted" would have overstated what happened. Rows the
+  // consent check refused are not "taken in", so they are not counted.
+  return c.json({ ok: true, received: permitted.length });
 });
+
+/**
+ * Resolve each distinct install in the batch to its LATEST analytics decision,
+ * in ONE query. See the block above `CONSENT_NOT_RECORDED` for the rule.
+ */
+async function consentVerdicts(
+  lookup: SqlStatement,
+  appId: string,
+  anonIds: readonly string[],
+): Promise<Map<string, ConsentVerdict>> {
+  const distinct = [...new Set(anonIds)];
+  const { results } = await lookup
+    .bind(appId, JSON.stringify(distinct))
+    .all<{ anon_id: string; granted: number | null }>();
+  const out = new Map<string, ConsentVerdict>();
+  for (const id of distinct) out.set(id, CONSENT_NOT_RECORDED);
+  for (const r of results ?? []) {
+    if (r.granted === null || r.granted === undefined) continue;
+    out.set(r.anon_id, Number(r.granted) === 1 ? 'granted' : CONSENT_WITHDRAWN);
+  }
+  return out;
+}
 
 events.post('/consent', async (c) => {
   // Same three steps, same order, same reasons as /v1/events above: shed on the
