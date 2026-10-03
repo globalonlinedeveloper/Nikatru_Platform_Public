@@ -145,7 +145,7 @@
       "install",
       "handoff",
       "code",
-      "payments",
+      "payments", "ai", "status", "import", "review", "refund",
       "ops",
       "box-manifest",
       "feedback",
@@ -258,6 +258,7 @@
     "_ext": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. `ext`, `codes`, `token` and `revoke` are OURS, not a provider's tell: POST /v1/ext/codes (the signed-in nikatru.com/ext/connect page mints a one-time code), POST /v1/ext/token (the browser extension exchanges it, PKCE S256, for a per-device credential) and POST /v1/ext/revoke (that credential revokes itself) are the extension account check in services/platform/src/routes/ext.ts. None is a webhook and none takes a provider signature: the callers are our own page and our own extension. `token` is spelled like an OAuth endpoint because it is one — of ours. ⏱ 2026-09-30 · EXA-11: `devices` is ours too — GET /v1/ext/devices and DELETE /v1/ext/devices/:link_id are the ACCOUNT listing and revoking its own linked browsers, behind platformAuth; no provider calls them.",
     "_fx": "⏱ 2026-09-28 · ST-I3. `fx` and `latest` are OURS, not a provider's tell: GET /v1/fx/latest serves the ECB euro reference rates the nightly cron caches (services/platform/src/routes/fx.ts). It is a public READ of public data: nothing posts to it, it takes no body and no signature, and no user data goes in or out. The ECB is where the Worker READS the table from (services/platform/src/fx.ts); it receives nothing about anybody, so it is no processor and has no row among the providers.",
     "_native": "⏱ 2026-09-28 · ST-N1 (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). `auth`, `native`, `signup` and `recover` are OURS, not a provider's tell: POST /v1/auth/native/<app>/{token,signup,recover,resend} (services/platform/src/routes/native-auth.ts) is a native app's captcha-free sign-in, sign-up, password-reset request and confirmation re-send, forwarded by the platform Worker to our own self-hosted GoTrue with the service-role bearer. The callers are our own native builds; nothing external posts here, and no provider signature is taken. The path segments are GoTrue's own endpoint names, because gotrue-dart builds exactly these from a base URL.",
+    "_aiRefund": ["⏱ 2026-10-02 · club-rt-money. `ai`, `status`, `import` and `review` are RESOURCES OF OURS: GET /v1/ai/status,", "POST /v1/ai/consent, /v1/ai/import and /v1/ai/review (services/platform/src/routes/ai.ts, T17) are our own app", "asking our own metered AI routes, behind platformAuth. The call OUT to the model provider is the AI port's adapter", "(services/platform/src/adapters/ai/anthropic.ts); the provider never calls IN. `refund` is ours too: POST", "/v1/plan/refund (services/platform/src/routes/refund.ts, refund-finish) is the signed-in user asking for the", "in-window refund refund.html promises; no rail posts to it — a rail's refund NOTIFICATION arrives at /v1/money/:provider."],
     "tellCollisions": {
       "resend": {
         "provider": "resend",

@@ -868,13 +868,20 @@ const REQUIRED_COVERAGE = [
     // 73 -> 75 cases — the chassis DevicesSection, swept (`a11y: devices`,
     // light + dark kPhone). Read off the merged tree: `34 of 34 … from 5 a11y
     // test file(s) across 75 case(s)`.
+    // ⏱ 2026-10-02 · club-rt-money (T17, EU AI Act Art. 50): 34 -> 36 surfaces,
+    // 5 -> 6 files, 75 -> 77 cases — AiDisclosureDialog and AiOutputLabel,
+    // swept in the new a11y_ai_test.dart (light + dark each). Read off the
+    // per-root line: `36 of 36 … from 6 a11y test file(s) across 77 case(s)`.
     // ⏱ 2026-10-02 · club-st-singles EN-21, SE-04: 34 -> 36 surfaces, 5 -> 6
     // files, 75 -> 77 cases — EmailCodeForm and ConnectedAccountsView arrived
     // swept in a11y_account_plus_test.dart (light + dark kPhone each). Read off
     // the merged tree: `36 of 36 … from 6 a11y test file(s) across 77 case(s)`.
-    surfaces: 36,
-    a11yFiles: 6,
-    cases: 77,
+    // ⏱ 2026-10-03 · merge of main into #1176 (both sides above): 36 -> 38
+    // surfaces, 6 -> 7 files, 77 -> 79 cases. Read off the merged tree:
+    // `38 of 38 … from 7 a11y test file(s) across 79 case(s)`.
+    surfaces: 38,
+    a11yFiles: 7,
+    cases: 79,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1174,6 +1181,10 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     'packages/chassis_screens',
     new Set(
       [
+        // 2026-10-02 (T17, EU AI Act Art. 50): the AI disclosure and the AI
+        // output label, in the same change as their sweep (a11y_ai_test.dart).
+        'ai/ai_disclosure.dart#AiDisclosureDialog',
+        'ai/ai_disclosure.dart#AiOutputLabel',
         'auth/check_inbox_screen.dart#CheckInboxView',
         // 2026-10-01 (EN-21, SE-04): swept in a11y_account_plus_test.dart.
         'auth/email_code_form.dart#EmailCodeForm',

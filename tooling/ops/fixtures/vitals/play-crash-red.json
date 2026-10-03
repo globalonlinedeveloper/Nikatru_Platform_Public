@@ -1,0 +1,56 @@
+{
+  "rows": [
+    {
+      "aggregationPeriod": "DAILY",
+      "startTime": {
+        "year": 2026,
+        "month": 9,
+        "day": 28,
+        "timeZone": {
+          "id": "America/Los_Angeles"
+        }
+      },
+      "dimensions": [],
+      "metrics": [
+        {
+          "metric": "userPerceivedCrashRate28dUserWeighted",
+          "decimalValue": {
+            "value": "0.0031"
+          }
+        },
+        {
+          "metric": "distinctUsers",
+          "decimalValue": {
+            "value": "1520"
+          }
+        }
+      ]
+    },
+    {
+      "aggregationPeriod": "DAILY",
+      "startTime": {
+        "year": 2026,
+        "month": 9,
+        "day": 29,
+        "timeZone": {
+          "id": "America/Los_Angeles"
+        }
+      },
+      "dimensions": [],
+      "metrics": [
+        {
+          "metric": "userPerceivedCrashRate28dUserWeighted",
+          "decimalValue": {
+            "value": "0.006"
+          }
+        },
+        {
+          "metric": "distinctUsers",
+          "decimalValue": {
+            "value": "1520"
+          }
+        }
+      ]
+    }
+  ]
+}

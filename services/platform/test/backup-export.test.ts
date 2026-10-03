@@ -184,18 +184,17 @@ function withD1ValueCap(real: RealDb): CappedD1 {
   return capped;
 }
 
-/**
- * SQL keywords a `(` follows without being a call: a subquery or VALUES row
- * (`FROM (VALUES ('a'), ('b'))`) or a column list. D1's 32 is a FUNCTION's
- * argument cap, so the table list the column read is fed is not one.
- */
-const NOT_A_CALL = new Set(['from', 'join', 'values', 'in', 'as', 'on', 'into', 'using', 'exists', 'and', 'or', 'not', 'where', 'select']);
-
-/** The most arguments any one function call in `sql` takes. Quoted runs are skipped. */
+/** The most arguments any one function call in `sql` takes. Quoted runs are skipped.
+ *  ⏱ 2026-10-03 · merge of main into #1176: a keyword before `(` is not a call.
+ *  `FROM (VALUES ('t1'), ('t2'), …)` (dump.ts valuesOf, one row per table) was
+ *  counted as a call with one argument per table, so the platform schema reaching
+ *  33 tables read as 33 > 32. D1's 32 is per SQL FUNCTION; a VALUES row list or an
+ *  IN list is not one. */
+const NOT_A_CALL = new Set(['FROM', 'VALUES', 'IN', 'JOIN', 'ON', 'WHERE', 'AND', 'OR', 'NOT', 'SELECT', 'AS', 'EXISTS', 'USING', 'INTO']);
 function widestCall(sql: string): number {
   let widest = 0;
   for (const m of sql.matchAll(/\b([A-Za-z_]+)\s*\(/g)) {
-    if (NOT_A_CALL.has(m[1].toLowerCase())) continue;
+    if (NOT_A_CALL.has(m[1].toUpperCase())) continue;
     let depth = 0;
     let commas = 0;
     let empty = true;

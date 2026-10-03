@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0027_feedback.sql — WHERE "REPORT A PROBLEM" GOES (lane feedback-intake,
+-- 0030_feedback.sql — WHERE "REPORT A PROBLEM" GOES (lane feedback-intake,
 -- O-FEEDBACK-INTAKE-UNBUILT, O-FEEDBACK-HAS-NO-DIAGNOSTICS).
 --
 -- Applies to the SHARED platform_db (services/platform is the sole applier):

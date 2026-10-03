@@ -12,7 +12,7 @@
 //
 // Each move names what it needs: `duplicate` the FB- id it duplicates, `in-fix`
 // the fix PR's number, `fixed` the release version. Every move is written with
-// its timestamp and its writer into `status_history` (0027_feedback.sql).
+// its timestamp and its writer into `status_history` (0030_feedback.sql).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const STATUSES = ['new', 'triaged', 'duplicate', 'known', 'in-fix', 'fixed', 'notified', 'wontfix', 'spam'] as const;

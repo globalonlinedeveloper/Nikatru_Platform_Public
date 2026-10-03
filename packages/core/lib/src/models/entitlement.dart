@@ -6,6 +6,7 @@ class Entitlement {
     required this.isActive,
     this.expiresAt,
     this.unreadableExpiry,
+    this.revocationReason,
   });
 
   final String entitlement;
@@ -46,6 +47,12 @@ class Entitlement {
   /// [isValidAt], [Entitlements.isProAt], the persisted cache round-trip — fails
   /// closed the same way, instead of each having to remember a special case. The
   /// server reconciles the real state on the next successful fetch.
+  /// Why access ENDED, when the server recorded a reason: one of the
+  /// entitlement contract's revocation reasons (`refund_approved`,
+  /// `chargeback`, `subscription_expired`, …), verbatim. Null when nothing
+  /// was recorded. refund-finish (MF-7): the plan screen says which and when.
+  final String? revocationReason;
+
   factory Entitlement.fromJson(Map<String, dynamic> j) {
     final Object? rawExpiry = j['expires_at'];
     final bool active = j['is_active'] == true || j['is_active'] == 1;
@@ -66,6 +73,9 @@ class Entitlement {
       isActive: active && decidable,
       expiresAt: expiresAt,
       unreadableExpiry: decidable ? null : rawExpiry,
+      revocationReason: j['revocation_reason'] is String
+          ? j['revocation_reason'] as String
+          : null,
     );
   }
 
@@ -88,6 +98,9 @@ class Entitlement {
         // a refusal into a permanent grant one restart later — the very
         // fail-open this class was fixed for, taking the long way round.
         'expires_at': unreadableExpiry ?? expiresAt?.toUtc().toIso8601String(),
+        // Only when one was recorded, so a cache written before this field
+        // reads back byte-identical.
+        if (revocationReason != null) 'revocation_reason': revocationReason,
       };
 
   /// Whether this entitlement should still be honoured offline at [now], given a
