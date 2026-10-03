@@ -29,7 +29,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/router/gates.dart' show afterSignInDestination;
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import '../account/email_change_sign_out.dart';
 import '../shared/widgets.dart';
@@ -680,7 +680,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ],
         if (!_signUp)
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               // Gated like every other control on this screen. This is
               // the half the user can SEE; the latch at the top of
@@ -695,7 +695,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         // (`emailCodeAvailable`) — a native build waits for the route's `otp`.
         if (!_signUp && ref.watch(authRepositoryProvider).emailCodeAvailable)
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               key: LoginScreen.emailCodeButton,
               onPressed: _loading ? null : _requestCode,
@@ -1010,7 +1010,7 @@ class _EmailChangedNotice extends ConsumerWidget {
               key: text,
             ),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: TextButton(
                 onPressed: () =>
                     ref.read(emailChangeSignedOutProvider.notifier).state =
@@ -1140,7 +1140,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
             ),
           ],
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               onPressed: () {
                 ref.read(lastAccountDeletionOutcomeProvider.notifier).state =

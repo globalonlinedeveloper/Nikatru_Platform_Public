@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show AppSpacing, AuthMessage;
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import 'auth_error_sentence.dart';
 import 'turnstile_gate.dart';

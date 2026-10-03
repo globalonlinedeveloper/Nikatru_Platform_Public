@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import 'auth_panel.dart';
 import 'legal_change_notes.dart';
