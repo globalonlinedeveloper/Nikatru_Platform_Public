@@ -2477,9 +2477,13 @@ if (pinRowsArmed) {
 // `workflowEvents` over the comment-blanked lines. On the real tree fewer than
 // RUN_NAME_FLOOR such workflows is COVERAGE LOST: "every publisher names its verdict"
 // would be true of a trigger reading that stopped seeing them.
-// Not caught: a run-name that reads the conclusion but words it misleadingly.
+// The conclusion must sit INSIDE one `${{ … }}` expression: `}}` ends an expression and a
+// lone `}` (format's `{0}`) does not, so bare text between two unrelated expressions is
+// not a read (#1168 review, nit 2).
+// Not caught: a run-name that reads the conclusion but words it misleadingly, or names
+// it only inside a string literal of an expression.
 const RUN_NAME_FLOOR = 2;
-const RUN_NAME_VERDICT = /\$\{\{.*\bgithub\.event\.workflow_run\.conclusion\b.*\}\}/;
+const RUN_NAME_VERDICT = /\$\{\{(?:(?!\}\}).)*\bgithub\.event\.workflow_run\.conclusion\b(?:(?!\}\}).)*\}\}/;
 let runPublishers = 0;
 for (const wf of parsedAll) {
   if (!workflowEvents(wf).has('workflow_run')) continue;

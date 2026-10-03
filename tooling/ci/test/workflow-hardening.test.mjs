@@ -174,6 +174,13 @@ describe('assert-workflow-hardening limb 16 — a workflow_run publisher names t
     assert.match(out, /d\.yml:2 `run-name:` does not read `github\.event\.workflow_run\.conclusion`/);
   });
 
+  test('RED: the conclusion as bare text between two unrelated expressions does not count -> exit 1', () => {
+    const rn = 'run-name: "P ${{ github.sha }} github.event.workflow_run.conclusion ${{ github.ref_name }}"';
+    const { code, out } = run(tree('l16-between', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /d\.yml:2 `run-name:` does not read `github\.event\.workflow_run\.conclusion`/);
+  });
+
   test('RED: the conclusion only in a comment does not count -> exit 1', () => {
     const { code, out } = run(
       tree('l16-comment', { extra: { '.github/workflows/d.yml': publisher('run-name: "P" # ${{ github.event.workflow_run.conclusion }}') } }),
