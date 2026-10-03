@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'auth_error_text.dart';
@@ -42,10 +43,17 @@ class ReacceptTermsView extends StatefulWidget {
     required this.onSignOut,
     required this.consentFields,
     this.panel,
+    this.changes = const <core.LegalChangeNote>[],
+    this.onOpenDocument,
     super.key,
   });
 
   static const Key acceptButton = Key('reacceptTermsAccept');
+  static const Key plainBody = Key('reacceptTermsPlainBody');
+
+  /// The "Read the …" link under one document's note.
+  static Key openDocument(core.LegalDocument d) =>
+      Key('reacceptTermsOpen-${d.name}');
   static const Key signOutButton = Key('reacceptTermsSignOut');
   static const Key statusLine = Key('reacceptTermsStatus');
 
@@ -64,6 +72,14 @@ class ReacceptTermsView extends StatefulWidget {
   /// ST-D10: the leading half of the wide split (`AuthFrame.panel`), in the
   /// adapter's own words. Null keeps the form alone at every width.
   final Widget? panel;
+
+  /// ⏱ 2026-10-01 · EN-23 — what changed: one note per changed document,
+  /// from the app's register (`core.legalChangesSince`). EMPTY keeps the
+  /// plain sentence, which is the honest answer when no note was written.
+  final List<core.LegalChangeNote> changes;
+
+  /// Opens the live [core.LegalDocument] a note is about. Null draws no link.
+  final ValueChanged<core.LegalDocument>? onOpenDocument;
 
   @override
   State<ReacceptTermsView> createState() => _ReacceptTermsViewState();
@@ -152,10 +168,20 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
       // gate immediately redirects out of.
       showBack: false,
       children: <Widget>[
-        Text(
-          l10n.reacceptTermsBody,
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
+        if (widget.changes.isEmpty)
+          Text(
+            l10n.reacceptTermsBody,
+            key: ReacceptTermsView.plainBody,
+            style: Theme.of(context).textTheme.bodyLarge,
+          )
+        else ...<Widget>[
+          Text(
+            l10n.reacceptTermsChangedIntro,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          for (final core.LegalChangeNote n in widget.changes)
+            _ChangeNote(note: n, onOpen: widget.onOpenDocument),
+        ],
         const SizedBox(height: 20),
         widget.consentFields(
           termsAccepted: _accepted,
@@ -191,6 +217,52 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
           child: Text(l10n.signOut),
         ),
       ],
+    );
+  }
+}
+
+/// One document's note: what it is, which version and when, its lines, and
+/// a link to the live document — EN-23.
+class _ChangeNote extends StatelessWidget {
+  const _ChangeNote({required this.note, required this.onOpen});
+
+  final core.LegalChangeNote note;
+  final ValueChanged<core.LegalDocument>? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final TextTheme text = Theme.of(context).textTheme;
+    final String document = switch (note.document) {
+      core.LegalDocument.terms => l10n.termsOfService,
+      core.LegalDocument.privacy => l10n.privacyPolicy,
+    };
+    final ValueChanged<core.LegalDocument>? open = onOpen;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Semantics(
+            header: true,
+            child: Text(
+              l10n.reacceptTermsNoteHeading(document, note.version, note.date),
+              style: text.titleSmall,
+            ),
+          ),
+          for (final String line in note.lines)
+            Text(l10n.reacceptTermsNoteLine(line), style: text.bodyMedium),
+          if (open != null)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                key: ReacceptTermsView.openDocument(note.document),
+                onPressed: () => open(note.document),
+                child: Text(l10n.reacceptTermsReadDocument(document)),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -187,6 +187,13 @@ String? _codeSentence(ChassisLocalizations l10n, core.AuthFailure e) =>
       // ⏱ 2026-10-01 · EN-05 — a terms acceptance the consent endpoint did not
       // receive: nothing was recorded, so the gate that asked stays shut.
       core.AuthFailure.notRecorded => l10n.reacceptTermsNotRecorded,
+      // ⏱ 2026-10-01 · SE-04 / EN-21 — the last sign-in method, and a wrong
+      // or expired one-time code.
+      core.AuthFailure.lastSignInMethod => l10n.authLastSignInMethod,
+      core.AuthFailure.codeInvalid => l10n.authCodeInvalid,
+      // ⏱ 2026-10-02 · review of #1155, finding 3 — a sign-in method change
+      // from a session whose last sign-in is too old.
+      core.AuthFailure.reauthRequired => l10n.authReauthRequired,
       _ => null,
     };
 
