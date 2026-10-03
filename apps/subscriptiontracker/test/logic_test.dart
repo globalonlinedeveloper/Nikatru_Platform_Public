@@ -238,19 +238,22 @@ void main() {
         const Money(2500, 'BHD'),
       );
     });
-    test('🔴 a price_change row at the legacy scale reads both sides right', () {
-      final PriceChange change = PriceChange.fromJson(<String, dynamic>{
-        'changed_at': '2026-09-01T00:00:00Z',
-        'old_price': 9900,
-        'old_price_minor': 990000,
-        'old_currency': 'KRW',
-        'new_price': 19.99,
-        'new_price_minor': 1999,
-        'new_currency': 'USD',
-      }, fallbackCurrencyCode: 'USD');
-      expect(change.from, const Money(9900, 'KRW'));
-      expect(change.to, const Money(1999, 'USD'));
-    });
+    test(
+      '🔴 a price_change row at the legacy scale reads both sides right',
+      () {
+        final PriceChange change = PriceChange.fromJson(<String, dynamic>{
+          'changed_at': '2026-09-01T00:00:00Z',
+          'old_price': 9900,
+          'old_price_minor': 990000,
+          'old_currency': 'KRW',
+          'new_price': 19.99,
+          'new_price_minor': 1999,
+          'new_currency': 'USD',
+        }, fallbackCurrencyCode: 'USD');
+        expect(change.from, const Money(9900, 'KRW'));
+        expect(change.to, const Money(1999, 'USD'));
+      },
+    );
     test('with no decimal beside it, the exact column is all there is', () {
       expect(
         Subscription.readPrice(<String, dynamic>{
