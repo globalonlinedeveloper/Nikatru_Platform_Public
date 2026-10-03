@@ -23,6 +23,7 @@ export 'src/auth/password_policy.dart';
 export 'src/auth/provider_token_keeper.dart';
 export 'src/auth/sign_in_methods.dart';
 export 'src/legal/legal_acceptance.dart';
+export 'src/legal/consent_reprompt.dart';
 export 'src/legal/legal_change_notes.dart';
 export 'src/links/external_link_launcher.dart';
 export 'src/links/link_policy.dart';

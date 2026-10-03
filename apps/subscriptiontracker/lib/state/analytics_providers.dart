@@ -196,8 +196,16 @@ final Provider<bool> consentDecidedProvider = Provider<bool>((ref) {
     consentControllerProvider,
   );
   if (!c.hasValue) return true; // still loading — do NOT prompt yet
-  return c.requireValue.statusOf(core.ConsentPurpose.analytics) !=
-      core.ConsentStatus.unknown;
+  final core.ConsentController controller = c.requireValue;
+  // ⏱ 2026-10-03 · lane dpdp-rights, Do 6 (F-05): an answer given under a notice
+  // version a later one MATERIALLY changed for this purpose is asked again, once
+  // (core's register says which bumps are material); the same prompt, never a gate.
+  return controller.statusOf(core.ConsentPurpose.analytics) !=
+          core.ConsentStatus.unknown &&
+      !core.needsConsentReprompt(
+        artifact: controller.artifactOf(core.ConsentPurpose.analytics),
+        currentVersion: kPrivacyPolicyVersion,
+      );
 });
 
 /// Ships the consent artifact to the append-only server record.

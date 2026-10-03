@@ -329,7 +329,7 @@
       "only by editing this file on a host that has just read a success, which the guard then demands."
     ],
     "_maxUnreachable": 5,
-    "_maxUnreadable": 17,
+    "_maxUnreadable": 19,
     "_maxUnreadableWhy": [
       "🔴 RATCHETED 7 -> 3 ON 2026-09-02, AND THE RATCHET IS THE POINT — this key exists to fall as credentials",
       "and platforms arrive, never to rise when a row goes dark. What changed is that the last reader needing a",
@@ -443,7 +443,8 @@
       "and re-derived in the SAME change as the row that moved it because a constant above its derivation FAILS and therefore cannot go first — the fifth time this number has moved, each one recorded here with its measurement.",
       "",
       "⏱ 2026-10-02 — 16 -> 17, in the same change as duty.supabase-identity-log-retention (review 1 of #1140, finding 4), which reads a GlitchTip heartbeat monitor:",
-      "one more row behind the GlitchTip box, glitchtip rows 15 -> 16, so max(rows behind any single NON-GitHub provider) + 1 spare is 17 (measured by this guard's own derivation: [glitchtip=16, cloudflare=3]). Kind unchanged; arithmetic only."
+      "one more row behind the GlitchTip box, glitchtip rows 15 -> 16, so max(rows behind any single NON-GitHub provider) + 1 spare is 17 (measured by this guard's own derivation: [glitchtip=16, cloudflare=3]). Kind unchanged; arithmetic only.",
+      "⏱ 2026-10-03 · RE-DERIVED 17 -> 19 (lane dpdp-rights): two box duties joined, duty.ict-log-retention-boxb and -boxc, each read through `glitchtip-heartbeat`, so glitchtip=18 and one-provider-dark plus the spare is 19. The rule is unchanged; its inputs grew by two rows."
     ],
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": [
@@ -3557,6 +3558,86 @@
       "degradedLeadDays": 3,
       "source": "unverified",
       "unverifiedWhy": "Written before the monitor exists and before the review-1 script is installed on Box C: no beat has been observed. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs (a missing container, the prune that must still run, no fresh archive, a sweep that did not run); the box half is the lead's."
+    },
+    {
+      "id": "duty.ict-log-retention-boxc",
+      "kind": "duty",
+      "what": "⏱ 2026-10-03 · lane dpdp-rights, CERT-In addendum. /opt/nikatru/ict-log-retention.sh (docs/ops/boxes/ict-log-retention.sh), root cron `20 4 * * *` on Box C (auth box, Mumbai), via /opt/supabase/hb-run.sh, which POSTs the heartbeat ONLY when the job exited 0. Once a day it keeps the last 24 h of each named container's log (supabase-auth supabase-envoy supabase-db; the lead confirms the names on the box) MINIMISED — every IPv4/IPv6 address, e-mail address and UUID replaced — for RETAIN_DAYS=180 (the CERT-In Directions of 28 April 2022), then deletes it. The job FAILS (exit 1, no beat) on a container docker does not know, on an address that survived minimisation, on no archive inside 36 h, and on any archive older than 180 days still present.",
+      "detector": "GlitchTip heartbeat monitor 'ICT log retention (Box C)', project `ops`, Heartbeat, interval 129600s (24h cadence x 1.5), on the SERVICES box (Box B). ⚠️ NOT YET CREATED: see `degradedUntil`.",
+      "response": "Read the newest lines of /var/log/nikatru-ict/run.log on the box: every step prints `ok` or `FAIL` with the container it is about. A missing container is usually a compose rename: fix the name in the crontab line's arguments and run it by hand through the wrapper so the beat lands.",
+      "cadence": "24h",
+      "mechanism": {
+        "substrate": "supabase-box-cron",
+        "anchor": "docs/ops/boxes/ict-log-retention.sh",
+        "record": "GlitchTip heartbeat monitor 'ICT log retention (Box C)'s check history",
+        "failingValue": "no successful heartbeat inside the window — a dead cron, a container the script cannot find, an address that survived minimisation, an archive kept past 180 days and a box that is off all look like that",
+        "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",
+        "recordQuery": {
+          "reader": "glitchtip-heartbeat",
+          "org": "nikatru",
+          "monitor": "not-yet-created",
+          "monitorName": "ICT log retention (Box C) — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
+          "why": "⚠️ THE MONITOR DOES NOT EXIST YET, SO THE ID IS DELIBERATELY NOT A NUMBER: the probe then answers UNREADABLE (a print) rather than reading some other monitor's history. A guessed number could name a real, green monitor and report this duty healthy. The lead creates the monitor, beats it once by hand through hb-run.sh BEFORE filling the id (TRAPS ci-26: a monitor with no beat grades absent), and replaces this value with its id."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 'ICT log retention (Box C)', project `ops`, on the SERVICES box. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other box duties (tooling/ops/alarm-chains.json).",
+        "signal": "No heartbeat inside the monitor's 129600s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
+        "margin": "129600s against a 24h cadence — 1.5x, so a run that is late by hours is absorbed and one missed run alarms the next afternoon.",
+        "ownerGated": true,
+        "gap": "⬜ THE MONITOR IS NOT CREATED YET (`degradedUntil`), so today NOTHING turns a failed run into a message; the script's own exit code and run.log are the whole of it until the lead step lands. And the down transition will not have been forced."
+      },
+      "accessProviders": [
+        "hostinger"
+      ],
+      "ownerGated": true,
+      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install docs/ops/boxes/ict-log-retention.sh on Box C (auth box, Mumbai) at /opt/nikatru/ict-log-retention.sh and the crontab line in its header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id.",
+      "degradedUntil": "2026-10-11",
+      "degradedWhy": "The heartbeat monitor this row reads does not exist yet (lead step of lane dpdp-rights): until its id is filled, the probe is UNREADABLE and a failed run reaches nobody. One week, then this row reddens every branch until the id is in.",
+      "degradedLeadDays": 3,
+      "source": "unverified",
+      "unverifiedWhy": "Written before the job is installed on the box and before the monitor exists: no beat has been observed. The script's behaviour is held by tooling/ci/test/ict-log-retention.test.mjs (a log older than 180 days that survives, an address that survives minimisation, a missing container); the box half is the lead's."
+    },
+    {
+      "id": "duty.ict-log-retention-boxb",
+      "kind": "duty",
+      "what": "⏱ 2026-10-03 · lane dpdp-rights, CERT-In addendum. /opt/nikatru/ict-log-retention.sh (docs/ops/boxes/ict-log-retention.sh), root cron `20 4 * * *` on Box B (services box, Mumbai), via /opt/glitchtip/hb-run.sh, which POSTs the heartbeat ONLY when the job exited 0. Once a day it keeps the last 24 h of each named container's log (glitchtip-web glitchtip-worker ntfy; the lead confirms the names on the box) MINIMISED — every IPv4/IPv6 address, e-mail address and UUID replaced — for RETAIN_DAYS=180 (the CERT-In Directions of 28 April 2022), then deletes it. The job FAILS (exit 1, no beat) on a container docker does not know, on an address that survived minimisation, on no archive inside 36 h, and on any archive older than 180 days still present.",
+      "detector": "GlitchTip heartbeat monitor 'ICT log retention (Box B)', project `ops`, Heartbeat, interval 129600s (24h cadence x 1.5), on the SERVICES box (Box B). ⚠️ NOT YET CREATED: see `degradedUntil`.",
+      "response": "Read the newest lines of /var/log/nikatru-ict/run.log on the box: every step prints `ok` or `FAIL` with the container it is about. A missing container is usually a compose rename: fix the name in the crontab line's arguments and run it by hand through the wrapper so the beat lands.",
+      "cadence": "24h",
+      "mechanism": {
+        "substrate": "supabase-box-cron",
+        "anchor": "docs/ops/boxes/ict-log-retention.sh",
+        "record": "GlitchTip heartbeat monitor 'ICT log retention (Box B)'s check history",
+        "failingValue": "no successful heartbeat inside the window — a dead cron, a container the script cannot find, an address that survived minimisation, an archive kept past 180 days and a box that is off all look like that",
+        "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",
+        "recordQuery": {
+          "reader": "glitchtip-heartbeat",
+          "org": "nikatru",
+          "monitor": "not-yet-created",
+          "monitorName": "ICT log retention (Box B) — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
+          "why": "⚠️ THE MONITOR DOES NOT EXIST YET, SO THE ID IS DELIBERATELY NOT A NUMBER: the probe then answers UNREADABLE (a print) rather than reading some other monitor's history. A guessed number could name a real, green monitor and report this duty healthy. The lead creates the monitor, beats it once by hand through hb-run.sh BEFORE filling the id (TRAPS ci-26: a monitor with no beat grades absent), and replaces this value with its id."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 'ICT log retention (Box B)', project `ops`, on the SERVICES box. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other box duties (tooling/ops/alarm-chains.json).",
+        "signal": "No heartbeat inside the monitor's 129600s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
+        "margin": "129600s against a 24h cadence — 1.5x, so a run that is late by hours is absorbed and one missed run alarms the next afternoon.",
+        "ownerGated": true,
+        "gap": "⬜ THE MONITOR IS NOT CREATED YET (`degradedUntil`), so today NOTHING turns a failed run into a message; the script's own exit code and run.log are the whole of it until the lead step lands. And the down transition will not have been forced."
+      },
+      "accessProviders": [
+        "hostinger"
+      ],
+      "ownerGated": true,
+      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install docs/ops/boxes/ict-log-retention.sh on Box B (services box, Mumbai) at /opt/nikatru/ict-log-retention.sh and the crontab line in its header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id.",
+      "degradedUntil": "2026-10-11",
+      "degradedWhy": "The heartbeat monitor this row reads does not exist yet (lead step of lane dpdp-rights): until its id is filled, the probe is UNREADABLE and a failed run reaches nobody. One week, then this row reddens every branch until the id is in.",
+      "degradedLeadDays": 3,
+      "source": "unverified",
+      "unverifiedWhy": "Written before the job is installed on the box and before the monitor exists: no beat has been observed. The script's behaviour is held by tooling/ci/test/ict-log-retention.test.mjs (a log older than 180 days that survives, an address that survives minimisation, a missing container); the box half is the lead's."
     },
     {
       "id": "revert.worker.platform",

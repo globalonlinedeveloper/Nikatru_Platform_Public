@@ -1,0 +1,28 @@
+{
+  "_comment": "A DRILL incident record — FAKE DATA, never a real event. `node tooling/legal/breach-draft.mjs --drill` drafts all three notices from it; tooling/ci/test/breach-draft.test.mjs holds that every required field lands. Copy this shape for a real incident (docs/ops/breach-response.md), never this file.",
+  "id": "INC-DRILL-0001",
+  "drill": true,
+  "detectedAt": "2026-10-03T06:10:00Z",
+  "detectionSource": "GlitchTip",
+  "occurredAt": "2026-10-03T05:40:00Z",
+  "certinType": "Unauthorised access to IT systems/data",
+  "nature": "DRILL: a test bucket of report screenshots was briefly readable through a misconfigured preview link.",
+  "extent": "DRILL: 12 screenshots, each already blurred on the device; no account data.",
+  "location": "DRILL: Cloudflare R2, region APAC (bucket nikatru-feedback-drill).",
+  "systems": ["DRILL: platform Worker preview deployment", "DRILL: R2 bucket nikatru-feedback-drill"],
+  "dataCategories": ["Problem-report screenshots"],
+  "principalsAffected": 9,
+  "likelyImpact": "DRILL: low — the images carry no text fields and no account identifiers.",
+  "consequencesForPrincipals": "DRILL: someone may have seen a blurred screenshot of the app screen you reported.",
+  "mitigation": "DRILL: the preview link was revoked at 06:25 UTC and the bucket's public access turned off.",
+  "principalSafetySteps": "DRILL: nothing is needed from you; if you attached a screenshot you would rather we delete, reply and we will.",
+  "rootCause": "DRILL: a preview environment inherited a public-read binding.",
+  "personResponsible": "DRILL: no outside party; an internal configuration error.",
+  "remediation": "DRILL: preview environments now bind no production bucket; a CI check refuses a public binding.",
+  "symptoms": "DRILL: an unexpected 200 on the bucket's public URL in ops-watch.",
+  "certinActions": "DRILL: access revoked, logs preserved (180-day minimised ICT logs on the boxes), principals notified.",
+  "decisions": [
+    { "at": "2026-10-03T06:12:00Z", "by": "lead", "decision": "DRILL: treat as a personal data breach; start the 72-hour clock." },
+    { "at": "2026-10-03T06:25:00Z", "by": "lead", "decision": "DRILL: contained; draft the Board intimation and the user notice." }
+  ]
+}
