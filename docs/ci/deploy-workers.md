@@ -487,7 +487,7 @@ describes the template step by step.
 
 Row O-BOXES-UNSHIELDED-FROM-SPIKES. `services/edge-shield` is the Cloudflare edge in front of
 Box C's auth (`auth-api.nikatru.com/auth/v1/*`) and Box B's GlitchTip (`glitchtip.nikatru.com/api/*`):
-a pass-through that counts four request classes against ONE global cap each and refuses one over
+a pass-through that counts six request classes against ONE global cap each and refuses one over
 its cap (429, or 503 for the refresh grant — SHIELD-R2). It reads no client address and no
 `Origin` (SHIELD-R3). It is bound by **zone routes**, never a custom domain — both hosts are
 Cloudflare Tunnel CNAMEs, and a Custom Domain would take the hostname's DNS record off its tunnel
@@ -508,8 +508,9 @@ What differs from the app Workers and the platform, each on purpose:
   --apply` PUTs `tooling/edge-ratelimit-rule.json` as the nikatru.com `http_ratelimit` phase (all or
   nothing) and re-reads it; the job is red unless the zone then equals the file. The same ops-watch
   job compares the live rule with the file weekly (no `--apply`). The Free plan's rule reads the PATH
-  only, so `/auth/v1/token` is deliberately NOT in it: by path it would 429 the refresh grant too,
-  which signs the user out — the file says why and what closes it. The deploy token needs
+  only, so `/auth/v1/token` stays OUT of it (lead ruling on PR #1147): counting it would count the
+  refresh grant, whose 429 signs native users out — behind carrier-grade NAT, many at once. The file's
+  `_why` says what that leaves open. The deploy token needs
   Zone → Zone WAF → Edit on nikatru.com for the PUT; without it the step answers 2, red where it
   happened, and the live rule is left as it was.
 - **`rollback.yml` does not fit it yet.** tooling/ops/rollback.mjs smokes every service unit at

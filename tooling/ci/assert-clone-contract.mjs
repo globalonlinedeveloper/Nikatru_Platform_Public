@@ -52,7 +52,7 @@
 // Usage:
 //   node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
 //   node tooling/ci/assert-clone-contract.mjs --client probe          # phase 1
-// Exit 0 = contract holds, 1 = violated.
+// Exit 0 = contract holds, 1 = violated, 2 = COVERAGE LOST (no app named, or every problem is one).
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, lstatSync } from 'node:fs';
 import { extname, join } from 'node:path';
@@ -66,6 +66,13 @@ const argOf = (flag) => {
 };
 const clientApp = argOf('--client');
 const backendApp = argOf('--backend');
+// ⏱ 2026-10-01 — a call that names no app checked nothing, so it is COVERAGE LOST (exit 2), never a
+// finding (rv2-newproduct-019; AGENTS.md exit-code rule). It exited 1 until today, so an argument
+// dropped from a CI line read as a clone-contract defect. Checked before any limb runs.
+if (!clientApp && !backendApp) {
+  console.error('✗ COVERAGE LOST — assert-clone-contract: pass --client <app> and/or --backend <app>');
+  process.exit(2);
+}
 
 const problems = [];
 const fail = (msg) => problems.push(msg); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
@@ -603,11 +610,6 @@ const CRON_HOME = 'platform';
       );
     }
   }
-}
-
-if (!clientApp && !backendApp) {
-  console.error('assert-clone-contract: pass --client <app> and/or --backend <app>');
-  process.exit(1);
 }
 
 if (problems.length) {
