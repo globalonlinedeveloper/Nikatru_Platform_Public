@@ -714,6 +714,11 @@ async function applySubscription(
     appId: s.accountAppId,
   });
   if (account !== null && 'refused' in account) return { outcome: 'refused', detail: account.refused };
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: the charge's payment → its subscription, written
+  // here on the signed event that names both, so a later refund or dispute resolves by payment.
+  if (PAYMENT_LINKED_PROVIDERS.includes(n.provider) && s.transactionId !== null) {
+    await linkPayment(deps, n, s.transactionId, s.subscriptionId, account?.userId ?? null);
+  }
   if (account === null) {
     await recordUnclaimed(deps, n, {
       subscriptionId: s.subscriptionId,
@@ -760,13 +765,21 @@ async function applySubscription(
 async function applyAdjustment(
   deps: MoneyStoreDeps,
   n: NormalizedNotification,
-  a: SubjectAdjustment,
+  parsed: SubjectAdjustment,
 ): Promise<ApplyResult> {
-  if (a.reason === null) {
+  if (parsed.reason === null) {
     // A credit or a chargeback WARNING. It moves no access, and saying so is
     // not the same as failing to decide.
-    return { outcome: 'ignored', detail: `adjustment action '${a.actionVerbatim}' changes no entitlement` };
+    return { outcome: 'ignored', detail: `adjustment action '${parsed.actionVerbatim}' changes no entitlement` };
   }
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: on a payment-linked rail the subscription is the one
+  // the stored `payment id → subscription id` link names, and only without a link is it whatever
+  // the adjustment's own body said — never the payment entity's fields alone.
+  const linked =
+    PAYMENT_LINKED_PROVIDERS.includes(n.provider) && parsed.transactionId !== null
+      ? await subscriptionOfPayment(deps, n, parsed.transactionId)
+      : null;
+  const a: SubjectAdjustment = linked === null ? parsed : { ...parsed, subscriptionId: linked };
   // ⏱ 2026-09-27 · A refund of a ONE-TIME purchase names its transaction and no
   // subscription, and the one-time path links the account by that transaction
   // (`applyOneTime`), so the transaction is the handle when no subscription is.
@@ -835,6 +848,53 @@ async function applyAdjustment(
   return written
     ? { outcome: 'applied', ...account, isActive: decision.decision.isActive }
     : { outcome: 'stale', ...account };
+}
+
+/**
+ * ⏱ 2026-10-02 · PR #1149 ruling item 2 (option b) · THE RAILS WHOSE ADJUSTMENTS NAME A PAYMENT,
+ * NOT A SUBSCRIPTION. A Razorpay refund or dispute carries `payment_id`; whether its payment entity
+ * also names the subscription is unconfirmed (razorpay.ts header). So every subscription event of
+ * such a rail that names the payment it charged (`subscription.charged`) writes
+ * `payment id → subscription id` into `provider_payment_links` (migration 0026), and an adjustment
+ * resolves its subscription through that link first. ⚠️ The link is fixture-proven only:
+ * tooling/ports/payments.json keeps the razorpay `refund revokes` case PENDING until one real
+ * test-mode refund is seen to resolve by it, so flip limb 5 cannot read the adapter as finished.
+ */
+const PAYMENT_LINKED_PROVIDERS: readonly string[] = ['razorpay'];
+
+/** Write the charge's payment → subscription link. The FIRST link wins: a payment has one subscription. */
+async function linkPayment(
+  deps: MoneyStoreDeps,
+  n: NormalizedNotification,
+  paymentId: string,
+  subscriptionId: string,
+  userId: string | null,
+): Promise<void> {
+  await deps.db
+    .prepare(
+      `INSERT INTO provider_payment_links (
+         provider, provider_payment_id, provider_subscription_id, user_id, environment, linked_at, linked_from_event_id
+       ) VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT (provider, provider_payment_id) DO NOTHING`,
+    )
+    .bind(n.provider, paymentId, subscriptionId, userId, deps.environment, nowIso(), n.eventId)
+    .run();
+}
+
+/** The subscription a stored charge linked this payment to, or null when no charge has. */
+async function subscriptionOfPayment(
+  deps: MoneyStoreDeps,
+  n: NormalizedNotification,
+  paymentId: string,
+): Promise<string | null> {
+  const row = await deps.db
+    .prepare(
+      `SELECT provider_subscription_id FROM provider_payment_links
+        WHERE provider = ? AND provider_payment_id = ? AND environment = ?`,
+    )
+    .bind(n.provider, paymentId, deps.environment)
+    .first<{ provider_subscription_id: string }>();
+  return row?.provider_subscription_id ?? null;
 }
 
 /**

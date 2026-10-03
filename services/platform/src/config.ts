@@ -558,3 +558,88 @@ export function resolvePaywall(id: string, kvValue: string | null): AppConfig['p
     ? (deepMerge(stored as unknown as Record<string, unknown>, paywall) as unknown as AppConfig['paywall'])
     : stored;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · O-WEB-INR-PRICE-BOOK (business-017).
+// THE RUPEE PRICE BOOK, SERVED TO A BUYER WHO SAYS THEY ARE IN INDIA.
+//
+// The served paywall carries `amount_minor` in USD and nothing else, so every
+// buyer was told USD — including the India buyer whose checkout is Razorpay, in
+// rupees, GST-inclusive ([ADR 076] §10.1, [ADR 093]). `GET /config/:app?market=IN`
+// now serves each offering at its India web price, `prices.apps.<id>.<offering>
+// .webInrMinor` in app-config-data.json (the one place a price lives; the price
+// book's `rails.razorpay.taxMode` says it includes GST), in `currency_code: 'INR'`.
+//
+// 🔴 THE MARKET IS THE BUYER'S OWN DECLARATION, NEVER `cf.country` (Q2, ruled): an
+// IP's country is not where a buyer is taxed, and an edge-derived answer would put
+// a traveller on the wrong rail with no way to say otherwise. The backstop for a
+// false declaration is Razorpay's: it takes domestic instruments only.
+//
+// FAIL CLOSED: an India response re-prices EVERY offering or serves none of them
+// in rupees — an offering with no India price in the book is DROPPED from that
+// response, never left at its USD amount under an INR label or beside INR ones.
+// ⏱ 2026-10-02 · PR #1149 ruling item 5: the drop is REACHED from the committed
+// tree for a one-time (lifetime) offering, which carries no `webInrMinor` until the
+// Razorpay order path exists (render-rail-prices.mjs limb J), so an India buyer is
+// never shown a plan the India rail cannot sell; every recurring offering is priced
+// (limb J). It also covers a KV override that adds an offering the book does not
+// price. The KV override cannot move an India price: the rupee amount is read from
+// the committed book only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Each market with its own web price book: its currency, and the price-book field that holds the amount. */
+export const MARKET_PRICE_BOOKS = Object.freeze({
+  IN: Object.freeze({ currency: 'INR', field: 'webInrMinor' }),
+} as const);
+export type PricedMarket = keyof typeof MARKET_PRICE_BOOKS;
+
+/** A buyer-declared market: ISO 3166-1 alpha-2, upper case. Anything else is refused by the route. */
+export const MARKET_PATTERN = /^[A-Z]{2}$/;
+
+/** Is `v` a market with its own price book? (A well-formed market without one is served the default book.) */
+export function isPricedMarket(v: unknown): v is PricedMarket {
+  return typeof v === 'string' && Object.prototype.hasOwnProperty.call(MARKET_PRICE_BOOKS, v);
+}
+
+/** `appId → offeringId → amount in minor units` for one price-book field, from app-config-data.json `prices.apps`. */
+export function buildMarketPrices(data: unknown, field: string): Readonly<Record<string, Readonly<Record<string, number>>>> {
+  const out: Record<string, Record<string, number>> = {};
+  const prices = isPlainObject(data) && isPlainObject(data.prices) && isPlainObject(data.prices.apps) ? data.prices.apps : {};
+  for (const [appId, entries] of Object.entries(prices)) {
+    if (NON_DATA_KEYS.has(appId) || appId.startsWith('_') || !isPlainObject(entries)) continue;
+    const row: Record<string, number> = {};
+    for (const [offeringId, entry] of Object.entries(entries)) {
+      if (NON_DATA_KEYS.has(offeringId) || !isPlainObject(entry)) continue;
+      const v = entry[field];
+      if (Number.isInteger(v) && (v as number) > 0) row[offeringId] = v as number;
+    }
+    out[appId] = row;
+  }
+  return out;
+}
+
+/** The India web price book, read once at module load. */
+const MARKET_PRICES: Readonly<Record<PricedMarket, ReturnType<typeof buildMarketPrices>>> = {
+  IN: buildMarketPrices(configDataJson, MARKET_PRICE_BOOKS.IN.field),
+};
+
+/**
+ * `cfg` as a buyer in `market` is served it: every paywall offering at that market's
+ * web price, in its currency, or dropped when the book has no price for it. A market
+ * without its own book is served `cfg` unchanged (the USD book).
+ */
+export function priceForMarket(cfg: AppConfig, appId: string, market: string): AppConfig {
+  if (!isPricedMarket(market)) return cfg;
+  const offerings = cfg.paywall?.offerings;
+  if (!Array.isArray(offerings)) return cfg;
+  const book = MARKET_PRICES[market][appId] ?? {};
+  const { currency } = MARKET_PRICE_BOOKS[market];
+  const priced: unknown[] = [];
+  for (const o of offerings) {
+    if (!isPlainObject(o) || typeof o.product_id !== 'string') continue;
+    const amount = Object.prototype.hasOwnProperty.call(book, o.product_id) ? book[o.product_id] : undefined;
+    if (amount === undefined) continue;
+    priced.push({ ...o, amount_minor: amount, currency_code: currency });
+  }
+  return { ...cfg, paywall: { ...cfg.paywall, offerings: priced } };
+}

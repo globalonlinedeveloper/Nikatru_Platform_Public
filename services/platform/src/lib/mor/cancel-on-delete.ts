@@ -8,10 +8,12 @@
 // could stop it was a chargeback.
 //
 // The rule, per live subscription row this deploy's rails wrote:
-//   · a rail our Worker can cancel (Paddle, lib/mor/paddle-cancel.ts) is
-//     cancelled at the period end BEFORE anything is erased, and the confirmed
-//     cancel is recorded in `cancellation_requests` (erased with the account);
-//   · a rail with no executor (Razorpay, MF-9), a Paddle call that is not
+//   · a rail our Worker can cancel (Paddle, lib/mor/paddle-cancel.ts; since
+//     ⏱ 2026-10-01 · fix-india-rail-tax-data also Razorpay, lib/mor/razorpay-rail.ts,
+//     at the cycle end — MF-9) is cancelled at the period end BEFORE anything is
+//     erased, and the confirmed cancel is recorded in `cancellation_requests`
+//     (erased with the account);
+//   · a rail with no executor, a cancel call that is not
 //     confirmed, or a deploy with no key REFUSES the deletion with a sentence the
 //     person can act on (503: the released client already says "not deleted,
 //     nothing removed"). Nothing has been destroyed at that point, so a retry is

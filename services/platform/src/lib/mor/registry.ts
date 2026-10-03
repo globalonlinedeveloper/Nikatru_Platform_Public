@@ -40,6 +40,9 @@ import { RAIL_CANCEL_PATH, type RailCancelPath } from '../../generated/ports';
 // objection to registering a rail was that it 'CANNOT verify anything'. This one
 // verifies - a forged body is refused today - and declines to claim it understands
 // what a genuine one says. The second half is one function, with a real sample.
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: that function is written — `parse` maps the
+// subscription, refund and dispute events from the docs' published payload examples
+// (not yet a delivered sample; razorpay.ts says so), and razorpay-rail.ts is the outbound half.
 // ⏱ 2026-09-15: REVENUECAT JOINS ON THE SAME TERMS AS RAZORPAY — a sourced signature
 // (X-RevenueCat-Webhook-Signature, HMAC-SHA256 over `${t}.${body}`), and a `parse`
 // that refuses. O-REVENUECAT-VERIFIER: the store rails' webhook belongs on this door,

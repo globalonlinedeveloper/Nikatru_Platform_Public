@@ -4,7 +4,10 @@
 // ⏱ 2026-10-01 · port-pay-core: THIS ROUTE NO LONGER NAMES A VENDOR IN CODE. It
 // dispatches through the payments port (services/_shared/src/ports/payments.ts
 // `checkoutThrough`) to the rail src/ports.ts `railFor` binds for the rendered
-// CHECKOUT_RAIL_ID (today Paddle, the one real adapter declaring `checkout`). The
+// selection. ⏱ 2026-10-01 · fix-india-rail-tax-data: that selection is now PER MARKET —
+// `checkoutRailFor(market)` over the rendered CHECKOUT_RAIL_BY_MARKET (the `web` channel's
+// purchaseRail: Paddle by default, the India rail for a buyer who DECLARES `IN` in the
+// optional body field `market`; never cf.country). The
 // create body, its `?: never` guard, the call and every refusal below moved VERBATIM
 // to src/lib/mor/paddle-rail.ts; the record that follows is the measured Paddle
 // contract that adapter keeps, left here because it is why this route answers as it does.
@@ -96,13 +99,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { isKnownApp, isSellableExtension, resolvePaywall } from '../config';
+import { MARKET_PATTERN, isKnownApp, isSellableExtension, resolvePaywall } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { strictRateLimit, withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
 import { checkoutThrough, railCan } from '../../../_shared/src/ports/payments';
-import { railFor } from '../ports';
-import { CHECKOUT_RAIL_ID } from '../generated/ports';
+import { checkoutRailFor, railFor } from '../ports';
 import { RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_IDS, RAIL_PRICE_PENDING } from './rail-price-ids';
 
 const checkout = new Hono<AppEnv>();
@@ -185,6 +187,17 @@ const CHECKOUT_USER_LIMITER_VAR = 'CHECKOUT_USER_LIMITER';
 /** Our own offering vocabulary. `[a-z][a-z0-9_]*`, same grammar as an app id. */
 const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
+/**
+ * ⏱ 2026-10-01 · fix-india-rail-tax-data · The BUYER-DECLARED market: ISO 3166-1 alpha-2, upper
+ * case. Anything else — absent, lower case, a name, a number — is null, and null sells through the
+ * default rail. Never derived from cf.country (src/ports.ts `checkoutRailFor` records why).
+ */
+// The pattern is src/config.ts's, the one GET /config/:app?market= refuses by: a market the
+// price book answers in rupees is a market this route sells through the India rail, never two spellings.
+function declaredMarket(v: unknown): string | null {
+  return typeof v === 'string' && MARKET_PATTERN.test(v) ? v : null;
+}
+
 // PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR and RAIL_PRICE_PENDING are RENDERED into
 // ./rail-price-ids.ts from services/platform/src/app-config-data.json `prices` by
 // tooling/catalog/render-rail-prices.mjs, whose --check fails on a hand edit and whose limb E
@@ -211,6 +224,9 @@ export { RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING };
  * RAIL_PRICE_IDS[provider], so Razorpay's plan ids are in scope too. Effect today: none.
  * Razorpay's `parse` refuses every event, and its map holds plans, which are recurring,
  * so no Razorpay price resolves to a `one_time` offering.
+ * ⏱ 2026-10-01 · fix-india-rail-tax-data: Razorpay's `parse` maps subscription / refund /
+ * dispute events now, but never a `one_time` subject (its order path is not built), so the
+ * effect is still none.
  */
 export function oneTimeOfferingFor(
   provider: string,
@@ -343,13 +359,16 @@ checkout.post('/checkout', async (c) => {
   }
   // …and one the rail has a price for — the rail resolves its own price
   // (RAIL_PRICE_IDS[railId][appId][offeringId]) and refuses an unsellable offering. Which
-  // rail sells is the rendered selection (CHECKOUT_RAIL_ID), never a vendor named here.
-  const rail = railFor(CHECKOUT_RAIL_ID, c.env);
+  // rail sells is the rendered selection for the buyer's DECLARED market
+  // (src/ports.ts `checkoutRailFor`), never a vendor named here.
+  const market = declaredMarket(body.market);
+  const railId = checkoutRailFor(market);
+  const rail = railFor(railId, c.env);
   if (rail === null || !railCan(rail, 'checkout')) {
-    console.error(`[checkout] rid=${rid} no payments adapter declares checkout for this deploy (CHECKOUT_RAIL_ID=${String(CHECKOUT_RAIL_ID)}).`);
+    console.error(`[checkout] rid=${rid} no payments adapter declares checkout for this deploy (market=${market ?? '-'} rail=${String(railId)}).`);
     return c.json({ error: 'checkout_not_configured' }, 503);
   }
-  const out = await checkoutThrough(rail, { appId, offeringId, userId, market: null, environment });
+  const out = await checkoutThrough(rail, { appId, offeringId, userId, market, environment });
   if (!out.ok) {
     console.error(`[checkout] rid=${rid} app=${appId} offering=${offeringId} rail=${rail.id} ${out.kind}: ${out.detail}`);
     // Nothing sent: OUR misconfiguration — no price for a served offering (503
