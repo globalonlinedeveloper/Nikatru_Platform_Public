@@ -162,7 +162,7 @@ describe('assert-prod-provenance — the gate limb', () => {
   test('the real tree passes, and says out loud that it has not seen production', () => {
     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /31 table\(s\) enumerated/); // ⏱ 2026-10-02: 30 -> 31, 0026 provider_payment_links (PR #1149). ⏱ 2026-10-01 (PB-27): 29 -> 30, 0025 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
+    assert.match(r.stdout, /34 table\(s\) enumerated/); // ⏱ 2026-10-03 merge of main into #1176: +1, 0025 box_config_manifest (PB-27). ⏱ 2026-10-02: 32 -> 33, 0026 refund_requests (refund-finish). ⏱ 2026-10-02: 30 -> 32, 0025 ai_accounts + ai_ledger (T17). ⏱ 2026-10-02: 29 -> 30, 0024 provider_payment_links (PR #1149). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
     assert.match(r.stdout, /MONITOR/);
   });
@@ -582,7 +582,7 @@ describe('check-prod-provenance — the monitor limb', () => {
     const r = run({});
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
-    assert.match(r.stdout, /31 table\(s\) enumerated/); // ⏱ 2026-10-02: 30 -> 31, 0026 provider_payment_links (PR #1149). ⏱ 2026-10-01 (PB-27): 29 -> 30, 0025 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
+    assert.match(r.stdout, /34 table\(s\) enumerated/); // ⏱ 2026-10-03 merge of main into #1176: +1, 0025 box_config_manifest (PB-27). ⏱ 2026-10-02: 32 -> 33, 0026 refund_requests (refund-finish). ⏱ 2026-10-02: 30 -> 32, 0025 ai_accounts + ai_ledger (T17). ⏱ 2026-10-02: 29 -> 30, 0024 provider_payment_links (PR #1149). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
   });
 
   test('the real production consent row resolves — it is a shipped build, not residue', () => {
@@ -879,7 +879,7 @@ describe('check-prod-provenance — a table its migration has not reached yet', 
   test('a ledger that records names WITHOUT `.sql` reads the same', () => {
     const r = run({ schemaJson: schema({ migrations: FILES.map((f) => f.replace(/\.sql$/, '')) }) });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /31 of 31 table\(s\) present · 0 not yet migrated/); // ⏱ 2026-10-02: +1, 0026 (PR #1149). ⏱ 2026-10-01 (PB-27): 29 -> 30, 0025 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 (EXA-11). ⏱ 2026-09-28: 22 -> 25, 0020 (ST-T4a).
+    assert.match(r.stdout, /34 of 34 table\(s\) present · 0 not yet migrated/); // ⏱ 2026-10-03 merge of main into #1176: +1, 0025 box_config_manifest (PB-27). ⏱ 2026-10-02: +1, 0026 (refund-finish). ⏱ 2026-10-02: +2, 0025 (T17). ⏱ 2026-10-02: +1, 0024 (PR #1149). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 (EXA-11). ⏱ 2026-09-28: 22 -> 25, 0020 (ST-T4a).
   });
 
   test('5 · THE INCIDENT REPLAY: ext_devices absent, 0017 absent, #930 merged hours before: ⬜ and exit 0', () => {

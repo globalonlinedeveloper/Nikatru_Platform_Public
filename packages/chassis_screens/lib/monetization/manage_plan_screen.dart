@@ -445,6 +445,26 @@ class PlanStatusTile extends StatelessWidget {
 /// text-contrast guideline silently stops measuring the status sentence — the
 /// app's manage-plan contrast sweep went red on exactly that. Two stops for a
 /// screen reader is the price of a sentence whose contrast is still checked.
+/// The plan screen's sentence for every revocation reason of the entitlement
+/// contract, IN THE CONTRACT'S ORDER (`contracts/entitlement/contract.json`
+/// `revocationReasons`, the order `nikatru_purchases`' generated
+/// `kRevocationReasons` carries). Shared code never spells a reason code (the
+/// clone-tell rule: the codes are the contract's vocabulary, not the chassis'),
+/// so the adapter picks the sentence by the reason's index in that generated
+/// list. test/revocation_reason_test.dart holds the order and the count to the
+/// contract in every locale, so a reason added there with no sentence here, or
+/// a reordering, fails before it ships as silence or as the wrong sentence.
+List<String> revocationReasonSentences(ChassisLocalizations l10n) => <String>[
+  l10n.planEndedRefundApproved,
+  l10n.planEndedChargeback,
+  l10n.planEndedChargebackReversed,
+  l10n.planEndedSubscriptionExpired,
+  l10n.planEndedTrialExpired,
+  l10n.planEndedPaymentFailedFinal,
+  l10n.planEndedCancelledAtPeriodEnd,
+  l10n.planEndedSubscriptionPaused,
+];
+
 class _StatusCard extends StatelessWidget {
   const _StatusCard({
     required this.isPro,

@@ -74,6 +74,14 @@
     // read `plaintext_left=0` before it closes; the line then leaves in its own
     // change. The sandbox block declares none: its database never held plain text.
     "PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL": "2026-11-01",
+    // ⏱ 2026-10-02 · T17 (train-st-ai-customer-pays) — THE AI KILL SWITCH AND THE
+    // GLOBAL DAILY SPEND CIRCUIT-BREAKER (src/lib/ai/meter.ts). OFF and ZERO here:
+    // no paid AI call can be made until a reviewed change sets AI_ENABLED to
+    // exactly "true" and AI_DAILY_USD_CAP to a positive USD figure — after each
+    // feature's model is measured and set (tooling/ports/ai.json). CONFIG_KV
+    // `ai:kill` stops every call too, with no deploy.
+    "AI_ENABLED": "false",
+    "AI_DAILY_USD_CAP": "0",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
     // longer config-read-only: it serves /v1/events and /v1/consent, and will
@@ -662,6 +670,11 @@
         // App Attest key carries the `appattestdevelop` AAGUID; only the
         // sandbox accepts it. The top level never sets this.
         "APP_ATTEST_ALLOW_DEVELOPMENT": "true",
+        // why: src/lib/ai/meter.ts — the AI kill switch and the daily USD
+        // breaker, OFF and ZERO as at the top level: the sandbox makes no paid
+        // model call either until a reviewed change turns both on.
+        "AI_ENABLED": "false",
+        "AI_DAILY_USD_CAP": "0",
         // why: src/routes/account.ts relays a deletion to each app's SANDBOX
         // Worker at its workers.dev origin.
         // ── GENERATED BEGIN sandbox-app-erasure-endpoints — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──

@@ -190,7 +190,7 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       title: l10n.managePlanTitle,
       isPro: isPro,
       planStatusLabel: isPro ? l10n.planActive : l10n.planInactive,
-      planDetail: isPro ? l10n.planActiveDetail : l10n.planInactiveDetail,
+      planDetail: planDetailOf(context, l10n, ent.value, isPro: isPro),
       restoreHint: l10n.restorePurchasesHint,
       cancelLabel: l10n.cancelPlan,
       upgradeLabel: offerPlans ? l10n.seeProPlans : null,

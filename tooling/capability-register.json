@@ -562,6 +562,8 @@
       "A surface here may still carry a VIOLATION -- see UPDATE_URL, which is a decided fix, not a",
       "judgement call."
     ],
+    "AI_ENABLED": "OUR OWN switch, no external system behind it: the platform Worker's AI kill switch (services/platform/src/lib/ai/meter.ts, T17). Exactly \"true\" lets paid AI calls through the meter; the deployed value is \"false\" (wrangler.jsonc vars). The model provider is reached through the AI port's adapter and its own surface, never through this value.",
+    "AI_DAILY_USD_CAP": "OUR OWN number, no external system behind it: the global daily USD circuit-breaker the meter sums ai_ledger against (services/platform/src/lib/ai/meter.ts, T17); 0 (the deployed value) refuses every paid AI call.",
     "API_BASE_URL": "our own subscriptiontracker-api Worker",
     "BOX_MANIFEST_SECRET_BOXB": "OUR OWN shared secret between Box B's config-hash cron (tooling/ops/boxes/post-config-manifest.sh) and POST /v1/ops/box-manifest on the platform Worker (services/platform/src/routes/box-manifest.ts, PB-27). No external system is behind it: both ends are ours, and it authenticates only that one box's row of hashes. Added 2026-10-01.",
     "BOX_MANIFEST_SECRET_BOXC": "OUR OWN shared secret between Box C's config-hash cron and POST /v1/ops/box-manifest — see BOX_MANIFEST_SECRET_BOXB; one per box, so a box can write only its own row. Added 2026-10-01.",
