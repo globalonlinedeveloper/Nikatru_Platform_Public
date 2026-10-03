@@ -7,7 +7,7 @@
 // SSH and re-vendored by hand, and nothing compared the live files with the
 // vendored copies. The box pushes; CI never SSHes in:
 //   box cron (tooling/ops/boxes/post-config-manifest.sh)
-//     → this route (one row per box, migrations/0024_box_config_manifest.sql)
+//     → this route (one row per box, migrations/0025_box_config_manifest.sql)
 //     → tooling/ops/check-box-config-drift.mjs in ops-watch, against the
 //       vendored hashes in tooling/ops/box-config-vendored.json.
 //
@@ -18,7 +18,9 @@
 // own config, which is the limit of any self-report, and nothing else. The
 // comparison is over SHA-256 digests with `timingSafeEqual`, so neither the
 // length nor a prefix of the secret is timed out of it. A box whose secret is
-// not configured answers 503 BEFORE the body is read, as the money webhooks do.
+// not configured answers 503 BEFORE the bearer is compared — but AFTER the
+// bounded body (BOX_MANIFEST_MAX_BYTES) is read and parsed, because the body is
+// what names the box whose secret is checked.
 //
 // ── WHAT IT ACCEPTS ──────────────────────────────────────────────────────────
 //   { "box": "boxc", "files": { "<logical name>": "<64 lowercase hex>", … } }

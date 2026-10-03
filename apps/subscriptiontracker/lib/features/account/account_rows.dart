@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// THE ACCOUNT ROWS SETTINGS DRAWS — change e-mail and password (SE-02), "Your
-// devices" (SE-03) and "Log out of all devices" (SE-05).
+// THE ACCOUNT ROWS SETTINGS DRAWS — change e-mail and password (SE-02),
+// "Connected accounts" (SE-04), "Your devices" (SE-03) and "Log out of all
+// devices" (SE-05).
 //
 // ⏱ 2026-10-01 · train ST-SETTINGS. They live HERE and not in
 // `features/settings/settings_screen.dart` because that file is a private copy
@@ -16,6 +17,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
+import '../auth/connected_accounts_sheet.dart' show showConnectedAccountsSheet;
 import '../shared/chassis_adapters.dart' show DevicesSection;
 import '../shared/widgets.dart' show SoftButton;
 import 'account_security.dart';
@@ -33,13 +35,14 @@ typedef AccountRowBuilder =
       VoidCallback? onTap,
     });
 
-/// The change-e-mail and change-password rows (SE-02), for [account]. Both
-/// re-authenticate before they change anything (account_security.dart).
-/// Change password only where there IS a password: an Apple or Google
-/// account has none to change.
+/// The change-e-mail and change-password rows (SE-02) and "Connected
+/// accounts" (SE-04), for [account]. The first two re-authenticate before
+/// they change anything (account_security.dart). Change password only where
+/// there IS a password: an Apple or Google account has none to change.
 abstract final class AccountSecurityRows {
   static const Key changeEmail = Key('settingsChangeEmail');
   static const Key changePassword = Key('settingsChangePassword');
+  static const Key connectedAccounts = Key('settingsConnectedAccounts');
 
   static List<Widget> of(
     BuildContext context,
@@ -65,6 +68,15 @@ abstract final class AccountSecurityRows {
           last: false,
           onTap: () => showAccountChange(context, AccountChange.password),
         ),
+      // ⏱ 2026-10-01 · SE-04 — the sign-in methods this account has, linked
+      // and unlinked in a sheet. It was an inert row in the settings fork.
+      row(
+        key: connectedAccounts,
+        icon: '⇄',
+        label: l10n.connectedAccounts,
+        last: false,
+        onTap: () => showConnectedAccountsSheet(context),
+      ),
     ];
   }
 }

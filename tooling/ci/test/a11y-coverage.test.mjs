@@ -162,12 +162,17 @@ const DS = 'packages/design_system';
 // fixture in this file derives it — which is why the app fixtures read 2 roots
 // and `NEW_ROOT_SUBJECT` now adds only two more, for 4. The paragraph above is
 // left exactly as written; this supersedes its last sentence.
-// ⏱ 2026-10-03 · lane feedback-intake: packages/feedback is the FIFTH derived
+// ⏱ 2026-10-01 · T16 XP-03: `packages/app_lock` is a FIFTH declared root with
+// a floor of its own, so a checkout-shaped fixture carries it — without it the
+// FULL-CHECKOUT clause fires for a reason no case here is about.
+const APP_LOCK = 'packages/app_lock';
+// ⏱ 2026-10-03 · lane feedback-intake: packages/feedback is another derived
 // root (a workspace member declaring flutter_test and a public widget) and a
 // REQUIRED_COVERAGE row, so a checkout-shaped fixture carries it or reads its
-// floor as a declared root nobody derived. The root counts below read 5.
+// floor as a declared root nobody derived. Merged over T16: the root counts
+// below read 6.
 const FEEDBACK_PKG = 'packages/feedback';
-const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS, FEEDBACK_PKG];
+const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS, APP_LOCK, FEEDBACK_PKG];
 
 // MEASURED by running the guard against the working tree of 2026-08-13. Named
 // individually rather than counted: a count with no names is the "unmet clause
@@ -203,6 +208,9 @@ const ALL_19_SWEPT = [
   'VerifyEmailScreen',
   'showAddSubscriptionSheet',
   'showBudgetEditorSheet',
+  // ⏱ 2026-10-02 · club-st-singles SE-04: the connected accounts sheet
+  // arrived swept.
+  'showConnectedAccountsSheet',
   // ⏱ 2026-10-01 · T20 (IN-12): the share-a-month sheet arrived swept.
   'showShareMonthSheet',
   'showStopSheet',
@@ -395,7 +403,7 @@ function sweepTheNewSheet(root) {
 // POSITIVE CONTROLS
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the guard says YES on the tree as it is', () => {
-  test('the REAL repository — 4 derived roots, 69 surfaces, 39 swept, exit 0', () => {
+  test('the REAL repository — 5 derived roots, 102 surfaces, 73 swept, exit 0', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     // 🔴 THE ROOT LINE IS PINNED BECAUSE THE ROOT LINE IS THE FIX. Until
@@ -404,16 +412,22 @@ describe('the guard says YES on the tree as it is', () => {
     // and nothing else in the output would say so — 19 of 19 swept would still
     // print, in a tree with two unchecked roots in it.
     // FOUR since [ADR 071] added packages/chassis_screens as a root of its own.
-    assert.match(out, /6 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 help-search: 5 -> 6, packages/help
+    // FIVE since 2026-10-01 (T16): packages/app_lock declares flutter_test and a
+    // public widget (the lock screen), so it is DERIVED as a root on its own.
+    assert.match(out, /7 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 help-search: 5 -> 6, packages/help; merged over T16 (app_lock): 7
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
+    assert.match(
+      out,
+      /packages\/app_lock \(workspace package member: declares flutter_test AND a public widget\)/,
+    );
     assert.match(
       out,
       /packages\/design_system \(workspace package member: declares flutter_test AND a public widget\)/,
     );
     assert.match(out, /\{\{app_id\}\} \(brick template, declared by tooling\/bricks\/app\/brick\.yaml\)/);
-    assert.match(out, /FULL CHECKOUT: all 5 declared root\(s\) are required to be among them/);
+    assert.match(out, /FULL CHECKOUT: all 6 declared root\(s\) are required to be among them/);
 
-    assert.match(out, /apps\/subscriptiontracker: 21 of 21 reachable surface\(s\) carry an a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /apps\/subscriptiontracker: 22 of 22 reachable surface\(s\) carry an a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     // 50 → 57 on 2026-09-06: [ADR 071] added the seven chassis auth views as a
     // fourth root. The brick's twelve are unchanged — an adapter is still a
     // routed surface — so the seven are additions, not a re-count.
@@ -451,7 +465,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +3 design_system surfaces (MonthGrid, DateBadge, PermissionPrimingView) and +1 chassis (SettingsSection), all swept: +2 files, +5 cases.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): +5 design_system surfaces (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider, AuthPasswordChecklist), each arriving swept, and AuthField swept for the first time, by a11y_auth_frame_test.dart (+1 file, +1 case).
     // ⏱ 2026-10-02 · train P39 (SYN-X1 C-11), on top of main: the sixteen mounted design_system surfaces arrived swept by a11y_mounted_surfaces_test.dart + a11y_two_pane_test.dart (+2 files, +12 cases): 81 → 97 swept, 20 → 22 files, 220 → 232 cases. Read off the guard's own closing line.
-    assert.match(out, /116 reachable surface\(s\); 102 swept by 25 a11y test file\(s\) across 237 case\(s\)/ /* ⏱ 2026-10-03 help-search: +1 surface (packages/help HelpCentrePage), swept by a11y_help_test.dart, +1 file, +1 case */ /* ⏱ 2026-10-03 feedback-intake: +4 surfaces (feedback's 3, design_system's ScreenCaptureBoundary), +4 swept, +2 files, +4 cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
+    assert.match(out, /121 reachable surface\(s\); 107 swept by 27 a11y test file\(s\) across 242 case\(s\)/ /* ⏱ 2026-10-03 club-rt-support merged over main (club-st-singles): read off the guard's own closing line */ /* ⏱ 2026-10-03 help-search: +1 surface (packages/help HelpCentrePage), swept by a11y_help_test.dart, +1 file, +1 case */ /* ⏱ 2026-10-03 feedback-intake: +4 surfaces (feedback's 3, design_system's ScreenCaptureBoundary), +4 swept, +2 files, +4 cases */ /* ⏱ 2026-10-03 club-st-singles merged over main's P39: base 111/81/20/220 + this PR's +5 surfaces, +5 swept, +2 files, +5 cases + main's +16 swept, +2 files, +12 cases; read off the guard's own closing line */ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-02 club-st-singles T16 XP-03: +2 app_lock surfaces (AppLockGate, AppLockScreen), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
     assert.match(out, /12 swept where they delegate to/);
     // ⏱ 2026-09-29 · train ST-D10: 18 → 17 — AuthField, on the printed list since 2026-09-05, is swept.
     // ⏱ 2026-10-01 · train st-entry: 17 → 18 — SwallowSystemBack, which paints nothing, is printed unswept.
@@ -463,7 +477,7 @@ describe('the guard says YES on the tree as it is', () => {
     // it started is worth holding. `contrast` started the same day: ×0 → ×24.
     // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): naked-controls 25 → 26 — scan's one naked sweep went with `/scan`, and the import hub arrived with two (its hub and its review list); tap-target and contrast swapped one for one.
     // ⏱ 2026-10-01 · club apply-st on IM-01: the club's +3 naked-controls, +1 tap-target, +1 contrast on top.
-    assert.match(out, /sweep families used: naked-controls ×29, tap-target ×22, contrast ×26/);
+    assert.match(out, /sweep families used: naked-controls ×30, tap-target ×22, contrast ×26/ /* ⏱ 2026-10-02 club-st-singles SE-04: +1 naked-controls (the connected accounts sheet) */);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -485,11 +499,11 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(
       out,
-      /apps\/subscriptiontracker: 21 of 21 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 117 case\(s\)/ /* ⏱ 2026-10-01 T20 (club apply-st): +1 app surface (showShareMonthSheet), +1 case */ /* ⏱ 2026-10-01 ST-detail-stop (club apply-st): +1 app surface (the stop flow replaces the cancel sheet), +1 case */ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each */,
+      /apps\/subscriptiontracker: 22 of 22 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 118 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet) +1 app case; +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView), +1 chassis a11y file, +2 chassis cases */ /* ⏱ 2026-10-01 T20 (club apply-st): +1 app surface (showShareMonthSheet), +1 case */ /* ⏱ 2026-10-01 ST-detail-stop (club apply-st): +1 app surface (the stop flow replaces the cancel sheet), +1 case */ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each */,
     );
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection) swept, +1 case.
-    assert.match(out, /55 reachable surface\(s\); 55 swept by 6 a11y test file\(s\) across 192 case\(s\)/ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet) swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
+    assert.match(out, /58 reachable surface\(s\); 58 swept by 7 a11y test file\(s\) across 195 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet) swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
     // The adapter is PRINTED as judged elsewhere rather than silently dropped —
     // which is the whole reason the guard carries that list. ONE today
     // (`ReacceptTermsScreen`); this number rises as the parity debt is paid, and
@@ -504,7 +518,7 @@ describe('the guard says YES on the tree as it is', () => {
     // `VerifyEmailView` and are SWEPT there. Read off the guard's own output.
     assert.match(
       out,
-      /⬜ 6 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */,
+      /⬜ 7 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/ /* ⏱ 2026-10-02 club-st-singles SE-04: +1, the connected accounts sheet delegates to ConnectedAccountsView */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */,
     );
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
@@ -526,7 +540,7 @@ describe('the guard says YES on the tree as it is', () => {
       `${NEW_SHEET_SYMBOL} is not in the printed list:\n${out}`,
     );
     assert.deepEqual(printedUnswept(out), [NEW_SHEET_SYMBOL]);
-    assert.match(out, /⬜ 1 of 22 reachable surface\(s\) in apps\/subscriptiontracker carry NO a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /⬜ 1 of 23 reachable surface\(s\) in apps\/subscriptiontracker carry NO a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     assert.match(out, /→ add a case to .* that pumps the surface and calls/);
 
     // AND NOT FAILED. This is the half that would be lost if the test went.
@@ -536,7 +550,7 @@ describe('the guard says YES on the tree as it is', () => {
     // chassis ([ADR 086]); the app's own half is pinned by the `1 of 20` line
     // above, which is what this case is actually about.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection) swept, +1 case.
-    assert.match(out, /56 reachable surface\(s\); 55 swept by 6 a11y test file\(s\) across 192 case\(s\)/ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-23: +2 chassis home surfaces, +1 file, +4 cases */
+    assert.match(out, /59 reachable surface\(s\); 58 swept by 7 a11y test file\(s\) across 195 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-23: +2 chassis home surfaces, +1 file, +4 cases */
     assert.match(out, /1 unswept and PRINTED/);
   });
 
@@ -574,11 +588,11 @@ describe('the guard says YES on the tree as it is', () => {
     // swept it reads 20 of 20 across 112, and the aggregate 41 swept across 171.
     assert.match(
       out,
-      /apps\/subscriptiontracker: 22 of 22 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 118 case\(s\)/ /* ⏱ 2026-10-01 T20 (club apply-st): +1 app surface (showShareMonthSheet), +1 case */ /* ⏱ 2026-10-01 ST-detail-stop (club apply-st): +1 app surface (the stop flow replaces the cancel sheet), +1 case */ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each */,
+      /apps\/subscriptiontracker: 23 of 23 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 119 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet) +1 app case; +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView), +1 chassis a11y file, +2 chassis cases */ /* ⏱ 2026-10-01 T20 (club apply-st): +1 app surface (showShareMonthSheet), +1 case */ /* ⏱ 2026-10-01 ST-detail-stop (club apply-st): +1 app surface (the stop flow replaces the cancel sheet), +1 case */ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each */,
     );
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection) swept, +1 case.
-    assert.match(out, /56 swept by 6 a11y test file\(s\) across 193 case\(s\)/ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
+    assert.match(out, /59 swept by 7 a11y test file\(s\) across 196 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
     assert.match(out, /0 unswept and PRINTED/);
   });
 });
@@ -592,11 +606,12 @@ describe('the guard says YES on the tree as it is', () => {
 // domain was one hardcoded string and none of these touched it.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the domain is DERIVED, and a root that stops being derived FAILS', () => {
-  test('the four roots are all scanned, and each one is NAMED in the report', () => {
+  test('the five roots are all scanned, and each one is NAMED in the report', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /5 root\(s\) DERIVED/);
-    assert.match(out, /FULL CHECKOUT: all 5 declared root\(s\) are required to be among them/);
+    assert.match(out, /6 root\(s\) DERIVED/);
+    assert.match(out, /FULL CHECKOUT: all 6 declared root\(s\) are required to be among them/);
+    assert.match(out, /packages\/app_lock: 2 of 2 reachable surface\(s\) carry an a11y sweep/);
     // 17 since 2026-09-07 ([ADR 067] phase 2, unit app-shell): NikatruApp,
     // ConsentScrim, ConsentPromptCard, OfflineBannerHost and AppLifecycleFlush
     // joined this root when the app shell left the brick. The ZERO is the half
@@ -611,7 +626,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     assert.match(
       out,
-      /packages\/chassis_screens: 34 of 34 reachable surface\(s\) carry an a11y sweep, from 5 a11y test file\(s\) across 75 case\(s\)/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */
+      /packages\/chassis_screens: 36 of 36 reachable surface\(s\) carry an a11y sweep, from 6 a11y test file\(s\) across 77 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet) +1 app case; +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView), +1 chassis a11y file, +2 chassis cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */
     );
     // And the ten brick adapters that delegate here are judged HERE, which is
     // the delegation resolver's whole reason and reads `SWEPT there` only once
@@ -619,7 +634,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     assert.match(out, /SignInScreen .* → packages\/chassis_screens\/lib\/auth\/sign_in_screen\.dart — SWEPT there/);
     // Each root gets its own accounting line. A root that is derived but whose
     // surfaces never reach the report is a root this guard cannot see.
-    assert.match(out, /apps\/subscriptiontracker: 21 of 21 reachable surface\(s\) carry an a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /apps\/subscriptiontracker: 22 of 22 reachable surface\(s\) carry an a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     assert.match(out, /\{\{app_id\}\}: 0 of 12 reachable surface\(s\) carry an a11y sweep/);
     // ⏱ 2026-09-15 · [ADR 083]: 1 → 2 (AppScaffold joined DataStateView).
     // ⏱ 2026-09-28 · train ST-D0: 2 of 20 → 7 of 25 — AppFab, AppCard, AppListRow, DecisionStrip, SkeletonList arrived swept.
@@ -660,7 +675,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, WORKSPACE_MANIFEST, '\n  - packages/design_system', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 5 this run derived/);
     assert.match(out, /`packages\/design_system`/);
     // 🔴 THE REASON THIS LIMB EXISTS, ASSERTED. Nothing else can see it: the
     // scan still read the other roots in full, so every count printed healthy.
@@ -672,7 +687,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, `${DS}/pubspec.yaml`, '\n  flutter_test:', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 5 this run derived/);
     assert.match(out, /`packages\/design_system`/);
   });
 
@@ -681,7 +696,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, WORKSPACE_MANIFEST, '\n  - apps/subscriptiontracker', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 5 this run derived/);
     assert.match(out, /`apps\/subscriptiontracker`/);
   });
 
@@ -778,7 +793,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 33 reachable surface\(s\).*floor is 34/s /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
+      /COVERAGE LOST — `packages\/chassis_screens` has only 35 reachable surface\(s\).*floor is 36/s /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
     );
     // ~~AND ALONE — the property M11e records and M7 cannot have. This root's
     // SWEPT_FLOOR is empty (it carries no a11y sweep at all yet), so nothing
@@ -814,7 +829,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // reads as a floor that fires.
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 34 of 34 reachable surface\(s\)/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection)
+    assert.match(out, /packages\/chassis_screens: 36 of 36 reachable surface\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet) +1 app case; +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView), +1 chassis a11y file, +2 chassis cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection)
   });
 
   test("M12 · a NEW surface in EACH new root reaches that root's printed list", () => {
@@ -905,7 +920,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     assert.match(
       out,
-      /packages\/chassis_screens: 34 of 34 reachable surface\(s\) carry an a11y sweep, from 5 a11y test file\(s\) across 75 case\(s\)/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */
+      /packages\/chassis_screens: 36 of 36 reachable surface\(s\) carry an a11y sweep, from 6 a11y test file\(s\) across 77 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet) +1 app case; +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView), +1 chassis a11y file, +2 chassis cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface, RefreshOnResume (swept in the consent-scrim chain, cases unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */
     );
   });
 
@@ -958,7 +973,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     assert.equal(code, 2, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` yielded 4 file\(s\) matching `a11y_\*_test\.dart`.*floor is 5/s, /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases) */ // ⏱ 2026-09-23: 3 → 4 files (a11y_home_test.dart)
+      /COVERAGE LOST — `packages\/chassis_screens` yielded 5 file\(s\) matching `a11y_\*_test\.dart`.*floor is 6/s, /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases) */ // ⏱ 2026-09-23: 3 → 4 files (a11y_home_test.dart)
     );
     // 🔴 AND THE SWEPT_FLOOR LIMB IS SILENT, WHICH IS THE DESIGN. A COVERAGE
     // LOST finding makes `parsedCleanly` false, so the guard does not go on to
@@ -985,7 +1000,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     assert.equal(code, 2, out);
     assert.match(
       out,
-      /COVERAGE LOST — only 71 a11y case\(s\) were found across 5 file\(s\) under `packages\/chassis_screens`, and the checked-in floor is 75/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 54 → 58; 2026-09-29 ST-D4: 61 → 62; 2026-10-01: 62 → 63 (help-section)
+      /COVERAGE LOST — only 73 a11y case\(s\) were found across 6 file\(s\) under `packages\/chassis_screens`, and the checked-in floor is 77/ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */, /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ // ⏱ 2026-09-23: 54 → 58; 2026-09-29 ST-D4: 61 → 62; 2026-10-01: 62 → 63 (help-section)
     );
     // ALONE — every surface keeps a light and a kDesktop case, so both sets are
     // byte-identical and only the count moved. That is the whole reason a count
@@ -1120,6 +1135,8 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
       'insights/budget_editor.dart',
       // ⏱ 2026-10-01 (T20, IN-12): the share-a-month sheet.
       'insights/share_month.dart',
+      // ⏱ 2026-10-02 (club-st-singles SE-04): the connected accounts sheet.
+      'auth/connected_accounts_sheet.dart',
     ]) {
       writeIn(root, `${FEATURES}/${sheet}`, 'const int stub = 0;\n');
     }
@@ -1147,7 +1164,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
   // helpers left `tap-target ×19` running and SEVENTEEN surfaces still swept.
   // 📌 A mutation named "not one sweep" must neuter EVERY family the guard
   // recognises, and it inherits a new one each time SWEEP_FAMILIES grows.
-  test('M5 · every sweep helper is renamed — 117 cases, not one sweep', () => {
+  test('M5 · every sweep helper is renamed — 118 cases, not one sweep', () => {
     const root = tree();
     const src = readIn(root, SUITE)
       .replaceAll('expectNothingNaked', 'expectNothingBare')
@@ -1162,7 +1179,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     writeIn(root, SUITE, src);
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — 117 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /COVERAGE LOST — 118 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     // Proof the mutation reached the limb it names rather than a neighbouring
     // one: with NO family running, nothing is attributed at all.
     assert.equal(sweptList(out).length, 0);
@@ -1191,15 +1208,17 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 20 reachable surface\(s\).*floor is 21/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 21 reachable surface\(s\).*floor is 22/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     // The two limbs that now co-fire, asserted rather than assumed.
     assert.match(out, /FAIL DEAD COVERAGE — .* sweeps `NotificationsScreen`/);
     assert.match(out, /FAIL FLOOR OVER NOTHING — .*notifications_screen\.dart#NotificationsScreen`/);
     // Proof the domain really shrank rather than the report merely changing
-    // wording: the guard's ✅ list still holds 21 keys while only 20 are
+    // wording: the guard's ✅ list still holds 22 keys while only 21 are
     // reachable, which is the mismatch DEAD COVERAGE is reading. (⏱ 2026-10-01:
-    // 19 -> 20, SetupScreen and the stop flow's net +1 landed together.)
-    assert.equal(sweptList(out).length, 21);
+    // 19 -> 20, SetupScreen and the stop flow's net +1 landed together.
+    // ⏱ 2026-10-02 · club-st-singles SE-04: 21 -> 22, the connected accounts
+    // sheet.)
+    assert.equal(sweptList(out).length, 22);
     assert.equal(printedUnswept(out).length, 0);
   });
 
@@ -1219,7 +1238,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     }
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — only 113 a11y case\(s\) .* the checked-in floor is 117/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
+    assert.match(out, /COVERAGE LOST — only 114 a11y case\(s\) .* the checked-in floor is 118/s); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     // Every set above is byte-identical — which is the point of the floor, and
     // it is also what catches a mutation that disabled the WRONG block.
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
@@ -1389,7 +1408,7 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
   test('the brick surface counts as SWEPT when the chassis file it delegates to is swept', () => {
     const { code, out } = run(treeWithChassis());
     assert.equal(code, 0, out);
-    assert.match(out, /5 root\(s\) DERIVED/);
+    assert.match(out, /6 root\(s\) DERIVED/);
     // TEN, not one: the six auth adapters [ADR 071] landed delegate, and the
     // four money/first-run/settings adapters [ADR 067] phase 2 landed do too.
     // This fixture re-points the settings one at its own target, which changes

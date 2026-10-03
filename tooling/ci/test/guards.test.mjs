@@ -5189,6 +5189,10 @@ describe('assert-stamp-properties', () => {
   // A fixture thinner than the tree it stands for fails for reasons that have
   // nothing to do with the behaviour under test.
   const goodTest = `
+group('property: release-silences-debugprint', () {
+  test('r1', () {});
+  test('r2', () {});
+});
 group('property: paywall-gate-driven-by-server', () {
   test('m1', () {});
   test('m2', () {});
@@ -5933,6 +5937,7 @@ messenger.showSnackBar(SnackBar(content: Text(
   // every outbound test stays green.
   const goodMain = `
 Future<void> main() async {
+  silenceDebugPrintInRelease();
   await TelemetryBootstrap.init(config, appRunner: () async {
     AppErrorScreen.install();
     final core.NotificationService notifications =
@@ -6232,6 +6237,23 @@ class AnalyticsLifecycle {
 }
 `;
 
+  // [rv2-security-006] The release-mode debugPrint silencer and the chassis boot
+  // sequence that calls it first — both repo-absolute anchors of
+  // release-silences-debugprint.
+  const RELEASE_LOGGING = 'packages/design_system/lib/src/logging/release_logging.dart';
+  const goodReleaseLogging = `
+void silenceDebugPrintInRelease({bool release = kReleaseMode}) {
+  if (release) debugPrint = (String? message, {int? wrapWidth}) {};
+}
+`;
+  const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';
+  const goodBootstrap = `
+Future<void> bootstrapNikatru({required VoidCallback run}) async {
+  silenceDebugPrintInRelease();
+  WidgetsFlutterBinding.ensureInitialized();
+  run();
+}
+`;
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -6277,6 +6299,7 @@ class LocalNotificationService {
   const SUBLY_NOTIFS = 'apps/subscriptiontracker/lib/services/notifications/notification_service.dart';
   const goodSublyMain = `
 Future<void> main() async {
+  silenceDebugPrintInRelease();
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
   runApp(const ProviderScope(child: SublyApp()));
@@ -6471,7 +6494,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, [UPDATE_EXIT_DART]: updateExitDart, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, [UPDATE_EXIT_DART]: updateExitDart, [RELEASE_LOGGING]: goodReleaseLogging, [BOOTSTRAP]: goodBootstrap, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at
@@ -9130,7 +9153,10 @@ describe('assert-responsive-coverage', () => {
   // SetupScreen, the stop flow's net +1 and the share-a-month sheet, so `N`
   // follows 17 → 18 — s18 joins the shared multi-subject file, because the
   // width-FILE floor (17) did not move.
-  const N = 18;
+  // ⏱ 19 SINCE 2026-10-02 (club-st-singles SE-04): the surface floor is 22
+  // with the connected accounts sheet, so `N` follows 18 → 19 — s19 joins the
+  // shared multi-subject file; the width-FILE floor (17) did not move.
+  const N = 19;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
   const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
@@ -9227,8 +9253,9 @@ describe('assert-responsive-coverage', () => {
         `features/s16/s16_screen.dart`,
         `features/s17/s17_screen.dart`,
         `features/s18/s18_screen.dart`,
+        `features/s19/s19_screen.dart`,
       ],
-      ['const S15Screen()', 'const S16Screen()', 'const S17Screen()', 'const S18Screen()'],
+      ['const S15Screen()', 'const S16Screen()', 'const S17Screen()', 'const S18Screen()', 'const S19Screen()'],
     );
     files[`${TEST}/width_sheets_test.dart`] = testSrc(
       ['features/add/add_sheet.dart', 'features/stop/stop_sheet.dart'],
@@ -9240,7 +9267,7 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured/);
+    assert.match(out, /apps\/subscriptiontracker: 22 surface\(s\) reachable, 22 measured/); // 21 -> 22 on 2026-10-02 (club-st-singles: `N` 18 -> 19)
     assert.match(out, /the two sets are EQUAL/);
     // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): all five window classes.
     assert.match(
@@ -9262,9 +9289,9 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // A 19th routed screen with no test (19 since 2026-10-01, club apply-st:
-    // `N` is 18). The
-    // floor is untouched (21 >= 19) and
+    // A 20th routed screen with no test (19 since 2026-10-01, club apply-st:
+    // `N` is 18; 20 since 2026-10-02, club-st-singles: `N` is 19). The
+    // floor is untouched (22 >= 20) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
     //
     // ⚠️ 17, NOT 16, SINCE 2026-08-11. This index has to be the first one BEYOND
@@ -9274,12 +9301,12 @@ describe('assert-responsive-coverage', () => {
     // prove, so the case passed its exit code and asserted the wrong message.
     const dir = build(
       'rc-uncovered',
-      { [screenFile(19)]: screenSrc(19) },
-      { screens: [...ids, 19] },
+      { [screenFile(20)]: screenSrc(20) },
+      { screens: [...ids, 20] },
     );
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /UNCOVERED SURFACE — `S19Screen`/);
+    assert.match(out, /UNCOVERED SURFACE — `S20Screen`/);
   });
 
   test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
@@ -9404,7 +9431,7 @@ describe('assert-responsive-coverage', () => {
     for (const i of ids.slice(0, 14)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 21/); // 20 -> 21 on 2026-10-01 (T20: the share-a-month sheet, measured by width_share_month_test); 19 -> 20 on 2026-10-01 (ST-detail-stop: the stop sheet and /sub/:id/stop replace the cancel sheet, net +1); 18 -> 19 on 2026-10-01 (ST-T9: /setup arrived measured by width_setup_test); 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 22/); // 21 -> 22 on 2026-10-02 (club-st-singles SE-04: showConnectedAccountsSheet arrived measured); // 20 -> 21 on 2026-10-01 (T20: the share-a-month sheet, measured by width_share_month_test); 19 -> 20 on 2026-10-01 (ST-detail-stop: the stop sheet and /sub/:id/stop replace the cancel sheet, net +1); 18 -> 19 on 2026-10-01 (ST-T9: /setup arrived measured by width_setup_test); 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
   });
 
   test('FAILS when a route builds something this guard cannot classify', () => {

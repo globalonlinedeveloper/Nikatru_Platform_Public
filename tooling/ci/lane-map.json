@@ -24,7 +24,8 @@
     "Since ADR 095 §4 (2026-09-25) the deploy workflows carry no push paths and no dorny filters: they run only as ci.yml's deploy-web and deploy-workers call jobs, after ci-gate, and these globs alone decide what publishes. The copies went with the triggers, and so did tooling/ci/test/deploy-units.test.mjs's equality checks; that test now holds the units' own shape, and fails when either deploy workflow grows a trigger back.",
     "Glob shapes: `X/**` (a tree), `X/*.ext` or `X/*` (files directly in X), or a literal path. plan-deploy.mjs refuses any other shape rather than guessing, through globClaims in tooling/ci/deploy-globs.mjs (moved there from assert-deploy-triggers-deploy.mjs on 2026-09-26, so the plan imports no guard).",
     "\"nikatru-site\" (2026-09-25, row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a) is the apex site sites/nikatru, published by deploy-web.yml's `site` job to the Direct Upload Pages project nikatru-apex: the site, the generator and registry it rebuilds the discovery surface from, the import closure of every script that job runs, and the workflow itself.",
-    "\"nikatru-site\" claims tooling/ci/deploy-globs.mjs, not assert-deploy-triggers-deploy.mjs (2026-09-26, E-a2), exactly as \"<app>-web\" does: plan-deploy.mjs takes globClaims from there, and that guard now imports tooling/ci/worker-set.mjs and the platform register, which would otherwise join this unit's import closure and republish the apex site on every register edit."
+    "\"nikatru-site\" claims tooling/ci/deploy-globs.mjs, not assert-deploy-triggers-deploy.mjs (2026-09-26, E-a2), exactly as \"<app>-web\" does: plan-deploy.mjs takes globClaims from there, and that guard now imports tooling/ci/worker-set.mjs and the platform register, which would otherwise join this unit's import closure and republish the apex site on every register edit.",
+    "2026-10-02 · fix-india-rail-tax-data: tooling/sites/generate-discovery.mjs renders the per-rail tax sentences from tooling/catalog/render-rail-prices.mjs, so that module and its import closure join both web units; \"nikatru-site\" also claims services/platform/src/app-config-data.json, whose rail taxMode decides the sentence the published pricing and terms pages carry."
   ],
   "lanes": {
     "workers": {
@@ -154,6 +155,11 @@
       "tooling/legal/provider-register.json",
       "tooling/bundle-availability.mjs",
       "tooling/catalog/read.mjs",
+      "tooling/catalog/render-rail-prices.mjs",
+      "tooling/catalog/sbp-enrolment.mjs",
+      "tooling/catalog/fee-register.json",
+      "tooling/app-yaml/render.mjs",
+      "tooling/app-yaml/schema/app.schema.json",
       "tooling/channel-register.json",
       "tooling/ci/app-set.mjs",
       "tooling/ci/deploy-globs.mjs",
@@ -212,6 +218,12 @@
       "tooling/entity/surfaces.json",
       "tooling/house-identity.json",
       "tooling/catalog/read.mjs",
+      "tooling/catalog/render-rail-prices.mjs",
+      "tooling/catalog/sbp-enrolment.mjs",
+      "tooling/catalog/fee-register.json",
+      "tooling/app-yaml/render.mjs",
+      "tooling/app-yaml/schema/app.schema.json",
+      "services/platform/src/app-config-data.json",
       "tooling/ci/channel-arming.mjs",
       "tooling/ci/channel-surface.mjs",
       "tooling/ci/release-manifest.mjs",

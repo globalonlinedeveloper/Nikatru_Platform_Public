@@ -44,14 +44,18 @@ Subscription _row() => Subscription(
 
 /// A repository whose writes wait on [gate] and then either apply or throw.
 class _Repo implements SubscriptionRepository {
-  _Repo({this.fail = false});
+  _Repo({this.fail = false, Subscription? seed})
+    : rows = <Subscription>[seed ?? _row()];
 
   final bool fail;
   Completer<void>? gate;
   final List<Subscription> added = <Subscription>[];
   final List<(String, Map<String, dynamic>)> updates =
       <(String, Map<String, dynamic>)>[];
-  final List<Subscription> rows = <Subscription>[_row()];
+
+  /// The SERVER's rows: an update is applied here, so a test reads back what
+  /// the server now holds rather than what the client sent.
+  final List<Subscription> rows;
 
   Future<void> _wait() async {
     final Completer<void>? g = gate;
@@ -73,7 +77,8 @@ class _Repo implements SubscriptionRepository {
   Future<Subscription> update(String id, Map<String, dynamic> changes) async {
     await _wait();
     updates.add((id, changes));
-    return rows.firstWhere((Subscription s) => s.id == id).patched(changes);
+    final int i = rows.indexWhere((Subscription s) => s.id == id);
+    return rows[i] = rows[i].patched(changes);
   }
 
   @override
@@ -373,6 +378,48 @@ void main() {
     expect(saved.name, 'Netflix 4K');
     expect(saved.price, const Money(79900, 'INR'));
     expect(saved.plan, 'Premium', reason: 'a field the sheet does not own');
+  });
+
+  testWidgets('EDIT KEEPS A SHARE — name, amount and date change, the 1/3 '
+      'share stays on the server (ST-P4, F38)', (WidgetTester tester) async {
+    final Subscription shared = _row().patched(<String, dynamic>{
+      'shared_with': 'flatmates',
+      'share_numerator': 1,
+      'share_denominator': 3,
+    });
+    expect(shared.isShared, isTrue, reason: 'the fixture is a shared row');
+    final _Repo repo = _Repo(seed: shared);
+    await _open(tester, repo: repo, editing: shared);
+    await tester.enterText(find.byKey(E2EKeys.addName), 'Netflix 4K');
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '799');
+    await tester.ensureVisible(find.byKey(E2EKeys.addRenewal));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(E2EKeys.addRenewal));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('20'));
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await _submit(tester);
+    await tester.pumpAndSettle();
+
+    final (_, Map<String, dynamic> patch) = repo.updates.single;
+    expect(patch.keys, containsAll(<String>['name', 'price']));
+    for (final String k in <String>[
+      'shared_with',
+      'share_numerator',
+      'share_denominator',
+    ]) {
+      expect(patch.containsKey(k), isFalse, reason: '$k is not re-sent');
+    }
+    // The server's row, read back: renamed, repriced, re-dated, still shared.
+    final Subscription stored = (await repo.fetchAll()).single;
+    expect(stored.name, 'Netflix 4K');
+    expect(stored.price, const Money(79900, 'INR'));
+    expect(stored.nextRenewal, isNot(shared.nextRenewal));
+    expect(stored.isShared, isTrue);
+    expect(stored.shareNumerator, 1);
+    expect(stored.shareDenominator, 3);
+    expect(stored.sharedWith, 'flatmates');
   });
 
   testWidgets('KEYBOARD — Next walks on from the name; Ctrl+Enter submits', (

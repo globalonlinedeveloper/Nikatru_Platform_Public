@@ -246,6 +246,14 @@
   "@authRateLimited": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for GoTrue's over_*_rate_limit codes."
   },
+  "authLastSignInMethod": "You cannot remove your only way to sign in.",
+  "@authLastSignInMethod": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart (SE-04). GoTrue's single_identity_not_deletable, which the adapters also raise themselves before asking."
+  },
+  "authCodeInvalid": "That code is wrong or has expired. Check the latest email, or send a new code.",
+  "@authCodeInvalid": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart (EN-21). GoTrue's otp_expired: a one-time sign-in code that is wrong or too old. It names neither case, so it says nothing about which addresses exist."
+  },
   "authCaptchaFailed": "Verification expired. Please try again.",
   "@authCaptchaFailed": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart. Shown when GoTrue refuses a request with captcha_failed. It deliberately does NOT say 'incorrect password': on a gated endpoint the captcha is checked BEFORE the credentials, and Turnstile tokens are single-use with a ~5 minute life, so an EXPIRED token is the dominant cause and the user's password is usually fine."
@@ -780,6 +788,129 @@
   "@reacceptTermsBody": {
     "description": "Consumed by features/auth/reaccept_terms_screen.dart."
   },
+  "reacceptTermsChangedIntro": "We have changed the documents below. Here is what changed; please review them and accept to carry on.",
+  "@reacceptTermsChangedIntro": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart (EN-23). Replaces reacceptTermsBody when the app's register holds a note for a changed document's current version."
+  },
+  "reacceptTermsNoteHeading": "{document} · version {version}, {date}",
+  "@reacceptTermsNoteHeading": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart (EN-23). One changed document's heading. document is termsOfService or privacyPolicy; version and date are the register's values, printed as written.",
+    "placeholders": {
+      "document": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reacceptTermsNoteLine": "• {line}",
+  "@reacceptTermsNoteLine": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart (EN-23). One line of a change note, as a bullet. line is the owner-written summary line.",
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "reacceptTermsReadDocument": "Read the full {document}",
+  "@reacceptTermsReadDocument": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart (EN-23). The link under a change note that opens the live document.",
+    "placeholders": {
+      "document": {
+        "type": "String"
+      }
+    }
+  },
+  "connectedAccountsTitle": "Connected accounts",
+  "@connectedAccountsTitle": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). The sheet's heading."
+  },
+  "connectedAccountsBody": "The ways you can sign in to this account. You can add one, or remove one as long as another remains.",
+  "@connectedAccountsBody": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). Under the heading."
+  },
+  "connectedAccountsPassword": "Email and password",
+  "@connectedAccountsPassword": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). The password identity's row."
+  },
+  "connectedAccountsApple": "Apple",
+  "@connectedAccountsApple": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). The Sign in with Apple row. A brand name: not translated."
+  },
+  "connectedAccountsGoogle": "Google",
+  "@connectedAccountsGoogle": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). The Sign in with Google row. A brand name: not translated."
+  },
+  "connectedAccountsConnected": "Connected",
+  "@connectedAccountsConnected": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). A method the account holds."
+  },
+  "connectedAccountsOnlyMethod": "Connected · your only way to sign in",
+  "@connectedAccountsOnlyMethod": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). A method the account holds that is its ONLY one, which is why it has no Remove button."
+  },
+  "connectedAccountsNotConnected": "Not connected",
+  "@connectedAccountsNotConnected": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). A method this build can link that the account does not hold."
+  },
+  "connectedAccountsVerifyFirst": "Confirm your email address to connect this",
+  "@connectedAccountsVerifyFirst": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). Linking merges by email, so an unconfirmed address cannot link (core.mayLinkIdentity)."
+  },
+  "connectedAccountsConnect": "Connect",
+  "@connectedAccountsConnect": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). Starts the OAuth hop with link intent."
+  },
+  "connectedAccountsRemove": "Remove",
+  "@connectedAccountsRemove": {
+    "description": "Consumed by package:nikatru_chassis_screens/settings/connected_accounts_view.dart (SE-04). Unlinks the method. Never drawn on the last one."
+  },
+  "emailCodeSentTo": "If {email} has an account, we have sent it a 6-digit sign-in code. Enter it below.",
+  "@emailCodeSentTo": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). Under the heading once a code was requested. 🔴 UNIFORM: the same words whether or not the address has an account, so the screen is no account oracle.",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "emailCodeLabel": "Sign-in code",
+  "@emailCodeLabel": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). The code field's label."
+  },
+  "emailCodeShape": "Enter the 6-digit code from the email.",
+  "@emailCodeShape": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). The code field holds something that is not six digits; no request is made."
+  },
+  "emailCodeSignIn": "Sign in with code",
+  "@emailCodeSignIn": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). The button that verifies the code."
+  },
+  "emailCodeResend": "Send a new code",
+  "@emailCodeResend": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). Resend, once the cooldown has run out."
+  },
+  "emailCodeResendIn": "{seconds, plural, =1{Send a new code in 1 second} other{Send a new code in {seconds} seconds}}",
+  "@emailCodeResendIn": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). Resend, disabled while the per-address cooldown (60 s) runs.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "emailCodeSentAgain": "A new code is on its way.",
+  "@emailCodeSentAgain": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). After a resend. Uniform, like emailCodeSentTo."
+  },
+  "emailCodeUsePassword": "Use your password instead",
+  "@emailCodeUsePassword": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/email_code_form.dart (EN-21). Back to the password form."
+  },
   "reacceptTermsAccept": "Accept and continue",
   "@reacceptTermsAccept": {
     "description": "Consumed by features/auth/reaccept_terms_screen.dart. Disabled until the (unticked) box is ticked — the tick is the affirmative act, and a button that works without it makes the box decorative."
@@ -1083,5 +1214,9 @@
   "devicesRetry": "Tap to try again",
   "@devicesRetry": {
     "description": "SE-03 · Under 'Your devices could not be loaded.'; tapping the row reads the list again."
+  },
+  "authReauthRequired": "For your security, sign in again to change how you sign in.",
+  "@authReauthRequired": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart (#1155 review, finding 3). The platform Worker's reauth_required for a sign-in method change: the session's last sign-in is too old, or the person cancelled the re-authentication. Nothing was changed."
   }
 }

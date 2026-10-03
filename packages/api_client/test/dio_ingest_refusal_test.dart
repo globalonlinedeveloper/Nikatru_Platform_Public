@@ -89,6 +89,64 @@ void main() {
       );
       expect(r.isOk, isTrue);
     });
+
+    // ⏱ 2026-10-01 — the server enforces analytics consent at ingest
+    // (services/platform/src/routes/events.ts). Each refusal is typed by its
+    // status AND its code; the recorder acts on the type.
+    test('409 consent_not_recorded is a ConsentNotRecordedFailure', () async {
+      final core.Result<void> r = await _sendEvents(
+        _FakeAdapter(409, <String, Object?>{
+          'ok': false,
+          'error': 'consent_not_recorded',
+          'received': 0,
+        }),
+      );
+      expect(_failure(r), isA<core.ConsentNotRecordedFailure>());
+    });
+
+    test('403 consent_withdrawn is a ConsentWithdrawnFailure', () async {
+      final core.Result<void> r = await _sendEvents(
+        _FakeAdapter(403, <String, Object?>{
+          'ok': false,
+          'error': 'consent_withdrawn',
+          'received': 0,
+        }),
+      );
+      expect(_failure(r), isA<core.ConsentWithdrawnFailure>());
+    });
+
+    test(
+      'a 409/403 with another code, or a code on another status, stays a plain retry',
+      () async {
+        for (final (int status, Object body) in <(int, Object)>[
+          (409, <String, Object?>{'error': 'conflict'}),
+          (403, <String, Object?>{'error': 'forbidden'}),
+          (403, <String, Object?>{'error': 'consent_not_recorded'}),
+          (409, <String, Object?>{'error': 'consent_withdrawn'}),
+          (400, <String, Object?>{'error': 'consent_withdrawn'}),
+        ]) {
+          final core.Failure? f = _failure(
+            await _sendEvents(_FakeAdapter(status, body)),
+          );
+          expect(f, isNotNull, reason: '$status $body');
+          expect(
+            f,
+            isNot(isA<core.ConsentNotRecordedFailure>()),
+            reason: '$status $body',
+          );
+          expect(
+            f,
+            isNot(isA<core.ConsentWithdrawnFailure>()),
+            reason: '$status $body',
+          );
+          expect(
+            f,
+            isNot(isA<core.UnreleasedBuildFailure>()),
+            reason: '$status $body',
+          );
+        }
+      },
+    );
   });
 
   group('DioConsentTransport', () {

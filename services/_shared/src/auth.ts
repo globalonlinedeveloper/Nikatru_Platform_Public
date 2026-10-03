@@ -229,16 +229,47 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
  * on the read, so the outage path fails closed). A body that is NOT a key-set
  * document (an HTML error page answered 200, a truncated read) is not a set and
  * leaves the stored copy alone.
+ *
+ * ⏱ 2026-10-03 · PR #1174 review nit 6. "Differs" is the parsed KEY SET, not
+ * the response text: the same keys served in another order or with other
+ * whitespace would otherwise spend a KV write on every warm, against the Free
+ * plan's 1,000 writes/day. A stored copy that is absent or not a key set always
+ * loses to a fetched one.
  */
 export function lastKnownGoodNeedsWrite(fetched: string, stored: string | null): boolean {
+  const next = canonicalKeySet(fetched);
+  if (next === null) return false;
+  return stored === null || next !== canonicalKeySet(stored);
+}
+
+/**
+ * A key-set document's keys as one order- and whitespace-free string (each key
+ * JSON with its members sorted, the list sorted), or null when [text] is not a
+ * JSON object with a `keys` array.
+ */
+function canonicalKeySet(text: string): string | null {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fetched) as unknown;
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-    if (!Array.isArray((parsed as { keys?: unknown }).keys)) return false;
+    parsed = JSON.parse(text);
   } catch {
-    return false;
+    return null;
   }
-  return fetched !== stored;
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const keys = (parsed as { keys?: unknown }).keys;
+  if (!Array.isArray(keys)) return null;
+  return JSON.stringify(keys.map(canonicalJson).sort());
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,11 +311,21 @@ export const CLOCK_SKEW_SECONDS = 60;
  * AUTHENTICATES and carries it unchanged through every refresh, so it answers
  * "when did this person last prove who they are" where `iat` — reissued by each
  * silent refresh — cannot. Null when the token carries no usable entry.
+ *
+ * `linked` (⏱ 2026-10-02, #1142 review item 3) is true when `providers` names an
+ * OAuth provider the app re-proves at (`apple`, `google` — core
+ * `kReauthProviders`, account_deletion.dart): such an account confirms deletion
+ * at its provider, or within the app's freshness window with no prompt at all,
+ * so its recency is a server fact like a password-less account's.
  */
 export interface AuthRecency {
   passwordless: boolean;
+  linked: boolean;
   lastAuthenticatedAt: number | null;
 }
+
+/** The providers a linked account re-proves at — core `kReauthProviders` (packages/core account_deletion.dart). */
+export const REAUTH_PROVIDERS: readonly string[] = ['apple', 'google'];
 
 /**
  * How the verified token's user signs in, and when they last authenticated.
@@ -301,6 +342,7 @@ export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
   const meta = payload.app_metadata;
   const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
   const passwordless = Array.isArray(providers) && !providers.includes('email');
+  const linked = Array.isArray(providers) && providers.some((p) => typeof p === 'string' && REAUTH_PROVIDERS.includes(p));
   let lastAuthenticatedAt: number | null = null;
   if (Array.isArray(payload.amr)) {
     for (const entry of payload.amr) {
@@ -310,7 +352,7 @@ export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
       }
     }
   }
-  return { passwordless, lastAuthenticatedAt };
+  return { passwordless, linked, lastAuthenticatedAt };
 }
 
 /** The refusal every erasure door answers with. 🔴 403, NEVER 401: the client's
@@ -336,6 +378,17 @@ export const REAUTH_REQUIRED_BODY = { error: 'reauth_required' } as const;
  * is proven client-side only, at both ends equally. Tightening it is one edit
  * here plus the client flow, and belongs in its own reviewed change.
  *
+ * ⏱ 2026-10-02 · LINKED ACCOUNTS ARE HELD TO IT (#1142 review item 3, lead
+ * ruling). An account with an Apple or Google identity (`linked`) no longer
+ * types its password: it re-proves at its provider, and the app skips even that
+ * inside its own freshness window (half of RECENT_AUTH_SECONDS). Exempting it
+ * here would let ANY unexpired token delete it. So it is held to the same `amr`
+ * window as a password-less account — the session's own sign-in time, never
+ * `iat` — whichever way it re-proved (a password re-auth, where the app offers
+ * one, mints a fresh `amr` too). One window for every account the app does not
+ * ask for a password: the server's is twice the app's so a sheet and a redirect
+ * fit inside it, exactly as for password-less accounts.
+ *
  * 🔴 A MISSING `recency` IS A REFUSAL. Every auth middleware in front of an
  * erasure door sets it on every admitted request, so undefined means the door was
  * reached without one; a tidy-up that dropped the `c.set` line must produce a
@@ -346,14 +399,15 @@ export function deletionRecencyRefusal(
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): string | null {
   if (recency === undefined) return 'no sign-in recency was read from the token (the auth middleware did not set it)';
-  if (!recency.passwordless) return null;
+  if (!recency.passwordless && !recency.linked) return null;
+  const kind = recency.passwordless ? 'password-less' : 'linked';
   const at = recency.lastAuthenticatedAt;
-  if (at === null) return `password-less account whose token carries no amr timestamp`;
+  if (at === null) return `${kind} account whose token carries no amr timestamp`;
   if (nowSeconds - at > RECENT_AUTH_SECONDS) {
-    return `password-less account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${nowSeconds - at}s ago)`;
+    return `${kind} account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${nowSeconds - at}s ago)`;
   }
   if (at - nowSeconds > CLOCK_SKEW_SECONDS) {
-    return `password-less account whose amr timestamp is ${at - nowSeconds}s in the future (skew allowance ${CLOCK_SKEW_SECONDS}s)`;
+    return `${kind} account whose amr timestamp is ${at - nowSeconds}s in the future (skew allowance ${CLOCK_SKEW_SECONDS}s)`;
   }
   return null;
 }

@@ -150,7 +150,7 @@
 
 <main id="main">
   <h1>Pricing</h1>
-  <p class="updated">Last updated: 9 September 2026 &middot; All prices in US dollars (USD)</p>
+  <p class="updated">Last updated: 2 October 2026 &middot; Prices in US dollars (USD), and in Indian rupees (INR) for buyers in India</p>
 
   <!-- ── THE APEX PATH IS THE ADDRESS WE PUBLISH (ADR 038, 2026-08-08) ────────
        This line used to send readers to the app's retired subdomain, which was
@@ -276,10 +276,30 @@
   </section>
 <!-- /PRICING:products -->
 
+  <!-- ⏱ 2026-10-01 · fix-india-rail-tax-data (business-017): THE RUPEE PRICE BOOK. Spliced by
+       generate-discovery.mjs (`pricingIndia`) from each offering's `webInrMinor` in the price book
+       of services/platform/src/app-config-data.json, with the razorpay rail's taxMode in words.
+       This page told every buyer USD while the India rail sells in rupees, GST-inclusive.
+       assert-discovery-surface.mjs limb T requires this pair and fails a dollar inside it. -->
+  <!-- PRICING:india -->
+  <section class="india" data-region="IN">
+  <h2>Prices in India</h2>
+  <p>For buyers in India, prices on nikatru.com are in Indian rupees (INR) and include GST.</p>
+  <table>
+    <tr><th>Product</th><th>Plan</th><th>Price in India</th></tr>
+    <tr><td>Nikatru Subscription Tracker</td><td>Pro Monthly</td><td>₹149 / month</td></tr>
+    <tr><td>Nikatru Subscription Tracker</td><td>Pro Yearly</td><td>₹999 / year</td></tr>
+    <tr><td>FullShot</td><td>Pro Monthly</td><td>₹149 / month</td></tr>
+    <tr><td>FullShot</td><td>Pro Yearly</td><td>₹999 / year</td></tr>
+  </table>
+  <p>Paid checkout is not open yet, in India or anywhere else; these are the prices it will charge.</p>
+  </section>
+  <!-- /PRICING:india -->
+
   <h2>What you should know before you buy</h2>
   <ul>
-    <li><b>Prices are in USD.</b> If your card is issued in another currency, your bank converts at its own
-    rate and may add a foreign-transaction fee.</li>
+    <li><b>Outside India, prices are in USD.</b> If your card is issued in another currency, your bank converts at its own
+    rate and may add a foreign-transaction fee. Buyers in India are shown the rupee prices above.</li>
     <!-- Neither the trial LENGTH nor the claim that a trial EXISTS appears in
          this sentence. Both live on the plan cards and in the table above,
          generated from the rail config and shown only while checkout is open
@@ -292,7 +312,14 @@
     plans every 12 months.</li>
     <li><b>You can cancel any time.</b> Cancelling stops future renewals; your paid period stays active
     until it ends. See our <a href="/refund">Refund &amp; Cancellation Policy</a>.</li>
-    <li><b>Taxes.</b> Applicable sales tax, VAT or GST is added at checkout where required by your country.</li>
+    <!-- ⏱ 2026-10-01 · fix-india-rail-tax-data (business-004): one tax sentence per rail, spliced by
+         generate-discovery.mjs (`applyTaxSentences`) from each rail's `taxMode` in the price book. The
+         hand bullet here said tax "is added at checkout", which no rail's mode said, while terms.html
+         said prices were tax-inclusive. Do not write a tax sentence outside the pair: limb T fails it. -->
+    <!-- TAX:sentences -->
+    <li>Outside India, prices on nikatru.com are in US dollars (USD). Paddle, our Merchant of Record, works out any sales tax, VAT or GST due where you live and shows it at checkout before you pay.</li>
+    <li>In India, prices on nikatru.com are in Indian rupees (INR) and include GST. Nikatru is the seller and Razorpay processes the payment.</li>
+    <!-- /TAX:sentences -->
   </ul>
 
   <h2>Questions</h2>

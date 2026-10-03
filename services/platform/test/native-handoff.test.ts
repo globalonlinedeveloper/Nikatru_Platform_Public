@@ -11,6 +11,9 @@
 //   · 🔴 EXPIRES: one second past the TTL the code is refused;
 //   · 🔴 PKCE-BOUND: a wrong verifier is refused — and does NOT burn the code;
 //   · 🔴 ANOTHER CLIENT: another app, or another redirect, is refused;
+//   · 🔴 REVOKED (⏱ 2026-10-02): "sign out everywhere" after the mint, or a revoke
+//     of the minting session, refuses the code;
+//   · 🔴 A GoTrue FAULT after the redemption gives the code back for a retry;
 //   · a forged or tampered code is refused, and every refusal is ONE body;
 //   · the mint: no token is 401, a stale sign-in is 401 with its own code, a
 //     redirect that is not the app's own is 400, `plain` is 400, an unknown app 404;
@@ -290,6 +293,66 @@ describe('the hand-off: a fresh web sign-in mints, the app exchanges', () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual(INVALID);
     }
+    // ⏱ 2026-10-02 (review of #1133, finding 4): every verifier above also fails the
+    // PKCE comparison, so the shape limb was never what refused it. This one MATCHES
+    // its challenge and is one character too long — only the shape limb refuses it,
+    // and the code is not burned.
+    const long = 'a'.repeat(129);
+    const challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(long))));
+    const res = await mint({ challenge });
+    expect(res.status).toBe(200);
+    const { code } = (await res.json()) as { code: string };
+    const refused = await exchange({ code, verifier: long });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual(INVALID);
+    expect(gotrue.seen).toEqual([]);
+  });
+
+  it('🔴 REVOKED: "sign out everywhere" after the mint refuses the code; one before the mint does not', async () => {
+    const revokedWith = (record: unknown) => env({ SESSION_REVOKED: { get: async () => record, put: async () => undefined } as unknown as KVNamespace });
+    const before = secs(Date.now()) - 5;
+    const m = await minted();
+    const after = secs(Date.now()) + 1;
+    const res = await exchange({ code: m.code, verifier: m.verifier }, revokedWith({ before: after, sids: [] }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(INVALID);
+    expect(gotrue.seen).toEqual([]);
+    expect(logs.some((l) => l.includes('hand-off refused (revoked)'))).toBe(true);
+    // a sign-out that happened before this sign-in does not reach it
+    expect((await exchange({ code: m.code, verifier: m.verifier }, revokedWith({ before, sids: [] }))).status).toBe(200);
+  });
+
+  it('🔴 REVOKED: a revoke of the session that minted the code refuses it; another session\'s does not', async () => {
+    const revokedWith = (sid: string) =>
+      env({ SESSION_REVOKED: { get: async () => ({ before: null, sids: [[sid, secs(Date.now())]] }), put: async () => undefined } as unknown as KVNamespace });
+    const p = await pkce();
+    const res = await mint({ challenge: p.challenge, claims: { session_id: 'sess-that-minted' } });
+    expect(res.status).toBe(200);
+    const { code } = (await res.json()) as { code: string };
+    expect((await exchange({ code, verifier: p.verifier }, revokedWith('sess-that-minted'))).status).toBe(400);
+    expect(gotrue.seen).toEqual([]);
+    expect((await exchange({ code, verifier: p.verifier }, revokedWith('sess-of-another-device'))).status).toBe(200);
+  });
+
+  it('🔴 A GoTrue FAULT AFTER THE REDEMPTION does not burn the code: the retry gets the session', async () => {
+    for (const fault of ['user', 'link', 'verify'] as const) {
+      gotrue[fault] = () => json(502, {});
+      const m = await minted();
+      expect((await exchange({ code: m.code, verifier: m.verifier })).status, fault).toBe(503);
+      gotrue.user = () => json(200, { id: USER, email: 'person@example.com' });
+      gotrue.link = () => json(200, { id: USER, hashed_token: HASH });
+      gotrue.verify = () => json(200, SESSION);
+      expect((await exchange({ code: m.code, verifier: m.verifier })).status, fault).toBe(200);
+      expect((await exchange({ code: m.code, verifier: m.verifier })).status, fault).toBe(400);
+    }
+  });
+
+  it('a fault AFTER /verify minted a session is no fault to retry: the code stays spent', async () => {
+    gotrue.verify = () => new Response('not json', { status: 200 });
+    const m = await minted();
+    expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(503);
+    gotrue.verify = () => json(200, SESSION);
+    expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(400);
   });
 
   it('🔴 ANOTHER CLIENT: a code minted for one app is refused at another app', async () => {
@@ -334,6 +397,9 @@ describe('the hand-off: a fresh web sign-in mints, the app exchanges', () => {
     gotrue.verify = () => json(200, { ...SESSION, user: { id: 'someone-else' } });
     let m = await minted();
     expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(503);
+    // a session WAS minted, so this is no fault to retry: the code stays spent
+    gotrue.verify = () => json(200, SESSION);
+    expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(400);
 
     gotrue.user = () => json(404, { code: 404, msg: 'User not found' });
     m = await minted();
@@ -404,6 +470,9 @@ describe('the mint: who may ask, and for where', () => {
       'https://evil.example/nk-auth-callback',
       'http://localhost:53111/nk-auth-callback',
       'http://127.0.0.1:80/nk-auth-callback',
+      // ⏱ 2026-10-02 (review of #1133, finding 5): :80 never reaches the `port >= 1024`
+      // limb (the 4-5 digit pattern refuses it); 1000-1023 are the only ports that do.
+      'http://127.0.0.1:1023/nk-auth-callback',
       'http://127.0.0.1:053111/nk-auth-callback',
       'http://127.0.0.1:53111/nk-auth-callback?x=1',
       'http://127.0.0.1:70000/nk-auth-callback',
@@ -414,6 +483,7 @@ describe('the mint: who may ask, and for where', () => {
     }
     expect(isHandoffRedirect(APP, LOOP)).toBe(true);
     expect(isHandoffRedirect(APP, DEEP)).toBe(true);
+    expect(isHandoffRedirect(APP, 'http://127.0.0.1:1024/nk-auth-callback')).toBe(true);
   });
 
   it('S256 only: `plain` and a malformed challenge are 400', async () => {

@@ -653,3 +653,49 @@ describe('assert-stamp-properties — ui-invariants-inherited anchors the padded
     }
   });
 });
+
+// ── [rv2-security-006, app half] release-silences-debugprint ──────────────────
+// The silencer is one line in the shared chassis, and every app's main() must reach
+// it — the exempted flagship's too, since it boots by hand and is the app that ships.
+describe('assert-stamp-properties — release builds silence debugPrint', () => {
+  const RELEASE_LOGGING = 'packages/design_system/lib/src/logging/release_logging.dart';
+  const MAIN = 'lib/main.dart';
+  const DEBUGPRINT_FAIL = /\[rv2-security-006\] apps\/subscriptiontracker\/lib\/main\.dart neither boots through bootstrapNikatru\( nor calls silenceDebugPrintInRelease\(\) before runApp\(/;
+
+  test('exit 1 when the chassis silencer line is gone — the property anchor reads it', () => {
+    const real = readFileSync(join(REPO, RELEASE_LOGGING), 'utf8');
+    const mutated = real.replace(/^\s*if \(release\) debugPrint = .*\n/m, '');
+    assert.notEqual(mutated, real, 'the fixture could not find the silencer line to remove');
+    writeFileSync(join(BASE, RELEASE_LOGGING), mutated);
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(out, /property 'release-silences-debugprint' is asserted but its IMPLEMENTATION is gone in packages\/design_system\/lib\/src\/logging\/release_logging\.dart/);
+    } finally {
+      writeFileSync(join(BASE, RELEASE_LOGGING), real);
+    }
+  });
+
+  test('exit 1 when the EXEMPTED app boots by hand without the silencer; the same main() with it is not refused', () => {
+    const path = join(BASE, EXEMPT, MAIN);
+    const real = readFileSync(path, 'utf8');
+    try {
+      writeFileSync(path, "import 'package:flutter/widgets.dart';\n\nFuture<void> main() async {\n  // silenceDebugPrintInRelease(); — a comment is not a call\n  runApp(const SizedBox());\n}\n");
+      const bare = run({ missingGroups: FLOOR });
+      assert.equal(bare.code, 1, bare.out);
+      assert.match(bare.out, DEBUGPRINT_FAIL);
+
+      writeFileSync(path, "import 'package:flutter/widgets.dart';\n\nFuture<void> main() async {\n  silenceDebugPrintInRelease();\n  runApp(const SizedBox());\n}\n");
+      const silenced = run({ missingGroups: FLOOR });
+      assert.doesNotMatch(silenced.out, DEBUGPRINT_FAIL);
+      assert.match(silenced.out, /\[rv2-security-006\] release debugPrint: 2 app main\.dart file\(s\) reach silenceDebugPrintInRelease/);
+
+      writeFileSync(path, "import 'package:flutter/widgets.dart';\n\nFuture<void> main() async {\n  runApp(const SizedBox());\n  silenceDebugPrintInRelease();\n}\n");
+      const late = run({ missingGroups: FLOOR });
+      assert.equal(late.code, 1, late.out);
+      assert.match(late.out, DEBUGPRINT_FAIL, 'a silencer AFTER runApp( is too late');
+    } finally {
+      writeFileSync(path, real);
+    }
+  });
+});

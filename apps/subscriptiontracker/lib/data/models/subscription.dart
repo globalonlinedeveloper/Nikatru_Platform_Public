@@ -112,6 +112,9 @@ class Subscription {
     this.priceAfterTrial,
     this.priceAfterTrialSupported = false,
     this.tags = const <String>[],
+    this.sharedWith,
+    this.shareNumerator = 1,
+    this.shareDenominator = 1,
   });
 
   /// The catalogue service this row was picked from (ST-T9, AD-03) — the
@@ -307,6 +310,25 @@ class Subscription {
     return DateTime(next.year, next.month, next.day - notice);
   }
 
+  /// Who the plan is shared with — a LABEL the user typed ("family",
+  /// "flatmates"), never an account (0003's `shared_with`).
+  final String? sharedWith;
+
+  /// The user's own part of the plan: [shareNumerator] of [shareDenominator]
+  /// (0003's `share_numerator` / `share_denominator`, both NOT NULL DEFAULT 1).
+  /// 1/1 is an unshared plan, and is how a share is undone.
+  ///
+  /// ⏱ 2026-09-30 · ST-P4 (round-2 F38). The columns existed since 0003 and no
+  /// client read them, so a Netflix split three ways counted in full in every
+  /// total. [myMonthlyShare] and [myYearlyCharge] are what the SPEND figures
+  /// now sum; [price] stays what the card is CHARGED, because a shared plan is
+  /// still billed in full to whoever pays it.
+  final int shareNumerator;
+  final int shareDenominator;
+
+  /// Whether the user pays less than the whole plan.
+  bool get isShared => shareNumerator < shareDenominator;
+
   /// ISO 4217 for this row, e.g. `USD`. Derived from [price] rather than
   /// stored twice — two fields that can disagree about one fact is how the
   /// displayed price and the charged price came apart in the first place.
@@ -324,6 +346,25 @@ class Subscription {
   /// ([Cadence.chargesPerYear]), rounded ONCE: a weekly plan's share is
   /// price x 52 / 12, an every-10-days plan's price x 365 / 120.
   MonthlyShare get monthlyShare => MonthlyShare.of(price, billingCadence);
+
+  /// [monthlyShare] of the user's own part of the plan ([shareNumerator] of
+  /// [shareDenominator]), rounded once. Equal to [monthlyShare] when unshared.
+  MonthlyShare get myMonthlyShare => MonthlyShare.of(
+    price,
+    billingCadence,
+    shareNumerator: shareNumerator,
+    shareDenominator: shareDenominator,
+  );
+
+  /// [yearlyCharge] of the user's own part, rounded once. Equal to
+  /// [yearlyCharge] when unshared.
+  Money get myYearlyCharge {
+    if (!isShared) return yearlyCharge;
+    final ({int numerator, int denominator}) r = billingCadence.chargesPerYear;
+    return price
+        .times(r.numerator * shareNumerator)
+        .dividedBy(r.denominator * shareDenominator);
+  }
 
   /// What this plan charges in a year: the yearly price, twelve monthly
   /// charges, 52 weekly ones. Computed from [price], never from
@@ -434,6 +475,9 @@ class Subscription {
       fallbackCurrencyCode: fallbackCurrencyCode,
     ),
     tags: normaliseTags(j['tags']),
+    sharedWith: _textOrNull(j['shared_with']),
+    shareNumerator: readShare(j).numerator,
+    shareDenominator: readShare(j).denominator,
   );
 
   static String? _textOrNull(Object? raw) =>
@@ -453,10 +497,23 @@ class Subscription {
         ? code.toUpperCase()
         : fallbackCurrencyCode;
     final Object? minor = newest['old_price_minor'];
-    if (minor is int) return Money(minor, currency);
     final Object? major = newest['old_price'];
+    if (minor is int) return exactOrDecimal(minor, major, currency);
     if (major is num) return Money.fromMajorUnits(major, currency);
     return null;
+  }
+
+  /// The (`share_numerator`, `share_denominator`) pair off the wire, under the
+  /// API's own rule (`checkShare`): whole numbers, 1 <= numerator <=
+  /// denominator. Anything else — absent, half a pair, a numerator above its
+  /// denominator — is the whole plan, 1/1, never a guessed fraction.
+  static ({int numerator, int denominator}) readShare(Map<String, dynamic> j) {
+    final Object? n = j['share_numerator'];
+    final Object? d = j['share_denominator'];
+    if (n is int && d is int && n >= 1 && n <= d) {
+      return (numerator: n, denominator: d);
+    }
+    return (numerator: 1, denominator: 1);
   }
 
   /// `reminder_days` off the wire: a list of whole days, deduplicated and
@@ -523,8 +580,23 @@ class Subscription {
     // server that has confused the two columns, and reading 4.99 as 499 there
     // would misprice the row by a hundred. Fall through to the decimal column,
     // which is the field that shape belongs to.
-    if (minor is int) return Money(minor, code);
-    return Money.fromMajorUnits((j['price'] as num?) ?? 0, code);
+    final Object? major = j['price'];
+    if (minor is int) return exactOrDecimal(minor, major, code);
+    return Money.fromMajorUnits((major as num?) ?? 0, code);
+  }
+
+  /// `minor` when it IS `major` in [code]'s ISO 4217 scale, else `major`.
+  ///
+  /// ⏱ 2026-10-03 · PR #1174 lead ruling 1(a), review finding 2. Before #1174
+  /// money.dart wrote every code but JPY and KWD with two minor digits, so a
+  /// ₩14,900 plan was stored as `price=14900, price_minor=1490000`; read with
+  /// the ISO table (KRW 0) that is ₩1,490,000. The REAL `price` is right under
+  /// both scales, so when the two disagree the decimal wins. With no decimal
+  /// beside it (null, or not a number) the exact form is all there is.
+  static Money exactOrDecimal(int minor, Object? major, String code) {
+    if (major is! num) return Money(minor, code);
+    final Money decimal = Money.fromMajorUnits(major, code);
+    return decimal.minorUnits == minor ? Money(minor, code) : decimal;
   }
 
   /// 🔴 THE WIRE KEEPS ITS DECIMAL `price` AND GAINS TWO FIELDS BESIDE IT.
@@ -580,6 +652,14 @@ class Subscription {
     // ST-AD12 (0009_tags.sql). Always sent: an API before 0009 ignores a key
     // its validator does not name, and `[]` is how a PATCH clears them.
     'tags': tags,
+    // ST-P4: sent only for a shared plan. An unshared row's 1/1 is 0003's
+    // DEFAULT already, and a PATCH that undoes a share sends the pair as 1/1
+    // (see [changesFrom]), which is how the API says a share is undone.
+    if (isShared || sharedWith != null) ...<String, dynamic>{
+      'shared_with': sharedWith,
+      'share_numerator': shareNumerator,
+      'share_denominator': shareDenominator,
+    },
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -680,6 +760,16 @@ class Subscription {
         }
       }
     }
+    // A share undone leaves its keys out of [toJson]; the API's undo is an
+    // explicit 1/1 and a null label. AFTER the groups, which would otherwise
+    // copy the absent keys back as null.
+    if (before.isShared || before.sharedWith != null) {
+      if (!b.containsKey('share_numerator')) {
+        out['shared_with'] = null;
+        out['share_numerator'] = 1;
+        out['share_denominator'] = 1;
+      }
+    }
     return out;
   }
 
@@ -700,6 +790,7 @@ class Subscription {
   static const List<List<String>> _togetherKeys = <List<String>>[
     <String>['price', 'price_minor', 'currency'],
     <String>['cycle', 'cycle_every', 'cycle_unit'],
+    <String>['share_numerator', 'share_denominator'],
   ];
 
   Subscription _with({
@@ -746,6 +837,9 @@ class Subscription {
     priceAfterTrial: priceAfterTrial,
     priceAfterTrialSupported: priceAfterTrialSupported,
     tags: tags ?? this.tags,
+    sharedWith: sharedWith,
+    shareNumerator: shareNumerator,
+    shareDenominator: shareDenominator,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

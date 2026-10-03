@@ -639,9 +639,12 @@
   // tooling/store/capture-backend.mjs refuses a sandbox id, bucket or service name
   // that any top level binds. The three per-app twins are RENDERED from each app
   // Worker's own env.sandbox (tooling/scripts/render-platform-app-block.mjs, the
-  // sandbox-* regions); the namespaces and the bucket were created by
-  // tooling/scripts/provision-sandbox-twins.mjs (create only, idempotent), which
-  // wrote their ids here. tooling/ci/assert-platform-register.mjs limb 8 holds the
+  // sandbox-* regions). The namespaces and the bucket are CREATED by
+  // tooling/scripts/provision-sandbox-twins.mjs --apply (create only, idempotent),
+  // which writes their ids here. ⏱ 2026-10-03: NOT YET RUN — SESSION_REVOKED and
+  // SIGNUPS still carry the all-zeros id and the bucket does not exist, so a
+  // sandbox deploy fails until that lead step lands the ids and deletes the
+  // register's `pendingTwins` rows. tooling/ci/assert-platform-register.mjs limb 8 holds the
   // set: every top-level binding name appears here, or the register says why not.
   // Still no cron runs here (`crons: []`), so the nightly backup and fan-out never
   // fire in the sandbox; their bindings exist so a route that reads them is tested
@@ -730,19 +733,22 @@
         { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
         // why: src/routes/sessions.ts WRITES the revocation list (`rev:<sub>`)
         // and every sandbox Worker's auth reads it: without it a sandbox E2E
-        // cannot see a revoked session refused. `session-revoked-sandbox`,
-        // created by tooling/scripts/provision-sandbox-twins.mjs.
+        // cannot see a revoked session refused. `session-revoked-sandbox`, to be
+        // created by tooling/scripts/provision-sandbox-twins.mjs --apply (not yet
+        // run: all zeros, a `pendingTwins` row).
         { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" },
         // why: src/backup/index.ts exports it nightly (its only reader; no cron
-        // runs here). `signups-sandbox`, created by
-        // tooling/scripts/provision-sandbox-twins.mjs, so a sandbox backup run
-        // never reads production's waitlist.
+        // runs here). `signups-sandbox`, to be created by
+        // tooling/scripts/provision-sandbox-twins.mjs --apply (not yet run: all
+        // zeros, a `pendingTwins` row), so a sandbox backup run never reads
+        // production's waitlist.
         { "binding": "SIGNUPS", "id": "00000000000000000000000000000000" }
       ],
       // why: src/backup/index.ts writes it (no cron runs here, so only a test
-      // or a hand-run reaches it). `nikatru-backups-sandbox`, created by
-      // tooling/scripts/provision-sandbox-twins.mjs: an unresolvable bucket
-      // binding fails the sandbox deploy, so the bucket exists first.
+      // or a hand-run reaches it). `nikatru-backups-sandbox`, to be created by
+      // tooling/scripts/provision-sandbox-twins.mjs --apply (not yet run): an
+      // unresolvable bucket binding fails the sandbox deploy, so the bucket must
+      // exist before any sandbox dispatch.
       "r2_buckets": [
         { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups-sandbox" },
         // why: src/routes/feedback.ts — the sandbox twin of the screenshot bucket,

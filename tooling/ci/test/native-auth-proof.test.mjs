@@ -3,8 +3,8 @@
 // reading that cannot fail would flip a row on no evidence.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import {
@@ -31,7 +31,17 @@ import {
   refusalSchedule,
   refusalSlot,
   retryAfterMs,
+  AWAIT_MARKER,
+  OAUTH_RETURN_LINE,
+  OAUTH_RETURN_OK_LINE,
+  OAUTH_RETURN_TEST,
+  oauthReturnOpens,
+  oauthReturnUrl,
+  readOAuthReturn,
+  runOAuthReturnLeg,
+  schemeProblems,
 } from '../../e2e/native_auth_proof.mjs';
+import { APP_INPUTS } from '../assert-auth-callbacks.mjs';
 import { PROOF_LOG_END as END, resolveProofLogConsent } from '../../e2e/consent_anon_id.mjs';
 import { jobEnv, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
@@ -243,6 +253,10 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
   // phone's form route needs an attestation no hosted device can produce, and a
   // desktop's e-mail sign-in is the system-browser hand-off, which no app
   // screen opens until #1133's PR B lands. A `form` leg runs no probe.
+  // ⏱ 2026-10-01 (AB-A1-02): the OAuth-return leg runs the driver WITHOUT
+  // --expect-refusal or --callback — it signs nobody in — and only in a job of
+  // its own, one per native target. driverBlocks marks those blocks and the
+  // scan below holds them apart from the sign-in legs.
   const TARGETS_NOW = ['android', 'ios', 'macos', 'windows', 'linux'];
   function driverBlocks(root) {
     const blocks = [];
@@ -250,17 +264,28 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
       const wf = parseWorkflow(root, rel);
       assert.ok(wf, `${rel} parses`);
       for (const job of wf.jobs.values()) {
+        const kinds = new Set();
         for (const line of job.logical) {
           const text = typeof line === 'string' ? line : line.text;
-          if (/tooling\/e2e\/native_auth_proof\.mjs/.test(text)) blocks.push({ rel, job: job.name, text });
+          if (!/tooling\/e2e\/native_auth_proof\.mjs/.test(text)) continue;
+          const oauthReturn = /--oauth-return\b/.test(text);
+          kinds.add(oauthReturn ? 'oauth-return' : 'sign-in');
+          blocks.push({ rel, job: job.name, text, oauthReturn });
         }
+        assert.ok(kinds.size < 2, `${rel} job ${job.name} runs a sign-in leg AND the OAuth return — the OAuth return is its own job`);
       }
     }
     return blocks;
   }
 
   test('WORKFLOW-SCAN: every native leg opens the app; a token leg runs the refusal probe first', () => {
-    const blocks = driverBlocks(REPO);
+    const all = driverBlocks(REPO);
+    const oauthReturns = all.filter((b) => b.oauthReturn);
+    for (const { rel, job, text } of oauthReturns) {
+      assert.doesNotMatch(text, /--expect-refusal\b|--callback\b/, `${rel} job ${job}: ${text.trim()}`);
+    }
+    assert.equal(oauthReturns.length, 5, 'one OAuth-return leg per native target');
+    const blocks = all.filter((b) => !b.oauthReturn);
     for (const { rel, job, text } of blocks) {
       const calls = text.split(/(?=node tooling\/e2e\/native_auth_proof\.mjs)/).filter((c) => c.startsWith('node tooling/e2e/native_auth_proof.mjs'));
       const device = calls.filter((c) => !/--expect-refusal\b/.test(c));
@@ -574,5 +599,145 @@ describe('native_auth_proof — the log is written before anything can refuse', 
     assert.deepEqual(d.screenshot.slice(0, 5), ['xcrun', 'simctl', 'io', 'SIM-1', 'screenshot']);
     assert.deepEqual(d.log.slice(0, 6), ['xcrun', 'simctl', 'spawn', 'SIM-1', 'log', 'show']);
     for (const t of ['android', 'macos', 'linux', 'windows']) assert.equal(afterOpenDiagnostics(t, {}), null, t);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · AB-A1-02 — --oauth-return, the per-target OAuth-return leg.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('native_auth_proof --oauth-return — the OAuth return lands as OAuth', () => {
+  const APP = 'subscriptiontracker';
+  const DRIVE = join(REPO, 'tooling', 'e2e', 'native_auth_proof.mjs');
+  const LANDED = [AWAIT_MARKER, OAUTH_RETURN_LINE, OAUTH_RETURN_OK_LINE].join('\n');
+
+  /** A copy of exactly what assert-auth-callbacks.mjs reads for [APP]. */
+  function appCopy() {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-oauth-return-'));
+    for (const rel of APP_INPUTS) {
+      const from = join(REPO, 'apps', APP, rel);
+      if (!existsSync(from)) continue;
+      mkdirSync(dirname(join(root, 'apps', APP, rel)), { recursive: true });
+      cpSync(from, join(root, 'apps', APP, rel), { recursive: true });
+    }
+    return root;
+  }
+  const breakFile = (root, rel, from, to) => {
+    const p = join(root, 'apps', APP, rel);
+    const before = readFileSync(p, 'utf8');
+    const after = before.split(from).join(to);
+    assert.notEqual(after, before, `the mutation of ${rel} did not apply — a test that mutates nothing proves nothing`);
+    writeFileSync(p, after);
+  };
+  const SCHEME = `com.nikatru.${APP}`;
+  const BROKEN = 'com.nikatru.notthisapp';
+
+  test('the URL is an OAuth return on the app\'s own scheme, with a code no flow minted', () => {
+    const u = new URL(oauthReturnUrl(APP));
+    assert.equal(u.protocol, `${SCHEME}:`);
+    assert.equal(u.host, 'auth-callback');
+    assert.equal(u.searchParams.get('nk_auth'), 'oauth');
+    assert.ok(u.searchParams.get('code'));
+    assert.equal(OAUTH_RETURN_TEST, 'integration_test/native_oauth_return_test.dart');
+    assert.ok(existsSync(join(REPO, 'apps', APP, OAUTH_RETURN_TEST)), 'the suite the leg runs is on disk');
+  });
+
+  test('the drive and the suite require the SAME line', () => {
+    const steps = readFileSync(join(REPO, 'apps', APP, 'integration_test', 'native_auth_proof_steps.dart'), 'utf8');
+    assert.ok(steps.includes(`'${OAUTH_RETURN_LINE}'`), 'kOAuthReturnCallbackLine drifted from OAUTH_RETURN_LINE');
+    assert.ok(steps.includes(`'${OAUTH_RETURN_OK_LINE}'`), 'kOAuthReturnOkLine drifted from OAUTH_RETURN_OK_LINE');
+  });
+
+  test('readOAuthReturn: a landed return passes; one read as a RESET, or none, fails', () => {
+    assert.deepEqual(readOAuthReturn(LANDED), []);
+    const asReset = readOAuthReturn([AWAIT_MARKER, FAILED_CALLBACK_LINE].join('\n'));
+    assert.ok(asReset.some((p) => /classed as a RESET/.test(p)), asReset.join('\n'));
+    assert.ok(readOAuthReturn(AWAIT_MARKER).some((p) => /never reached the session exchange/.test(p)));
+    assert.ok(readOAuthReturn('').some((p) => /never reached the point/.test(p)));
+  });
+
+  test('every native target is handed the return; windows through its single-instance forwarder', () => {
+    const url = oauthReturnUrl(APP);
+    const exe = oauthReturnOpens('windows', url, { app: APP, root: REPO });
+    assert.equal(exe.length, 1);
+    assert.match(exe[0][0], /build[\\/]windows[\\/]x64[\\/]runner[\\/]Debug[\\/]subscriptiontracker\.exe$/);
+    assert.equal(exe[0][1], url);
+    assert.ok(oauthReturnOpens('android', url, { app: APP, root: REPO }).flat().join(' ').includes(url));
+    assert.deepEqual(oauthReturnOpens('ios', url, { app: APP, root: REPO }), [], 'iOS: the app opens its own return');
+  });
+
+  test('GREEN CONTROL: the real tree, and an untouched copy, register the scheme on every target', () => {
+    for (const t of TARGETS) assert.deepEqual(schemeProblems(REPO, APP, t), [], t);
+    const root = appCopy();
+    try {
+      for (const t of TARGETS) assert.deepEqual(schemeProblems(root, APP, t), [], t);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // 🔴 THE RED CONTROL THE BRIEF NAMES: break the scheme in a fixture, and the
+  // leg fails — on each target whose registration lives in a file of its own.
+  test('🔴 a broken scheme in a target\'s own manifest fails that target\'s leg before any device is used', () => {
+    for (const [target, rel] of [
+      ['android', 'android/app/src/main/AndroidManifest.xml'],
+      ['ios', 'ios/Runner/Info.plist'],
+      ['macos', 'macos/Runner/Info.plist'],
+      ['windows', 'pubspec.yaml'],
+    ]) {
+      const root = appCopy();
+      try {
+        breakFile(root, rel, SCHEME, BROKEN);
+        assert.notDeepEqual(schemeProblems(root, APP, target), [], `${target}: the broken registration in ${rel} was not noticed`);
+        const r = spawnSync(process.execPath, [DRIVE, '--app', APP, '--target', target, '--oauth-return'], {
+          cwd: root,
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH },
+        });
+        assert.equal(r.status, 1, `${target}: ${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /OAuth return FAILED — .* does not route the app's callback scheme to it/, target);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test('GREEN CONTROL for the above: the same copy, scheme intact, gets past the scheme and stops only for its env (exit 2)', () => {
+    const root = appCopy();
+    try {
+      const r = spawnSync(process.execPath, [DRIVE, '--app', APP, '--target', 'android', '--oauth-return'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      });
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /missing env SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('--oauth-return is its own leg: it refuses --expect-refusal and --callback', () => {
+    for (const extra of ['--expect-refusal', '--callback']) {
+      const r = spawnSync(process.execPath, [DRIVE, '--app', APP, '--target', 'android', '--oauth-return', extra], { cwd: REPO, encoding: 'utf8' });
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /--oauth-return is its own leg/);
+    }
+  });
+
+  test('runOAuthReturnLeg grades what the device printed, and opens the return only once the suite waits', async () => {
+    const env = { SUPABASE_URL: 'https://x.invalid', SUPABASE_ANON_KEY: 'k', API_BASE_URL: 'https://api.invalid' };
+    const seen = [];
+    const fake = (out, code = 0) => async (_root, _o, args, _log, onAwait) => {
+      seen.push(args);
+      assert.equal(typeof onAwait, 'function', 'the leg must hand the runner an opener');
+      return { out, code, hung: false };
+    };
+    const o = { app: APP, target: 'ios', device: 'SIM' };
+    assert.equal(await runOAuthReturnLeg(o, { root: REPO, env, flutter: fake(LANDED) }), 0);
+    assert.ok(seen[0].includes(OAUTH_RETURN_TEST));
+    assert.ok(seen[0].includes(`--dart-define=NK_PROOF_OPEN_FROM_APP=${oauthReturnUrl(APP)}`), 'iOS opens its own return');
+    assert.ok(!seen[0].some((a) => /E2E_EMAIL|E2E_PASSWORD/.test(a)), 'the OAuth return signs nobody in');
+    assert.equal(await runOAuthReturnLeg(o, { root: REPO, env, flutter: fake([AWAIT_MARKER, FAILED_CALLBACK_LINE].join('\n')) }), 1);
+    assert.equal(await runOAuthReturnLeg(o, { root: REPO, env, flutter: fake(LANDED, 1) }), 1, 'a red flutter run is red');
   });
 });

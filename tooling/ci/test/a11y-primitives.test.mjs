@@ -162,7 +162,10 @@ describe('the real tree', () => {
       // 9 -> 11 and 1 -> 0 on 2026-10-01 (ST-SETTINGS, on st-entry): SE-02's
       // change-e-mail/password dialog adds two obscured fields, both hinted;
       // SE-05 hinted the last one, the delete-account password.
-      assert.match(r.stdout, /ST-Y3: 11 obscured field\(s\), 0 without hints, all baselined/);
+      // 11 -> 13 on 2026-10-02 (club-st-singles, T16 XP-03): the lock
+      // screen's PIN and the set-a-PIN dialog's, both arriving WITH autofill
+      // hints. Read off the guard's own line.
+      assert.match(r.stdout, /ST-Y3: 13 obscured field\(s\), 0 without hints, all baselined/);
     });
   });
 });

@@ -41,6 +41,16 @@
       "firstSeen": "2026-09-06",
       "evidence": []
     },
+    "tooling/autopilot/review-paths.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
+    "tooling/autopilot/watch.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/catalog/render-rail-prices.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",
@@ -3669,6 +3679,11 @@
     "tooling/e2e/purge.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/e2e/purge_stale.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/e2e/sign_in_via.mjs": {

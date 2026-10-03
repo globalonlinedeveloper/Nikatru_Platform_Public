@@ -3,7 +3,7 @@
 // config; the row it writes is what tooling/ops/check-box-config-drift.mjs reads.
 //
 // What must hold, each asserted against the REAL migrated schema (harness.ts
-// applies migrations/0024_box_config_manifest.sql):
+// applies migrations/0025_box_config_manifest.sql):
 //   · a box's own secret writes that box's row, and only that box's row;
 //   · Box B's secret cannot write Box C's row (the secret is BOX-scoped);
 //   · an unconfigured box answers 503 before anything is read or written;

@@ -194,6 +194,20 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       if (observed != null) _syncReminders(observed);
     });
 
+    // ⏱ 2026-10-02 · ruling on #1155 (E2E run 37047693623): THE LIST IS READ
+    // FOR ONE ACCOUNT. This controller is kept alive, and a read made before
+    // a session existed (no bearer token, so the Worker's 401) or under the
+    // previous account stayed on screen after the sign-in: Home said "Your
+    // session has ended" to a user who had just signed in. A DIFFERENT
+    // signed-in account than the one this read was made for re-reads; a
+    // sign-out does not (nothing may be read without a session).
+    // `test/sign_in_loads_home_list_test.dart`.
+    final String? readFor = ref.read(authRepositoryProvider).currentUser?.id;
+    ref.listen(authUserProvider, (_, next) {
+      final String? id = next.value?.id;
+      if (id != null && id != readFor) ref.invalidateSelf();
+    });
+
     final List<Subscription> subs = _visible(
       await ref.watch(subscriptionRepositoryProvider).fetchAll(),
     );

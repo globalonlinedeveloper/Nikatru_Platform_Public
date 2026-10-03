@@ -1269,6 +1269,14 @@
       "proves": "Drives the bundle branch with grants from the other money world and with NO environment, and requires a denial, then the same world and requires a grant. A bundle branch that decided on its own copy of the rule and dropped the environment limb goes red here. WEAK: it grades the environment limb only (lifetime and grace dates are pinned by sibling cases in the same file), and a re-implementation that happened to agree would pass."
     },
     {
+      "file": "services/platform/src/routes/events.ts",
+      "anchor": "exported so the test that sums the two cannot drift.",
+      "status": "proven",
+      "test": "services/platform/test/events.test.ts",
+      "case": "🔴 a FULL batch is 1 read + N inserts, and that sum fits d1.queriesPerInvocation",
+      "proves": "Posts a full MAX_EVENTS_PER_BATCH batch, counts the consent reads the handler actually issues and requires that count to equal CONSENT_READS_PER_BATCH, then requires MAX_EVENTS_PER_BATCH + CONSENT_READS_PER_BATCH <= d1.queriesPerInvocation read from tooling/ceilings.json. A handler that grew a second read without the constant moving, or a batch cap raised past the ceiling, goes red (red control 2026-10-01: MAX_EVENTS_PER_BATCH = 50 reds this case)."
+    },
+    {
       "file": "services/platform/test/checkout.test.ts",
       "anchor": "describe('REQUIRED_COVERAGE — the price map and the served offerings cannot drift apart'",
       "status": "proven",
@@ -1505,6 +1513,14 @@
       "test": "tooling/ci/test/ports.test.mjs",
       "case": "red: an entity-source sender edited without a re-render reddens limb 9 (the generated module is stale)",
       "proves": "port-mail. The case edits a sender in a copy of the REAL tooling/house-identity.json and leaves services/platform/src/generated/entity.ts as it was; assert-ports exits 1 with limb 9 naming render-entity: STALE, so the generated module cannot differ from the entity source while CI's assert-ports step is green."
+    },
+    {
+      "file": "tooling/e2e/e2e_email.mjs",
+      "anchor": "cannot drift apart",
+      "status": "proven",
+      "test": "tooling/ci/test/e2e-provision-leak.test.mjs",
+      "case": "green control — a good mint writes all four outputs, each once, and the address has the sweep's shape",
+      "proves": "provision_user.mjs is SPAWNED and the address it writes to $GITHUB_OUTPUT is held to E2E_EMAIL_SHAPE, the regex purge_stale.mjs selects by; a provisioner that minted any other shape fails this case."
     }
   ],
   "backlog": {}

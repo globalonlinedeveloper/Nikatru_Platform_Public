@@ -180,8 +180,16 @@ describe('render-apple-privacy-manifest.mjs — the generator round-trips', () =
     }
   });
 
+  // ⏱ 2026-10-01 (T16): the REAL audit's iOS accessed-API array is no longer
+  // empty (home_widget's app-group UserDefaults, declared by the app target
+  // because that binary ships no manifest), so the two real renderings differ
+  // in that paragraph and that array too. The property this case pins — the
+  // PLATFORM is two lines and nothing else — is measured on the audit with
+  // the per-platform arrays made equal; the next case pins the arrays.
   test('the two platforms differ in EXACTLY two lines — the platform id and the source list', () => {
-    const { audit } = readAudit(join(REPO, 'apps', APP));
+    const { audit: real } = readAudit(join(REPO, 'apps', APP));
+    const audit = JSON.parse(JSON.stringify(real));
+    audit.accessedApiDetermination.macos = audit.accessedApiDetermination.ios;
     const ios = renderManifest(audit, 'ios', APP).split('\n');
     const macos = renderManifest(audit, 'macos', APP).split('\n');
     assert.equal(ios.length, macos.length);
@@ -211,8 +219,20 @@ describe('render-apple-privacy-manifest.mjs — the generator round-trips', () =
         doc.NSPrivacyCollectedDataTypes.map((r) => r.NSPrivacyCollectedDataTypePurposes),
         audit.collectedDataTypes.rows.map((r) => r.purposes),
       );
-      assert.deepEqual(doc.NSPrivacyAccessedAPITypes, []);
+      assert.deepEqual(
+        doc.NSPrivacyAccessedAPITypes,
+        audit.accessedApiDetermination[p].map((e) => ({
+          NSPrivacyAccessedAPIType: e.category,
+          NSPrivacyAccessedAPITypeReasons: e.reasons,
+        })),
+      );
     }
+    // And the real arrays, pinned: iOS declares home_widget's app-group
+    // UserDefaults (T16); macOS, where home_widget has no implementation, none.
+    assert.deepEqual(audit.accessedApiDetermination.ios, [
+      { category: 'NSPrivacyAccessedAPICategoryUserDefaults', reasons: ['1C8F.1'] },
+    ]);
+    assert.deepEqual(audit.accessedApiDetermination.macos, []);
   });
 
   test('a NON-EMPTY accessedApiDetermination renders and parses back — U-1\'s remedy is not dead code', () => {
@@ -257,7 +277,9 @@ describe('the readers parse structure, not prose', () => {
   test('the plist reader does not read the header comment as a declaration', () => {
     // The rendered header names UserDefaults, CA92.1 and 1C8F.1 in a sentence
     // explaining why they are NOT declared. A grep would conclude the opposite.
-    const committed = readFileSync(join(REPO, 'apps', APP, MANIFEST_REL.ios), 'utf8');
+    // ⏱ 2026-10-01 (T16): read on the MACOS file, whose array is still empty;
+    // the iOS one now really declares UserDefaults (see the case above).
+    const committed = readFileSync(join(REPO, 'apps', APP, MANIFEST_REL.macos), 'utf8');
     assert.ok(committed.includes('NSPrivacyAccessedAPICategoryUserDefaults') === false);
     assert.ok(committed.includes('CA92.1'), 'the header must still name CA92.1 in prose');
     assert.deepEqual(parsePlist(committed).NSPrivacyAccessedAPITypes, []);

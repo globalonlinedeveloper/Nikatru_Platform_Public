@@ -4,6 +4,11 @@
 # -r --config <this file>` in ci.yml's security-scan lane (every pull request and
 # push) and in ops-watch.yml's heartbeats job (main, daily at 07:30 UTC).
 #
+# [rv2-security-004] A PULL REQUEST is graded only on the lockfiles it changed:
+# an advisory in a lockfile it did not touch is printed and owned by the daily
+# scan of main. A pull request that changes THIS FILE is graded on every
+# lockfile, so adding or removing an entry here is judged against the whole tree.
+#
 # ⚠️ [rv2-security-018] THE CANARY RUNS WITH THIS FILE TOO. Before the tree is
 # scanned, the script hands OSV a canary lockfile per tracked format (lodash
 # 4.17.4; Dart http 0.13.0) and refuses (exit 2) unless each is flagged. An entry
@@ -63,3 +68,470 @@ reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive dev
 id = "GHSA-vfj7-8cjw-p6xm"
 ignoreUntil = 2026-10-17T00:00:00Z
 reason = "braces <=3.0.3 has no patched release (2026-10-03); transitive devDependency (eleventy -> chokidar 3) in sites/_shared, expands the build's own globs only; in no shipped output"
+
+# ── 2026-10-01 · THE GRADLE BUILD CLASSPATH, NOW VISIBLE [rv2-security-003 stage (b)] ──
+# apps/subscriptiontracker/android/gradle/verification-metadata.xml (Gradle dependency
+# verification) lists every artefact the Android build resolves, and OSV 2.6.0 reads it
+# as a Maven manifest: 65 vulnerable packages, all on the BUILD classpath of AGP 9.4.1,
+# Kotlin 2.4.20 and Gradle 9.8.0 (guava, protobuf-java, netty, commons-io, gson, tink…),
+# none of them in the shipped app. They were there before; nothing read them. They are
+# moved by an AGP / Kotlin / Gradle bump, not by an edit here, so each is acknowledged
+# for ONE MONTH: on 2026-10-31 the daily scan of main reddens on whatever is left.
+# REVIEWED (PR #1154, 2026-10-02): the ignores stay, rather than
+# `--experimental-disable-plugins` for the verification-metadata extractor, which
+# would hide them. From 14 days before the date, scan-dependencies.mjs prints a
+# warning naming every id still here (EXPIRY_WARN_DAYS), on every PR and on the
+# daily scan; the owner row is O-OSV-BUILD-CLASSPATH-IGNORES-EXPIRE-2026-10-31
+# (the toolchain-bump lane). ⚠️ An ignore is by GHSA id across ALL lockfiles, not
+# by file: these are Maven-only advisories, so no npm or pub finding is masked
+# today, but a reused id would be.
+
+[[IgnoredVulns]]
+id = "GHSA-2363-cqg2-863c"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-269g-pwp5-87pp"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-269q-hmxg-m83q"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-2qp4-g3q3-f92w"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-3677-xxcr-wjqv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-389x-839f-4rhx"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-38f8-5428-x5cv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-3p8m-j85q-pgmj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-3qp7-7mw8-wx86"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-3vqj-43w4-2q58"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4265-ccf5-phj5"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-45q3-82m4-75jr"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4cx2-fc23-5wg6"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4g8c-wm8x-jfhw"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4g9r-vxhx-9pgx"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4gg5-vx3j-xwc7"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4h8f-2wvx-gg5w"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4jq9-2xhw-jpx7"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4jrv-ppp4-jm57"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-4mp9-239f-g9hg"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-558v-64gr-wgg4"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-563q-j3cm-6jxm"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-574f-3g2m-x479"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-57rv-r2g8-2cj3"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-5jpm-x58v-624v"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-5mcr-gq6c-3hq2"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-5mg8-w23w-74h3"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-5x3r-wrvg-rp6q"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-67mf-3cr5-8w23"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-6cqp-g7gg-8hr5"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-6jqx-86gh-f27w"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-6mjq-h674-j845"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-6qvw-249j-h44c"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-735f-pc8j-v9w8"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-78wr-2p64-hpwj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-7g24-qg88-p43q"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-7g45-4rm6-3mm3"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-7hfm-57qf-j43q"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-7r82-7xv7-xcpj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-84h7-rjj3-6jx4"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-8c42-7qj2-3j46"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-8xfc-gm6g-vgpv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-93wv-jw9v-4972"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-9pwp-9qqc-pr26"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-9vjp-v76f-g363"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-c2gf-v879-257j"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-c3fc-8qff-9hwx"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-c4c3-7fpv-j4q5"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-c653-97m9-rcg9"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-c69g-56f8-xwqj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-crv7-7245-f45f"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-f256-j965-7f32"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-f6hv-jmp6-3vwv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-fccg-mwvh-qqg4"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-fghv-69vj-qj49"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-g5vf-v6wf-7w2r"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-g5ww-5jh7-63cx"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-gcjf-9mgh-3p7g"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-grg4-wf29-r9vv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-gwrp-pvrq-jmwv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-h4h5-3hr4-j3g2"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-h65f-jvqw-m9fj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-hr8g-6v94-x4m9"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-hvcg-qmg6-jm4c"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-j288-q9x7-2f5v"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-jgvc-jfgh-rjvv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-jppx-w49h-x2qq"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-m44j-cfrm-g8qc"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-m4cv-j2px-7723"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-mc84-pj99-q6hh"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-mj4r-2hfc-f8p6"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-mvh2-crg5-v77c"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-prj3-ccx8-p6x4"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-pwqr-wmgm-9rr8"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-q4f6-jm68-57ww"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-qp49-qgx5-5m26"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-r937-wjx7-w2jp"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-v435-xc8x-wvr9"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-v8h7-rr48-vmmv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-w4jq-qh47-hvjq"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-w9fj-cfpg-grvv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-wg6q-6289-32hp"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-wjxj-5m7g-mg7q"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-wm47-8v5p-wjpj"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-wx5j-54mm-rqqq"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-x4gw-5cx5-pgmh"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-xpw8-rcwv-8f8p"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-xq3w-v528-46rv"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-xqfj-vm6h-2x34"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."
+
+[[IgnoredVulns]]
+id = "GHSA-xxqh-mfjm-7mv9"
+ignoreUntil = 2026-10-31T00:00:00Z
+reason = "Gradle/AGP build classpath (verification-metadata.xml), not shipped; moved by a toolchain bump. Re-check 2026-10-31."

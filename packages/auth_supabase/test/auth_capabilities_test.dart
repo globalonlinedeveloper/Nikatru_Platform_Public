@@ -149,6 +149,32 @@ void main() {
     }
   });
 
+  // ⏱ 2026-10-02 · #1142 review item 2: where a typed password can re-prove.
+  test('passwordReauth: web, Android and iOS; never a desktop build', () {
+    expect(
+      AuthCapabilities.forPlatform(TargetPlatform.linux, isWeb: true)
+          .passwordReauth,
+      isTrue,
+    );
+    for (final TargetPlatform p in <TargetPlatform>[
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    ]) {
+      expect(AuthCapabilities.forPlatform(p, isWeb: false).passwordReauth, isTrue);
+    }
+    for (final TargetPlatform p in <TargetPlatform>[
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    ]) {
+      expect(
+        AuthCapabilities.forPlatform(p, isWeb: false).passwordReauth,
+        isFalse,
+        reason: '$p has no attested password grant yet',
+      );
+    }
+  });
+
   test('current() resolves without throwing on the host', () {
     expect(AuthCapabilities.current(), isNotNull);
   });

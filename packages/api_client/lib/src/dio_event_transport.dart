@@ -61,6 +61,16 @@ class DioEventTransport implements core.EventTransport {
       if (_refusesBuild(e)) {
         return core.Result<void>.err(core.UnreleasedBuildFailure(cause: e));
       }
+      // ⏱ 2026-10-01 — the server enforces analytics consent at ingest. 409
+      // `consent_not_recorded`: post the artifact, then retry. 403
+      // `consent_withdrawn`: drop the batch. Typed by status AND code, so a
+      // 409/403 from anything else in the path stays a plain retry.
+      if (_answered(e, 409, core.kConsentNotRecordedError)) {
+        return core.Result<void>.err(core.ConsentNotRecordedFailure(cause: e));
+      }
+      if (_answered(e, 403, core.kConsentWithdrawnError)) {
+        return core.Result<void>.err(core.ConsentWithdrawnFailure(cause: e));
+      }
       // Includes 429 (breaker shed it) and 503 (D1 hiccup) — both mean KEEP the
       // batch. The server dedups on event_id, so retrying is always safe.
       return core.Result<void>.err(
@@ -77,4 +87,15 @@ bool _refusesBuild(Object e) {
   if (res?.statusCode != 422) return false;
   final Object? data = res?.data;
   return data is Map && data['error'] == core.kUnreleasedBuildError;
+}
+
+/// Did the Worker answer [status] with the stable error [code]? The consent
+/// refusals' twin of [_refusesBuild], kept separate because that one's text is
+/// pinned by services/platform/test/build-stamp.test.ts.
+bool _answered(Object e, int status, String code) {
+  if (e is! DioException) return false;
+  final Response<dynamic>? res = e.response;
+  if (res?.statusCode != status) return false;
+  final Object? data = res?.data;
+  return data is Map && data['error'] == code;
 }

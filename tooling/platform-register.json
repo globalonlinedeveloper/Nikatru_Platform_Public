@@ -235,6 +235,19 @@
           "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
         },
         {
+          "id": "subscriptiontracker-insights",
+          "method": "GET",
+          "path": "/v1/insights",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/insights.ts",
+          "purpose": "⏱ 2026-09-30 · ST-P6 (round-2 F23) + ST-I4 (round-2 X09). The user's payment_history rows and price_change rows over the last 12 calendar months, across every plan, in ONE read — the Insights trend is drawn from the first and the price-rise alert from the second. Named columns and GET /v1/subscriptions/:id's currency rule, so the two readers agree; ownership is in the SQL.",
+          "client": {
+            "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
+            "expression": "_rest.get('/insights')",
+            "note": "The real call inside `getSpendHistory()`, read by `spendHistoryProvider` for the Pro trend (forecast_card.dart) and the price-rise signal (signals.dart)."
+          }
+        },
+        {
           "id": "subscriptiontracker-budget-get",
           "method": "GET",
           "path": "/v1/budget",
@@ -536,7 +549,7 @@
       "path": "/v1/events",
       "auth": "public",
       "owningFile": "services/platform/src/routes/events.ts",
-      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated CLIENT-side. Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
+      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated on BOTH sides: the client collects nothing before a grant, and since 2026-10-01 the route stores nothing for an install whose latest `purpose='analytics'` artifact is missing (409 consent_not_recorded) or a withdrawal (403 consent_withdrawn). Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
       "client": {
         "file": "packages/api_client/lib/src/dio_event_transport.dart",
         "expression": "'$_base/v1/events'",
@@ -582,6 +595,24 @@
       "owningFile": "services/platform/src/routes/provider-token.ts",
       "purpose": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The provider-general form of the route above: body `{provider, refreshToken, appId}`, `provider` one of `apple` / `google` and cross-checked against the verified token's `app_metadata.providers` (a provider the account has not linked is 400). platform_db.provider_tokens keeps one row per (subject, provider) until DELETE /v1/account revokes it — at Apple, or at Google through 'POST https://oauth2.googleapis.com/revoke', which takes the token and no client credential. The subject is the JWT's, never the body's; the response is a COUNT; the token is never logged, never echoed and readable by no route — its only reader is src/lib/provider-revoke.ts. ⏱ 2026-09-30 · STORED ENCRYPTED (AES-256-GCM under the Worker secret TOKEN_ENC_KEY_V1, src/lib/token-crypto.ts, migration 0023): without a usable key it answers 503 `<provider>_token_store_failed` and stores nothing.",
       "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/state/providers/auth.dart (sendProviderRefreshToken, wired into appleTokenKeeperProvider) posts every non-Apple provider token through packages/api_client/lib/src/account_deletion_request.dart (storeProviderRefreshToken). No shipped build produces one yet: Google sign-in is the Dart half of O-GOOGLE-SIGN-IN-NOT-BUILT. Proven in services/platform/test/provider-token.test.ts."
+    },
+    {
+      "id": "account-apple-code",
+      "method": "PUT",
+      "path": "/v1/account/apple-code",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/apple-code.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 1 (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, the native sheet's half). The native Sign in with Apple sheet (iOS, macOS) signs in through `signInWithIdToken`, whose session carries NO provider refresh token; it returns a one-time `authorizationCode` instead. Body `{authorizationCode, appId}`: the Worker exchanges the code at 'POST https://appleid.apple.com/auth/token' with client_id = the bundle id `com.nikatru.<appId>` (client secret minted with the same four APPLE_REVOKE_* secrets as the revoke) and stores the refresh token encrypted in platform_db.provider_tokens under `apple`, with `client_id` (migration 0024) so the revoke signs for the client the token belongs to. Refused (400) for an account whose verified token does not list apple, a malformed code or app id, and a code Apple refuses; 503 when the Apple secrets are missing (nothing stored); 502 when Apple cannot be reached. The response is a COUNT; the code and the token are never logged or echoed.",
+      "unconsumedReason": "CONSUMED: packages/core/lib/src/auth/provider_token_keeper.dart (keepProviderRefreshToken's sendAuthorizationCode) posts the code through packages/api_client/lib/src/account_deletion_request.dart (exchangeAppleAuthorizationCode), wired by appleTokenKeeperProvider (apps/subscriptiontracker/lib/state/providers/auth.dart sendAppleAuthorizationCode). Proven in services/platform/test/provider-revoke.test.ts."
+    },
+    {
+      "id": "account-identity-change",
+      "method": "POST",
+      "path": "/v1/account/identity-change",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/identity-change.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 3. Asked by the app BEFORE it links or unlinks a sign-in method (Settings › Connected accounts): 200 `{ok:true}` when the verified token's newest `amr` timestamp is inside RECENT_AUTH_SECONDS (the deletion path's recency rule, services/_shared/src/auth.ts), for every account, password accounts included; otherwise 403 `reauth_required` (never 401, which the client reads as a dead session). Reads nothing and writes nothing.",
+      "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart (confirmSignInMethodChangeAtServer, the serverCheck of core.guardSignInMethodChange) through packages/api_client/lib/src/account_deletion_request.dart (checkSignInMethodChange). Proven in services/platform/test/identity-change.test.ts."
     },
     {
       "id": "entitlements",

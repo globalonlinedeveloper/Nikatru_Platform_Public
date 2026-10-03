@@ -27,7 +27,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    83,
+    87,
 
   "analytics-liveness.test.mjs":
     28,
@@ -131,14 +131,41 @@
   "auth-cutover-preflight.test.mjs":
     100,
 
+  "autopilot-contract.test.mjs":
+    5,
+
+  "autopilot-heartbeat.test.mjs":
+    22,
+
   "autopilot-issue-queue.test.mjs":
-    18,
+    20,
+
+  "autopilot-land-gate.test.mjs":
+    31,
+
+  "autopilot-ledger.test.mjs":
+    29,
+
+  "autopilot-outage.test.mjs":
+    14,
+
+  "autopilot-post-verdict.test.mjs":
+    11,
+
+  "autopilot-prompts.test.mjs":
+    2,
 
   "autopilot-queue-doc.test.mjs":
     2,
 
   "autopilot-queue-migrate.test.mjs":
     11,
+
+  "autopilot-review-gate.test.mjs":
+    18,
+
+  "autopilot-runner.test.mjs":
+    16,
 
   "availability.test.mjs":
     33,
@@ -168,7 +195,7 @@
     4,
 
   "built-artifact-pr-lane.test.mjs":
-    27,
+    28,
 
   "built-info-plist.test.mjs":
     15,
@@ -276,7 +303,7 @@
     65,
 
   "connect-origins.test.mjs":
-    38,
+    41,
 
   "consent-anon-id.test.mjs":
     35,
@@ -321,13 +348,13 @@
     13,
 
   "data-inventory.test.mjs":
-    55,
+    60,
 
   "dead-repo-names.test.mjs":
     17,
 
   "deletion-control.test.mjs":
-    39,
+    54,
 
   "deploy-ref.test.mjs":
     31,
@@ -348,7 +375,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    168,
+    179,
 
   "dod-sync.test.mjs":
     20,
@@ -366,13 +393,16 @@
     27,
 
   "e2e-legs.test.mjs":
-    52,
+    59,
 
   "e2e-parity.test.mjs":
     37,
 
   "e2e-proof-fresh.test.mjs":
     71,
+
+  "e2e-provision-leak.test.mjs":
+    34,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -396,7 +426,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    36,
+    38,
 
   "ensure-monitors.test.mjs":
     26,
@@ -408,7 +438,7 @@
     4,
 
   "erasure-reach.test.mjs":
-    53,
+    55,
 
   "ext-connect-dom.test.mjs":
     7,
@@ -567,7 +597,7 @@
     16,
 
   "land-next.test.mjs":
-    59,
+    96,
 
   "land-rules.test.mjs":
     23,
@@ -588,7 +618,7 @@
     32,
 
   "legal-tripwires.test.mjs":
-    29,
+    30,
 
   "licence-register.test.mjs":
     80,
@@ -663,7 +693,7 @@
     41,
 
   "native-auth-proof.test.mjs":
-    42,
+    51,
 
   "native-symbol-upload.test.mjs":
     26,
@@ -723,7 +753,7 @@
     116,
 
   "ops-register.test.mjs":
-    448,
+    462,
 
   "ops-status.test.mjs":
     53,
@@ -744,7 +774,7 @@
     25,
 
   "pages-deployments.test.mjs":
-    111,
+    120,
 
   "pages-origin.test.mjs":
     26,
@@ -756,7 +786,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    13,
+    23,
 
   "personal-site.test.mjs":
     20,
@@ -780,16 +810,16 @@
     112,
 
   "policy-archive.test.mjs":
-    31,
+    35,
 
   "policy-claims.test.mjs":
-    62,
+    63,
 
   "port-render.test.mjs":
-    16,
+    19,
 
   "port-switch.test.mjs":
-    55,
+    56,
 
   "ports.test.mjs":
     110,
@@ -834,7 +864,7 @@
     26,
 
   "prod-provenance-walk.test.mjs":
-    32,
+    34,
 
   "prod-provenance.test.mjs":
     154,
@@ -876,7 +906,7 @@
     136,
 
   "rail-prices.test.mjs":
-    61,
+    71,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -936,7 +966,7 @@
     4,
 
   "rollback.test.mjs":
-    44,
+    47,
 
   "rollup-lossless.test.mjs":
     52,
@@ -963,7 +993,7 @@
     18,
 
   "scan-dependencies.test.mjs":
-    25,
+    44,
 
   "scan-secrets.test.mjs":
     22,
@@ -987,13 +1017,13 @@
     37,
 
   "session-revocation.test.mjs":
-    22,
+    25,
 
   "setup-flutter-env.test.mjs":
     4,
 
   "signing-inputs-pinned.test.mjs":
-    14,
+    26,
 
   "signing-seam-census.test.mjs":
     9,
@@ -1032,7 +1062,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    43,
+    46,
 
   "snap-submission.test.mjs":
     48,
@@ -1077,7 +1107,7 @@
     39,
 
   "stamp-properties.test.mjs":
-    30,
+    32,
 
   "stamp-text-fidelity.test.mjs":
     44,
@@ -1164,7 +1194,7 @@
     10,
 
   "triage-failed-runs.test.mjs":
-    114,
+    115,
 
   "turnstile-hosts.test.mjs":
     14,
@@ -1239,7 +1269,7 @@
     18,
 
   "workflow-hardening.test.mjs":
-    11,
+    17,
 
   "workflow-readers.test.mjs":
     23,

@@ -236,6 +236,30 @@
       }
     },
     {
+      "id": "table:platform_db.provider_payment_links",
+      "kind": "d1-table",
+      "name": "provider_payment_links",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · PR #1149 ruling item 2 (O-RAZORPAY-CHECKOUT-ADAPTER). One row per subscription charge on a rail whose refunds and disputes name a PAYMENT rather than a subscription (Razorpay): the rail's payment id, the subscription id it charged, our account id when the charge resolved one, the money world, and the notification that carried both ids. Written once, first link wins, on the signed `subscription.charged`, so a later refund or chargeback of that payment resolves its subscription without trusting the payment entity's own fields. No name, no email, no payment detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "It is the answer to 'which subscription does this refunded or disputed payment belong to', and a refund or chargeback can arrive for as long as the subscription's payments can be reversed — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`, and the shared erasure route derives the tables it empties from the schema."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0026_provider_payment_links.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.unclaimed_payments",
       "kind": "d1-table",
       "name": "unclaimed_payments",
@@ -585,7 +609,7 @@
       "kind": "d1-table",
       "name": "provider_tokens",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016). One row per (subject, identity provider) the subject signed in with through OAuth — `provider` is `apple` or `google`, CHECKed by the schema: the subject (the Supabase `sub`, under `subject_ref`), the app whose sign-in produced it (`app_id`, the provenance marker), that provider's OAuth REFRESH TOKEN for this relying party, and when it was stored. 🔴 IT HOLDS A LIVE CREDENTIAL, which `pending_erasures` above deliberately does not, and it is here because a deletion cannot be done without one: Apple requires an app offering Sign in with Apple to revoke the user's tokens on account deletion (`POST https://appleid.apple.com/auth/revoke`), deleting an account must cut its Google grant the same way (`POST https://oauth2.googleapis.com/revoke`), both calls take a token, Supabase hands `provider_refresh_token` to the client once and stores none of it, and supabase/auth#1308 (\"Revoke Sign in with Apple tokens\") was closed upstream as NOT PLANNED. What a token can do is bounded: an Apple token needs the Sign in with Apple private key (only in the Worker's secrets) to be used at all; a Google refresh token can mint a Google access token only for the scopes granted at sign-in, and only together with the OAuth client's own credentials, which this Worker does not hold (the revoke needs none). Neither is a session for this product. Nothing logs it, no route reads it back, and its only reader is services/platform/src/lib/provider-revoke.ts. It carries no name, no email and no app data. Apple's rows were copied in from `apple_provider_tokens` above. ⏱ 2026-09-30 · ENCRYPTED AT REST (review round 2, security; migration 0023): the token is held as AES-256-GCM ciphertext in `token_ct` under the Worker secret TOKEN_ENC_KEY_V1 (key id in `token_key_id`), and the plain-text `refresh_token` column is written empty — rows stored before 0023 are encrypted by the nightly `provider_token_backfill` (services/platform/src/lib/provider-revoke.ts), and the nightly R2 backup never carries a plain-text value (services/platform/src/backup/dump.ts `CREDENTIAL_COLUMNS`).",
+      "holds": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016). One row per (subject, identity provider) the subject signed in with through OAuth — `provider` is `apple` or `google`, CHECKed by the schema: the subject (the Supabase `sub`, under `subject_ref`), the app whose sign-in produced it (`app_id`, the provenance marker), that provider's OAuth REFRESH TOKEN for this relying party, and when it was stored. 🔴 IT HOLDS A LIVE CREDENTIAL, which `pending_erasures` above deliberately does not, and it is here because a deletion cannot be done without one: Apple requires an app offering Sign in with Apple to revoke the user's tokens on account deletion (`POST https://appleid.apple.com/auth/revoke`), deleting an account must cut its Google grant the same way (`POST https://oauth2.googleapis.com/revoke`), both calls take a token, Supabase hands `provider_refresh_token` to the client once and stores none of it, and supabase/auth#1308 (\"Revoke Sign in with Apple tokens\") was closed upstream as NOT PLANNED. What a token can do is bounded: an Apple token needs the Sign in with Apple private key (only in the Worker's secrets) to be used at all; a Google refresh token can mint a Google access token only for the scopes granted at sign-in, and only together with the OAuth client's own credentials, which this Worker does not hold (the revoke needs none). Neither is a session for this product. Nothing logs it, no route reads it back, and its only reader is services/platform/src/lib/provider-revoke.ts. It carries no name, no email and no app data. Apple's rows were copied in from `apple_provider_tokens` above. ⏱ 2026-09-30 · ENCRYPTED AT REST (review round 2, security; migration 0023): the token is held as AES-256-GCM ciphertext in `token_ct` under the Worker secret TOKEN_ENC_KEY_V1 (key id in `token_key_id`), and the plain-text `refresh_token` column is written empty — rows stored before 0023 are encrypted by the nightly `provider_token_backfill` (services/platform/src/lib/provider-revoke.ts), and the nightly R2 backup never carries a plain-text value (services/platform/src/backup/dump.ts `CREDENTIAL_COLUMNS`). ⏱ 2026-10-02 · `client_id` (migration 0024) names the OAuth client a token was issued to when it is not the Worker's web client: the app's bundle id for an Apple token from the native sign-in sheet, whose one-time code PUT /v1/account/apple-code exchanges at Apple. A bundle id is public; it is not personal data.",
       "retention": {
         "kind": "keep",
         "reason": "Kept WHILE THE ACCOUNT EXISTS, because it is what makes that account's deletion revocable, then deleted the moment the provider settles the revoke (services/platform/src/lib/provider-revoke.ts `revokeAppleToken` / `revokeGoogleToken`) — and again, belt and braces, when the erasure completes (services/platform/src/routes/account.ts and `erasureRetry` in services/platform/src/scheduled.ts). NO age sweep on purpose: a row deleted by age would silently make that account's deletion unrevokable, which is the failure this table exists to prevent."
@@ -735,6 +759,15 @@
       "name": "events",
       "personalData": true,
       "holds": "Usage-statistics events, collected only after consent. Each row carries the client's install id (anon_id), the app, platform, version and a coarse geo derived at the network edge.",
+      "consentGate": {
+        "enforcedBy": "services/platform/src/routes/events.ts",
+        "anchors": [
+          "consent_artifacts",
+          "consent_not_recorded",
+          "consent_withdrawn"
+        ],
+        "reason": "⏱ 2026-10-01 · consent enforced at ingest (full review r2, services-005). \"Only after consent\" is enforced AT INGEST, not only in the app: POST /v1/events reads the LATEST `purpose='analytics'` row of `consent_artifacts` for each install in the batch (one indexed read, `idx_consent_lookup`) and stores nothing for an install with no artifact (409 consent_not_recorded) or whose latest artifact is a withdrawal (403 consent_withdrawn). Until then the route never read that table, so the claim held for our client only — a forked or old build, or a queue flushed after withdrawal, stored rows for people who had not consented. Proven by services/platform/test/events.test.ts; tooling/ci/assert-data-inventory.mjs fails when this file stops carrying the anchors."
+      },
       "retention": {
         "kind": "swept",
         "periodDays": 400,
@@ -840,7 +873,7 @@
         "reason": "A box name, config-file hashes and a timestamp. No user id, no install id, nothing that is about anybody."
       },
       "writtenBy": [
-        "services/platform/migrations/0024_box_config_manifest.sql",
+        "services/platform/migrations/0025_box_config_manifest.sql",
         "services/platform/src/routes/box-manifest.ts"
       ]
     },
@@ -877,10 +910,10 @@
       "erasure": {
         "kind": "purge",
         "route": "services/platform/src/routes/account.ts",
-        "reason": "A report is the reporter's own words; it leaves with the account. The column is spelled `user_id` ON PURPOSE (0025_feedback.sql), so the shared erasure walk DELETES the row; the platform Worker's nightly feedback orphan sweep then deletes the screenshot the row named. Verified rather than assumed: adding the table turned services/platform/test/erasure-derivation.test.ts's pinned set red. An anonymous report (user_id NULL) is reachable only by its 90-day purge."
+        "reason": "A report is the reporter's own words; it leaves with the account. The column is spelled `user_id` ON PURPOSE (0027_feedback.sql), so the shared erasure walk DELETES the row; the platform Worker's nightly feedback orphan sweep then deletes the screenshot the row named. Verified rather than assumed: adding the table turned services/platform/test/erasure-derivation.test.ts's pinned set red. An anonymous report (user_id NULL) is reachable only by its 90-day purge."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_feedback.sql",
+        "services/platform/migrations/0027_feedback.sql",
         "services/platform/src/routes/feedback.ts",
         "services/platform/src/feedback/cron.ts"
       ],
@@ -904,7 +937,7 @@
         "reason": "A day, an app id, a version, a category, a status and a number. No user id, no install id, no free text."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_feedback.sql",
+        "services/platform/migrations/0027_feedback.sql",
         "services/platform/src/feedback/cron.ts"
       ]
     },
@@ -925,7 +958,7 @@
         "reason": "A count under a salted, truncated hash whose salt is deleted with its window; no column holds an account, an address or anything user-shaped."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_feedback.sql",
+        "services/platform/migrations/0027_feedback.sql",
         "services/platform/src/feedback/window-limiter.ts"
       ]
     },
@@ -946,7 +979,7 @@
         "reason": "Random bytes and a window start."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_feedback.sql",
+        "services/platform/migrations/0027_feedback.sql",
         "services/platform/src/feedback/window-limiter.ts"
       ]
     },
@@ -1309,7 +1342,7 @@
         "reason": "No column names an account: the row is a hash of an address, deliberately not keyed on `user_id`, so an account deletion leaves it and the stop outlives the account. Erasing it would re-enable mail to the person who asked for none."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_feedback.sql",
+        "services/platform/migrations/0027_feedback.sql",
         "services/platform/src/feedback/notify.ts"
       ],
       "disclosure": {

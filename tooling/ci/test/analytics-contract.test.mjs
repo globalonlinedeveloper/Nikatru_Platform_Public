@@ -251,6 +251,12 @@ const LIMB5_FILES = [
   // ⏱ 2026-09-24 · the route moved to provider-token.ts (O-GOOGLE-SIGN-IN-NOT-BUILT).
   'services/platform/src/routes/provider-token.ts',
   'packages/api_client/lib/src/account_deletion_request.dart',
+  // ⏱ 2026-10-02 · review of #1155: the native Apple sheet's code (a request
+  // pin) and the sign-in-method recency check (a status pin) — both routes and
+  // the app file whose `case`s map the latter.
+  'services/platform/src/routes/apple-code.ts',
+  'services/platform/src/routes/identity-change.ts',
+  'apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart',
   // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING chassis half: the report body pin.
   'services/platform/src/routes/report.ts',
   'packages/core/lib/src/content_report_transport.dart',
@@ -789,7 +795,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-02 (AB-A4-01): + POST /v1/sessions/revoke-all is a body pin now that log-out-all calls it.
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 23 -> 24 pinned, 16 -> 15 gaps.
     // ⏱ 2026-10-03 · club-rt-support stack: AB-A4-01 (revoke-all pin) + PB-27 (box-manifest gap) on one tree — 40 routes, 25 pinned, 15 gaps.
-    assert.match(r.out, /44 shared route\(s\) from tooling\/platform-register\.json: 26 pinned, 18 printed gap/); // ⏱ 2026-10-03 (feedback-intake/-triage): 40 -> 44 routes, feedback-submit a body pin, the unsubscribe pair and the ops move gaps. ⏱ 2026-10-01 (PB-27): 39 -> 40 routes, POST /v1/ops/box-manifest. ⏱ 2026-10-02 (AB-A4-01): revoke-all became a body pin. ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.out, /46 shared route\(s\) from tooling\/platform-register\.json: 28 pinned, 18 printed gap/); // ⏱ 2026-10-03 club-rt-support merged over main (club-st-singles: +2 routes, +2 pinned): 44 -> 46 routes, 26 -> 28 pinned. ⏱ 2026-10-03 (feedback-intake/-triage): 40 -> 44 routes, feedback-submit a body pin, the unsubscribe pair and the ops move gaps. ⏱ 2026-10-01 (PB-27): 39 -> 40 routes, POST /v1/ops/box-manifest. ⏱ 2026-10-02 (AB-A4-01): revoke-all became a body pin. ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -1241,6 +1247,40 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /account-provider-token — the client sends \{provider\} and services\/platform\/src\/routes\/provider-token\.ts never reads it/);
   });
 
+  // ⏱ 2026-10-02 · review of #1155 — the apple-code request pin and the
+  // identity-change status pin, each red from either side.
+  test('FAILS when the client renames the apple-code request key', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'packages/api_client/lib/src/account_deletion_request.dart',
+        "    'authorizationCode': authorizationCode,", "    'code': authorizationCode,")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /account-apple-code — the request literal sends \{code, appId\}/);
+  });
+
+  test('FAILS when the server stops reading the authorization code the client sends', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/apple-code.ts',
+        '(body as { authorizationCode?: unknown } | null)?.authorizationCode;', '(body as { code?: unknown } | null)?.code;')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /account-apple-code — the client sends \{authorizationCode\} and services\/platform\/src\/routes\/apple-code\.ts never reads it/);
+  });
+
+  test('COVERAGE LOST when the released client stops mapping identity-change\'s 403', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart',
+        '    case 403:', '    case 409:')));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /account-identity-change: the released client no longer maps status\(es\) 403/);
+  });
+
+  test('FAILS when identity-change answers a status the client does not map', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/identity-change.ts',
+        '  return c.json({ ok: true });', "  if (rid === '') return c.json({ error: 'rate_limited' }, 429);\n  return c.json({ ok: true });")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /account-identity-change — the server can answer status\(es\) 429 that the released client does not map/);
+  });
+
   test('FAILS when the server gains a config key the brick does not carry', () => {
     const r = run(makeRepo((f) =>
       mutate(f, 'services/platform/test/config.test.ts',
@@ -1262,7 +1302,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 22 -> 23 pinned, 16 -> 15 gaps.
     // ⏱ 2026-10-01 (PB-27): 15 -> 16 gaps, POST /v1/ops/box-manifest (a box's cron, no app client).
     // ⏱ 2026-10-03 · club-rt-support stack: revoke-all pin + box-manifest gap on one tree — 24 pinned, 15 gaps.
-    assert.match(r.out, /25 pinned, 18 printed gap/); // ⏱ 2026-10-03 (feedback-intake/-triage): 24 -> 25 pinned (feedback-submit), 15 -> 18 gaps (the unsubscribe pair, the ops move). ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    assert.match(r.out, /27 pinned, 18 printed gap/); // ⏱ 2026-10-03 club-rt-support merged over main: +2 pinned (apple-code, identity-change). ⏱ 2026-10-03 (feedback-intake/-triage): 24 -> 25 pinned (feedback-submit), 15 -> 18 gaps (the unsubscribe pair, the ops move). ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
