@@ -23,7 +23,9 @@ and an export dry run (`port-switch.mjs sql --export`). D1's own conformance is 
 scenarios are listed `pending` and L3 waits on a workerd-backed run of the suite. Payments also carries its CLIENT half (`client`: the Dart
 `PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
-Resend-shaped.
+Resend-shaped. `tooling/ports/ai.json` (port-ai) is the first TWO-SIDED port, at L3: a server half (TS `AiProvider`:
+Anthropic on OUR key, behind T17's meter, plus a counting stub) and a client half (Dart `AiProvider`: three
+bring-your-own-key adapters on the USER's key, plus a fake), selected per call by FEATURE.
 
 `tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
 `tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
@@ -70,13 +72,14 @@ wherever the shape can hold it).
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
 | `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake, or a `draft` whose vendor is not chosen yet (e.g. `objects.json`'s `s3`, the S3-API exit). Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not, unless the vendor's `_non-port.json` row names what is left (`remaining`, beside `until`) — Cloudflare backs `kv`, `objects` and `ratelimit`. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
+| `adapters[].half` | Optional, for a two-sided port: `server` (a Worker adapter on OUR credential) or `client` (an app adapter on the USER's own credential). |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`; for an unbuilt `draft`, `{}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
 | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
-| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null. |
+| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null; `models` — for a port billed per token, each model's price per million tokens (input, output, cache read, cache write) with `asOf`, `source` and `verify`, and its refusal-fallback chain (`fallbacks`), every model of which limb 1 requires priced in the same `models`. |
 | `adapters[].conformance` | `{file, kind?}` — the adapter's test that **calls** the suite's runner; null until it exists. `kind: live` marks a credentialled check against the vendor's real service instead (e.g. `sql.json`'s `d1`): it calls no runner, never counts toward L3, and the scenarios it cannot run are listed in `conformance.pending`. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
@@ -85,6 +88,7 @@ wherever the shape can hold it).
 | `adapters[].account` | Optional, `{kind, source}`: the KIND of store account the channel binds to (`individual` · `organization` · `none` · `unrecorded`) and where that is recorded — what an entity change has to move. Never the account's values. |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
+| `features` | For `selection.by: per-call`: `{<feature>: {adapter, model, effort, maxInputTokens, candidates, tokensPerCall, why}}` — the adapter and the model a feature runs on (null until measured), its input cap (every call is reserved at it, and an input over it is refused before the wire; null refuses every call), the models it may be set to (each priced in its adapter's `cost.models`), and the tokens one call takes (`{input, output, basis: declared | measured, asOf, why}`, or null). Limb 1 holds each to its adapter and its candidates; the AI dry run (C15–C17) prices it. |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
@@ -93,6 +97,7 @@ wherever the shape can hold it).
 | `generated` | `true` once code reads a **rendered** table instead of a hand array. The render tool is `tooling/ports/render.mjs [--check]` (port-pay-core); assert-ports limb 3 runs its check on every build, so a hand edit of a rendered table fails whether or not `generated` is claimed yet. |
 | `handTables[]` | `{file, anchor, until, why}` — a declared, printed waiver for a hand-written table (or a pre-port import) that the port will replace. The anchor must still exist. |
 | `conformance.suite` | `{file, runner}` or null. |
+| `conformance.clientSuite` | Optional `{file, runner}`: the suite a client (Dart) adapter of a two-sided port calls. Each adapter is graded against the suite in its own file's language. |
 | `conformance.pending[]` | `{adapter, case, row}` — a scenario an adapter cannot pass yet. Names its `O-` row, prints on every run, and blocks L3 for that adapter. |
 | `switch.runbook` | `Private/runbooks/switch-vendor.md#<port>`. |
 | `switch.dryRun` | `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run`. |
@@ -188,6 +193,7 @@ Six phases, each with an exit test. `Private/runbooks/switch-vendor.md#<port>` c
 | Auth | `auth.users` (ids, emails, identities) — the ids are every row's foreign key and must move unchanged | Password hashes outside a compatible target; live sessions | A re-sign-in at cutover |
 | Mail | **The suppression list (bounces, complaints, unsubscribes) MUST move** — sending to it from a new provider is a deliverability and a legal failure | Sender reputation | Warm-up on the target |
 | Telemetry | Nothing required (short-retention, PII-scrubbed); the monitor configuration is already ours | — | Repoint the DSN |
+| AI | Nothing: no data of ours is held at the provider (the server adapter stores nothing there; the provider's own retention of API traffic is recorded in the registry). A bring-your-own-key account is the user's | The prompt cache; the measured quality bar per model | Server: a registry edit plus a deploy, after the quality bar is re-measured. Client: a new adapter ships in an app release |
 | Storage / SQL | Every object and row, by export | — | Copy, verify, cut over |
 
 ## 6. The margin rule
@@ -246,6 +252,12 @@ the cost delta. For `sql` it takes `--export <file>`: ONE nightly D1 export (gzi
 into a `node:sqlite` file and compares the table list and the row counts (`tooling/ops/sql-export-replay.mjs`); each
 mismatch is a FAIL, and no `--export` is LOST. E.g. `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env
 sandbox --export platform_db.jsonl.gz`.
+A port with `features` (ai) takes a MODEL as `--to` as well as an adapter, and adds C15 the target's model prices, C16
+each feature's tokens per call × price, input priced as cache writes (LOST while a feature has no model or no tokens —
+never a guess), and C17 the MINIMUM credit-pack price per unit per selling channel: at least 4× the cost (owner lock,
+2026-10-01) after the store commission (the rail's highest cell, 30% on the App Store), the tax — the HIGHEST rate in
+`fee-register.json` `taxRegions`, so the floor holds in every region (IN's on the India web book) — and the rail fee; a
+subscription-only cell never prices a one-time pack.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`

@@ -93,6 +93,35 @@
 //                 mismatch is a FAIL; no --export is LOST — the export duty
 //                 unrehearsed is not a pass.
 //
+// An AI switch (a port with `features`, tooling/ports/ai.json) adds three, and
+// `--to` may name a MODEL instead of an adapter (`--to claude-opus-5-5`): the
+// adapter that prices it is the target, and every feature is priced at it.
+//   C15 models    the target's per-model prices (cost.models), each with asOf and
+//                 verify; a client (bring-your-own-key) adapter or a fake has
+//                 none of ours to price
+//   C16 features  per feature: the model, the tokens in and out of one call
+//                 (declared or measured) and their cost. A feature with no model
+//                 or no tokens is LOST — T17 measures both, never a guess
+//   C17 floor     per feature and per selling channel: the MINIMUM credit-pack
+//                 price per unit, so the money the channel leaves us is at least
+//                 AI_COST_MULTIPLE (4) times the cost (owner lock, 2026-10-01).
+//                 From tooling/catalog/fee-register.json, for a ONE-TIME pack,
+//                 C priced with input as cache writes, at the DEAREST model of the
+//                 fallback chain (any of them can answer), and the tax the HIGHEST
+//                 in `taxRegions` so the floor holds in every region:
+//                   store rail      4C × (1 + top tax) / (1 − commission) — the
+//                                   highest commission cell of the rail (30%
+//                                   on the App Store where it applies), the
+//                                   store remitting the tax inside the price;
+//                   razorpay        4C / (1/(1 + IN tax) − fee) — the India web
+//                                   book, where we are the seller of record;
+//                   paddle          4C / (1/(1 + top tax) − fee) per unit, plus
+//                                   the fixed fee over the same once per pack —
+//                                   a tax-inclusive price is assumed.
+//                 A subscription-only cell does not apply to a pack, so a rail
+//                 whose only cell is one (Play today) is LOST, never guessed.
+//                 Rounded UP at four decimals: a minimum never rounds down.
+//
 // It reads registries and nothing else: no network, no vault, no credential.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
@@ -256,14 +285,20 @@ export function run(opts) {
   }
   const env = opts.env;
   const adapters = Array.isArray(doc.adapters) ? doc.adapters : [];
-  const target = adapters.find((a) => a?.id === opts.to);
+  // An AI switch may name a MODEL: the adapter that prices it is the target.
+  let model = null;
+  let target = adapters.find((a) => a?.id === opts.to);
+  if (!target && isObj(doc.features)) {
+    target = adapters.find((a) => isObj(a?.cost?.models?.[opts.to]));
+    if (target) model = opts.to;
+  }
 
   // C1
   if (!target) add(1, 'target', 'FAIL', `${rel} has no adapter \`${opts.to}\` (has: ${adapters.map((a) => a?.id).join(', ')})`);
   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
   else if (!(target.environments ?? []).length) add(1, 'target', 'FAIL', `\`${target.id}\` is ${target.status} (status: ${target.status}) and lists no environment: no environment may select it`);
   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
-  else add(1, 'target', 'PASS', `\`${target.id}\` (${target.vendor ? `vendor ${target.vendor}` : typeof target.channel === 'string' ? `channel ${target.channel} — the store is that ${CHANNEL_REGISTER} row's` : 'vendor none — a fake'}) is a row of ${rel} for ${env}`);
+  else add(1, 'target', 'PASS', `\`${target.id}\` (${target.vendor ? `vendor ${target.vendor}` : typeof target.channel === 'string' ? `channel ${target.channel} — the store is that ${CHANNEL_REGISTER} row's` : 'vendor none — a fake'}) is a row of ${rel} for ${env}${model ? `; every feature priced at model \`${model}\`` : ''}`);
   if (!target) return finish(checks);
 
   // C2
@@ -307,8 +342,9 @@ export function run(opts) {
     }
   }
 
-  // C5
-  const suite = doc.conformance?.suite;
+  // C5 — the suite in the target's own language (a two-sided port carries a clientSuite).
+  const suites = [doc.conformance?.suite, doc.conformance?.clientSuite].filter(Boolean);
+  const suite = (target.conformance?.file && suites.find((s) => extname(s.file) === extname(target.conformance.file))) || doc.conformance?.suite;
   const pending = (doc.conformance?.pending ?? []).filter((p) => p.adapter === target.id);
   if (!suite) add(5, 'conformance', 'FAIL', `${rel} has no conformance suite; no adapter of this port can be shown conformant`);
   else if (!target.conformance?.file) add(5, 'conformance', 'FAIL', `\`${target.id}\` names no conformance file`);
@@ -329,6 +365,8 @@ export function run(opts) {
     if (def) current = adapters.filter((a) => a?.id === def);
     else current = adapters.filter((a) => a?.status !== 'fake' && a?.status !== 'retired' && a?.status !== 'draft' && (a?.environments ?? []).includes(env));
   }
+  // A MODEL switch keeps the adapter: the rollback is the previous model per feature.
+  const modelSwitch = model !== null && current.some((a) => a.id === target.id);
   current = current.filter((a) => a.id !== target.id);
 
   // C6
@@ -337,7 +375,10 @@ export function run(opts) {
   else add(6, 'export', 'PASS', `written for ${[...current, target].map((a) => a.id).join(', ')}`);
 
   // C7
-  if (opts.from && !current.length) add(7, 'standby', 'FAIL', `--from \`${opts.from}\` is not another adapter of ${rel}`);
+  if (modelSwitch && !opts.from) {
+    const was = Object.entries(doc.features).map(([f, ft]) => `${f}: ${ft?.model ?? 'unset'}`).join(', ');
+    add(7, 'standby', 'PASS', `a model switch keeps \`${target.id}\`; the rollback is each feature's previous model (${was}), one registry edit`);
+  } else if (opts.from && !current.length) add(7, 'standby', 'FAIL', `--from \`${opts.from}\` is not another adapter of ${rel}`);
   else if (!current.length) add(7, 'standby', 'FAIL', `no current adapter other than \`${target.id}\` in ${env}: nothing to fall back to`);
   else {
     const bad = current.filter((a) => a.status === 'retired' || (env === 'live' && a.status === 'fake'));
@@ -382,7 +423,8 @@ export function run(opts) {
     add(9, 'plan', p.verdict, p.detail);
     extra.push(...p.lines);
   }
-  return finish(checks, extra);
+  const aiLines = isObj(doc.features) ? aiChecks(root, doc, target, model, add) : [];
+  return finish(checks, [...extra, ...aiLines]);
 }
 
 export const PLATFORM_REGISTER = 'tooling/platform-register.json';
@@ -537,6 +579,163 @@ export function channelsChanging(root, target, current, adapters = [...current, 
   ].join('');
   if (!moving.length) return { verdict: 'PASS', detail: `no channel's purchaseRail changes${heldNote}` };
   return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}${heldNote}` };
+}
+
+/** The owner lock (2026-10-01): AI is priced at no less than this multiple of its measured cost. */
+export const AI_COST_MULTIPLE = 4;
+/** A fee cell that charges only a renewing subscription, never a one-time credit pack. */
+const SUBSCRIPTION_ONLY = /subscription/;
+const STORE_RAILS = new Set(['apple-iap', 'play-billing']);
+const ceil4 = (x) => Math.ceil(x * 1e4 - 1e-9) / 1e4;
+const usd4 = (x) => ceil4(x).toFixed(4);
+
+/**
+ * The USD one call costs at `price` (a cost.models row), for `tokens` in and out.
+ * Input is priced at the DEARER of input and cache write: the adapter caches the
+ * system prefix, and a user's calls are usually more than the cache's minutes
+ * apart, so the prefix is written, not read (review 1 of #1136).
+ */
+export function callCostUsd(price, tokens) {
+  return (tokens.input * Math.max(price.inputUsdPerMTok, price.cacheWriteUsdPerMTok ?? 0) + tokens.output * price.outputUsdPerMTok) / 1_000_000;
+}
+
+/**
+ * The USD one call costs on `model` WITH its refusal-fallback chain: any model in
+ * `[model, ...priced[model].fallbacks]` can answer it, so the call is priced at
+ * the DEAREST of them (review of #1136, ruling item 3b: Opus 5.5 at $4/$20 falls
+ * back to Opus 4.8 and Opus 5 at $5/$25). Returns {cost, pricedAt}, or {unpriced}
+ * naming a chain model `priced` lacks — never a guess.
+ */
+export function chainCallCostUsd(priced, model, tokens) {
+  const chain = [model, ...(Array.isArray(priced?.[model]?.fallbacks) ? priced[model].fallbacks : [])];
+  let best = null;
+  for (const m of chain) {
+    if (!isObj(priced?.[m])) return { unpriced: m };
+    const cost = callCostUsd(priced[m], tokens);
+    if (!best || cost > best.cost) best = { cost, pricedAt: m };
+  }
+  return best;
+}
+
+/**
+ * The minimum price per unit of a ONE-TIME credit pack on a rail, so that what
+ * the rail leaves us is at least AI_COST_MULTIPLE × `costUsd` IN EVERY REGION; or
+ * {lost}. `taxRegions` is fee-register.json `taxRegions.rows`: a buyer's price can
+ * carry its region's tax, so the floor takes the HIGHEST rate there — except on
+ * razorpay, which sells only on the India web book, at IN's.
+ *   store rail  4C × (1 + top tax) / (1 − the rail's highest commission cell)
+ *   razorpay    4C / (1/(1 + IN tax) − fee)
+ *   paddle      4C / (1/(1 + top tax) − fee) per unit, plus the fixed fee over the
+ *               same divisor once per pack — whether a Paddle price is tax-inclusive
+ *               is recorded nowhere, so the floor assumes it is (the safe side).
+ * Returns {perUnit, perPack, how}.
+ */
+export function creditFloor(rail, costUsd, cells, taxRegions) {
+  const all = Object.entries(cells).filter(([, c]) => isObj(c) && c.rail === rail);
+  const fees = all.filter(([id, c]) => id !== 'india-gst' && !SUBSCRIPTION_ONLY.test(id) && isObj(c.value) && Number.isInteger(c.value.percentBps));
+  if (!fees.length) {
+    const skipped = all.map(([id]) => id).filter((id) => id !== 'india-gst');
+    return { lost: `${FEE_REGISTER} carries no cell for a one-time pack on \`${rail}\`${skipped.length ? ` (${skipped.join(', ')} ${skipped.length === 1 ? 'is' : 'are'} subscription-only or valueless)` : ''}` };
+  }
+  const rates = Object.entries(isObj(taxRegions) ? taxRegions : {}).filter(([, r]) => isObj(r?.value) && Number.isInteger(r.value.percentBps));
+  if (!rates.length) return { lost: `${FEE_REGISTER} has no taxRegions.rows: the floor cannot hold in every region without the regions' tax` };
+  const [topRegion, topRow] = rates.reduce((x, y) => (y[1].value.percentBps > x[1].value.percentBps ? y : x));
+  const tax = (row) => row.value.percentBps / 10_000;
+  const floor = AI_COST_MULTIPLE * costUsd;
+  const top = fees.reduce((x, y) => (y[1].value.percentBps > x[1].value.percentBps ? y : x));
+  const pct = top[1].value.percentBps / 10_000;
+  const pctText = `${top[1].value.percentBps / 100}%`;
+  const taxText = (region, row) => `${row.value.percentBps / 100}% tax, ${region}`;
+  if (STORE_RAILS.has(rail)) {
+    return { perUnit: (floor * (1 + tax(topRow))) / (1 - pct), perPack: 0, how: `4C × (1 + ${taxText(topRegion, topRow)}) / (1 − ${pctText} ${top[0]})` };
+  }
+  if (rail === 'razorpay') {
+    const inRow = isObj(taxRegions?.IN) ? taxRegions.IN : null;
+    if (!inRow || !Number.isInteger(inRow.value?.percentBps)) return { lost: `${FEE_REGISTER} has no taxRegions.rows.IN; on the India web book we remit it` };
+    const net = 1 / (1 + tax(inRow)) - pct;
+    return { perUnit: floor / net, perPack: 0, how: `4C / (1/(1 + ${taxText('IN', inRow)}) − ${pctText} ${top[0]})` };
+  }
+  const fixedCells = fees.filter(([, c]) => Number.isInteger(c.value.fixedMinor) && c.value.fixedMinor > 0);
+  for (const [id, c] of fixedCells) {
+    const problem = feeCurrencyProblem(c.value, 'USD');
+    if (problem) return { lost: `${FEE_REGISTER} cell \`${id}\` ${problem}` };
+  }
+  const fixed = fixedCells.reduce((m, [, c]) => Math.max(m, c.value.fixedMinor), 0) / 100;
+  const net = 1 / (1 + tax(topRow)) - pct;
+  return { perUnit: floor / net, perPack: fixed / net, how: `4C / (1/(1 + ${taxText(topRegion, topRow)}) − ${pctText} ${top[0]})${fixed ? ` + ${fixed.toFixed(2)} fixed over the same, per pack` : ''}` };
+}
+
+/** C15–C17 · what an AI switch costs, per feature and per channel. Returns the floor lines. */
+export function aiChecks(root, doc, target, model, add) {
+  const lines = [];
+  const priced = isObj(target.cost?.models) ? target.cost.models : null;
+  // C15
+  if (target.status === 'fake') {
+    for (const [n, name] of [[15, 'models'], [16, 'features'], [17, 'floor']]) add(n, name, 'PASS', `\`${target.id}\` is a fake: it calls no model`);
+    return lines;
+  }
+  if (target.half === 'client') {
+    for (const [n, name] of [[15, 'models'], [16, 'features'], [17, 'floor']]) add(n, name, 'PASS', `\`${target.id}\` runs on the USER's own key: we pay nothing, so nothing of ours is priced`);
+    return lines;
+  }
+  if (!priced || !Object.keys(priced).length) {
+    add(15, 'models', 'FAIL', `\`${target.id}\` prices no model (cost.models); a call on our key cannot be costed`);
+    add(16, 'features', 'LOST', 'no model prices to cost a feature with');
+    add(17, 'floor', 'LOST', 'no cost, so no floor');
+    return lines;
+  }
+  add(15, 'models', 'PASS', Object.entries(priced).map(([id, p]) => `${id} ${p.inputUsdPerMTok}/${p.outputUsdPerMTok} USD per MTok in/out (asOf ${p.asOf})`).join('; '));
+  // C16
+  const costs = [];
+  const lost16 = [];
+  for (const [f, ft] of Object.entries(doc.features)) {
+    const m = model ?? ft?.model;
+    if (!m) { lost16.push(`${f}: no model (features.${f}.model is unset until measured)`); continue; }
+    if (!isObj(priced[m])) { add(16, 'features', 'FAIL', `${f}: model \`${m}\` is not priced by \`${target.id}\``); return lines; }
+    if (!isObj(ft?.tokensPerCall)) { lost16.push(`${f}: no tokens per call (features.${f}.tokensPerCall is null until declared or measured)`); continue; }
+    const c = chainCallCostUsd(priced, m, ft.tokensPerCall);
+    if (c.unpriced) { add(16, 'features', 'FAIL', `${f}: model \`${m}\` falls back to \`${c.unpriced}\`, which \`${target.id}\` does not price`); return lines; }
+    costs.push({ feature: f, model: m, pricedAt: c.pricedAt, tokens: ft.tokensPerCall, cost: c.cost });
+  }
+  const costText = costs.map((c) => `${c.feature} on ${c.model}${c.pricedAt !== c.model ? ` (priced at its dearest fallback, ${c.pricedAt})` : ''}: ${c.tokens.input} in (priced as cache writes) + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
+  if (lost16.length) add(16, 'features', 'LOST', `${lost16.join('; ')}${costText ? ` — priced: ${costText}` : ''}`);
+  else add(16, 'features', 'PASS', costText);
+  // C17
+  let cells;
+  let taxRegions;
+  try {
+    const feeDoc = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8'));
+    cells = feeDoc?.cells;
+    taxRegions = feeDoc?.taxRegions?.rows;
+  } catch (e) { add(17, 'floor', 'LOST', `${FEE_REGISTER} could not be read (${e.message})`); return lines; }
+  let channels;
+  try { channels = (JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')).channels ?? []).filter((c) => c?.surface === 'app' && c?.purchaseRail?.rail && c.purchaseRail.rail !== 'none'); } catch (e) {
+    add(17, 'floor', 'LOST', `${CHANNEL_REGISTER} could not be read (${e.message})`);
+    return lines;
+  }
+  if (!costs.length) { add(17, 'floor', 'LOST', 'no feature is costed yet, so no floor'); return lines; }
+  if (!channels.length) { add(17, 'floor', 'LOST', `${CHANNEL_REGISTER} names no app channel that sells`); return lines; }
+  // A channel sells on its rail, and in a region with its own rail on that one
+  // too (the India web book takes razorpay: channel-register regionRails).
+  const rows = channels.flatMap((ch) => [
+    { id: ch.id, rail: ch.purchaseRail.rail },
+    ...(Array.isArray(ch.purchaseRail.regionRails) ? ch.purchaseRail.regionRails : [])
+      .filter((r) => typeof r?.rail === 'string' && r.rail !== 'none')
+      .map((r) => ({ id: `${ch.id}/${r.region}`, rail: r.rail })),
+  ]);
+  const lost17 = [];
+  lines.push(`    minimum credit-pack price per unit (≥ ${AI_COST_MULTIPLE}× cost after the channel's cut), USD:`);
+  for (const c of costs) {
+    lines.push(`      ${c.feature} — ${c.model}${c.pricedAt !== c.model ? ` (priced at ${c.pricedAt})` : ''}, cost USD ${c.cost.toFixed(6)} per call, ${AI_COST_MULTIPLE}× = ${(AI_COST_MULTIPLE * c.cost).toFixed(6)}`);
+    for (const row of rows) {
+      const fl = creditFloor(row.rail, c.cost, isObj(cells) ? cells : {}, taxRegions);
+      if (fl.lost) { lost17.push(`${c.feature}/${row.id}: ${fl.lost}`); lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} LOST — ${fl.lost}`); continue; }
+      lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} ≥ ${usd4(fl.perUnit)} per unit${fl.perPack ? ` + ${usd4(fl.perPack)} per pack` : ''}   (${fl.how})`);
+    }
+  }
+  if (lost17.length) add(17, 'floor', 'LOST', `${lost17.length} floor(s) not derived — first: ${lost17[0]}`);
+  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below)`);
+  return lines;
 }
 
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';

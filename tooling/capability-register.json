@@ -476,6 +476,80 @@
         "alternative": "Resend (the live adapter), or any provider with an HTTP send API behind MailTransport.",
         "swapCost": "One adapter and a stream row in tooling/ports/mail.json, plus DNS, domain verification and the suppression list (port-switch.mjs mail --dry-run)."
       }
+    },
+    "anthropic": {
+      "surface": "⏱ 2026-10-02 · port-ai. NOT CALLED YET — the AI port's server adapter on OUR key (services/platform/src/adapters/ai/anthropic.ts, on @anthropic-ai/sdk; tooling/ports/ai.json row `anthropic`) and its bring-your-own-key twin on the USER's key (packages/api_client lib/ai_byok.dart, row `anthropic-byok`). No route calls the port: every feature's model is null and no meter is wired until train-st-ai-customer-pays (T17). The owner lock (2026-10-01): AI comes from the customer's pocket — their own key, or ours on a paid, metered, hard-capped plan.",
+      "stickiness": "★★ — one Messages API call per use with a JSON schema for the output; nothing stored at the vendor that we read back. The prompts and the measured quality bar per model are the switching cost, not the API.",
+      "surfaces": [
+        "NIKATRU_ANTHROPIC_API_KEY"
+      ],
+      "openProtocol": "NO — the Messages API is Anthropic's own. The port (AiProvider) is the open part: three providers' APIs already sit behind it on the client half.",
+      "seam": {
+        "file": "services/_shared/src/ports/ai.ts",
+        "symbol": "AiProvider",
+        "note": "The AI port. aiFor(feature) in services/platform/src/ports.ts (the composition root) builds the provider and returns the model configured for the feature; nothing else imports the adapter. The bring-your-own-key twin implements the Dart AiProvider in packages/core."
+      },
+      "configKeyed": {
+        "kind": "runtime-secret",
+        "reason": "A Worker SECRET (`wrangler secret put NIKATRU_ANTHROPIC_API_KEY`), held in the vault, never a committed var and never sent to a client. The model per feature is config (tooling/ports/ai.json `features`), so a model or provider change is a registry edit plus a deploy, never a client release."
+      },
+      "ownTheRecord": "YES — the adapter keeps no state at the provider; every input and output belongs to the feature that asked and is stored, if at all, in our own tables. Anthropic deletes API inputs and outputs within 30 days (read 2026-10-02).",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: no data of ours is held at the provider. The registry's exportDuty records what the provider retains and for how long."
+      },
+      "exitPlan": {
+        "alternative": "Any provider behind AiProvider: OpenAI or Gemini (both already adapters of the client half), as a second server adapter.",
+        "swapCost": "One server adapter passing runAiConformance, its model prices in tooling/ports/ai.json, and the quality bar re-measured per feature (port-switch.mjs ai --dry-run prints the new floor). No client release for the server half."
+      }
+    },
+    "openai": {
+      "surface": "⏱ 2026-10-02 · port-ai. A bring-your-own-key provider only (packages/api_client lib/ai_byok.dart, OpenAiByok; tooling/ports/ai.json row `openai-byok`): the USER's key, read from SecureStore per call, sent to the provider and nowhere else. We hold no OpenAI account and pay nothing.",
+      "stickiness": "★ — one Responses API call per use; nothing of ours is stored at the vendor (`store: false`).",
+      "surfaces": [],
+      "openProtocol": "NO — the Responses API is OpenAI's own; the AiProvider seam is what makes it replaceable.",
+      "seam": {
+        "file": "packages/core/lib/src/ai/ai_provider.dart",
+        "symbol": "AiProvider",
+        "note": "The AI port's client half. An app reaches OpenAI only through AiProvider; [pipeline C-5] refuses an app importing a provider client package around it."
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "The key is the user's, entered at runtime into SecureStore; no build define, no secret of ours."
+      },
+      "ownTheRecord": "YES — nothing of ours reaches OpenAI; what the user sends on their own key is governed by their own account.",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: the account and its data are the user's."
+      },
+      "exitPlan": {
+        "alternative": "Anthropic or Gemini, the other bring-your-own-key adapters.",
+        "swapCost": "The user enters another provider's key. A new provider is one Dart adapter passing runAiProviderConformance, in an app release."
+      }
+    },
+    "google-gemini": {
+      "surface": "⏱ 2026-10-02 · port-ai. A bring-your-own-key provider only (packages/api_client lib/ai_byok.dart, GeminiByok; tooling/ports/ai.json row `gemini-byok`): the USER's key, read from SecureStore per call, sent in a header (never the URL) to the provider and nowhere else. We hold no Google AI account and pay nothing.",
+      "stickiness": "★ — one generateContent call per use; nothing of ours is stored at the vendor.",
+      "surfaces": [],
+      "openProtocol": "NO — the Gemini API is Google's own; the AiProvider seam is what makes it replaceable.",
+      "seam": {
+        "file": "packages/core/lib/src/ai/ai_provider.dart",
+        "symbol": "AiProvider",
+        "note": "The AI port's client half. An app reaches Gemini only through AiProvider; [pipeline C-5] refuses an app importing a provider client package around it."
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "The key is the user's, entered at runtime into SecureStore; no build define, no secret of ours."
+      },
+      "ownTheRecord": "YES — nothing of ours reaches Google; what the user sends on their own key is governed by their own account.",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: the account and its data are the user's."
+      },
+      "exitPlan": {
+        "alternative": "Anthropic or OpenAI, the other bring-your-own-key adapters.",
+        "swapCost": "The user enters another provider's key. A new provider is one Dart adapter passing runAiProviderConformance, in an app release."
+      }
     }
   },
   "nonVendorSurfaces": {
@@ -806,12 +880,36 @@
           "methods": [
             "open"
           ]
+        },
+        {
+          "file": "packages/core/lib/src/ai/ai_provider.dart",
+          "symbol": "AiProvider"
         }
       ],
       "consumers": [
         "apps/subscriptiontracker",
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ]
+    },
+    {
+      "id": "ai_byok",
+      "capability": "Bring-your-own-key AI: the client half of the AI port (tooling/ports/ai.json). One adapter per provider — Anthropic, OpenAI, Gemini — over plain HTTP to the provider's documented endpoint, with the USER's key read from SecureStore on every call. No request touches a Nikatru host and nothing is logged.",
+      "owner": "packages/api_client",
+      "package": "nikatru_api_client",
+      "seams": [],
+      "implementsSeams": [
+        "AiProvider"
+      ],
+      "consumers": [],
+      "unconsumedReason": "⏱ 2026-10-02 · port-ai. Built ahead of its feature on purpose: the port lands at L3 before anything calls it, and train-st-ai-customer-pays (T17) is the first consumer — it wires an app's AI feature to AiProvider and offers the user a key field. Until then no app imports lib/ai_byok.dart.",
+      "note": "Lives in packages/api_client as a SEPARATE library (lib/ai_byok.dart; test support in lib/testing.dart), not a new package: [pipeline C-4] (assert-package-earned.mjs) admits a new package only on a native binary, a licence exposure, a codegen step or a measured chassis move, and plain HTTP over dio — which this package already carries — earns none of them.",
+      "capabilityMatrix": {
+        "file": "packages/api_client/lib/src/ai_byok/ai_byok_capabilities.dart",
+        "symbol": "AiByokCapabilities",
+        "test": "packages/api_client/test/ai_byok_capabilities_test.dart",
+        "pinnedTo": "dio 5.x; each provider's API as read 2026-10-02 (tooling/ports/ai.json readAt) — re-read on any provider API version change",
+        "degradesOn": "Web: a browser enforces CORS, so a provider is offered from a page only where it DOCUMENTS browser access — Anthropic does (the anthropic-dangerous-direct-browser-access opt-in header), OpenAI and Gemini do not, and on web those two return `unavailable` without sending a request. The five native targets call all three directly. Fuchsia is not a target."
+      }
     },
     {
       "id": "api_client",
