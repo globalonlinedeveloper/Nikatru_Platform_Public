@@ -478,6 +478,7 @@ export function createClient({ repo, token = tokenFromEnv(), fetchImpl = globalT
     repo,
     owner: repo.split('/')[0],
     getRepo: () => call('GET', R),
+    getIssue: (n) => call('GET', `${R}/issues/${n}`),
     listIssues: (state = 'all', labels = 'cloud-lane') =>
       all(`${R}/issues?state=${state}${labels ? `&labels=${encodeURIComponent(labels)}` : ''}`).then((xs) => xs.filter((i) => !i.pull_request)),
     listComments: (n) => all(`${R}/issues/${n}/comments`),
@@ -508,12 +509,18 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
  * and win ONLY if the holder is the very comment this call posted (its comment id,
  * not its runner id: two dispatchers sharing the id `laptop` cannot both win). A
  * loser YIELDs, and drops the `claimed:` label unless the winner shares its id.
+ * The issue is parsed and held to assertLaunchable FIRST: a stub or an empty prompt
+ * throws before any label or comment is written.
  * → `{won, winner, posted}`. `prUpdatedAt` is the lane PR's (nextReady returns it);
  * `sleep` and `now` are injectable so the race is testable.
  */
 export async function claim(client, number, runner, { prUpdatedAt = null, now = () => new Date(), sleep = sleepMs, settleS = T.CLAIM_SETTLE_S } = {}) {
   const owner = client.owner;
-  const before = claimState(await client.listComments(number), { owner, prUpdatedAt, now: now() });
+  const comments = await client.listComments(number);
+  // Before any write (review of #1163, nit 3): a migration stub or an empty prompt is
+  // never claimed, whoever offered it — nextReady filters them, claim() refuses them.
+  assertLaunchable(parseIssue(await client.getIssue(number), comments, { owner }));
+  const before = claimState(comments, { owner, prUpdatedAt, now: now() });
   if (!launchable(before)) return { won: false, winner: before.holder, posted: false };
   const at = now().toISOString();
   const previous = before.holder?.runner ?? null;
