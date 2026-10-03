@@ -57,10 +57,10 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
   const key = cfg.serviceKey;
 
   /** A service-role request: never follows a redirect, and a 3xx answer is refused
-   *  (`opaqueredirect` is the browser's shape of the same answer). */
+   *  (workerd hands a `manual` redirect back as the 3xx itself). */
   const serviceSend = async (url: string, init: RequestInit): Promise<IdentityAnswer> => {
     const answer = await send(url, { ...init, redirect: 'manual' });
-    if (answer.ok && (answer.res.type === 'opaqueredirect' || (answer.res.status >= 300 && answer.res.status < 400))) {
+    if (answer.ok && answer.res.status >= 300 && answer.res.status < 400) {
       return redirectRefused(answer.res.status);
     }
     return answer;
