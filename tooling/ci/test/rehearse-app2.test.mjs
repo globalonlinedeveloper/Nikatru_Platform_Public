@@ -66,7 +66,7 @@ describe('T1 · a broken step is that step\'s failure, never an overall pass', (
 describe('T2 · a hand edit is a manual step, and a manual step needs its row', () => {
   const refused = () => ({ status: 1, out: '✗ rehearsalfx_db is in NONE of the nightly backup\n' });
   const accepted = () => ({ status: 0, out: 'ok\n' });
-  const step = (extra) => ({ name: 'backup set', kind: 'auto', argv: ['x'], handEdits: ['tooling/platform-register.json'], ...extra });
+  const step = (extra) => ({ name: 'backup set', kind: 'auto', argv: ['x'], handEdits: ['tooling/platform-register.json'], handEditFinding: 'is in NONE of the nightly backup', ...extra });
   test('a hand-edit step whose check fails is manual, not failed; no row exits 1, a row exits 0', () => {
     const plain = runSteps([{ name: 'backup set', kind: 'auto', argv: ['x'] }], { ...ctx('.'), run: refused });
     assert.deepEqual([plain[0].result, plain[0].manual], ['fail', false], 'green control: without handEdits a refusal is a failure');
@@ -84,6 +84,19 @@ describe('T2 · a hand edit is a manual step, and a manual step needs its row', 
     const r = runSteps([step({ row: 'O-BACKUP-AND-FANOUT-SETS-HAND-LISTED' })], { ...ctx('.'), run: accepted });
     assert.deepEqual([r[0].result, r[0].manual], ['pass', false]);
   });
+  // Review of #1189, finding 5: an exit 2 of the hand-edit step was recorded "manual" and the run exited 0.
+  test('an exit 2, a crash or another finding of a hand-edit step is a FAILURE, never manual', () => {
+    const mapped = step({ row: 'O-BACKUP-AND-FANOUT-SETS-HAND-LISTED' });
+    for (const out of [
+      { status: 2, out: '✗ COVERAGE LOST — TypeError: cannot read the platform register\n' },
+      { status: 1, out: 'TypeError: x is undefined\n    at assert-d1-fanout.mjs:40\n' },
+      { status: 1, out: '✗ rehearsalfx_db is bound by NO Worker\n' },
+    ]) {
+      const r = runSteps([mapped], { ...ctx('.'), run: () => out });
+      assert.deepEqual([r[0].result, r[0].manual], ['fail', false], out.out);
+      assert.equal(exitCode(summarize(r, { asOf: '2026-10-03', id: 'x' })), 1);
+    }
+  });
 });
 
 describe('T2b · a declared refusal is gated or manual; any OTHER failure of the step stays a failure', () => {
@@ -95,6 +108,22 @@ describe('T2b · a declared refusal is gated or manual; any OTHER failure of the
     const other = runSteps([step], { ...ctx('.'), run: () => ({ status: 1, out: 'FAIL metadata tree apps/x/store/android-play is missing title.txt\n' }) });
     assert.deepEqual([other[0].result, other[0].manual], ['fail', false]);
     assert.equal(exitCode(summarize(other, { asOf: '2026-10-03', id: 'x' })), 1);
+  });
+  // Review of #1189, finding 6: the expected refusal printed BESIDE another problem was gated, exit 0.
+  test('the refusal beside any other problem is a failure: a second line, or a count above one', () => {
+    const real = {
+      ...step,
+      refusal: { ...step.refusal, context: 'submission-safety preflight refused this submission|^\\s*✗ submission safety — 1 problem\\(s\\)' },
+    };
+    const wrap = (n, items) => `FAIL the [10]D-6 submission-safety preflight refused this submission:\n✗ submission safety — ${n} problem(s):\n${items.map((i) => `    ${i}`).join('\n')}\n`;
+    const preview = 'app "x" has status "preview" and only "live" may be submitted to a store.';
+    const alone = runSteps([real], { ...ctx('.'), run: () => ({ status: 1, out: wrap(1, [preview]) }) });
+    assert.equal(alone[0].result, 'gated', 'green control: the real D-6 output, one problem');
+    const two = runSteps([real], { ...ctx('.'), run: () => ({ status: 1, out: wrap(2, [preview, 'tagline duplicates subscriptiontracker']) }) });
+    assert.equal(two[0].result, 'fail');
+    const beside = runSteps([real], { ...ctx('.'), run: () => ({ status: 1, out: `${wrap(1, [preview])}✗ tagline "x" duplicates another app\n` }) });
+    assert.equal(beside[0].result, 'fail');
+    assert.equal(exitCode(summarize([...two, ...beside], { asOf: '2026-10-03', id: 'x' })), 1);
   });
 });
 
@@ -115,6 +144,12 @@ describe('T4 · the kit\'s readout becomes manual steps', () => {
     'NEXT price row — no apps.rehearsalfx row',
     'summary: 1 DONE, 2 NEXT, 1 OWNER',
   ].join('\n');
+  // Review of #1189, finding 9: a LOST line was swallowed as a manual step.
+  test('a LOST readout line is a skip, so the run is COVERAGE LOST (exit 2), never manual', () => {
+    const steps = readoutSteps('LOST product row — the private corpus could not be read\n', { 'product row': 'O-PRODUCT-RECORD-UNBUILT' });
+    assert.deepEqual([steps[0].result, steps[0].manual], ['skip', false]);
+    assert.equal(exitCode(summarize(steps, { asOf: '2026-10-03', id: 'x' })), 2);
+  });
   test('OWNER and NEXT lines are manual, mapped through the rows; DONE is not', () => {
     const steps = readoutSteps(text, { 'store records': 'O-STORE-RECORDS-ARE-ONE-PER-CHANNEL', 'price row': 'O-NEW-APP-ROWS-ARE-HAND-TYPED' });
     assert.deepEqual(steps.map((s) => s.name), ['readout: store records', 'readout: name clearance', 'readout: price row']);
@@ -202,6 +237,13 @@ describe('T8 · the real step register', () => {
       else assert.ok(Array.isArray(s.argv) || Array.isArray(s.argvs), `${s.name} names no command`);
     }
     for (const row of Object.values(decl.readoutRows)) assert.match(row, /^O-[A-Z0-9-]+$/);
+    for (const s of decl.steps.filter((x) => Array.isArray(x.handEdits))) {
+      assert.equal(typeof s.handEditFinding, 'string', `${s.name} declares handEdits and no handEditFinding: any failure of it would read as manual`);
+    }
+    for (const s of decl.steps.filter((x) => x.refusal)) {
+      assert.doesNotThrow(() => new RegExp(s.refusal.match), s.name);
+      if (s.refusal.context) assert.doesNotThrow(() => new RegExp(s.refusal.context), s.name);
+    }
     for (const [name, lane] of Object.entries(decl.readoutLanes ?? {})) {
       if (name.startsWith('_')) continue;
       assert.ok(existsSync(join(ROOT, lane)), `readoutLanes["${name}"] names ${lane}, which does not exist`);

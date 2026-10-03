@@ -20,16 +20,15 @@
 // Exit:  0 nothing here would publish (or --publish was passed) · 1 a publish
 //        without --publish, or an entry this tool cannot build · 2 COVERAGE LOST
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_ROOT, storeLanguage } from './listing-locales.mjs';
+import { DEFAULT_ROOT, readJsonOrNull, storeLanguage } from './listing-locales.mjs';
 
 /** Every payload the data describes, and which of them would publish. */
 export function buildPayloads(root, app, { today = new Date().toISOString().slice(0, 10) } = {}) {
   const read = (rel) => {
     const abs = join(root, rel);
-    if (!existsSync(abs)) return null;
-    return JSON.parse(readFileSync(abs, 'utf8'));
+    return readJsonOrNull(abs);
   };
   const cl = read(`apps/${app}/aso/custom-listings.json`);
   const pc = read(`apps/${app}/aso/promo-calendar.json`);
@@ -78,6 +77,13 @@ if (process.argv[1] && process.argv[1].endsWith('custom-listings.mjs')) {
   const opt = (n) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : null);
   const app = opt('--app') ?? 'subscriptiontracker';
   const today = opt('--today') ?? new Date().toISOString().slice(0, 10);
+  // A typo here (`2026-1015`, `foo`) would compare as a string, find no live entry and exit 0: the publish
+  // refusal would switch itself off. So a --today that is not a real YYYY-MM-DD day is COVERAGE LOST.
+  const day = new Date(`${today}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== today) {
+    console.error(`custom-listings: COVERAGE LOST — --today ${JSON.stringify(today)} is not a real YYYY-MM-DD date.`);
+    process.exit(2);
+  }
   const PUBLISH = argv.includes('--publish');
   const r = buildPayloads(DEFAULT_ROOT, app, { today });
   if (r.coverage) {

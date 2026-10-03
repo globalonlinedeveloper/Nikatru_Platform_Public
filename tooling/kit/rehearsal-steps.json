@@ -8,10 +8,10 @@
     "mode, and the same one ci.yml's stamp probe runs where it has one: the rehearsal adds no parallel path.",
     "`manual`: a human, a console, a credential or a hand edit, with `row`, the register row that owns making it automatic, and",
     "`estimateMinutes`, an estimate the time-to-ship fact sums (labelled an estimate in the output). An auto step with",
-    "`handEdits` that FAILS is manual too: the failing check is the evidence a person edits a file the kit should own (passing",
-    "untouched, it is automatic). A step may instead declare the one `refusal` it meets for a new app: the refusal's words",
-    "(`match`, a regex) and the `row` or `gate` that owns it. Web-prove-first ([pipeline 10]D-6) refuses every store submission",
-    "of a `preview` app by design: those steps are GATED, owned by the requirement. Any other failure is still a failure.",
+    "`handEdits` is manual only on exit 1 with its declared `handEditFinding` words (an exit 2 or any other finding is a failure):",
+    "the failing check is the evidence a person edits a file the kit should own; passing untouched, it is automatic. A step may",
+    "instead declare the ONE `refusal` it meets for a new app: its words (`match`), the wrapper lines around it (`context`) and the",
+    "`row` or `gate` that owns it; any OTHER problem line or a count above one makes it a failure. Web-prove-first ([pipeline 10]D-6) refuses every store submission of a `preview` app by design: those steps are GATED.",
     "The kit's own readout (`new-product.mjs plan <id>`, the step marked `readout`) adds every",
     "OWNER/NEXT/UNREAD step it names, mapped through `readoutRows`; a step it names that is not mapped there has NO ROW, and the",
     "run exits 1 on it — that is a finding for the lead (a row or a lane), not a defect of this file.",
@@ -390,7 +390,8 @@
       ],
       "row": "O-BACKUP-AND-FANOUT-SETS-HAND-LISTED",
       "estimateMinutes": 30,
-      "why": "A new app database reaches the nightly backup and the renewals fan-out only through an appWorkers row typed into the platform register, then render-platform-app-block.mjs."
+      "why": "A new app database reaches the nightly backup and the renewals fan-out only through an appWorkers row typed into the platform register, then render-platform-app-block.mjs.",
+      "handEditFinding": "is in NONE of the nightly backup"
     },
     {
       "name": "submitter dry run: Google Play",
@@ -410,7 +411,8 @@
         "match": "has status \"preview\" and only \"live\" may be submitted",
         "gate": "[pipeline 10]D-6 web-prove-first",
         "estimateMinutes": 0,
-        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out."
+        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out.",
+        "context": "submission-safety preflight refused this submission|^\\s*✗ submission safety — 1 problem\\(s\\)"
       }
     },
     {
@@ -430,7 +432,7 @@
         "ios"
       ],
       "refusal": {
-        "match": "has no Apple identity",
+        "match": "declares no app \"[a-z0-9]+\" \\(it declares: [^)]*\\), so there is no bundle id",
         "row": "O-STORE-RECORDS-ARE-ONE-PER-CHANNEL",
         "estimateMinutes": 60,
         "why": "The App Store submitter refuses an app with no Apple identity: an App Store Connect record is a console step (owner O-A4), read back into app.yaml stores."
@@ -453,7 +455,7 @@
         "macos"
       ],
       "refusal": {
-        "match": "has no Apple identity",
+        "match": "declares no app \"[a-z0-9]+\" \\(it declares: [^)]*\\), so there is no bundle id",
         "row": "O-STORE-RECORDS-ARE-ONE-PER-CHANNEL",
         "estimateMinutes": 60,
         "why": "The App Store submitter refuses an app with no Apple identity: an App Store Connect record is a console step (owner O-A4), read back into app.yaml stores."
@@ -477,7 +479,8 @@
         "match": "has status \"preview\" and only \"live\" may be submitted",
         "gate": "[pipeline 10]D-6 web-prove-first",
         "estimateMinutes": 0,
-        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out."
+        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out.",
+        "context": "submission-safety preflight refused this submission|^\\s*✗ submission safety — 1 problem\\(s\\)"
       }
     },
     {
@@ -498,7 +501,8 @@
         "match": "has status \"preview\" and only \"live\" may be submitted",
         "gate": "[pipeline 10]D-6 web-prove-first",
         "estimateMinutes": 0,
-        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out."
+        "why": "Web-prove-first refuses every store submission of an app that is not live on the web: a deliberate gate, owned by the requirement, not a step to automate. Its cost is calendar time (the app must first convert strangers on the web), which this estimate leaves out.",
+        "context": "submission-safety preflight refused this submission|^\\s*✗ submission safety — 1 problem\\(s\\)"
       }
     },
     {

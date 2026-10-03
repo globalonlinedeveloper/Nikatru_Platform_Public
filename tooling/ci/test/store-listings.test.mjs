@@ -39,7 +39,9 @@ import {
   gradeClaims,
   gradeLanguages,
   gradeLimits,
+  backTranslations,
   gradeLiterals,
+  sheetCell,
   gradeReview,
   listingTexts,
   proveMatchers,
@@ -193,7 +195,8 @@ describe('T4 · R: a locale folder reaches a store only on a passing, independen
       assert.match(review(root)[0], /checked by the lane that filled them/);
       put(root, `apps/${APP}/aso/review/hi.tsv`, sheet([{ key: 'title.txt', translation: 'x', filled_by: 'lane a', checked_by: 'lane b', verdict: 'fail' }]));
       assert.match(review(root)[0], /verdict other than pass/);
-      put(root, `apps/${APP}/aso/review/hi.tsv`, sheet([{ key: 'title.txt', translation: 'x', filled_by: 'lane a', checked_by: 'lane b', verdict: 'pass' }]));
+      // The passing sheet names the file and carries its exact text (T10 holds that binding).
+      put(root, `apps/${APP}/aso/review/hi.tsv`, sheet([{ surface: `apps/${APP}/store/android-play/hi/title.txt`, key: 'title.txt', translation: 'Nikatru Fixture', filled_by: 'lane a', checked_by: 'lane b', verdict: 'pass' }]));
       assert.deepEqual(review(root), []);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -318,5 +321,95 @@ describe('T9 · the real tree', () => {
   test('the CLI exits 0', () => {
     const r = spawnSync(process.execPath, [join(ROOT, 'tooling/ci/assert-store-listings.mjs')], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
+  });
+});
+
+// ── the review of #1189 (lead 7185eb ruling, 2026-10-03), findings 2, 3, 4, 7 and 8 ──────────
+describe('T10 · R: a passing sheet passes only the text it reviewed (finding 2)', () => {
+  const passing = (rows) => sheet(rows.map((r) => ({ filled_by: 'lane a', checked_by: 'lane b', verdict: 'pass', ...r })));
+  const surface = `apps/${APP}/store/android-play/hi/title.txt`;
+  test('the reviewed text passes; edited after review, or with no row, it fails', () => {
+    const root = fixture();
+    try {
+      put(root, `apps/${APP}/store/android-play/hi/title.txt`, 'निकात्रु\n');
+      put(root, `apps/${APP}/aso/review/hi.tsv`, passing([{ surface, key: 'title.txt', translation: sheetCell('निकात्रु\n') }]));
+      const review = () => gradeReview(root, APP, listingTexts(root, APP)).problems;
+      assert.deepEqual(review(), [], 'green control: the file IS the reviewed translation');
+      put(root, `apps/${APP}/store/android-play/hi/title.txt`, 'कुछ भी जो समीक्षा में नहीं था\n');
+      assert.match(review()[0], /is not the text .*hi\.tsv reviewed for it/);
+      put(root, `apps/${APP}/store/android-play/hi/title.txt`, 'निकात्रु\n');
+      put(root, `apps/${APP}/store/android-play/hi/short-description.txt`, 'बिना समीक्षा\n');
+      assert.match(review()[0], /short-description\.txt has no row in .*hi\.tsv/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('a multi-line file matches its escaped cell', () => {
+    assert.equal(sheetCell('a\tb\nc\n\n'), 'a b\\nc');
+  });
+});
+
+describe('T11 · C: a Hindi claim is graded through its English back-translation (finding 3)', () => {
+  const draft = (root, text, back) => put(root, `apps/${APP}/aso/pending/hi.json`, JSON.stringify({ machineAssisted: true, fields: { 'android-play/short-description.txt': { text, back } } }));
+  const claims = (root) => gradeClaims(root, backTranslations(root, APP), { paid: false }).problems;
+  test('a clean back-translation passes; "free AI" and the commission fail', () => {
+    const root = fixture();
+    try {
+      draft(root, 'हर सदस्यता को एक ही जगह ट्रैक करें', 'Track every subscription in one place');
+      assert.deepEqual(claims(root), []);
+      draft(root, 'एआई से हर सदस्यता का हिसाब, मुफ़्त एआई', 'Free AI tracks every subscription');
+      assert.match(claims(root)[0], /\(back-translation\) advertises free AI/);
+      draft(root, 'स्टोर कमीशन से बचें, वेब पर सस्ता', 'Avoid the store commission, cheaper on the web');
+      const p = claims(root);
+      assert.ok(p.some((x) => /names the store commission/.test(x)) && p.some((x) => /steers the buyer to the web price/.test(x)), p.join('\n'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('a review sheet row\'s back_translation is graded too', () => {
+    const root = fixture();
+    try {
+      put(root, `apps/${APP}/aso/review/ta.tsv`, sheet([{ surface: `apps/${APP}/store/android-play/ta/title.txt`, key: 'title.txt', back_translation: 'Free AI for every subscription' }]));
+      assert.match(claims(root)[0], /ta\.tsv .*\(back_translation\) advertises free AI/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T12 · L: a language tag behind any name is a literal (finding 7)', () => {
+  test('an aliased constant, a locale key and a bare region tag fail; a comment does not', () => {
+    const root = fixture();
+    try {
+      const at = (src) => {
+        writeFileSync(join(root, 'tooling/release/submit-fx.mjs'), src);
+        return gradeLiterals(root).problems;
+      };
+      assert.deepEqual(at("// it was the literal 'en-US'\nconst LANG = storeLanguage('android-play', 'en');\n"), []);
+      assert.equal(at("const LISTING_LANG = 'en-US';\nconst LISTING_LANGUAGE = LISTING_LANG;\n").length, 1);
+      assert.equal(at("const body = { locale: 'hi' };\n").length, 1);
+      assert.equal(at("send({ language: x ?? \"hi-IN\" });\n").length, 1);
+      assert.deepEqual(at("send('en-US'); // listing-language-literal: the API's documented example\n"), []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T13 · no check-then-read, and --today is a real date (findings 4 and 8)', () => {
+  test('readOrNull: missing is null, a directory still throws', async () => {
+    const { readOrNull } = await import('../../store/listing-locales.mjs');
+    const root = fixture();
+    try {
+      assert.equal(readOrNull(join(root, 'nope.json')), null);
+      assert.throws(() => readOrNull(join(root, 'apps')), (e) => e?.code !== 'ENOENT');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('a --today that is not a real YYYY-MM-DD is COVERAGE LOST, never a quiet exit 0', () => {
+    const run = (d) => spawnSync(process.execPath, [join(ROOT, 'tooling/store/custom-listings.mjs'), '--app', 'subscriptiontracker', '--today', d], { encoding: 'utf8' }).status;
+    assert.equal(run('2026-10-03'), 0, 'green control');
+    for (const bad of ['2026-1015', 'foo', '2026-02-31']) assert.equal(run(bad), 2, bad);
   });
 });

@@ -52,7 +52,10 @@
 //       printed: tooling/store/custom-listings.mjs refuses it without --publish.
 //       No research file (aso/research-<date>.md) is PRINTED, not failed.
 //
-// ⚠️ STATED LIMITS. Word matches per field, not meaning. Screenshot PIXELS are
+// ⚠️ STATED LIMITS. Word matches per field, not meaning, and ENGLISH words: a Hindi
+// or Tamil text is graded through its English back-translation (the draft's
+// `back`, the sheet's `back_translation`), so a claim its translator did not
+// carry into English is not seen. Screenshot PIXELS are
 // not read for a price: the capture runs on the seeded board
 // (tooling/store/capture-play-screenshots.mjs), which holds no web price.
 //
@@ -179,8 +182,17 @@ export function gradeLanguages(root) {
   return { lost: [], problems, pairs };
 }
 
-/** A listing language spelled as a literal in a submit tool. */
-export const LANGUAGE_LITERAL = /\b[A-Z_]*LANGUAGE\s*=\s*['"`][a-z]{2,3}(?:[-_][A-Za-z]{2,4})?['"`]/;
+/** A listing language spelled as a literal in a submit tool: any constant or key whose name carries
+ *  LANG or LOCALE set to a language tag (`LISTING_LANG = 'en'`, `locale: "hi"`), and ANY quoted
+ *  language tag with a region (`'en-US'`, `"hi-IN"`, `'ta_in'`), whatever it is assigned to — the
+ *  review of #1189 found `const LISTING_LANG = 'en-US'; const LISTING_LANGUAGE = LISTING_LANG;`
+ *  passing the old `*LANGUAGE =` matcher. Comment lines are not code; a line that must keep a tag
+ *  (a documented API example) says so with a `listing-language-literal:` note. */
+export const LANGUAGE_LITERALS = Object.freeze([
+  /\b\w*(?:LANG|LOCALE)\w*\s*[:=]\s*['"`][a-z]{2,3}(?:[-_][A-Za-z]{2,4})?['"`]/i,
+  /['"`][a-z]{2,3}[-_][A-Za-z]{2}['"`]/,
+]);
+const COMMENT_LINE = /^\s*(?:\/\/|\*|\/\*)/;
 export function gradeLiterals(root) {
   const problems = [];
   const dir = join(root, 'tooling', 'release');
@@ -190,7 +202,8 @@ export function gradeLiterals(root) {
   for (const f of files) {
     const lines = read(root, `tooling/release/${f}`).split('\n');
     lines.forEach((l, i) => {
-      if (LANGUAGE_LITERAL.test(l)) problems.push(`L: tooling/release/${f}:${i + 1} spells a listing language as a literal (${l.trim()}). Read it from ${LANGUAGES} through storeLanguage() (tooling/store/listing-locales.mjs).`);
+      if (COMMENT_LINE.test(l) || l.includes('listing-language-literal:')) return;
+      if (LANGUAGE_LITERALS.some((re) => re.test(l))) problems.push(`L: tooling/release/${f}:${i + 1} spells a listing language as a literal (${l.trim()}). Read it from ${LANGUAGES} through storeLanguage() (tooling/store/listing-locales.mjs).`);
     });
   }
   return { lost: [], problems, files: files.length };
@@ -220,6 +233,36 @@ export function listingTexts(root, app) {
     for (const [key, v] of Object.entries(j.value.fields ?? {})) {
       const [channel, file] = key.split('/');
       out.push({ app, channel, locale, origin: 'draft', file, rel: `${rel}#${key}`, text: String(v?.text ?? '') });
+    }
+  }
+  return out;
+}
+
+/** The sheet's cell form of a text: tabs as spaces, line breaks as a literal `\n` (translation-qa's tsv()). */
+export const sheetCell = (s) => String(s).replace(/\r\n/g, '\n').replace(/\n+$/, '').replace(/\t/g, ' ').replace(/\n/g, '\\n');
+
+/**
+ * The ENGLISH back-translations of every non-source text: each draft field's `back` and each review
+ * sheet row's `back_translation`. Limb C's matchers are English wording; a Hindi "मुफ़्त एआई" or a
+ * Tamil commission line is graded through the English its translator wrote beside it (review of
+ * #1189, finding 3: such drafts exited 0). Graded for claims only, never for store limits.
+ */
+export function backTranslations(root, app) {
+  const { sourceLocale, codes } = registerLocales(root);
+  const out = [];
+  for (const locale of codes.filter((c) => c !== sourceLocale)) {
+    const rel = `apps/${app}/aso/pending/${locale}.json`;
+    const j = readJson(root, rel);
+    for (const [key, v] of Object.entries(j.value?.fields ?? {})) {
+      const [channel, file] = key.split('/');
+      if (typeof v?.back === 'string') out.push({ app, channel, locale, origin: 'back', file, rel: `${rel}#${key} (back-translation)`, text: v.back });
+    }
+    const sheetRel = `apps/${app}/aso/review/${locale}.tsv`;
+    const sheetText = read(root, sheetRel);
+    if (sheetText === null) continue;
+    for (const row of readSheet(sheetText).rows) {
+      const [channel] = String(row.surface ?? '').split('/').slice(-3);
+      if (row.back_translation) out.push({ app, channel, locale, origin: 'back', file: row.key, rel: `${sheetRel} ${row.surface} (back_translation)`, text: row.back_translation.replace(/\\n/g, '\n') });
     }
   }
   return out;
@@ -289,6 +332,17 @@ export function gradeReview(root, app, texts) {
     for (const f of folders) {
       if (!sheet) problems.push(`R: ${f}/ is a ${locale} listing and ${sheetRel} does not exist. A listing in a language reaches a store only after an independent review (back-translation, fluency, placeholders, length).`);
       else if (!sheet.passing) problems.push(`R: ${f}/ is a ${locale} listing and its review sheet ${sheetRel} does not pass: ${sheet.why}. Keep it a pending draft (apps/${app}/aso/pending/${locale}.json) until it does.`);
+    }
+    // A PASSING sheet passes only the text it reviewed (review of #1189, finding 2: once hi.tsv passed,
+    // any text written into store/<channel>/hi/ passed with it). Every file of every locale folder needs
+    // the sheet row whose `surface` is that file, and the file must be that row's `translation`, exactly.
+    if (sheet?.passing) {
+      const rows = new Map(sheet.rows.map((r) => [r.surface, r]));
+      for (const t of texts.filter((x) => x.locale === locale && x.origin === 'folder')) {
+        const row = rows.get(t.rel);
+        if (!row) problems.push(`R: ${t.rel} has no row in ${sheetRel}. Text nobody reviewed does not reach a store because the sheet passed for other files; add it to the draft and re-run listing-qa.mjs ${locale} --sheet.`);
+        else if (sheetCell(t.text) !== row.translation) problems.push(`R: ${t.rel} is not the text ${sheetRel} reviewed for it (the file was edited after the review). Re-draft it, re-run the review, and promote the reviewed text.`);
+      }
     }
     const draftRel = `apps/${app}/aso/pending/${locale}.json`;
     const draft = readJson(root, draftRel);
@@ -382,7 +436,7 @@ export function grade(root = ROOT_DEFAULT) {
     const M = gradeLimits(root, all);
     problems.push(...M.problems);
     measured += M.measured;
-    if (!ai.lost) problems.push(...gradeClaims(root, all, { paid: ai.paid, competitors: competitorsOf(root, app) }).problems);
+    if (!ai.lost) problems.push(...gradeClaims(root, [...all, ...backTranslations(root, app)], { paid: ai.paid, competitors: competitorsOf(root, app) }).problems);
     problems.push(...gradeReview(root, app, texts).problems);
     for (const p of listingPlan(root, app)) {
       if (!p.source && p.screenshots === 'pending') prints.push(`PENDING SCREENSHOTS: ${p.channel} ${p.locale} has listing text (${p.text}) and no CAPTURE.json recording locale "${p.locale}" under ${p.folder}/screenshots*/ — the English set does not stand in for it. Lead step: dispatch the capture with --locale ${p.locale}.`);

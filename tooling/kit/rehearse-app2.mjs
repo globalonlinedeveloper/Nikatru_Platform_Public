@@ -22,14 +22,16 @@
 //      is timed. A `manual` step is a human, a console, a credential or a hand
 //      edit, and is recorded with the register row that owns it. An auto step
 //      that declares `handEdits` (a file a human must edit for it to pass) and
-//      FAILS is a manual step, not a failure: the kit should own that file, and
-//      the failing check is the evidence that a person still edits it. Passing
-//      untouched, it is automatic — and the trend says so. A step may instead
-//      declare the one `refusal` it is expected to meet for a new app (its
-//      words as a regex, and the `row` or `gate` that owns it): web-prove-first
-//      ([pipeline 10]D-6) refuses every store submission of a `preview` app,
-//      by design. Only THAT refusal is recorded as gated/manual; any other
-//      failure of the same step is still a failure.
+//      exits 1 with its declared `handEditFinding` is a manual step, not a
+//      failure: the kit should own that file, and that finding is the evidence
+//      a person still edits it. An exit 2, a crash or any other finding is a
+//      FAILURE. Passing untouched, it is automatic — and the trend says so. A
+//      step may instead declare the one `refusal` it is expected to meet for a
+//      new app (`match`, its wrapper lines `context`, and the `row` or `gate`
+//      that owns it): web-prove-first ([pipeline 10]D-6) refuses every store
+//      submission of a `preview` app, by design. Only an output whose EVERY
+//      problem line is that refusal is gated/manual (onlyTheRefusal); any other
+//      problem beside it is a failure.
 //   3. THE KIT'S OWN READOUT, after the stamp: `new-product.mjs plan <id>` lists
 //      every step still OWNER, NEXT or UNREAD for the new id. Each becomes a
 //      manual step, mapped to a row through `readoutRows`.
@@ -113,12 +115,14 @@ export function runSteps(steps, { tree, id, vars, run = spawnRun, has = onPath, 
     let result = 'pass';
     let tail = '';
     let full = '';
+    let status = 0;
     for (const argv of s.argvs ?? [s.argv]) {
       const r = run(argv.map((a) => subst(a, ctx)), { cwd: join(tree, subst(s.cwd ?? '.', ctx)), env: { ...env, ...(s.env ?? {}) } });
       full = r.out;
       tail = r.out.trim().split('\n').slice(-3).join(' ⏎ ');
       if (r.status !== 0) {
         result = 'fail';
+        status = r.status;
         // The refusal's own first line, then the tail: a summary line alone does not say what refused.
         const first = r.out.split('\n').find((l) => /✗|FAIL|refus|COVERAGE LOST/i.test(l));
         tail = `exit ${r.status}: ${first ? `${first.trim().slice(0, 400)} … ` : ''}${tail}`;
@@ -126,14 +130,16 @@ export function runSteps(steps, { tree, id, vars, run = spawnRun, has = onPath, 
       }
     }
     const seconds = Math.round((clock() - t0) / 100) / 10;
-    if (result === 'fail' && s.refusal && new RegExp(s.refusal.match).test(full)) {
+    if (result === 'fail' && s.refusal && onlyTheRefusal(full, s.refusal)) {
       // The ONE refusal this step is expected to meet for a new app — a deliberate gate (`gate`, the
-      // requirement that makes it one) or a step a person still does (`row`). Any other failure of the
-      // same step stays a failure: the match is on the refusal's own words.
+      // requirement that makes it one) or a step a person still does (`row`) — and NOTHING ELSE: every
+      // other problem line in the same output makes the step a failure (review of #1189, finding 6).
       results.push({ ...base, row: s.refusal.row ?? null, gate: s.refusal.gate ?? null, seconds, result: s.refusal.gate ? 'gated' : 'manual', manual: true, why: `${s.refusal.why} The check said: ${tail}`, estimateMinutes: s.refusal.estimateMinutes ?? s.estimateMinutes ?? null, out: tail });
-    } else if (handEdits.length && result === 'fail') {
-      // A step whose check fails until a person edits a file the kit should own IS a manual step:
-      // the failure is the evidence. When the check passes untouched, the step has become automatic
+    } else if (handEdits.length && result === 'fail' && status === 1 && typeof s.handEditFinding === 'string' && new RegExp(s.handEditFinding).test(full)) {
+      // A step whose check fails until a person edits a file the kit should own IS a manual step: the
+      // failure is the evidence. ONLY its own finding (exit 1, the declared words): an exit 2 (COVERAGE
+      // LOST), a crash or any other finding is a failure, so a check that stopped checking cannot hide
+      // as a manual step (review of #1189, finding 5). Passing untouched, the step has become automatic
       // (rehearsal-trend.mjs prints it as NEWLY AUTOMATED).
       results.push({ ...base, seconds, result: 'manual', manual: true, why: `needs a hand edit of ${handEdits.join(', ')}, which the kit should own. ${s.why ?? ''} The check said: ${tail}`.trim(), estimateMinutes: s.estimateMinutes ?? null, out: tail });
     } else {
@@ -143,8 +149,23 @@ export function runSteps(steps, { tree, id, vars, run = spawnRun, has = onPath, 
   return results;
 }
 
+/** True when `out` carries the refusal's words and no OTHER problem: every `✗`/`FAIL` line is the
+ *  refusal itself or its declared `context` (the wrapper and header lines the tool prints around it),
+ *  and every "N problem(s)" count is at most 1. */
+export function onlyTheRefusal(out, refusal) {
+  const match = new RegExp(refusal.match);
+  if (!match.test(out)) return false;
+  const context = refusal.context ? new RegExp(refusal.context) : null;
+  const others = String(out)
+    .split('\n')
+    .filter((l) => /^\s*(?:✗|FAIL\b)/.test(l) && !match.test(l) && !(context && context.test(l)));
+  const counts = [...String(out).matchAll(/(\d+) problem\(s\)/g)].map((m) => Number(m[1]));
+  return others.length === 0 && counts.every((n) => n <= 1);
+}
+
 /** The kit's readout lines `OWNER|NEXT|UNREAD <step> — <why>` as steps: manual, mapped through `rows`,
- *  unless `lanes` names the scheduled workflow that already does it for every declared app. */
+ *  unless `lanes` names the scheduled workflow that already does it for every declared app. A `LOST`
+ *  line is the KIT losing coverage, not a person's step: it is a skip, which the run reports as exit 2. */
 export function readoutSteps(text, rows = {}, estimates = {}, lanes = {}) {
   const out = [];
   for (const line of String(text).split('\n')) {
@@ -152,6 +173,10 @@ export function readoutSteps(text, rows = {}, estimates = {}, lanes = {}) {
     if (!m) continue;
     const name = m[2].trim();
     const said = `${m[1]} in new-product.mjs plan — ${m[3].trim()}`;
+    if (m[1] === 'LOST') {
+      out.push({ name: `readout: ${name}`, targets: [], seconds: 0, result: 'skip', manual: false, row: null, why: `the kit's readout lost coverage: ${said}` });
+      continue;
+    }
     if (typeof lanes[name] === 'string') {
       out.push({ name: `readout: ${name}`, targets: [], seconds: 0, result: 'lane', manual: false, row: null, why: `done by ${lanes[name]} on its own schedule, for every declared app; ${said}` });
       continue;

@@ -5,6 +5,6 @@
     { "name": "Subscriptions - Track Expenses (Touchbits Inc.)", "store": "ios-appstore", "terms": ["touchbits"], "url": "https://apps.apple.com/us/app/subscriptions-track-expenses/id1577082754", "readAt": "2026-10-03" },
     { "name": "Subby - Subscription Tracker", "store": "android-play", "terms": ["subby"], "url": "https://play.google.com/store/apps/details?id=com.slapp.subby", "readAt": "2026-10-03" },
     { "name": "Trackify–Subscription Reminder", "store": "android-play", "terms": ["trackify"], "url": "https://play.google.com/store/apps/details?id=com.alphaved.trackify", "readAt": "2026-10-03" },
-    { "name": "Rocket Money", "store": "ios-appstore", "terms": ["rocket money", "rocketmoney", "truebill"], "url": "https://money.usnews.com/money/personal-finance/saving-and-budgeting/articles/track-and-manage-subscriptions-with-these-apps", "readAt": "2026-10-03" }
+    { "name": "Rocket Money - Bills & Budgets (subtitle: Subscription & Expense Manager)", "store": "ios-appstore", "terms": ["rocket money", "rocketmoney", "truebill"], "url": "https://apps.apple.com/us/app/rocket-money-bills-budgets/id1130616675", "readAt": "2026-10-03" }
   ]
 }

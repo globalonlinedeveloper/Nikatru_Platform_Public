@@ -38,6 +38,23 @@ export const SHEET_HEAD = ['surface', 'key', 'source_en', 'translation', 'back_t
 
 const readJson = (root, rel) => JSON.parse(readFileSync(join(root, rel), 'utf8'));
 
+/** A file's text, or null when it does not exist. ONE attempt, no existence check first (a check
+ *  then a read is CodeQL js/file-system-race, alert 602 on listing-qa.mjs): ENOENT is null, and any
+ *  other error still throws. */
+export function readOrNull(abs) {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+/** readOrNull, parsed as JSON. */
+export function readJsonOrNull(abs) {
+  const t = readOrNull(abs);
+  return t === null ? null : JSON.parse(t);
+}
+
 /** The app-surface store channels the register declares, in register order. */
 export function storeChannels(root = DEFAULT_ROOT) {
   return readJson(root, CHANNEL_REGISTER).channels.filter((c) => c.kind === 'store' && c.surface === 'app').map((c) => c.id);
@@ -86,15 +103,22 @@ export function readSheet(text) {
 
 /** The CAPTURE.json manifests under a listing folder's screenshot sets, with the locale each one records. */
 export function screenshotManifests(absDir) {
-  if (!existsSync(absDir)) return [];
+  let entries;
+  try {
+    entries = readdirSync(absDir, { withFileTypes: true });
+  } catch (e) {
+    if (e?.code === 'ENOENT') return [];
+    throw e;
+  }
   const out = [];
-  for (const de of readdirSync(absDir, { withFileTypes: true })) {
+  for (const de of entries) {
     if (!de.isDirectory() || !de.name.startsWith('screenshots')) continue;
     const m = join(absDir, de.name, 'CAPTURE.json');
-    if (!existsSync(m)) continue;
+    const text = readOrNull(m);
+    if (text === null) continue;
     let locale = null;
     try {
-      locale = JSON.parse(readFileSync(m, 'utf8')).locale ?? null;
+      locale = JSON.parse(text).locale ?? null;
     } catch {
       locale = null;
     }
@@ -116,11 +140,12 @@ export function listingPlan(root = DEFAULT_ROOT, app = 'subscriptiontracker') {
   const table = loadLanguages(root);
   const storeRel = `apps/${app}/store`;
   const exemptRel = `${storeRel}/${EXEMPTIONS}`;
-  const exemptions = existsSync(join(root, exemptRel)) ? readJson(root, exemptRel).exemptions ?? [] : [];
+  const exemptions = readJsonOrNull(join(root, exemptRel))?.exemptions ?? [];
   const pending = {};
   for (const code of codes) {
     const rel = `apps/${app}/aso/pending/${code}.json`;
-    if (existsSync(join(root, rel))) pending[code] = readJson(root, rel);
+    const draft = readJsonOrNull(join(root, rel));
+    if (draft !== null) pending[code] = draft;
   }
   const plan = [];
   for (const channel of storeChannels(root)) {
@@ -140,11 +165,12 @@ export function listingPlan(root = DEFAULT_ROOT, app = 'subscriptiontracker') {
       let reviewWhy = null;
       if (!source) {
         const sheetRel = `apps/${app}/aso/review/${locale}.tsv`;
-        if (!existsSync(join(root, sheetRel))) {
+        const sheetText = readOrNull(join(root, sheetRel));
+        if (sheetText === null) {
           review = 'none';
           reviewWhy = `${sheetRel} does not exist`;
         } else {
-          const s = readSheet(readFileSync(join(root, sheetRel), 'utf8'));
+          const s = readSheet(sheetText);
           review = s.passing ? 'pass' : 'pending';
           reviewWhy = s.why;
         }
