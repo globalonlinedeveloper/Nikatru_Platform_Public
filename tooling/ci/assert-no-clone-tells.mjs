@@ -126,8 +126,14 @@ const REQUIRED_COVERAGE = [
     // cleared a floor meant to need several and vacuity-b's "packages/ thinned
     // to core" case went green. 80 is above any single package (core 61) and
     // below the tree less its largest-but-one (174 - design_system 27 = 147).
-    floor: 80,
-    label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
+    // ⏱ 2026-10-03 · club held-apps r2: 80 -> 110. packages/core/lib reached
+    // 80 .dart (ST-P5's pdf_report.dart on top of main's growth), so core alone
+    // met the floor and vacuity-b's "thinned to core" case went red (CI run
+    // 37088520673, shard 4: exit 1, not 2). Measured on 703032e: core 80, the
+    // next largest design_system 54, packages/*/lib 262 in all. 110 is above any
+    // single package and below the tree less its largest-but-one (262 - 54 = 208).
+    floor: 110,
+    label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (262 .dart on 2026-10-03)',
   },
   {
     key: 'tooling/bricks',
