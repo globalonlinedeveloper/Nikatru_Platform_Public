@@ -1237,7 +1237,7 @@ jobs:
           ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
           ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
         run: >
-          node tooling/release/verify-provenance.mjs --dir dist --repo "$REPO"
+          node tooling/ci/verify-provenance.mjs --dir dist --repo "$REPO"
           --signer-workflow "${REPO}/.github/workflows/build-platforms.yml"
           --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
           --out "${RUNNER_TEMP}/provenance.json"

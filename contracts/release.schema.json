@@ -76,7 +76,7 @@
               "attestationId": { "type": "string", "pattern": "^[0-9]+$" },
               "attestationUrl": { "type": "string", "format": "https-url" }
             },
-            "description": "The GitHub build-provenance attestation THIS run signed for these bytes (actions/attest-build-provenance) and verified before the record was written (tooling/release/verify-provenance.mjs, which runs gh attestation verify and checks the subject digest is this sha256). Written by --emit-release-json --provenance; tooling/ci/assert-build-provenance.mjs holds every release job to passing it. The one per-attempt field: a re-run signs a new attestation, so it names that one. Verify a download by hand: docs/release/verify-a-download.md (O-RELEASES-HAVE-NO-PROVENANCE)."
+            "description": "The GitHub build-provenance attestation THIS run signed for these bytes (actions/attest-build-provenance) and verified before the record was written (tooling/ci/verify-provenance.mjs, which runs gh attestation verify and checks the subject digest is this sha256). Written by --emit-release-json --provenance; tooling/ci/assert-build-provenance.mjs holds every release job to passing it. The one per-attempt field: a re-run signs a new attestation, so it names that one. Verify a download by hand: docs/release/verify-a-download.md (O-RELEASES-HAVE-NO-PROVENANCE)."
           }
         }
       }

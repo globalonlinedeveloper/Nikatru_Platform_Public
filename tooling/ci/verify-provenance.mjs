@@ -22,10 +22,10 @@
 // How anyone verifies a download by hand: VERIFY_DOC below (`--help` prints it).
 //
 // Usage:
-//   node tooling/release/verify-provenance.mjs --dir <release dir> --repo <owner/repo>
+//   node tooling/ci/verify-provenance.mjs --dir <release dir> --repo <owner/repo>
 //     --signer-workflow <owner/repo>/.github/workflows/<file>.yml
 //     --attestation-id <id> --attestation-url <url> --out <file> [--gh <path>]
-//   node tooling/release/verify-provenance.mjs --help
+//   node tooling/ci/verify-provenance.mjs --help
 // Exit 0 = every file verified. 1 = a file did not verify, a digest mismatch, or
 // a bad invocation. 2 = COVERAGE LOST (an empty release directory, or no `gh`
 // to verify with).
@@ -42,7 +42,7 @@ export const RECORD_SCHEMA = 'nikatru.provenance/1';
 const GH_TIMEOUT_MS = 120_000;
 
 const USAGE = [
-  'Usage: node tooling/release/verify-provenance.mjs --dir <release dir> --repo <owner/repo>',
+  'Usage: node tooling/ci/verify-provenance.mjs --dir <release dir> --repo <owner/repo>',
   '         --signer-workflow <owner/repo>/.github/workflows/<file>.yml',
   '         --attestation-id <id> --attestation-url <url> --out <file> [--gh <path>]',
   '',

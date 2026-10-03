@@ -71,7 +71,7 @@ template.
 
 The `.apk` a GitHub Release attaches for this channel carries a build-provenance
 attestation, signed by the release run and verified by it before the release was
-described (`tooling/release/verify-provenance.mjs`). Anyone, apps.gov.in's
+described (`tooling/ci/verify-provenance.mjs`). Anyone, apps.gov.in's
 reviewers included, can check the uploaded file with
 `gh attestation verify <file>.apk --repo <owner>/<repo>`. The steps are in
 `docs/release/verify-a-download.md`.

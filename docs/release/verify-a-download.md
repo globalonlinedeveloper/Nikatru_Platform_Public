@@ -56,7 +56,7 @@ install it, and tell us at the address in `SECURITY.md`.
 - **Covered:** every file attached to a GitHub Release. The release job attests
   them, then verifies each one with `gh attestation verify` before it writes
   `release.json` and `SHA256SUMS`
-  (`tooling/release/verify-provenance.mjs`; `tooling/ci/assert-build-provenance.mjs`
+  (`tooling/ci/verify-provenance.mjs`; `tooling/ci/assert-build-provenance.mjs`
   fails CI if a release job stops doing either).
 - **Not covered here:** a copy installed from an app store (Google Play, the
   App Store, the Microsoft Store, the Snap Store, the browser add-on stores). The

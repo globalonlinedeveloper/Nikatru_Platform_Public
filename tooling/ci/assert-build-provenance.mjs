@@ -14,7 +14,7 @@
 //   A  run actions/attest-build-provenance (or actions/attest), SHA-pinned, with
 //      `subject-path: <dir>/*`, BEFORE the describe step — so every file the
 //      record names was attested, whatever its format;
-//   B  run tooling/release/verify-provenance.mjs `--dir <dir>` after the attest and
+//   B  run tooling/ci/verify-provenance.mjs `--dir <dir>` after the attest and
 //      before the describe — an attestation nobody verified is a claim;
 //   C  pass `--provenance` to the describe step, so release.json records the
 //      attestation per artefact (the emitter refuses a file the verify did not name);
@@ -24,6 +24,12 @@
 //      a job that describes nothing carries files nobody attested);
 //   F  no job that attests nothing grants `id-token: write` or `attestations: write`,
 //      and no workflow grants either at workflow level (that reaches every job).
+//
+// ⚠️ THE `if:` OF THESE STEPS IS NOT GRADED. extensions.yml skips the attest and
+// the verify on a dispatch rehearsal (`inputs.dry_run != true`, which
+// assert-publish-steps-guarded.mjs requires of every step that hands anything out
+// of the run) and drops --provenance there by an explicit DRY_RUN branch; on every
+// other run the emitter refuses a file the verify step did not name.
 //
 // RECORDED FAILING CASES (tooling/ci/test/build-provenance.test.mjs, and the real
 // tree mutated by hand on 2026-10-03): the attest step deleted from
@@ -43,7 +49,7 @@ import { parseAllWorkflows } from './workflow-scan.mjs';
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const ATTEST_USES = /^actions\/attest(?:-build-provenance)?@[0-9a-f]{40}$/;
 const EMIT = /release-manifest\.mjs\s+--emit-release-json\s+(\S+)/;
-const VERIFY = /tooling\/release\/verify-provenance\.mjs\b/;
+const VERIFY = /tooling\/ci\/verify-provenance\.mjs\b/;
 const SIGNING_SCOPES = ['id-token', 'attestations'];
 
 function coverageLost(...lines) {
@@ -161,7 +167,7 @@ export function gradeProvenance(workflows) {
         const from = attest ? steps.indexOf(attest) : -1;
         const verified = steps.some((s, i) => i > from && i < at && VERIFY.test(s.text) && dirArgOf(s.text) === dir);
         if (!verified) {
-          findings.push(`B  ${where}:${e.n} describes ${dir}/ and no step between the attest and the describe runs tooling/release/verify-provenance.mjs --dir ${dir}: an attestation nobody verified is a claim.`);
+          findings.push(`B  ${where}:${e.n} describes ${dir}/ and no step between the attest and the describe runs tooling/ci/verify-provenance.mjs --dir ${dir}: an attestation nobody verified is a claim.`);
         }
         if (!/--provenance\b/.test(e.text)) {
           findings.push(`C  ${where}:${e.n} describes ${dir}/ without --provenance, so release.json names no attestation for any artefact.`);

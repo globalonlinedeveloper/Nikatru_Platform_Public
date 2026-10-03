@@ -1535,9 +1535,12 @@ jobs:
           echo "SHA256SUMS.txt: $listed digest line(s) for ${#zips[@]} zip(s) in dist."
 
       # why: every file the Release publishes gets a signed SLSA build-provenance attestation, AFTER the zips and
-      # SHA256SUMS.txt exist and BEFORE release.json describes them (O-RELEASES-HAVE-NO-PROVENANCE). A dispatch
-      # rehearsal attests too, so the path is exercised before a tag. assert-build-provenance.mjs holds the order.
+      # SHA256SUMS.txt exist and BEFORE release.json describes them (O-RELEASES-HAVE-NO-PROVENANCE).
+      # assert-build-provenance.mjs holds the order. The dry-run guard: an attestation leaves the run (GitHub's
+      # attestation store and the public Sigstore log), so a dispatch rehearsal skips it, as it skips every step
+      # that hands anything out (assert-publish-steps-guarded.mjs); a tag push and a confirmed dispatch attest.
       - name: Attest the build provenance of every file this release publishes
+        if: inputs.dry_run != true
         id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -1546,6 +1549,7 @@ jobs:
       # why: read back with gh attestation verify, pinned to this workflow as the signer; the verified subject
       # digest must be the file's own sha256.
       - name: Verify every file's provenance before the release is described
+        if: inputs.dry_run != true
         working-directory: .
         timeout-minutes: 10
         env:
@@ -1554,7 +1558,7 @@ jobs:
           ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
           ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
         run: >
-          node tooling/release/verify-provenance.mjs --dir extensions/dist --repo "$REPO"
+          node tooling/ci/verify-provenance.mjs --dir extensions/dist --repo "$REPO"
           --signer-workflow "${REPO}/.github/workflows/extensions.yml"
           --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
           --out "${RUNNER_TEMP}/provenance.json"
@@ -1593,15 +1597,20 @@ jobs:
           NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           TOOL: ${{ steps.tag.outputs.id }}
           VERSION: ${{ steps.tag.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
+          # why: a dry-run rehearsal attested nothing (the two steps above), so it describes without the record;
+          # every other run REQUIRES it, and the emitter refuses a file the verify step did not name.
+          provenance=(--provenance "${RUNNER_TEMP}/provenance.json")
+          if [ "$DRY_RUN" = true ]; then provenance=(); fi
           node tooling/ci/release-manifest.mjs --emit-release-json extensions/dist \
             --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \
             --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
             --released-at "$RELEASED_AT" \
             --version "$VERSION" \
-            --provenance "${RUNNER_TEMP}/provenance.json"
+            "${provenance[@]}"
 
       - name: The integrity record the platform requires of every release
         working-directory: .

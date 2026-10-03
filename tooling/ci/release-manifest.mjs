@@ -2047,7 +2047,7 @@ export function buildReleaseJson({
         size: f.size,
         channels: channelsFor(f, format),
         // ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE): the attestation THIS run signed and verified for these
-        // bytes, from tooling/release/verify-provenance.mjs; absent only when the lane passed no --provenance.
+        // bytes, from tooling/ci/verify-provenance.mjs; absent only when the lane passed no --provenance.
         ...(provenance === null ? {} : { provenance: provenanceFor(f, provenance) }),
       };
     });
@@ -2600,7 +2600,7 @@ function highestFloor(floors) {
 
 /**
  * ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE). `--provenance <file>`: the record
- * tooling/release/verify-provenance.mjs wrote after `gh attestation verify` passed for
+ * tooling/ci/verify-provenance.mjs wrote after `gh attestation verify` passed for
  * every file of the release directory. Null when the flag is absent; a record that
  * cannot be read or is not that shape is refused, never half-used.
  */
@@ -2620,7 +2620,7 @@ function readProvenance(path) {
   if (!ok) {
     return die(
       `--provenance ${path} is not a nikatru.provenance/1 record (schema, attestationId, attestationUrl, files).`,
-      'It is written by tooling/release/verify-provenance.mjs and by nothing else.',
+      'It is written by tooling/ci/verify-provenance.mjs and by nothing else.',
     );
   }
   return rec;
@@ -2633,7 +2633,7 @@ function provenanceFor(f, rec) {
     die(
       `${f.name} carries no verified build provenance: ${entry === null ? 'the --provenance record does not name it' : `it was verified as sha256 ${entry.sha256}, and the file is ${f.sha256}`}.`,
       'Every file a release publishes is attested and verified BEFORE it is described (actions/attest-build-provenance,',
-      'then tooling/release/verify-provenance.mjs); a file added after the verify step is a file nobody can verify.',
+      'then tooling/ci/verify-provenance.mjs); a file added after the verify step is a file nobody can verify.',
     );
   }
   return { attestationId: rec.attestationId, attestationUrl: rec.attestationUrl };

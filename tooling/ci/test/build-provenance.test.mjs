@@ -1,6 +1,6 @@
 // build-provenance.test.mjs — every release file is attested and verified before it is described
 // (O-RELEASES-HAVE-NO-PROVENANCE): tooling/ci/assert-build-provenance.mjs (the static half),
-// tooling/release/verify-provenance.mjs (the verify wrapper, against a stubbed `gh`), and
+// tooling/ci/verify-provenance.mjs (the verify wrapper, against a stubbed `gh`), and
 // tooling/ci/release-manifest.mjs --emit-release-json --provenance (the record).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,12 +11,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gradeProvenance } from '../assert-build-provenance.mjs';
-import { gradeVerify, VERIFY_DOC, SLSA_PROVENANCE } from '../../release/verify-provenance.mjs';
+import { gradeVerify, VERIFY_DOC, SLSA_PROVENANCE } from '../verify-provenance.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling/ci/assert-build-provenance.mjs');
-const WRAPPER = join(REPO, 'tooling/release/verify-provenance.mjs');
+const WRAPPER = join(REPO, 'tooling/ci/verify-provenance.mjs');
 const EMITTER = join(REPO, 'tooling/ci/release-manifest.mjs');
 const PIN = 'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8';
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
@@ -26,7 +26,7 @@ const tmp = (p) => mkdtempSync(join(tmpdir(), p));
 // ── the static guard ────────────────────────────────────────────────────────
 const RELEASE_JOB = ({ grants = '      id-token: write\n      attestations: write\n', attest = true, verify = true, provenance = true, attestAfter = false, uses = PIN } = {}) => {
   const attestStep = `      - name: Attest\n        id: attest\n        uses: ${uses}\n        with:\n          subject-path: dist/*\n`;
-  const verifyStep = '      - name: Verify\n        run: node tooling/release/verify-provenance.mjs --dir dist --repo o/r\n';
+  const verifyStep = '      - name: Verify\n        run: node tooling/ci/verify-provenance.mjs --dir dist --repo o/r\n';
   const emitStep = `      - name: Describe\n        run: >\n          node tooling/ci/release-manifest.mjs --emit-release-json dist\n          --app x${provenance ? '\n          --provenance p.json' : ''}\n`;
   return [
     '  release:',

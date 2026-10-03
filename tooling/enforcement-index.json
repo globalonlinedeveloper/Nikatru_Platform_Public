@@ -3525,6 +3525,17 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/verify-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/worker-routes.mjs",
@@ -4373,17 +4384,6 @@
     ],
     "kind": "script",
     "ref": "tooling/release/submit-windows-store.mjs",
-    "references": [],
-    "state": "WIRED"
-  },
-  {
-    "claims": [],
-    "invokedBy": [
-      ".github/workflows/build-platforms.yml#release",
-      ".github/workflows/extensions.yml#release"
-    ],
-    "kind": "script",
-    "ref": "tooling/release/verify-provenance.mjs",
     "references": [],
     "state": "WIRED"
   },
