@@ -2642,6 +2642,19 @@
   {
     "claims": [
       "ADR 068",
+      "ADR 078"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-listings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 068",
       "ADR 078",
       "ADR 093",
       "ADR 094",

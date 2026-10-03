@@ -720,6 +720,12 @@ jobs:
       - name: Every bundle, listing and launcher label declares the locales the app ships
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-bundle-locales.mjs
+      # why: lane aso-listings. Every listing in every language (flat, store/<channel>/<code>/ and the
+      # agent drafts in apps/<app>/aso/pending/) is held to its store's sourced limit, carries no
+      # commission, web price, free or unpaid AI claim, and reaches a folder only on a passing review sheet.
+      - name: Every store listing, in every language, is within its limits, claims nothing it cannot keep, and is reviewed
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-store-listings.mjs
       # why: OFFLINE. It reads apps/<app>/name-clearance.json and never dials out —
       # the networked probe that WRITES that record takes ~14 s and is a routine, not
       # a gate. docs/name-clearance.md carries the measurement and the split.

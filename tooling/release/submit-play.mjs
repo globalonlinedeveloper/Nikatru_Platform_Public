@@ -90,6 +90,7 @@ import { createHash, createSign } from 'node:crypto';
 import { readGradleApplicationId } from '../ci/read-identity.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
 import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken, storeSubmitter, invokedAsScript } from './submit-common.mjs';
+import { listingPlan, registerLocales, storeLanguage } from '../store/listing-locales.mjs';
 
 const CHANNEL_ID = 'android-play';
 const REGISTER = 'tooling/channel-register.json';
@@ -190,8 +191,11 @@ const CHANGES_IN_REVIEW_BEHAVIOR = 'ERROR_IF_IN_REVIEW';
 const ALLOWED_RELEASE_STATUS = Object.freeze(['draft', 'completed']);
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-PLAY';
-/** The language the listing tree is written in: the release notes and --sync-listing send it. */
-const LISTING_LANGUAGE = 'en-US';
+/** The language the flat listing tree is written in — the locale register's sourceLocale, spelled the way
+ *  Play spells it — and the one the release notes and --sync-listing send. ⏱ 2026-10-03 (lane aso-listings):
+ *  it was the literal 'en-US'; Play's code for each register locale is tooling/store/listing-languages.json,
+ *  read here at the submit edge and nowhere else (assert-store-listings.mjs limb L refuses a literal). */
+const LISTING_LANGUAGE = storeLanguage(CHANNEL_ID, registerLocales().sourceLocale);
 const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
 const RELEASE_SIGNED = 'release-signed';
 const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
@@ -1024,6 +1028,14 @@ if (problems.length) {
 }
 
 if (DRY_RUN) {
+  // Every listing language this app has on Play, with the code Play spells it and what it still owes.
+  // Only the source locale is sent today; another locale's folder lands when its review sheet passes and
+  // its owner row lifts the exemption, and its screenshots are its OWN set, never the English one.
+  console.log('');
+  console.log('   ── listing languages (tooling/store/listing-locales.mjs) ──');
+  for (const l of listingPlan(ROOT, app.slug).filter((x) => x.channel === CHANNEL_ID)) {
+    console.log(`   ${l.source ? '→' : '⬜'} ${l.locale} as ${l.storeCode ?? 'skip'}: text ${l.text}, review ${l.review}, screenshots ${l.screenshots}${l.source ? ' (sent by --sync-listing)' : ' (not sent)'}`);
+  }
   console.log('');
   console.log('submit-play: DRY RUN OK — nothing was sent to Google.');
   console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
