@@ -40,6 +40,40 @@
 //      `distributionSha256Sum` of 64 hex characters beside an https
 //      services.gradle.org `distributionUrl`. The wrapper then refuses a
 //      distribution whose bytes differ.
+//   V  when the job builds Android, every Gradle project beside such a wrapper
+//      carries `gradle/verification-metadata.xml` [rv2-security-003 stage (b)]:
+//      `<verify-metadata>true</verify-metadata>`, at least one component, a
+//      64-lowercase-hex `<sha256>` on EVERY artifact (an md5/sha1-only artifact is
+//      a finding), and no `<trust>` rule beyond -sources/-javadoc jars. Neither the
+//      project's gradle.properties nor the signing job may turn verification
+//      `off` or `lenient` (`org.gradle.dependency.verification`,
+//      `--dependency-verification`, `-F`). Gradle then refuses a Maven, Gradle
+//      plugin or Flutter engine artefact (io.flutter:*) whose bytes differ — the
+//      check itself is Gradle's, measured 2026-10-01: one digit of the
+//      flutter_embedding_release sha256 changed and `flutter build apk --release`
+//      exited 1, "Dependency verification failed for configuration
+//      ':app:releaseRuntimeClasspath'". This limb proves the file is there and
+//      cannot be read as "verify nothing"; it cannot tell a well-formed wrong
+//      digest from a right one, which is the build's job.
+//      ⚠️ REGENERATE IT WITH EVERY FLUTTER, AGP, KOTLIN, GRADLE OR ANDROID-PLUGIN
+//      BUMP — the engine artefacts carry the engine hash in their version, so a
+//      Flutter bump alone is a new set. On Linux (aapt2 is OS-classified; the
+//      Windows host cannot build Android at all, docs/environment.md), from
+//      apps/<app>/: `flutter build appbundle --debug` and `flutter build appbundle
+//      --release` once each (Flutter writes android/gradlew and the mode's plugin
+//      registrant), then in android/ re-run the Gradle command `flutter build -v`
+//      prints with `--write-verification-metadata sha256` for bundleDebug,
+//      assembleDebug, bundleRelease and assembleRelease (debug and release
+//      separately: the registrant differs by mode), with
+//      `org.gradle.dependency.verification=lenient` in ~/.gradle/gradle.properties
+//      ONLY while generating. Gradle merges into the existing file.
+//      APP #2: the brick stamps no android/ today (2026-10-01). Once native
+//      folders are stamped (lane syn-p44), the stamped app's — and the brick's
+//      own `{{app_id}}/android/gradle/wrapper/` — gradle-wrapper.properties is
+//      found by wrapperFiles() like the flagship's, so this limb demands a
+//      verification-metadata.xml beside each one with no change here. Stamp the
+//      flagship's file with it (same Flutter, AGP, Kotlin and plugin set, same
+//      artefacts), and regenerate it in that app the day its set diverges.
 //   P  tooling/versions.json binds the Flutter archive digests to the version:
 //      `flutter_sha256_version` equals `flutter`, and every runner OS a job that
 //      calls ./.github/actions/setup-flutter names by a literal label has its
@@ -50,16 +84,19 @@
 // Exit 2 — COVERAGE LOST — when the register names no signing secret, when no
 // workflow job reads one (zero signing jobs placed), when a composite a signing
 // job calls is not on disk, or when a signing job builds Android and the tree
-// holds no gradle-wrapper.properties at all. Each of those would otherwise
+// holds no gradle-wrapper.properties at all (limbs G and V both key on the
+// wrapper, so no wrapper is no project to judge). Each of those would otherwise
 // print "clean" over nothing.
 //
 // ── WHAT IT DOES NOT DO ──────────────────────────────────────────────────────
 // It does not verify a digest against the network: the values are copied from
 // the publisher (Google's releases_<os>.json, services.gradle.org's .sha256)
-// and the build itself refuses bytes that disagree. It does not cover what the
-// Flutter tool and Gradle fetch AFTER install (engine artifacts, Maven
-// dependencies); the review names that as the wider class and stages it
-// separately (Gradle dependency verification).
+// and the build itself refuses bytes that disagree. What Gradle fetches after
+// install (Maven dependencies, the Flutter engine's io.flutter artefacts) is
+// limb V's, through Gradle's own dependency verification. What the Flutter
+// TOOL fetches outside Gradle (the engine cache under bin/cache, pub packages)
+// is not: pub is pinned by pubspec.lock's sha256, the engine cache by the SDK
+// archive limb F verifies.
 //
 // Usage:  node tooling/ci/assert-signing-inputs-pinned.mjs [repoRoot]
 // Exit 0 = clean. Exit 1 = a finding. Exit 2 = COVERAGE LOST.
@@ -214,7 +251,11 @@ export function wrapperFiles(root) {
       const child = rel ? `${rel}/${name}` : name;
       if (name === 'gradle-wrapper.properties') found.push(child);
       else if (!/\.[A-Za-z0-9]+$/.test(name) || name.startsWith('{{')) {
-        if (['node_modules', 'build', '.dart_tool', '.gradle', 'Pods'].includes(name)) continue;
+        // `ephemeral` / `.plugin_symlinks` / `.symlinks`: what `flutter pub get` links
+        // in, gitignored — third-party plugin and example projects nothing here builds.
+        // Absent from a CI clone, so skipping them makes a pub-got checkout judge the
+        // same set CI does (it found 13 extra wrappers, 2026-10-01).
+        if (['node_modules', 'build', '.dart_tool', '.gradle', 'Pods', 'ephemeral', '.plugin_symlinks', '.symlinks'].includes(name)) continue;
         try {
           walk(child, depth + 1);
         } catch {
@@ -243,6 +284,52 @@ export function wrapperFindings(rel, text) {
   }
   if (!sum || !/^[0-9a-f]{64}$/.test(sum)) {
     out.push(`${rel}: ${sum ? `distributionSha256Sum \`${sum}\` is not 64 lowercase hex` : 'carries no distributionSha256Sum'}, so the wrapper runs whatever bytes it is served. Copy the value from ${url ? `${url}.sha256` : 'the distribution\'s .sha256'}.`);
+  }
+  return out;
+}
+
+/** The Gradle project a wrapper belongs to: `<project>/gradle/wrapper/gradle-wrapper.properties`. */
+export const gradleProjectOf = (wrapperRel) => String(wrapperRel).replace(/\/?gradle\/wrapper\/gradle-wrapper\.properties$/, '');
+const inProject = (project, rel) => (project ? `${project}/${rel}` : rel);
+
+/** A setting that turns Gradle's dependency verification off or lenient, in a
+ *  gradle.properties line or on a command line. */
+export const VERIFICATION_OFF =
+  /org\.gradle\.dependency\.verification\s*[=:]\s*['"]?(?:off|lenient)\b|--dependency-verification(?:=|\s+)['"]?(?:off|lenient)\b|(?:^|\s)-F\s*['"]?(?:off|lenient)\b/i;
+
+/** Limb V over one verification-metadata.xml. Returns finding strings. */
+export function verificationFindings(rel, text) {
+  // Comments stripped to a FIXED POINT, then REFUSED if an opener survives: one
+  // pass re-forms `<!<!---->--` into a comment and leaves what it hides readable
+  // as a listing (CodeQL js/incomplete-multi-character-sanitization, #1154). The
+  // same rule as apple-provisioning.mjs parseFlatDict: a parser, not a sanitiser.
+  let xml = String(text ?? '');
+  for (let prev = null; prev !== xml; ) {
+    prev = xml;
+    xml = xml.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  if (xml.includes('<!--')) return [`${rel}: carries an unterminated or re-formed XML comment, so what it hides cannot be told from what it lists — refused, never read around.`];
+  const out = [];
+  if (!/<verification-metadata\b/.test(xml)) return [`${rel}: is not Gradle dependency-verification metadata (no <verification-metadata> root).`];
+  if (!/<verify-metadata>\s*true\s*<\/verify-metadata>/.test(xml)) {
+    out.push(`${rel}: <verify-metadata> is not \`true\`, so a .pom or .module Gradle reads is not checked and can redirect what it resolves.`);
+  }
+  const components = [...xml.matchAll(/<component\b[^>]*>([\s\S]*?)<\/component>/g)];
+  if (components.length === 0) out.push(`${rel}: lists no <component>, so every artefact a build resolves is unlisted — strict mode fails it, and any lenient mode passes it unchecked.`);
+  let artifacts = 0;
+  for (const [, body] of components) {
+    for (const a of body.matchAll(/<artifact\b[^>]*\bname="([^"]*)"[^>]*>([\s\S]*?)<\/artifact>/g)) {
+      artifacts++;
+      const sums = [...a[2].matchAll(/<sha256\b[^>]*\bvalue="([^"]*)"/g)].map((m) => m[1]);
+      if (sums.length === 0) out.push(`${rel}: artifact ${a[1]} carries no <sha256> (md5 and sha1 are not a digest this repository accepts).`);
+      for (const v of sums) if (!/^[0-9a-f]{64}$/.test(v)) out.push(`${rel}: artifact ${a[1]} has sha256 \`${v}\`, which is not 64 lowercase hex.`);
+    }
+  }
+  if (components.length && artifacts === 0) out.push(`${rel}: its components list no <artifact>, so nothing is checked.`);
+  for (const m of xml.matchAll(/<trust\b([^>]*)\/?>/g)) {
+    const file = m[1].match(/\bfile="([^"]*)"/)?.[1] ?? '';
+    const scoped = /^\.\*-(?:sources|javadoc)\[\.\]jar$/.test(file) && !/\b(?:group|name|version)=/.test(m[1]);
+    if (!scoped) out.push(`${rel}: a <trusted-artifacts> rule \`<trust${m[1].replace(/\s*\/$/, '')}/>\` skips verification for whatever it matches; only -sources/-javadoc jars may be trusted.`);
   }
   return out;
 }
@@ -317,12 +404,38 @@ function main() {
     judgeList(workflowSteps(job), where, job.lines, 0);
     const buildsAndroid = job.logical.some((l) => ANDROID_BUILD.test(l.text));
     if (buildsAndroid) androidJobs++;
+    if (buildsAndroid) {
+      for (const l of job.lines) {
+        if (VERIFICATION_OFF.test(l.text.replace(/(^|\s)#.*$/, ''))) findings.push(`${where}:${l.n} turns Gradle dependency verification off or lenient in a job that builds Android with signing keys: \`${l.text.trim()}\`.`);
+      }
+    }
     notes.push(`${where} job \`${job.name}\` holds ${[...reads].sort().join(', ')}${buildsAndroid ? ' and builds Android' : ''}`);
   }
 
   const wrappers = wrapperFiles(ROOT);
   if (androidJobs > 0 && wrappers.length === 0) lost.push(`${androidJobs} signing job(s) build Android and the tree holds no gradle-wrapper.properties under apps/ or tooling/bricks/ — the distribution digest cannot be judged.`);
   if (androidJobs > 0) for (const rel of wrappers) findings.push(...wrapperFindings(rel, readFileSync(join(ROOT, rel), 'utf8')));
+  // Limb V — Gradle's dependency verification, per project beside a wrapper.
+  let verifiedProjects = 0;
+  if (androidJobs > 0) {
+    for (const rel of wrappers) {
+      const project = gradleProjectOf(rel);
+      const meta = inProject(project, 'gradle/verification-metadata.xml');
+      if (!existsSync(join(ROOT, meta))) {
+        findings.push(`${meta}: missing. ${androidJobs} signing job(s) build Android, and without it Gradle fetches every Maven and Flutter engine artefact with no digest, with the keys in the job. Generate it with \`--write-verification-metadata sha256\` (tooling/ci/assert-signing-inputs-pinned.mjs, limb V, says how).`);
+      } else {
+        const f = verificationFindings(meta, readFileSync(join(ROOT, meta), 'utf8'));
+        findings.push(...f);
+        if (f.length === 0) verifiedProjects++;
+      }
+      const props = inProject(project, 'gradle.properties');
+      if (existsSync(join(ROOT, props))) {
+        readFileSync(join(ROOT, props), 'utf8').split(/\r?\n/).forEach((line, i) => {
+          if (!/^\s*[#!]/.test(line) && VERIFICATION_OFF.test(line)) findings.push(`${props}:${i + 1} turns Gradle dependency verification off or lenient: \`${line.trim()}\`.`);
+        });
+      }
+    }
+  }
 
   // Limb P — the digests belong to the version, and every runner that installs has one.
   const versions = existsSync(join(ROOT, VERSIONS_REL)) ? JSON.parse(readFileSync(join(ROOT, VERSIONS_REL), 'utf8')) : null;
@@ -352,7 +465,7 @@ function main() {
     notes.push(`setup-flutter runners: ${[...needed.keys()].join(', ') || 'none'}${unresolved ? `; ${unresolved} job(s) name the runner by an expression and are covered by the composite's own refusal` : ''}`);
   }
 
-  console.log(`assert-signing-inputs-pinned — ${signingJobs.length} signing job(s), ${judgedSteps} step(s) judged, ${verifiedInstallers} verified Flutter install(s), ${wrappers.length} gradle wrapper(s)`);
+  console.log(`assert-signing-inputs-pinned — ${signingJobs.length} signing job(s), ${judgedSteps} step(s) judged, ${verifiedInstallers} verified Flutter install(s), ${wrappers.length} gradle wrapper(s), ${verifiedProjects} verified Gradle project(s)`);
   for (const n of notes) console.log(`  · ${n}`);
   if (lost.length) {
     for (const l of lost) console.log(`COVERAGE LOST — ${l}`);
@@ -362,7 +475,7 @@ function main() {
     for (const f of findings) console.log(`FAIL — ${f}`);
     return 1;
   }
-  console.log('ok — every download in a signing job is checked against a pinned sha256 before use, and every gradle wrapper carries distributionSha256Sum');
+  console.log('ok — every download in a signing job is checked against a pinned sha256 before use, every gradle wrapper carries distributionSha256Sum, and every Gradle project verifies its dependencies');
   return 0;
 }
 

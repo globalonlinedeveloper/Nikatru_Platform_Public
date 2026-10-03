@@ -115,6 +115,11 @@ const WEB_INDEX = 'web/index.html';
 // (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b).
 /** Trees that are shared rather than owned by an app; never re-rooted. */
 const SHARED_PREFIX = /^(packages|services|tooling)\//;
+// [rv2-security-006, app half] The release-mode debugPrint silencer (in design_system,
+// the package both boot paths import) and the chassis boot sequence that calls it
+// first. Repo-absolute (SHARED_PREFIX): one copy, every app.
+const RELEASE_LOGGING = 'packages/design_system/lib/src/logging/release_logging.dart';
+const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';
 // ── PHASE 5 · MEASURED 2026-08-12 · WHAT THIS EXEMPTION IS ACTUALLY HOLDING
 //    BACK. Read off the tree, not re-derived from the header. (RE-MEASURED
 //    2026-08-12 on main @ 981481c with the method below: brick 0, apps/subscriptiontracker
@@ -840,6 +845,23 @@ function checkUpdateDestinationIsRepointable() {
 }
 
 const REQUIRED_COVERAGE = [
+  {
+    // [rv2-security-006, app half] 2026-10-01. Flutter keeps `debugPrint` in a
+    // release build, where it writes to logcat, the browser console and the
+    // Apple unified log. The silencer is ONE line; deleting it, or the call that
+    // runs it first in bootstrapNikatru, leaves every test green and every
+    // release build logging. Every app's main.dart REACHING it (the flagship's
+    // included, which EXEMPT_APPS spares from this list) is held by
+    // checkReleaseDebugPrintSilenced() below.
+    key: 'release-silences-debugprint',
+    group: /group\(\s*'property: release-silences-debugprint'/,
+    sources: [
+      { file: RELEASE_LOGGING, re: /if\s*\(\s*release\s*\)\s*debugPrint\s*=\s*\(\s*String\?\s*\w+\s*,\s*\{\s*int\?\s*wrapWidth\s*\}\s*\)\s*\{\s*\}/, what: 'the chassis must replace debugPrint with a no-op when `release` holds — without it a release build writes every debugPrint to the device log' },
+      { file: RELEASE_LOGGING, re: /\{\s*bool\s+release\s*=\s*kReleaseMode\s*\}/, what: '`release` must DEFAULT to kReleaseMode — any other default silences debug builds or none at all' },
+      { file: BOOTSTRAP, re: /\)\s*async\s*\{\s*silenceDebugPrintInRelease\(\s*\)\s*;/, what: 'bootstrapNikatru must call silenceDebugPrintInRelease() as its FIRST statement, before anything can log' },
+    ],
+    why: 'debugPrint reaches the device log in a release build, readable by anyone holding the device or the tab',
+  },
   {
     key: 'theme-mode-persisted',
     group: /group\(\s*'property: theme-mode-persisted'/,
@@ -2390,6 +2412,38 @@ function auditBootPath(root) {
   return { files: files.length, reached, sawMain, violations, enablePathAsks };
 }
 
+/**
+ * [rv2-security-006, app half] EVERY app's main.dart — the brick's AND every
+ * workspace app's, EXEMPT_APPS included (`bootRoots`) — reaches the release-mode
+ * debugPrint silencer before it can log: it boots through `bootstrapNikatru(`
+ * (whose first statement is the call, anchored by the property above), or it
+ * calls `silenceDebugPrintInRelease()` itself before `runApp(`. The flagship
+ * boots by hand, and it is the app that ships.
+ */
+function checkReleaseDebugPrintSilenced() {
+  let apps = 0;
+  for (const root of bootRoots) {
+    const rel = `${root}/${MAIN}`;
+    if (!existsSync(join(repo, rel))) continue;
+    apps++;
+    const code = stripDartComments(readFileSync(join(repo, rel), 'utf8'), { blankStrings: true });
+    if (/(?<![\w$.])bootstrapNikatru\s*\(/.test(code)) continue;
+    const silenceAt = code.search(/(?<![\w$.])silenceDebugPrintInRelease\s*\(\s*\)/);
+    const runAppAt = code.search(/(?<![\w$.])runApp\s*\(/);
+    if (runAppAt === -1) {
+      fail(`COVERAGE LOST — ${rel} calls neither bootstrapNikatru( nor runApp(, so whether it silences debugPrint before it runs cannot be read.`);
+    } else if (silenceAt === -1 || silenceAt > runAppAt) {
+      fail(
+        `[rv2-security-006] ${rel} neither boots through bootstrapNikatru( nor calls silenceDebugPrintInRelease() ` +
+          'before runApp( — its release build writes every debugPrint to the device log. Call it first in main() ' +
+          '(package:nikatru_design_system, src/logging/release_logging.dart).',
+      );
+    }
+  }
+  if (apps === 0) fail('COVERAGE LOST — no app main.dart found under the brick or the workspace apps, so no boot path was read for the debugPrint silencer.');
+  else ok(`[rv2-security-006] release debugPrint: ${apps} app main.dart file(s) reach silenceDebugPrintInRelease (through bootstrapNikatru, or directly before runApp)`);
+}
+
 // ── THE ROOTS. The brick, plus every non-exempt app on the workspace list. ───
 // The workspace block is the domain rather than `ls apps/` for the reason
 // assert-app-dod.mjs states at length: a directory listing differs between this
@@ -3481,6 +3535,8 @@ for (const root of bootRoots) {
     );
   }
 }
+checkReleaseDebugPrintSilenced();
+
 // Limb D (2026-09-29). THE PLUGIN-MEDIATED ASK the header admits limbs A-C
 // cannot see — and it shipped. `DarwinInitializationSettings()` defaults
 // alert, sound and badge to TRUE, and flutter_local_notifications' iOS/macOS

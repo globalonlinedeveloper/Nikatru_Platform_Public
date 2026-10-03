@@ -17,9 +17,12 @@
 //     `/sub/:id/stop`; train T11 moves both answers to the API so they
 //     follow the account).
 //
-// ⚠️ THE CANVAS'S "went up 25%" (PRICE RISE) IS NOT DRAWN. A row carries one
-// price and no history, so a rise cannot be computed; it arrives with the
-// price history ST-T3b owns.
+//   · PRICE RISE    — ⏱ 2026-09-30 · ST-I4 (round-2 X09): the canvas's
+//     "went up 25%". It was not drawn while a row carried one price and no
+//     history. The price_change log (0005) is that history now, served by
+//     `GET /v1/insights`; a plan whose LATEST edit raised its price in the
+//     last 90 days is an alert, first in the list ([HistoryMath.priceRises]).
+//     The seed posture keeps no edit log, so it never invents one.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -29,8 +32,10 @@ import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/category_label.dart';
+import '../../core/format/history_math.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
+import '../../data/models/spend_history.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
@@ -58,6 +63,13 @@ final class AnnualSoonSignal extends InsightSignal {
   final int days;
 }
 
+/// [sub]'s latest price edit raised it — [change] says from what, to what.
+final class PriceRiseSignal extends InsightSignal {
+  const PriceRiseSignal(this.sub, this.change);
+  final Subscription sub;
+  final PlanPriceChange change;
+}
+
 /// The question for [sub].
 final class StillUsingSignal extends InsightSignal {
   const StillUsingSignal(this.sub);
@@ -66,17 +78,25 @@ final class StillUsingSignal extends InsightSignal {
 
 /// Every signal [subs] support on [now], given the ids already [answered].
 ///
-/// Pure, so the rules are tested without a widget. Order: annual renewals
-/// first (they have a date), then same-category groups, then the one question.
+/// Pure, so the rules are tested without a widget. Order: price rises first
+/// (money already moved), then annual renewals (they have a date), then
+/// same-category groups, then the one question.
 List<InsightSignal> signalsFor(
   List<Subscription> subs,
   DateTime now, {
   Set<String> answered = const <String>{},
+  List<PlanPriceChange> priceChanges = const <PlanPriceChange>[],
 }) {
   // ⏱ ST truth pass (IN-02): CHARGING rows only. A paused plan is not about
   // to renew, a cancelled one is not a duplicate the user pays for twice, and
   // neither is worth asking "still using?" about.
   final List<Subscription> charging = SubMath.charging(subs);
+  final List<PriceRiseSignal> rises = <PriceRiseSignal>[
+    for (final ({Subscription sub, PlanPriceChange change}) r
+        in HistoryMath.priceRises(subs, priceChanges, now))
+      PriceRiseSignal(r.sub, r.change),
+  ];
+
   final List<AnnualSoonSignal> annual = <AnnualSoonSignal>[
     for (final Subscription s in charging)
       if (s.cycle == BillingCycle.yearly &&
@@ -103,6 +123,7 @@ List<InsightSignal> signalsFor(
     }
   }
   return <InsightSignal>[
+    ...rises,
     ...annual,
     ...same,
     if (ask != null) StillUsingSignal(ask),
@@ -159,10 +180,16 @@ class SignalsSection extends ConsumerWidget {
     // `nowProvider`, never `DateTime.now()` (ST truth pass, IN-02): the day
     // counts are a function of today, and a test must be able to pin it.
     final DateTime now = ref.watch(nowProvider)();
+    // A history that is loading or failed adds no rise; it never blocks the
+    // signals the rows alone can prove.
+    final List<PlanPriceChange> changes =
+        ref.watch(spendHistoryProvider).value?.priceChanges ??
+        const <PlanPriceChange>[];
     final List<InsightSignal> signals = signalsFor(
       subs,
       now,
       answered: answered,
+      priceChanges: changes,
     );
 
     final List<Widget> rows = <Widget>[
@@ -227,6 +254,23 @@ class SignalsSection extends ConsumerWidget {
             subs.map((Subscription s) => s.name).join(', '),
             money.formatBagRounded(SubMath.totalMonthly(subs)),
           ),
+        );
+      case PriceRiseSignal(
+        :final Subscription sub,
+        :final PlanPriceChange change,
+      ):
+        return AppListRow(
+          key: Key('insights.signal.priceRise.${sub.id}'),
+          leading: const _SignalIcon(Icons.trending_up),
+          title: l10n.signalPriceRiseTitle(sub.name, change.risePercent ?? 0),
+          subtitle: l10n.signalPriceRiseBody(
+            money.format(change.before!),
+            money.format(change.after!),
+            DateFormat.MMMEd(
+              l10n.localeName,
+            ).format(change.changedAt.toLocal()),
+          ),
+          onTap: () => context.push('/sub/${sub.id}'),
         );
       case AnnualSoonSignal(:final Subscription sub, :final int days):
         return AppListRow(

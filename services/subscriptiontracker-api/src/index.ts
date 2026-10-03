@@ -6,6 +6,7 @@
 //   ES256    DELETE /v1/account             — erasure. ASYMMETRIC-ONLY (see below)
 //   AUTH     *      /v1/subscriptions ...   — Supabase JWT required; writes
 //                                             per-account rate limited
+//   AUTH     GET    /v1/insights            — a year of charges + price edits (ST-P6, ST-I4)
 //
 // ── 🔴 TWO AUTH BOUNDARIES ON ONE WORKER, AND THE DIFFERENCE IS THE POINT ────
 // `supabaseAuth` verifies ES256 against Supabase's public JWKS and, if that
@@ -44,6 +45,7 @@ import budget from './routes/budget';
 import categories from './routes/categories';
 import preferences from './routes/preferences';
 import entitlements from './routes/entitlements';
+import insights from './routes/insights';
 
 const app = new Hono<AppEnv>();
 
@@ -200,6 +202,7 @@ api.route('/budget', budget);
 api.route('/categories', categories);
 api.route('/preferences', preferences);
 api.route('/entitlements', entitlements);
+api.route('/insights', insights);
 app.route('/v1', api);
 
 // Fallback 404 as JSON to keep the error contract consistent.
