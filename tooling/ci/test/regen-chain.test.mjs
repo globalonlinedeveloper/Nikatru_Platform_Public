@@ -49,6 +49,10 @@ const INPUT_ROOTS = [
   'tooling/channel-register.json',
   // ⏱ 2026-10-02 — generate-personal-site.mjs renders the founder's JSON-LD from the entity source.
   'tooling/house-identity.json',
+  // ⏱ 2026-10-02 (site-rs-wave2) — and its founder line's MSME clause from the entity's FACT template.
+  'tooling/entity/surfaces.json',
+  // ⏱ 2026-10-03 (lead ruling on #1172, item 4) — and the owner's profile, moved out of the served root.
+  'tooling/sites/rajasekarselvam-profile.json',
   'tooling/legal',
   'extensions/Extension/Full_Screen_Shot/publish',
   'extensions/templates/tool/publish',

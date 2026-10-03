@@ -3,12 +3,32 @@
 // generate-personal-site.mjs — the generated spans of sites/rajasekarselvam, the
 // founder's own site, and the page contract that site is held to.
 //
-//   sites/_shared/_data/apps.json ─┐
-//   tooling/channel-register.json ─┼─▶ index.html  <!-- PS:status --> <!-- PS:work -->
-//   tooling/house-identity.json ───┘               <!-- PS:jsonld -->
-//                                  └─▶ llms.txt     `## Work`
-//                                  └─▶ sitemap.xml  the homepage's <lastmod>, only when
-//                                                   this run changes the homepage
+//   tooling/sites/rajasekarselvam-profile.json  (the profile; NOT under the served root)
+//                                       ┐
+//   sites/_shared/_data/apps.json ──────┤
+//   tooling/channel-register.json ──────┼─▶ index.html  <!-- PS:head --> <!-- PS:hero -->
+//   tooling/house-identity.json ────────┤   <!-- PS:about --> <!-- PS:status --> <!-- PS:work -->
+//   tooling/entity/surfaces.json ───────┘   <!-- PS:contact --> <!-- PS:footer --> <!-- PS:jsonld -->
+//                                       ├─▶ cv.html          the whole file (the one-page CV)
+//                                       ├─▶ llms.txt         the whole file
+//                                       ├─▶ site.webmanifest its "description"
+//                                       └─▶ sitemap.xml      a page's <lastmod>, only when this
+//                                                            run changes that page; the CV's
+//                                                            entry is added when it is missing
+//
+// ── THE OWNER'S OWN FACTS, IN ONE PLACE (site-rs-wave2, 2026-10-02) ─────────
+// Every PERSONAL fact the site prints — role, employer, location, experience,
+// education, the LinkedIn profile, the one-line description — is read from
+// tooling/sites/rajasekarselvam-profile.json and nothing else. The experience is a
+// LABEL ("7+ years"), never a number derived from a date: the owner asked that no
+// start year or date ever show, so the profile is refused if any value carries a
+// year, and nothing here reads a date to compute it. Company facts (the MSME
+// registration, the year established) stay FACT regions rendered from
+// tooling/house-identity.json, inside the generated spans.
+//
+// `typedFactFindings` is the red control: every served .html under the root, with
+// the PS regions cut out, must not carry a profile value. A fact typed into the
+// page by hand is a fact the profile cannot change, so it is refused, by file.
 //
 // ── WHY (the rajasekarselvam.com audit, 2026-10-02) ──────────────────────────
 // The site was technically clean and partly untrue. Its Projects section was
@@ -55,13 +75,13 @@
 // Exit 0 = current (or written) and the contract holds. 1 = stale, a region is
 //          missing, or a contract limb failed. 2 = an input could not be read.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availabilityRow, availabilitySummary } from './availability.mjs';
 import { APEX_ORIGIN, APEX_HOST } from './apex.mjs';
 import { esc } from '../app-yaml/render-privacy.mjs';
-import { entityContext } from '../entity/facts.mjs';
+import { entityContext, factClose, factOpen, renderTemplate } from '../entity/facts.mjs';
 import { lastmodFor } from './lastmod.mjs';
 import { contrastFindings, deadDeclarations, inlineCss, mediaMatches, parseRules, winning } from './css-cascade.mjs';
 
@@ -72,9 +92,15 @@ export const SITEMAP = `${ROOT_DIR}/sitemap.xml`;
 export const REGISTRY = 'sites/_shared/_data/apps.json';
 export const CHANNELS = 'tooling/channel-register.json';
 export const IDENTITY = 'tooling/house-identity.json';
+// The profile source lives OUTSIDE the deploy root (lead ruling on #1172, item 4): its `_readme`
+// and `experience.why` are internal notes, and everything under sites/rajasekarselvam/ is served.
+export const PROFILE = 'tooling/sites/rajasekarselvam-profile.json';
+export const CV_PAGE = `${ROOT_DIR}/cv.html`;
+export const MANIFEST = `${ROOT_DIR}/site.webmanifest`;
+export const ENTITY_SURFACES = 'tooling/entity/surfaces.json';
 
 /** The regions this generator owns on the homepage. */
-export const REGIONS = ['status', 'work', 'jsonld'];
+export const REGIONS = ['head', 'hero', 'about', 'status', 'work', 'contact', 'footer', 'jsonld'];
 export const regionOpen = (name) => `<!-- PS:${name} -->`;
 export const regionClose = (name) => `<!-- /PS:${name} -->`;
 
@@ -109,8 +135,141 @@ export function readInputs(root) {
   }
   const ctx = identity ? entityContext(identity) : null;
   const sameAs = identity?.people?.founder?.sameAs?.value ?? [];
-  return { live, channels, ctx, sameAs: Array.isArray(sameAs) ? sameAs : [], problems, lost };
+  const source = readJson(root, PROFILE, problems, lost);
+  const surfaces = readJson(root, ENTITY_SURFACES, problems, lost);
+  let profile = null;
+  if (source !== null) {
+    const r = profileFromSource(source, ctx);
+    profile = r.profile;
+    problems.push(...r.problems, ...profileProblems(profile, ctx));
+  }
+  const msme = surfaces?.facts?.['msme-established']?.template;
+  if (surfaces !== null && typeof msme !== 'string') problems.push(`${ENTITY_SURFACES}: facts["msme-established"].template is missing; the founder line names the business through it`);
+  return { live, channels, ctx, sameAs: Array.isArray(sameAs) ? sameAs : [], profile, msme, problems, lost };
 }
+
+// ── THE PROFILE ──────────────────────────────────────────────────────────────
+
+/** The profile fields every page renders, as [path, value] pairs. */
+export const PROFILE_FIELDS = [
+  'name', 'headline', 'role.title', 'role.employer', 'location.locality', 'location.region', 'location.country',
+  'location.countryCode', 'experience.label', 'education.degree', 'education.field', 'links.linkedin',
+];
+const at = (o, path) => path.split('.').reduce((v, k) => (v == null ? undefined : v[k]), o);
+
+/**
+ * The profile the pages render: the source file's facts plus the person's NAME, read from
+ * ${IDENTITY} people.founder.name and never typed into the profile. The source lives outside
+ * the served root, so assert-business-facts' personal-site exemption does not reach it, and
+ * the founder name is one guarded literal with one home (lead ruling on #1172, item 4). Pure.
+ */
+export function profileFromSource(source, ctx) {
+  const problems = [];
+  if (source && typeof source === 'object' && Object.hasOwn(source, 'name')) {
+    problems.push(`${PROFILE}: carries "name"; the person's name is read from ${IDENTITY} people.founder.name, one spelling in one place`);
+  }
+  return { profile: { ...source, name: ctx?.founder?.name }, problems };
+}
+
+/** Refusals for a profile that cannot be rendered as the owner asked. Pure. */
+export function profileProblems(profile, ctx) {
+  const out = [];
+  for (const path of PROFILE_FIELDS) {
+    const v = at(profile, path);
+    if (typeof v !== 'string' || !v.trim()) out.push(`${PROFILE}: "${path}" is missing or empty; every page renders it`);
+  }
+  // No start year, no start date, anywhere: the owner's rule. A year in any value is how one would leak.
+  const walk = (v, path) => {
+    if (typeof v === 'string') {
+      if (!path.endsWith('why') && !path.startsWith('_readme') && /\b(19|20)\d{2}\b/.test(v)) {
+        out.push(`${PROFILE}: "${path}" carries a year (${JSON.stringify(v)}). The site shows no start year or date; experience is a label the lead bumps, never a date.`);
+      }
+    } else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, path ? `${path}.${k}` : k);
+  };
+  walk(profile, '');
+  const exp = at(profile, 'experience.label');
+  if (typeof exp === 'string' && !/^\d{1,2}\+ years$/.test(exp)) out.push(`${PROFILE}: experience.label is ${JSON.stringify(exp)}; it is shown as "<N>+ years" and nothing else`);
+  const li = at(profile, 'links.linkedin');
+  if (typeof li === 'string') {
+    let host = '';
+    try { host = new URL(li).hostname; } catch { /* reported below */ }
+    if (host !== 'www.linkedin.com' && host !== 'linkedin.com') out.push(`${PROFILE}: links.linkedin is not a linkedin.com URL (${JSON.stringify(li)})`);
+  }
+  if (ctx?.founder?.name && typeof profile?.name === 'string' && profile.name !== ctx.founder.name) {
+    out.push(`${PROFILE}: name ${JSON.stringify(profile.name)} is not people.founder.name in ${IDENTITY} (${JSON.stringify(ctx.founder.name)}); one person, one spelling`);
+  }
+  return out;
+}
+
+/** The profile values a hand-typed page must not carry, longest first. */
+export function profileValues(profile) {
+  return ['headline', 'role.title', 'role.employer', 'location.locality', 'location.region', 'experience.label', 'education.degree', 'education.field', 'links.linkedin']
+    .map((p) => ({ path: p, value: at(profile, p) }))
+    .filter((f) => typeof f.value === 'string' && f.value.trim());
+}
+
+/**
+ * `text` with the generator's OWN regions (markers and body) removed: only the
+ * eight `REGIONS`, by their exact names, each cut only when exactly one ordered
+ * pair exists (which applyRegion already demands of index.html). Every other
+ * `PS:` marker — an invented name, an unbalanced or reversed pair — stays in the
+ * text, and so does everything it wraps (lead ruling on #1172, item 2: a fact
+ * wrapped in `<!-- PS:x -->` once hid from the typed-fact check).
+ */
+export function withoutRegions(text) {
+  let rest = text;
+  for (const name of REGIONS) {
+    const open = regionOpen(name);
+    const close = regionClose(name);
+    if (rest.split(open).length !== 2 || rest.split(close).length !== 2) continue;
+    const a = rest.indexOf(open);
+    const b = rest.indexOf(close);
+    if (b < a) continue;
+    rest = rest.slice(0, a) + rest.slice(b + close.length);
+  }
+  return rest;
+}
+
+/** Every `PS:` marker left in `text`, as `<!-- PS:name -->` / `<!-- /PS:name -->`. */
+export function strayRegionMarkers(text) {
+  return [...new Set(text.match(/<!-- \/?PS:[^ >]* -->/g) ?? [])];
+}
+
+/**
+ * THE RED CONTROL for "every personal fact renders from the profile": a profile
+ * value found in a page OUTSIDE the generated regions is a typed fact. Pure.
+ * `pages` maps rel → text; a fully generated page is not passed. The generator
+ * owns its eight regions in index.html ONLY, so only there are they cut out:
+ * every other page is read whole, and a `PS:` marker the generator does not own
+ * (in any page) is itself a finding.
+ */
+export function typedFactFindings(pages, profile) {
+  const out = [];
+  const vals = profileValues(profile);
+  for (const [rel, text] of pages) {
+    const rest = rel === PAGE ? withoutRegions(text) : text;
+    for (const marker of strayRegionMarkers(rest)) {
+      out.push(`${rel}: ${marker} marks a region this generator does not own (it renders only ${REGIONS.map((n) => `PS:${n}`).join(', ')}, and only in ${PAGE}). The text it wraps is read as hand-typed.`);
+    }
+    for (const { path, value } of vals) {
+      for (const form of new Set([value, esc(value)])) {
+        if (rest.includes(form)) {
+          out.push(`${rel}: "${value}" (profile ${path}) is typed outside a generated region. Every personal fact renders from ${PROFILE}; put it in a PS region, or let the generator say it.`);
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** The one-sentence description: who, where, and the founder line. */
+export function describe(profile) {
+  return `${profile.name} works at ${profile.role.employer} as ${profile.role.title} in ${profile.location.locality}, ${profile.location.country}, and is the founder of Nikatru. ${profile.headline}`;
+}
+
+/** The page title. */
+export const pageTitle = (profile) => `${profile.name} — ${profile.role.title} at ${profile.role.employer}, founder of Nikatru`;
 
 // ── RENDERERS (pure) ─────────────────────────────────────────────────────────
 
@@ -152,6 +311,216 @@ export function llmsWork(live, channels) {
     .join('\n');
 }
 
+/** The social card's alt text: the page title's wording, so it never says a retired role. */
+export const imageAlt = (profile) => `${pageTitle(profile)}.`;
+
+/** The homepage's text metas: title, description, Open Graph and Twitter, and the card's alt. */
+export function headBlock(profile) {
+  const t = esc(pageTitle(profile));
+  const d = esc(describe(profile));
+  const alt = esc(imageAlt(profile));
+  return [
+    `<title>${t}</title>`,
+    `<meta name="description" content="${d}">`,
+    `<meta property="og:title" content="${t}">`,
+    `<meta property="og:description" content="${d}">`,
+    `<meta name="twitter:title" content="${t}">`,
+    `<meta name="twitter:description" content="${d}">`,
+    `<meta property="og:image:alt" content="${alt}">`,
+    `<meta name="twitter:image:alt" content="${alt}">`,
+  ].join('\n');
+}
+
+/** The hero's eyebrow and lines: role, the owner's one line, and the founder line. */
+export function heroBlock(profile) {
+  const loc = `${profile.location.locality}, ${profile.location.region}, ${profile.location.country}`;
+  return [
+    `      <div class="eyebrow">${esc(profile.role.title)} · ${esc(profile.role.employer)}</div>`,
+    `      <h1>${esc(profile.name.split(' ')[0])} <span class="grad">${esc(profile.name.split(' ').slice(1).join(' '))}</span></h1>`,
+    `      <p class="sub">${esc(profile.headline)}</p>`,
+    `      <p class="status">Founder of <a href="https://nikatru.com">Nikatru</a>, based in ${esc(loc)}.</p>`,
+  ].join('\n');
+}
+
+/** The founder line's company half, a FACT region rendered from the entity source. */
+export function msmeRegion(template, ctx) {
+  return `${factOpen('msme-established')}${renderTemplate(template, ctx, { escape: 'html', where: `${ENTITY_SURFACES} facts["msme-established"]` })}${factClose('msme-established')}`;
+}
+
+/** The about paragraphs: ONLY the profile's facts and the founder line. */
+export function aboutBlock(profile, ctx, msme) {
+  const p = profile;
+  return [
+    `    <p>I work at <b>${esc(p.role.employer)}</b> as <b>${esc(p.role.title)}</b>, with <b>${esc(p.experience.label)}</b> of experience there.`,
+    `    I hold a <b>${esc(p.education.degree)}</b> in <b>${esc(p.education.field)}</b>, and I live in ${esc(p.location.locality)}, ${esc(p.location.region)}, ${esc(p.location.country)}.</p>`,
+    `    <p>${esc(p.headline)} That is why I founded <b>Nikatru</b>, ${msmeRegion(msme, ctx)}.</p>`,
+  ].join('\n');
+}
+
+/** The contact block's links: LinkedIn first, then the CV and the company. */
+export function contactBlock(profile) {
+  return [
+    '    <div class="social">',
+    `      <a href="${esc(profile.links.linkedin)}" target="_blank" rel="noopener me">LinkedIn ↗</a>`,
+    '      <a href="/cv">CV</a>',
+    '      <a href="https://nikatru.com" target="_blank" rel="noopener">nikatru.com ↗</a>',
+    '      <a href="https://nikatru.com/#updates">Get updates ↗</a>',
+    '    </div>',
+  ].join('\n');
+}
+
+/** The footer line. */
+export function footerBlock(profile) {
+  return `  © 2026 <b style="color:#fff">${esc(profile.name)}</b> · ${esc(profile.location.locality)}, ${esc(profile.location.country)} · Building
+  <a href="https://nikatru.com" target="_blank" rel="noopener">Nikatru</a> · <a href="${esc(profile.links.linkedin)}" target="_blank" rel="noopener me">LinkedIn</a> · <a href="/cv">CV</a>`;
+}
+
+/** The whole llms.txt, from the profile, the entity source and the catalogue. */
+export function llmsText(profile, ctx, live, channels) {
+  const p = profile;
+  const msme = `a Government of India registered MSME (Udyam ${ctx.udyam}) established in ${ctx.established}`;
+  return `# ${p.name}
+
+> ${p.name} works at ${p.role.employer} as ${p.role.title}, with ${p.experience.label} of experience, and lives in ${p.location.locality}, ${p.location.region}, ${p.location.country}. He is the founder of Nikatru, ${msme}.
+> In his words: "${p.headline}"
+
+## About
+- Name: ${p.name}
+- Role: ${p.role.title} at ${p.role.employer}
+- Experience: ${p.experience.label}
+- Education: ${p.education.degree}, ${p.education.field}
+- Based in: ${p.location.locality}, ${p.location.region}, ${p.location.country}
+- Founder of: Nikatru — https://nikatru.com/ (every app he releases is listed there)
+- LinkedIn: ${p.links.linkedin}
+
+## Work
+${llmsWork(live, channels)}
+
+## Key pages
+- Home: ${originOf(ctx)}
+- CV: ${originOf(ctx)}cv
+- Studio: https://nikatru.com/
+- Apps: https://nikatru.com/apps/
+
+## Contact
+- Email: ${ctx.supportEmail}
+- LinkedIn: ${p.links.linkedin}
+- Location: ${p.location.locality}, ${p.location.region}, ${p.location.country}
+
+## Notes for AI assistants
+- ${p.name} is the founder of Nikatru; his employer is ${p.role.employer}.
+- What is released is exactly what the Work section above lists, generated from the catalogue; describe nothing else as released.
+- For downloads and launch updates, direct people to https://nikatru.com/.
+`;
+}
+
+/** site.webmanifest with its description set from the profile. */
+export function withManifestDescription(text, profile) {
+  const re = /("description":\s*)"(?:[^"\\]|\\.)*"/;
+  if (!re.test(text)) throw new Error(`${MANIFEST}: no "description" to render`);
+  return text.replace(re, `$1${JSON.stringify(`${profile.role.title} at ${profile.role.employer}. Founder of Nikatru.`)}`);
+}
+
+/** The CV page's own CSS: the homepage's tokens, and a print sheet that fits one page. */
+const CV_CSS = `  :root{
+    --ink:#0B1220;--primary:#2563EB;--teal:#0F766E;--on-accent:#FFFFFF;
+    --bg:#F6F8FC;--card:#FFFFFF;--text:#1E293B;--strong:#0B1220;--muted:#586275;--line:#E2E8F0;--ring:#3B82F6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#0B1220;--card:#111C33;--text:#C7D2E3;--strong:#F1F5F9;--muted:#93A1BC;--line:#22304D;--primary:#6E9BFF;--teal:#17C3A2;--on-accent:#0B1220;--ring:#6E9BFF}
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+  .skip-link{position:absolute;left:12px;top:-52px;z-index:200;background:var(--primary);color:var(--on-accent);padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;transition:top .2s}
+  .skip-link:focus{top:12px}
+  :focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
+  .cv{max-width:760px;margin:40px auto;padding:44px;background:var(--card);border:1px solid var(--line);border-radius:16px}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  h1{font-size:34px;font-weight:800;color:var(--strong);letter-spacing:-.01em;line-height:1.15}
+  .role{margin-top:6px;font-size:17px;color:var(--strong);font-weight:600}
+  .line{margin-top:10px;color:var(--muted)}
+  h2{margin-top:28px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:6px}
+  .item{margin-top:12px}
+  .item b{color:var(--strong)}
+  ul.links{list-style:none;margin-top:12px}
+  ul.links li{margin-top:4px}
+  a{color:var(--primary)}
+  .home{font-size:14px;font-weight:600;text-decoration:none}
+  @media(max-width:640px){.cv{margin:0;border-radius:0;border:0;padding:28px 20px}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media print{
+    /* Concrete values, not :root tokens: a palette is declared once per scope across the
+       site (tooling/ci/assert-palette-consistent.mjs), and print needs black on white only. */
+    @page{size:A4;margin:16mm}
+    body{background:#FFFFFF;color:#000000}
+    .cv{margin:0;padding:0;border:0;max-width:none;background:#FFFFFF}
+    h1,.role,.item b{color:#000000}
+    .line,h2{color:#333333}
+    a{color:#000000}
+    .skip-link,.home{display:none}
+    a{text-decoration:none}
+    ul.links a::after{content:" (" attr(href) ")";font-size:12px}
+  }`;
+
+/** The one-page CV, the WHOLE file, from the profile and the entity source. */
+export function cvPage(profile, ctx, msme) {
+  const p = profile;
+  const origin = originOf(ctx);
+  const title = esc(`CV — ${p.name}`);
+  const desc = esc(`${p.name}: ${p.role.title} at ${p.role.employer}, ${p.experience.label} of experience, ${p.education.degree} in ${p.education.field}. Founder of Nikatru.`);
+  return `<!DOCTYPE html>
+<!-- GENERATED by tooling/sites/generate-personal-site.mjs from ${PROFILE} and ${IDENTITY}. Never hand-edit: --check fails on a diff. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<meta name="description" content="${desc}">
+<link rel="canonical" href="${origin}cv">
+<meta name="author" content="${esc(p.name)}">
+<meta name="theme-color" content="#0B1220">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<style>
+${CV_CSS}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main" tabindex="-1" class="cv">
+  <div class="top">
+    <div>
+      <h1>${esc(p.name)}</h1>
+      <p class="role">${esc(p.role.title)}, ${esc(p.role.employer)}</p>
+      <p class="line">${esc(p.headline)}</p>
+    </div>
+    <a class="home" href="/">← ${esc(origin.replace(/^https:\/\//, '').replace(/\/$/, ''))}</a>
+  </div>
+
+  <h2>Experience</h2>
+  <p class="item"><b>${esc(p.role.title)}</b> — ${esc(p.role.employer)} · ${esc(p.experience.label)}</p>
+  <p class="item"><b>Founder</b> — Nikatru, ${msmeRegion(msme, ctx)}</p>
+
+  <h2>Education</h2>
+  <p class="item"><b>${esc(p.education.degree)}</b>, ${esc(p.education.field)}</p>
+
+  <h2>Location</h2>
+  <p class="item">${esc(p.location.locality)}, ${esc(p.location.region)}, ${esc(p.location.country)}</p>
+
+  <h2>Links</h2>
+  <ul class="links">
+    <li>LinkedIn: <a href="${esc(p.links.linkedin)}" rel="me">${esc(p.links.linkedin.replace(/^https:\/\//, ''))}</a></li>
+    <li>Website: <a href="${origin}">${esc(origin.replace(/^https:\/\//, '').replace(/\/$/, ''))}</a></li>
+    <li>Nikatru: <a href="https://nikatru.com/">nikatru.com</a></li>
+  </ul>
+</main>
+</body>
+</html>
+`;
+}
+
 /** The person's own site origin, from the entity source. */
 export const originOf = (ctx) => `${String(ctx?.founder?.url ?? '').replace(/\/+$/, '')}/`;
 
@@ -159,9 +528,11 @@ export const originOf = (ctx) => `${String(ctx?.founder?.url ?? '').replace(/\/+
  * The JSON-LD graph: ProfilePage → Person, WebSite, and the Organization stub
  * the person works for and founded. Throws on a sameAs naming the company.
  */
-export function personGraph(ctx, sameAs = []) {
+export function personGraph(ctx, sameAs = [], profile = null) {
   if (!ctx?.founder?.name || !ctx?.founder?.url) throw new Error(`${IDENTITY}: people.founder.name and .url are required to render the person`);
+  if (!profile) throw new Error(`${PROFILE}: the profile is required to render the person`);
   const origin = originOf(ctx);
+  sameAs = [...new Set([profile.links.linkedin, ...sameAs])];
   for (const u of sameAs) {
     let host = '';
     try { host = new URL(u).hostname; } catch { throw new Error(`${IDENTITY}: people.founder.sameAs entry ${JSON.stringify(u)} is not a URL`); }
@@ -175,12 +546,14 @@ export function personGraph(ctx, sameAs = []) {
     name: ctx.founder.name,
     url: origin,
     image: `${origin}rajasekar-v4.jpg`,
-    jobTitle: 'Independent Software Developer',
-    description: 'Independent software developer in Chennai, India, building cross-platform apps with Flutter. Founder of Nikatru.',
+    jobTitle: profile.role.title,
+    description: profile.headline,
     email: ctx.supportEmail,
-    knowsAbout: ['Cross-platform app development', 'Flutter', 'Dart', 'Web development', 'UI/UX design'],
-    address: { '@type': 'PostalAddress', addressLocality: 'Chennai', addressRegion: 'Tamil Nadu', addressCountry: 'IN' },
-    worksFor: { '@id': `${APEX_ORIGIN}#org` },
+    address: { '@type': 'PostalAddress', addressLocality: profile.location.locality, addressRegion: profile.location.region, addressCountry: profile.location.countryCode },
+    worksFor: { '@type': 'Organization', name: profile.role.employer },
+    // No alumniOf: the page names no institution, and a nameless EducationalOrganization is a
+    // guess a validator warns on (lead ruling on #1172, item 4). The degree is the credential alone.
+    hasCredential: { '@type': 'EducationalOccupationalCredential', credentialCategory: 'degree', name: `${profile.education.degree}, ${profile.education.field}` },
   };
   if (sameAs.length) person.sameAs = [...sameAs];
   return {
@@ -190,7 +563,7 @@ export function personGraph(ctx, sameAs = []) {
         '@type': 'ProfilePage',
         '@id': `${origin}#profilepage`,
         url: origin,
-        name: `${ctx.founder.name} — Independent software developer`,
+        name: pageTitle(profile),
         inLanguage: 'en',
         isPartOf: { '@id': `${origin}#website` },
         mainEntity: { '@id': `${origin}#person` },
@@ -203,8 +576,8 @@ export function personGraph(ctx, sameAs = []) {
 }
 
 /** The JSON-LD region body. The address in it is wrapped like the visible one (email_off). */
-export function jsonLdBlock(ctx, sameAs) {
-  const json = JSON.stringify(personGraph(ctx, sameAs), null, 2).replace(/</g, '\\u003c');
+export function jsonLdBlock(ctx, sameAs, profile) {
+  const json = JSON.stringify(personGraph(ctx, sameAs, profile), null, 2).replace(/</g, '\\u003c');
   return `<!--email_off-->\n<script type="application/ld+json">\n${json}\n</script>\n<!--/email_off-->`;
 }
 
@@ -223,22 +596,23 @@ export function applyRegion(text, name, body, file = PAGE) {
   return `${text.slice(0, a + open.length)}\n${body}\n${text.slice(b)}`;
 }
 
-/** Replace the `## Work` section of llms.txt (heading to the next `## ` or the end). */
-export function applyLlmsWork(text, body) {
-  const heads = [...text.matchAll(/^## Work[ \t]*$/gm)];
-  if (heads.length !== 1) throw new Error(`${LLMS}: expected exactly one "## Work" heading, found ${heads.length}`);
-  const start = heads[0].index + heads[0][0].length;
-  const rest = text.slice(start);
-  const next = rest.search(/^## /m);
-  const tail = next < 0 ? '' : rest.slice(next);
-  return `${text.slice(0, start)}\n${body}\n${tail ? `\n${tail}` : ''}`;
-}
-
 /** The sitemap with the homepage's <lastmod> set to `date`. */
 export function withLastmod(xml, origin, date) {
   const re = new RegExp(`(<loc>${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</loc>\\s*<lastmod>)(\\d{4}-\\d{2}-\\d{2})(</lastmod>)`);
   if (!re.test(xml)) throw new Error(`${SITEMAP}: no <loc>${origin}</loc> entry with a <lastmod> to date`);
   return xml.replace(re, `$1${date}$3`);
+}
+
+/**
+ * The sitemap with an entry for `loc`: added (dated `fresh()`) when missing, re-dated to
+ * `date` when one is given, else left as it is.
+ */
+export function withSitemapEntry(xml, loc, date, fresh) {
+  if (!xml.includes(`<loc>${loc}</loc>`)) {
+    if (!xml.includes('</urlset>')) throw new Error(`${SITEMAP}: no </urlset> to add ${loc} before`);
+    return xml.replace('</urlset>', `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${fresh()}</lastmod>\n  </url>\n</urlset>`);
+  }
+  return date ? withLastmod(xml, loc, date) : xml;
 }
 
 // ── THE PAGE CONTRACT ────────────────────────────────────────────────────────
@@ -315,7 +689,25 @@ export function structuredDataFindings(html) {
   if (!typed('WebSite').length) out.push(`${PAGE}: no WebSite node in the JSON-LD`);
   if (person && !/\.(jpe?g|webp|png)$/i.test(person.image ?? '')) out.push(`${PAGE}: the Person has no image`);
   if (person && /og-image/i.test(person.image ?? '')) out.push(`${PAGE}: the Person's image is the social card (${person.image}), not the portrait`);
-  if (person && person.worksFor?.['@id'] !== `${APEX_ORIGIN}#org`) out.push(`${PAGE}: the Person does not work for ${APEX_ORIGIN}#org`);
+  const org = typed('Organization').find((o) => o['@id'] === `${APEX_ORIGIN}#org`);
+  if (person && org?.founder?.['@id'] !== person['@id']) out.push(`${PAGE}: the Organization ${APEX_ORIGIN}#org does not name the Person as its founder`);
+  return out;
+}
+
+/** The Person node against the profile: job title, employer, education, address, LinkedIn. Pure. */
+export function profileGraphFindings(html, profile) {
+  let nodes;
+  try { nodes = jsonLdNodes(html); } catch (e) { return [`${PAGE}: a JSON-LD block does not parse (${e.message})`]; }
+  const person = nodes.find((n) => n['@type'] === 'Person');
+  if (!person) return [`${PAGE}: no Person node to grade against ${PROFILE}`];
+  const out = [];
+  const want = (cond, what) => { if (!cond) out.push(`${PAGE}: the Person's ${what} is not what ${PROFILE} says`); };
+  want(person.jobTitle === profile.role.title, 'jobTitle');
+  want(person.worksFor?.name === profile.role.employer, 'worksFor');
+  want(person.hasCredential?.name === `${profile.education.degree}, ${profile.education.field}`, 'hasCredential (the degree)');
+  if (person.alumniOf !== undefined) out.push(`${PAGE}: the Person carries alumniOf, but ${PROFILE} names no institution; leave it out rather than guess one`);
+  want(person.address?.addressLocality === profile.location.locality && person.address?.addressRegion === profile.location.region, 'address locality and region');
+  want([].concat(person.sameAs ?? []).includes(profile.links.linkedin), 'sameAs (the LinkedIn profile)');
   return out;
 }
 
@@ -347,33 +739,59 @@ export function pageContract(html) {
  * that could not be read (exit 2).
  */
 export function planPersonalSite(root) {
-  const { live, channels, ctx, sameAs, problems, lost } = readInputs(root);
+  const { live, channels, ctx, sameAs, profile, msme, problems, lost } = readInputs(root);
   const files = new Map();
   const current = new Map();
   if (lost.length) return { files, current, problems, lost, live };
-  for (const rel of [PAGE, LLMS, SITEMAP]) {
+  if (problems.length) return { files, current, problems, lost, live };
+  for (const rel of [PAGE, LLMS, SITEMAP, MANIFEST]) {
     try { current.set(rel, readFileSync(join(root, ...rel.split('/')), 'utf8')); } catch (e) { lost.push(`${rel} could not be read (${e.code ?? e.message})`); }
   }
+  // The CV is generated whole, so a missing one is simply written; it is never an input.
+  try { current.set(CV_PAGE, readFileSync(join(root, ...CV_PAGE.split('/')), 'utf8')); } catch { current.set(CV_PAGE, null); }
   if (lost.length) return { files, current, problems, lost, live };
   try {
     let page = current.get(PAGE);
+    page = applyRegion(page, 'head', headBlock(profile));
+    page = applyRegion(page, 'hero', heroBlock(profile));
+    page = applyRegion(page, 'about', aboutBlock(profile, ctx, msme));
     page = applyRegion(page, 'status', statusLine(live, channels));
     page = applyRegion(page, 'work', workGrid(live, channels));
-    page = applyRegion(page, 'jsonld', jsonLdBlock(ctx, sameAs));
+    page = applyRegion(page, 'contact', contactBlock(profile));
+    page = applyRegion(page, 'footer', footerBlock(profile));
+    page = applyRegion(page, 'jsonld', jsonLdBlock(ctx, sameAs, profile));
     files.set(PAGE, page);
-    files.set(LLMS, applyLlmsWork(current.get(LLMS), llmsWork(live, channels)));
-    // The homepage's <lastmod> moves only when this run changes the homepage, and then to the
-    // date tooling/sites/lastmod.mjs gives a page being changed — the one function the sitemap
-    // limb of check-site-integrity.mjs evaluates. Unchanged, the sitemap is left as it is.
-    const sm = current.get(SITEMAP);
-    files.set(SITEMAP, page === current.get(PAGE) ? sm : withLastmod(sm, originOf(ctx), lastmodFor(root, PAGE, page)));
+    const cv = cvPage(profile, ctx, msme);
+    files.set(CV_PAGE, cv);
+    files.set(LLMS, llmsText(profile, ctx, live, channels));
+    files.set(MANIFEST, withManifestDescription(current.get(MANIFEST), profile));
+    // A page's <lastmod> moves only when this run changes that page, and then to the date
+    // tooling/sites/lastmod.mjs gives a page being changed — the one function the sitemap
+    // limb of check-site-integrity.mjs evaluates. Unchanged, its entry is left as it is.
+    const origin = originOf(ctx);
+    let sm = current.get(SITEMAP);
+    if (page !== current.get(PAGE)) sm = withLastmod(sm, origin, lastmodFor(root, PAGE, page));
+    sm = withSitemapEntry(sm, `${origin}cv`, cv === current.get(CV_PAGE) ? null : lastmodFor(root, CV_PAGE, cv), () => lastmodFor(root, CV_PAGE, cv));
+    files.set(SITEMAP, sm);
   } catch (e) {
     problems.push(e.message);
   }
-  return { files, current, problems, lost, live };
+  return { files, current, problems, lost, live, profile };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
+
+/** Every served .html under the root that is not generated whole, as rel → planned text. */
+export function handPages(root, files) {
+  const out = new Map();
+  for (const name of readdirSync(join(root, ...ROOT_DIR.split('/')))) {
+    if (!name.endsWith('.html')) continue;
+    const rel = `${ROOT_DIR}/${name}`;
+    if (rel === CV_PAGE) continue;
+    out.set(rel, files.get(rel) ?? readFileSync(join(root, ...rel.split('/')), 'utf8'));
+  }
+  return out;
+}
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
@@ -395,10 +813,14 @@ if (isMain) {
     process.exit(1);
   }
   const stale = [...plan.files].filter(([rel, text]) => plan.current.get(rel) !== text).map(([rel]) => rel);
-  const contract = pageContract(plan.files.get(PAGE));
+  const contract = [
+    ...pageContract(plan.files.get(PAGE)),
+    ...profileGraphFindings(plan.files.get(PAGE), plan.profile),
+    ...typedFactFindings(handPages(root, plan.files), plan.profile),
+  ];
   let code = 0;
   if (check) {
-    for (const rel of stale) console.error(`✗ STALE ${rel} — not what this generator renders from ${REGISTRY}, ${CHANNELS} and ${IDENTITY}. Run: node tooling/sites/generate-personal-site.mjs`);
+    for (const rel of stale) console.error(`✗ STALE ${rel} — not what this generator renders from ${PROFILE}, ${REGISTRY}, ${CHANNELS} and ${IDENTITY}. Run: node tooling/sites/generate-personal-site.mjs`);
     if (stale.length) code = 1;
   } else {
     for (const rel of stale) {
@@ -409,7 +831,7 @@ if (isMain) {
   for (const f of contract) console.error(`✗ CONTRACT ${f}`);
   if (contract.length) code = 1;
   if (code === 0) {
-    console.log(`ok  ${ROOT_DIR}: ${plan.live.length} live app(s) rendered, ${REGIONS.length} region(s) + llms.txt ${check ? 'current' : `(${stale.length} file(s) written)`}, page contract holds (${CONTRAST_PAIRS.length} pair(s) × 2 schemes)`);
+    console.log(`ok  ${ROOT_DIR}: ${plan.live.length} live app(s) rendered, ${REGIONS.length} region(s) + cv.html + llms.txt + site.webmanifest ${check ? 'current' : `(${stale.length} file(s) written)`}, page contract holds (${CONTRAST_PAIRS.length} pair(s) × 2 schemes)`);
   }
   process.exit(code);
 }
