@@ -35,6 +35,23 @@ extension ChassisBridge on AppLocalizations {
 
   String get about => _chassis.about;
 
+  String get aiCandidateLabel => _chassis.aiCandidateLabel;
+
+  String get aiDisclosureAccept => _chassis.aiDisclosureAccept;
+
+  String aiDisclosureBody(String processor) =>
+      _chassis.aiDisclosureBody(processor);
+
+  String get aiDisclosureDecline => _chassis.aiDisclosureDecline;
+
+  String get aiDisclosurePrivacy => _chassis.aiDisclosurePrivacy;
+
+  String get aiDisclosureTitle => _chassis.aiDisclosureTitle;
+
+  String get aiReportAction => _chassis.aiReportAction;
+
+  String get aiSuggestionLabel => _chassis.aiSuggestionLabel;
+
   String get appearance => _chassis.appearance;
 
   String get authAlreadyRegistered => _chassis.authAlreadyRegistered;
@@ -384,6 +401,29 @@ extension ChassisBridge on AppLocalizations {
   String get planBoughtInGooglePlay => _chassis.planBoughtInGooglePlay;
 
   String get planBoughtOnWeb => _chassis.planBoughtOnWeb;
+
+  String get planEndedCancelledAtPeriodEnd =>
+      _chassis.planEndedCancelledAtPeriodEnd;
+
+  String get planEndedChargeback => _chassis.planEndedChargeback;
+
+  String get planEndedChargebackReversed =>
+      _chassis.planEndedChargebackReversed;
+
+  String planEndedOn(DateTime date) => _chassis.planEndedOn(date);
+
+  String get planEndedPaymentFailedFinal =>
+      _chassis.planEndedPaymentFailedFinal;
+
+  String get planEndedRefundApproved => _chassis.planEndedRefundApproved;
+
+  String get planEndedSubscriptionExpired =>
+      _chassis.planEndedSubscriptionExpired;
+
+  String get planEndedSubscriptionPaused =>
+      _chassis.planEndedSubscriptionPaused;
+
+  String get planEndedTrialExpired => _chassis.planEndedTrialExpired;
 
   String planPeriodEnds(DateTime date) => _chassis.planPeriodEnds(date);
 

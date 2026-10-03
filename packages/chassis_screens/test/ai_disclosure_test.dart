@@ -170,6 +170,7 @@ void main() {
   testWidgets('the labels are translated, never left in English (ta, hi)', (
     WidgetTester tester,
   ) async {
+    // locale-list: the translation fixture this test pins (its name says ta, hi), not the register's set.
     for (final Locale locale in const <Locale>[Locale('ta'), Locale('hi')]) {
       await pumpChassis(
         tester,
