@@ -33,9 +33,15 @@ export const LOG_LINE_CHARS = 500;
 // @ceiling none — an input-shape bound on the error codes one report may carry
 export const MAX_ERROR_CODES = 20;
 
-/** Reports per hour from one signed-out key (a salted hash of the address). */
-// @ceiling none — a policy limit on anonymous reports per key (the brief: the 4th in an hour is refused), counted in D1, not a vendor ceiling
-export const ANON_PER_HOUR = 3;
+/** Reports per hour from one signed-out NETWORK: the Cloudflare colo and ASN the
+ *  request came through (edgeCeilingKey), never an address — no Worker here reads
+ *  one ([ADR 011] / [ADR 020], tooling/ci/assert-glitchtip-no-ip.mjs). A network is
+ *  shared by many people (one mobile ASN in one city), so the bound is wider than
+ *  the brief's per-person "3": the 21st anonymous report in an hour from one network
+ *  is refused, and the global daily cap, the honeypot, the minimum time and the
+ *  size and link caps carry the rest of the spam control. */
+// @ceiling none — a policy limit on anonymous reports per network, counted in D1, not a vendor ceiling
+export const ANON_PER_HOUR = 20;
 /** Reports per hour from one account. */
 // @ceiling none — a policy limit on reports per account, counted in D1, not a vendor ceiling
 export const AUTHED_PER_HOUR = 10;
@@ -61,9 +67,14 @@ export const FEEDBACK_RETENTION_DAYS = 90;
 export const PURGE_BATCH = 90;
 // @ceiling none — passes per nightly run: PURGE_BATCH x passes stays far under the per-invocation query and subrequest ceilings
 export const PURGE_MAX_PASSES = 5;
-/** Screenshot keys checked per orphan-sweep page (D1 binds at most 100 parameters). */
-// @ceiling none — kept under D1's 100 bound parameters per statement (the sweep binds one key each)
+/** Screenshot keys checked per orphan-sweep page: one bounded read each. */
+// @ceiling none — our own page size; the keys are bound as ONE JSON array, so no parameter bound applies
 export const ORPHAN_PAGE = 50;
+/** Orphan-sweep pages a night. The sweep resumes where the last night stopped
+ *  (its cursor is in CONFIG_KV), so the whole bucket is covered over nights while
+ *  one firing's D1 statements and R2 deletes stay summable. */
+// @ceiling none — our own per-night pacing of the sweep, inside the firing's statement budget
+export const ORPHAN_MAX_PAGES = 4;
 
 export const CATEGORIES = ['bug', 'crash', 'billing', 'accessibility', 'translation', 'question', 'other'] as const;
 export type Category = (typeof CATEGORIES)[number];

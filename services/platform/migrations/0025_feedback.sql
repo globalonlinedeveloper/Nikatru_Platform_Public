@@ -5,10 +5,9 @@
 -- Applies to the SHARED platform_db (services/platform is the sole applier):
 --   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
 --
--- WRITTEN BY services/feedback, NOT BY THIS WORKER. The feedback Worker binds
--- platform_db as PLATFORM_DB without a migrations_dir (the clone contract: the
--- platform is the sole applier), the way services/subscriptiontracker-api binds
--- it for entitlements. platform_db is the portfolio's APAC database
+-- WRITTEN BY THIS WORKER: POST /v1/feedback (src/routes/feedback.ts), its
+-- status moves (src/routes/feedback-ops.ts) and the nightly limbs
+-- (src/feedback/cron.ts). platform_db is the portfolio's APAC database
 -- (C-APAC-RESIDENCY), so the reports are in APAC without a second database whose
 -- id would have to be committed before it exists.
 --
@@ -17,10 +16,10 @@
 -- `user_id` column, so DELETE /v1/account takes a signed-in reporter's reports
 -- with it. An anonymous report has `user_id` NULL and is reached by its 90-day
 -- purge only. The screenshot object a deleted row pointed at is removed by the
--- feedback Worker's nightly orphan sweep (services/feedback/src/scheduled.ts).
+-- platform Worker's nightly feedback orphan sweep (src/feedback/cron.ts).
 --
 -- ⚠️ NO CHECK CONSTRAINTS, as everywhere in this directory: `category`,
--- `surface` and `status` are closed sets enforced in services/feedback/src.
+-- `surface` and `status` are closed sets enforced in src/feedback/.
 --
 --   id               'FB-' + 10 base32 characters, the id a reporter is told.
 --   idempotency_key  the client's key: an offline report replayed by the outbox
@@ -40,7 +39,7 @@
 --   screenshot_key   the private bucket key, or NULL.
 --   purge_at         created_at + 90 days; the feedback Worker's cron deletes
 --                    the row and its screenshot at this instant.
---   status           the lifecycle (lane feedback-triage), services/feedback/src/lib/lifecycle.ts:
+--   status           the lifecycle (lane feedback-triage), services/platform/src/feedback/lifecycle.ts:
 --                    new -> triaged -> duplicate | known | in-fix -> fixed -> notified,
 --                    plus wontfix and spam. Moved ONLY by POST /v1/ops/feedback/move
 --                    (the triage tool) and, fixed -> notified, by the Worker's cron.
@@ -61,7 +60,7 @@ CREATE TABLE IF NOT EXISTS feedback_reports (
   idempotency_key  TEXT NOT NULL,
   user_id          TEXT,
   app_id           TEXT NOT NULL,
-  app_version      TEXT,
+  reported_version      TEXT,
   surface          TEXT NOT NULL,
   category         TEXT NOT NULL,
   description      TEXT NOT NULL,
@@ -107,18 +106,18 @@ CREATE TABLE IF NOT EXISTS feedback_mail_suppressed (
 CREATE TABLE IF NOT EXISTS feedback_counts (
   day          TEXT NOT NULL,
   app_id       TEXT NOT NULL,
-  app_version  TEXT NOT NULL,
+  reported_version  TEXT NOT NULL,
   category     TEXT NOT NULL,
   status       TEXT NOT NULL,
   n            INTEGER NOT NULL,
-  PRIMARY KEY (day, app_id, app_version, category, status)
+  PRIMARY KEY (day, app_id, reported_version, category, status)
 );
 
--- The intake's hour windows (services/feedback/src/lib/window-limiter.ts). A
--- `key_hash` is SHA-256 of a per-window random salt and the caller key (a user id
--- or the client address), truncated to 16 hex; the address itself is never
--- written (C-NO-NETWORK-ADDRESS-COLUMN). The salt row is deleted with its window,
--- after which no hash can be recomputed from any address.
+-- The intake's hour windows (services/platform/src/feedback/window-limiter.ts). A
+-- `key_hash` is SHA-256 of a per-window random salt and the caller key (a user id,
+-- or the Cloudflare colo and ASN of a signed-out request — never an address, which
+-- no Worker reads), truncated to 16 hex (C-NO-NETWORK-ADDRESS-COLUMN). The salt row
+-- is deleted with its window, after which no hash can be recomputed from any key.
 CREATE TABLE IF NOT EXISTS feedback_rate_windows (
   window_start INTEGER NOT NULL,
   key_hash     TEXT NOT NULL,

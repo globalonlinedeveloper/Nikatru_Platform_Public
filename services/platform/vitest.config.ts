@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,10 +66,17 @@ import { defineConfig } from 'vitest/config';
 // .github/workflows/time-travel.yml can run this suite ~400 days ahead and at
 // the year boundary, and a date fuse (#1101: fx.test.ts, red on every PR at
 // 2026-10-01 00:00Z) fires there first. See ../_shared/test/test-clock.ts.
+// ⏱ 2026-10-03 · lane feedback-intake: `cloudflare:workers` is a workerd built-in
+// that src/feedback/internal.ts imports (the FeedbackInternal entrypoint); under
+// Node tests it resolves to a stub that stores `ctx` and `env` as the runtime's
+// base class does.
+const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts', import.meta.url));
+
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "../_shared/test/**/*.test.ts"],
     setupFiles: ["../_shared/test/no-network.ts", "../_shared/test/test-clock.ts"],
+    alias: { 'cloudflare:workers': WORKERS_STUB },
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],

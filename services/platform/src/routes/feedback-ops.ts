@@ -24,7 +24,7 @@ import { bearer } from '../../../_shared/src/auth';
 import { isPlainObject } from '../../../_shared/src/validate';
 import { readBoundedBody } from '../lib/body';
 import { firstRow, nowIso, run } from '../lib/d1';
-import { appendHistory, checkMove, isStatus, REPORT_ID, type MoveRequest } from '../lib/lifecycle';
+import { appendHistory, checkMove, isStatus, REPORT_ID, type MoveRequest } from '../feedback/lifecycle';
 import type { AppEnv } from '../types';
 
 const ops = new Hono<AppEnv>();
@@ -92,11 +92,7 @@ ops.post('/move', async (c) => {
   const at = nowIso();
   const history = appendHistory(row.status_history, { from: row.status, to: req.to, at, by: 'ops' });
   const result = await run(
-    c.env.PLATFORM_DB.prepare(
-      'UPDATE feedback_reports SET status = ?, status_at = ?, status_history = ?, ' +
-        'duplicate_of = COALESCE(?, duplicate_of), fix_pr = COALESCE(?, fix_pr), fixed_version = COALESCE(?, fixed_version) ' +
-        'WHERE id = ? AND status = ?',
-    ).bind(
+    c.env.PLATFORM_DB.prepare(`UPDATE feedback_reports SET status = ?, status_at = ?, status_history = ?, duplicate_of = COALESCE(?, duplicate_of), fix_pr = COALESCE(?, fix_pr), fixed_version = COALESCE(?, fixed_version) WHERE id = ? AND status = ?`).bind(
       req.to,
       at,
       history,

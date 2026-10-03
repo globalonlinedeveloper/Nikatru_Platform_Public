@@ -633,6 +633,19 @@ export interface Env {
    * user sees changes; the notice is a convenience, the row is the record.
    */
   RESEND_API_KEY?: string;
+  /** ⏱ 2026-10-03 · lane feedback-intake. The PRIVATE "Report a problem" screenshot
+   *  bucket (`nikatru-feedback`). No route of `fetch` reads it: the one read path is
+   *  the FeedbackInternal entrypoint (src/feedback/internal.ts), over a Service
+   *  Binding inside the account. */
+  SCREENSHOTS: ObjectStore;
+  /** POST /v1/feedback's per-network burst bound, FAIL CLOSED (wrangler.jsonc). */
+  FEEDBACK_EDGE_LIMITER?: RateLimiterBinding;
+  /** THE GO-LIVE FLAG of POST /v1/feedback: anything but "true" answers 503
+   *  `intake_closed`. The lead flips it after the first deploy. */
+  INTAKE_OPEN?: string;
+  /** ⏱ 2026-10-03 · lane feedback-triage. The bearer of POST /v1/ops/feedback/move,
+   *  held by the lead's laptop for tooling/feedback/move.mjs. Absent ⇒ 503. */
+  FEEDBACK_OPS_SECRET?: string;
   /**
    * port-mail · the `reminders` stream's own Resend key (tooling/ports/mail.json
    * `streams.reminders`). DECLARED, NOT PROVISIONED: until it is set the reminder

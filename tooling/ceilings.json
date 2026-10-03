@@ -586,12 +586,12 @@
         "note": "⏱ 2026-09-30 · ADR no.NNN (native sign-in attestation). ONE batch shape, pruneThenWrite: a prune of expired rows, then one write — redeeming a challenge nonce, bumping a daily counter, or registering a key. Exactly two statements each, typed as a two-tuple; a request sends at most three."
       },
       {
-        "file": "services/feedback/src/lib/window-limiter.ts",
+        "file": "services/platform/src/feedback/window-limiter.ts",
         "boundedBy": "WINDOW_PRUNE_STATEMENTS",
         "note": "⏱ 2026-10-03 · lane feedback-intake. The nightly prune of the intake's rate windows: two DELETEs (the windows, then their salts) in one batch, once a night."
       },
       {
-        "file": "services/feedback/src/scheduled.ts",
+        "file": "services/platform/src/feedback/cron.ts",
         "boundedBy": "PURGE_PASS_STATEMENTS",
         "note": "⏱ 2026-10-03 · lane feedback-intake. The 90-day purge: per pass one SELECT, one R2 delete per screenshot and ONE two-statement batch (the anonymised count, then the delete, set-based over at most PURGE_BATCH ids); at most PURGE_MAX_PASSES passes a night, so (1 + 2) x 5 = 15 D1 statements and at most 450 R2 deletes per invocation."
       }

@@ -95,7 +95,7 @@ describe('the delete set is derived from the real platform schema', () => {
       'ext_link_floor',
       // ⏱ 2026-10-03 · 0025, lane feedback-intake. Spelt `user_id` ON PURPOSE: a
       // signed-in reporter's "Report a problem" reports leave with the account, and
-      // services/feedback's nightly orphan sweep then deletes their screenshots.
+      // the platform's nightly feedback orphan sweep (src/feedback/cron.ts) then deletes their screenshots.
       'feedback_reports',
       'identity',
       'provider_accounts',

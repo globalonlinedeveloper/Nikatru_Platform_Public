@@ -434,6 +434,9 @@
   "failure-ledger-lane.test.mjs":
     29,
 
+  "feedback-triage.test.mjs":
+    20,
+
   "finish-capture.test.mjs":
     12,
 

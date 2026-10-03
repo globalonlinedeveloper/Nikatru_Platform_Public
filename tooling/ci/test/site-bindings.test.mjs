@@ -76,7 +76,7 @@ describe('assert-site-bindings — the shipping tree', () => {
   test('the real tree grades clean (exit 0)', () => {
     const r = run([]);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /3 binding row\(s\)/);
+    assert.match(r.out, /4 binding row\(s\)/); // ⏱ 2026-10-03 · feedback-intake: 3 -> 4, the service binding PLATFORM.
   });
 });
 
@@ -84,7 +84,7 @@ describe('assert-site-bindings — copies of the shipping files', () => {
   test('green control: the copies with the two workflow lines → exit 0', () => {
     const r = run(['--root', fixture()]);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /declares D1 PLATFORM_DB, KV SIGNUPS/);
+    assert.match(r.out, /declares D1 PLATFORM_DB, KV SIGNUPS, service PLATFORM/);
   });
 
   test('RC4: wrangler.jsonc without the D1 binding → exit 1, naming PLATFORM_DB', () => {
@@ -92,6 +92,31 @@ describe('assert-site-bindings — copies of the shipping files', () => {
     const r = run(['--root', root]);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /names D1 `PLATFORM_DB` → `platform_db` and tooling\/sites\/nikatru-apex\/wrangler\.jsonc declares no d1_databases binding `PLATFORM_DB`/);
+  });
+
+  // ⏱ 2026-10-03 · lane feedback-intake: limb 8b, the service binding.
+  test('8b: wrangler.jsonc without the service binding → exit 1, naming PLATFORM', () => {
+    const root = fixture((d) => edit(d, CONFIG, (t) => t.replace('"service": "platform"', '"service": "platform-renamed"')));
+    const r = run(['--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`PLATFORM` binds service "platform-renamed", and the table says `platform`/);
+  });
+
+  test('8b: a service row naming a Worker no services/ config is named → exit 1', () => {
+    const root = fixture((d) => {
+      edit(d, CONFIG, (t) => t.replace('"service": "platform"', '"service": "ghost"'));
+      edit(d, 'sites/nikatru/README.md', (t) => t.replace('| service | `PLATFORM` | `platform` |', '| service | `PLATFORM` | `ghost` |'));
+    });
+    const r = run(['--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no Worker under services\/ is named `ghost`/);
+  });
+
+  test('8b: a service row with no services entry in wrangler.jsonc → exit 1', () => {
+    const root = fixture((d) => edit(d, CONFIG, (t) => t.replace(/,\n  "services": \[[\s\S]*?\n  \]/, '')));
+    const r = run(['--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names service `PLATFORM` → `platform` and tooling\/sites\/nikatru-apex\/wrangler\.jsonc declares no services binding `PLATFORM`/);
   });
 
   test('a D1 id that is not the id services/ declares for platform_db → exit 1', () => {

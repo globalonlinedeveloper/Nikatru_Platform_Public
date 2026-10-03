@@ -172,6 +172,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'kv:CONFIG_KV': '7ba3a916f8a5429091dec4a39284bffb',
       'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',
       'r2:BACKUPS_R2': 'nikatru-backups-sandbox',
+      'r2:SCREENSHOTS': 'nikatru-feedback-sandbox', // ⏱ 2026-10-03 · feedback-intake, the screenshot bucket's twin.
       'service:ERASURE_SUBSCRIPTIONTRACKER': 'subscriptiontracker-api-sandbox',
       'ratelimit:MONEY_CEILING_LIMITER': '1006',
       'ratelimit:EVENTS_LIMITER': '1007',
@@ -188,6 +189,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:NATIVE_AUTH_PLAY_VERIFY_LIMITER': '1026', // ⏱ 2026-09-30 · ADR no.NNN, Play Integrity verifications' ceiling.
       'ratelimit:CHECKOUT_CEILING_LIMITER': '1028', // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED, POST /v1/checkout's edge ceiling.
       'ratelimit:CHECKOUT_USER_LIMITER': '1030', // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED, its per-user bucket.
+      'ratelimit:FEEDBACK_EDGE_LIMITER': '1202', // ⏱ 2026-10-03 · feedback-intake, POST /v1/feedback's network bound.
     });
     assert.deepEqual(apiPinned, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',

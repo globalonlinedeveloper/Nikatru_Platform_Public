@@ -4,18 +4,19 @@
 // (lane feedback-intake, Do 6).
 //
 // WHY NOT THE BINDING. A Rate Limiting binding's period is 10 s or 60 s; the
-// brief's bound is "the 4th anonymous report in an HOUR from one key", and a
+// bound is "the Nth anonymous report in an HOUR from one key", and a
 // global DAILY cap. A KV counter would read stale under exactly the burst it is
 // for (services/platform/wrangler.jsonc says why), so the count is a D1 row:
 // one UPSERT per request, read back in the same statement.
 //
-// 🔴 THE KEY IS NEVER STORED, AND NEITHER IS THE ADDRESS (C-NO-NETWORK-ADDRESS-
-// COLUMN). The caller passes a key — `user:<sub>` or `addr:<client address>` —
+// 🔴 THE KEY IS NEVER STORED, AND NO ADDRESS IS EVER READ (C-NO-NETWORK-ADDRESS-
+// COLUMN). The caller passes a key — `user:<sub>`, or `net:<colo>:<asn>` (the
+// server-derived edge key) for a signed-out caller —
 // and this module stores only SHA-256(salt ‖ key) truncated to 16 hex characters.
 // The salt is 32 random bytes minted per window and kept in
 // `feedback_rate_salts` only while its window is live; `prune` deletes it with
 // the window's counts. Once a window's salt is gone, nothing can recompute any
-// key's hash, so even a 2^32 address space cannot be walked back from a row.
+// key's hash, so a row cannot be walked back to an account or a network.
 //
 // FAILURE POLICY: `limit` rejects on a store error, as the port says; the route
 // decides (it fails CLOSED with 503: an intake with no limit is the spam door).
@@ -78,10 +79,7 @@ export function windowLimiter(db: SqlDb, options: WindowLimiterOptions): RateLim
       const windowStart = Math.floor(now() / options.windowMs) * options.windowMs + options.scope;
       const hash = await keyHash(db, windowStart, key);
       const row = await db
-        .prepare(
-          'INSERT INTO feedback_rate_windows (window_start, key_hash, n) VALUES (?, ?, 1) ' +
-            'ON CONFLICT (window_start, key_hash) DO UPDATE SET n = n + 1 RETURNING n',
-        )
+        .prepare(`INSERT INTO feedback_rate_windows (window_start, key_hash, n) VALUES (?, ?, 1) ON CONFLICT (window_start, key_hash) DO UPDATE SET n = n + 1 RETURNING n`)
         .bind(windowStart, hash)
         .first<{ n: number }>();
       return { success: Number(row?.n ?? Number.POSITIVE_INFINITY) <= options.limit };

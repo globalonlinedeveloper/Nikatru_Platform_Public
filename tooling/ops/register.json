@@ -1148,6 +1148,9 @@
         ],
         "provider_token_backfill": [
           "0 6 * * *"
+        ],
+        "feedback_purge": [
+          "40 6 * * *"
         ]
       },
       "watchedJobsDeclaredAt": {
@@ -1167,7 +1170,8 @@
         "ops_watchdog": "2026-09-18T11:22:08Z",
         "ops_stuck_runs": "2026-09-25T00:17:02Z",
         "reminder_mail": "2026-09-28T11:33:25Z",
-        "provider_token_backfill": "2026-10-01T02:41:21Z"
+        "provider_token_backfill": "2026-10-01T02:41:21Z",
+        "feedback_purge": "2026-10-03T05:11:42Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",
@@ -5597,10 +5601,10 @@
       "source": "verified",
       "id": "retention.d1.platform_db.feedback_reports",
       "store": "d1:platform_db:feedback_reports",
-      "what": "⏱ 2026-10-03 · lane feedback-intake. One \"Report a problem\" report: the reporter (Supabase `sub`, or NULL), the app, the surface, a category, the PII-masked description and steps, the previewed diagnostics, a contact address only on \"you may reply\", the screenshot key and a status. Written only by POST /v1/feedback (services/feedback/src/routes/feedback.ts).",
+      "what": "⏱ 2026-10-03 · lane feedback-intake. One \"Report a problem\" report: the reporter (Supabase `sub`, or NULL), the app, the surface, a category, the PII-masked description and steps, the previewed diagnostics, a contact address only on \"you may reply\", the screenshot key and a status. Written only by POST /v1/feedback (services/platform/src/routes/feedback.ts).",
       "rule": "period",
       "periodDays": 90,
-      "declaredBy": "lane feedback-intake (lead 7185eb, 2026-10-02): \"90-day retention, enforced in code\". The value lives in services/feedback/src/lib/limits.ts `FEEDBACK_RETENTION_DAYS`; this row, that constant and tooling/legal/data-inventory.json are held equal by services/feedback/test/retention.test.ts.",
+      "declaredBy": "lane feedback-intake (lead 7185eb, 2026-10-02): \"90-day retention, enforced in code\". The value lives in services/platform/src/feedback/limits.ts `FEEDBACK_RETENTION_DAYS`; this row, that constant and tooling/legal/data-inventory.json are held equal by services/platform/test/feedback-retention.test.ts.",
       "response": "n/a — the nightly purge deletes the row and its screenshot at `purge_at` (created_at + 90 days) and counts an anonymised stub into feedback_counts. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.feedback_reports`, erasure `purge`).",
       "mechanism": {
         "substrate": "cloudflare-d1",
@@ -5609,7 +5613,7 @@
         "failingValue": "a row whose `purge_at` has passed, still present after a run",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "feedback_purge — the 03:40 UTC Cloudflare cron of services/feedback (services/feedback/src/scheduled.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (purge, orphans, windows), ok=0 on a limb that threw. The `purge` limb deletes rows whose purge_at has passed, PURGE_BATCH a pass, again while a pass is full, at most PURGE_MAX_PASSES passes. Held by services/feedback/test/scheduled.test.ts."
+      "deletingJob": "feedback_purge — the platform Worker's 06:40 UTC firing, after the retention sweep (services/platform/src/scheduled.ts SPLIT_FIRINGS RETENTION_CRON → services/platform/src/feedback/cron.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (notices, purge, orphans, windows), ok=0 on a limb that threw. The `purge` limb deletes rows whose purge_at has passed, PURGE_BATCH a pass, again while a pass is full, at most PURGE_MAX_PASSES passes. Held by services/platform/test/feedback-scheduled.test.ts."
     },
     {
       "kind": "retention",
@@ -5643,10 +5647,10 @@
       "source": "verified",
       "id": "retention.d1.platform_db.feedback_rate_windows",
       "store": "d1:platform_db:feedback_rate_windows",
-      "what": "⏱ 2026-10-03 · lane feedback-intake. The intake's hour and day rate-limit counts under a salted, truncated key hash (services/feedback/src/lib/window-limiter.ts).",
+      "what": "⏱ 2026-10-03 · lane feedback-intake. The intake's hour and day rate-limit counts under a salted, truncated key hash (services/platform/src/feedback/window-limiter.ts).",
       "rule": "period",
       "periodDays": 2,
-      "declaredBy": "services/feedback/src/scheduled.ts `pruneWindows`: an hour window two hours after it starts, the day window two days after.",
+      "declaredBy": "services/platform/src/feedback/cron.ts `pruneWindows`: an hour window two hours after it starts, the day window two days after.",
       "response": "n/a — pruned nightly with its salt.",
       "mechanism": {
         "substrate": "cloudflare-d1",
@@ -5655,7 +5659,7 @@
         "failingValue": "a window more than two days old after a run",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
       },
-      "deletingJob": "feedback_purge — the 03:40 UTC Cloudflare cron of services/feedback (services/feedback/src/scheduled.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (purge, orphans, windows), ok=0 on a limb that threw. The `windows` limb (pruneWindows)."
+      "deletingJob": "feedback_purge — the platform Worker's 06:40 UTC firing, after the retention sweep (services/platform/src/scheduled.ts SPLIT_FIRINGS RETENTION_CRON → services/platform/src/feedback/cron.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (notices, purge, orphans, windows), ok=0 on a limb that threw. The `windows` limb (pruneWindows)."
     },
     {
       "kind": "retention",
@@ -5670,7 +5674,7 @@
       "what": "⏱ 2026-10-03 · lane feedback-intake. One random salt per live rate-limit window.",
       "rule": "period",
       "periodDays": 2,
-      "declaredBy": "services/feedback/src/scheduled.ts `pruneWindows`, with the window it salts.",
+      "declaredBy": "services/platform/src/feedback/cron.ts `pruneWindows`, with the window it salts.",
       "response": "n/a — pruned nightly with its window; once gone, no key hash can be recomputed.",
       "mechanism": {
         "substrate": "cloudflare-d1",
@@ -5679,7 +5683,7 @@
         "failingValue": "a salt more than two days old after a run",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
       },
-      "deletingJob": "feedback_purge — the 03:40 UTC Cloudflare cron of services/feedback (services/feedback/src/scheduled.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (purge, orphans, windows), ok=0 on a limb that threw. The `windows` limb (pruneWindows)."
+      "deletingJob": "feedback_purge — the platform Worker's 06:40 UTC firing, after the retention sweep (services/platform/src/scheduled.ts SPLIT_FIRINGS RETENTION_CRON → services/platform/src/feedback/cron.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (notices, purge, orphans, windows), ok=0 on a limb that threw. The `windows` limb (pruneWindows)."
     },
     {
       "kind": "retention",
@@ -5689,64 +5693,21 @@
         "cloudflare"
       ],
       "source": "verified",
-      "id": "retention.r2.feedback.SCREENSHOTS",
-      "store": "r2:feedback:SCREENSHOTS",
+      "id": "retention.r2.platform.SCREENSHOTS",
+      "store": "r2:platform:SCREENSHOTS",
       "what": "⏱ 2026-10-03 · lane feedback-intake. The private screenshot bucket `nikatru-feedback`: one stripped PNG or WebP per report that attached one, keyed shots/<report id>.",
       "rule": "period",
       "periodDays": 90,
-      "declaredBy": "The same period as its report row (FEEDBACK_RETENTION_DAYS, services/feedback/src/lib/limits.ts): the purge deletes the object before the row.",
+      "declaredBy": "The same period as its report row (FEEDBACK_RETENTION_DAYS, services/platform/src/feedback/limits.ts): the purge deletes the object before the row.",
       "response": "n/a — deleted with its report at purge_at; an object no row names (an erased account's) is deleted by the nightly orphan sweep.",
       "mechanism": {
         "substrate": "cloudflare-r2",
-        "anchor": "services/feedback/src/scheduled.ts",
+        "anchor": "services/platform/src/feedback/cron.ts",
         "record": "the bucket itself",
         "failingValue": "an object whose report row is gone or past purge_at, still present after a run",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
       },
-      "deletingJob": "feedback_purge — the 03:40 UTC Cloudflare cron of services/feedback (services/feedback/src/scheduled.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (purge, orphans, windows), ok=0 on a limb that threw. The `purge` and `orphans` limbs."
-    },
-    {
-      "kind": "retention",
-      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations and wrangler configs, so a store cannot leave the domain by having no rule.",
-      "cadence": "365d",
-      "accessProviders": [
-        "cloudflare"
-      ],
-      "source": "verified",
-      "id": "retention.kv.feedback.JWKS_CACHE",
-      "store": "kv:feedback:JWKS_CACHE",
-      "what": "The SAME namespace the platform Worker binds — one identity project, one copy of one public document.",
-      "rule": "cache",
-      "response": "n/a",
-      "mechanism": {
-        "substrate": "cloudflare-kv",
-        "anchor": "services/feedback/wrangler.jsonc",
-        "record": "the namespace itself",
-        "failingValue": "n/a",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs"
-      }
-    },
-    {
-      "kind": "retention",
-      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor.",
-      "cadence": "365d",
-      "accessProviders": [
-        "cloudflare"
-      ],
-      "source": "verified",
-      "id": "retention.kv.feedback.SESSION_REVOKED",
-      "store": "kv:feedback:SESSION_REVOKED",
-      "what": "The SAME namespace the platform Worker binds, seen from a READ-ONLY binding: src/routes/feedback.ts reads `rev:<sub>` after verifying a token. The rule is the same rule, set at the same place.",
-      "rule": "ttl",
-      "response": "n/a from this binding: this Worker never writes the namespace.",
-      "mechanism": {
-        "substrate": "cloudflare-kv",
-        "anchor": "services/platform/src/routes/sessions.ts",
-        "record": "the expirationTtl on every `rev:<sub>` put in the anchor — the only writer of this namespace",
-        "failingValue": "the anchor losing the declared period, or this Worker gaining a WRITE to the namespace",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs",
-        "ttlSource": "expirationTtl: REVOCATION_TTL_SECONDS"
-      }
+      "deletingJob": "feedback_purge — the platform Worker's 06:40 UTC firing, after the retention sweep (services/platform/src/scheduled.ts SPLIT_FIRINGS RETENTION_CRON → services/platform/src/feedback/cron.ts `runFeedbackCron`), which writes one platform_db.cron_heartbeat row per limb (notices, purge, orphans, windows), ok=0 on a limb that threw. The `purge` and `orphans` limbs."
     },
     {
       "_whyAnchoredAtTheScript": "THE ANCHOR IS THE READER, NOT ops-watch.yml, for the reason duty.d1-statement-acceptance records: assert-ops-register.mjs builds its `anchored` map as `anchor -> row`, and a second row anchored at .github/workflows/ops-watch.yml would silently displace duty.workflow.ops-watch.yml.",
@@ -5801,7 +5762,7 @@
       "source": "verified",
       "id": "retention.d1.platform_db.feedback_mail_suppressed",
       "store": "d1:platform_db:feedback_mail_suppressed",
-      "what": "⏱ 2026-10-03 · lane feedback-triage. The unsubscribe list of the feedback mail stream: SHA-256 of each address that pressed \"unsubscribe\" (services/feedback/src/lib/notify.ts).",
+      "what": "⏱ 2026-10-03 · lane feedback-triage. The unsubscribe list of the feedback mail stream: SHA-256 of each address that pressed \"unsubscribe\" (services/platform/src/feedback/notify.ts).",
       "rule": "keep",
       "keepWhy": "A suppression is a standing \"stop\": removing it would re-enable the mail the person asked to end. It holds a hash, never an address (tooling/legal/data-inventory.json `table:platform_db.feedback_mail_suppressed`).",
       "response": "n/a",

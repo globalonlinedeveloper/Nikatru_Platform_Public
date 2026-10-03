@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // "Report a problem" (lane feedback-intake): packages/feedback's one host for
 // this app — the outbox over the app's own store, the shared intake
-// (services/feedback), the signed-in session when there is one. The screenshot
+// (the platform Worker's POST /v1/feedback), the signed-in session when there is one. The screenshot
 // is taken under the root RepaintBoundary app.dart already mounts for the store
 // capture (E2EKeys.storeFrame), so the app root is not edited. Hermetic, like
 // every transport here, when the backend is not live.
@@ -30,7 +30,7 @@ final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
     channel: AppConfig.releaseChannel,
     store: ref.watch(keyValueStoreProvider.future),
     transport: AppConfig.isBackendLive
-        ? DioFeedbackTransport()
+        ? DioFeedbackTransport(platformBaseUrl: AppConfig.platformBaseUrl)
         : const core.UnavailableFeedbackTransport(),
     accessToken: ref.watch(authTokenProvider),
     userId: () => ref.read(authUserProvider).value?.id,

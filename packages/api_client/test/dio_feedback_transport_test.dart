@@ -39,7 +39,7 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 DioFeedbackTransport _transport(_FakeAdapter adapter) => DioFeedbackTransport(
-  feedbackBaseUrl: 'https://feedback.example.test',
+  platformBaseUrl: 'https://platform.example.test',
   httpClient: Dio()..httpClientAdapter = adapter,
 );
 
@@ -67,7 +67,7 @@ void main() {
       expect(r.id, 'FB-0123456789');
       final RequestOptions req = adapter.lastRequest!;
       expect(req.method, 'POST');
-      expect(req.uri.toString(), 'https://feedback.example.test/v1/feedback');
+      expect(req.uri.toString(), 'https://platform.example.test/v1/feedback');
       expect(req.headers['authorization'], 'Bearer tok');
       final FormData form = req.data as FormData;
       expect(form.fields.single.key, 'report');

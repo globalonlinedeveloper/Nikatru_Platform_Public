@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { app } from '../src/index';
-import { ANON_PER_HOUR, MAX_IMAGE_BYTES, MAX_TEXT_CHARS } from '../src/lib/limits';
-import { CTX, harness, multipart, pngWithMetadata, validReport, type Harness } from './harness';
+import { ANON_PER_HOUR, MAX_IMAGE_BYTES, MAX_TEXT_CHARS } from '../src/feedback/limits';
+import { CTX, harness, multipart, pngWithMetadata, validReport, type Harness } from './feedback-harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // intake.test.ts — POST /v1/feedback through the REAL app, over the shipped
@@ -14,14 +14,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function post(h: Harness, body: Record<string, unknown> | FormData, headers: Record<string, string> = {}) {
+/** The network a request arrives through: what the edge stamps on `request.cf`. */
+type Network = { colo: string; asn: number };
+const MAA_JIO: Network = { colo: 'MAA', asn: 55836 };
+
+function post(h: Harness, body: Record<string, unknown> | FormData, headers: Record<string, string> = {}, network: Network = MAA_JIO) {
   const isForm = body instanceof FormData;
   const init: RequestInit = {
     method: 'POST',
     headers: isForm ? headers : { 'content-type': 'application/json', ...headers },
     body: isForm ? body : JSON.stringify(body),
   };
-  return app.fetch(new Request('https://feedback.example.test/v1/feedback', init), h.env as never, CTX as never);
+  const req = Object.assign(new Request('https://feedback.example.test/v1/feedback', init), { cf: network });
+  return app.fetch(req, h.env as never, CTX as never);
 }
 
 const rows = (h: Harness) => h.db.rows('SELECT * FROM feedback_reports');
@@ -35,7 +40,7 @@ describe('a report is stored, privacy-safe', () => {
     const { id } = (await res.json()) as { id: string };
     expect(id).toMatch(/^FB-[0-9A-Z]{10}$/);
     expect(rows(h)).toHaveLength(1);
-    expect(rows(h)[0]).toMatchObject({ id, user_id: null, app_id: 'subscriptiontracker', category: 'bug', status: 'new', app_version: '1.4.0' });
+    expect(rows(h)[0]).toMatchObject({ id, user_id: null, app_id: 'subscriptiontracker', category: 'bug', status: 'new', reported_version: '1.4.0' });
   });
 
   it('🔴 [Do 2] `a@b.com 4111 1111 1111 1111` is stored masked, and so are a phone number and a UPI id', async () => {
@@ -108,19 +113,27 @@ describe('🔴 [Do 10] consent to be contacted', () => {
 });
 
 describe('🔴 [Do 6] rate limits and spam control, without storing an address', () => {
-  it('the 4th anonymous report in an hour from one address is refused with 429; another address is not', async () => {
+  it('the (ANON_PER_HOUR + 1)th anonymous report in an hour from one network is refused with 429; another network is not', async () => {
     const h = harness();
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const from = (ip: string) => ({ 'CF-Connecting-IP': ip });
-    for (let i = 0; i < ANON_PER_HOUR; i++) expect((await post(h, validReport(), from('203.0.113.7'))).status).toBe(201);
-    const fourth = await post(h, validReport(), from('203.0.113.7'));
-    expect(fourth.status).toBe(429);
-    expect(fourth.headers.get('Retry-After')).toBe('3600');
-    expect((await post(h, validReport(), from('198.51.100.9'))).status).toBe(201);
+    for (let i = 0; i < ANON_PER_HOUR; i++) expect((await post(h, validReport(), {}, MAA_JIO)).status).toBe(201);
+    const over = await post(h, validReport(), {}, MAA_JIO);
+    expect(over.status).toBe(429);
+    expect(over.headers.get('Retry-After')).toBe('3600');
+    expect((await post(h, validReport(), {}, { colo: 'BOM', asn: 9829 })).status).toBe(201);
     expect(rows(h)).toHaveLength(ANON_PER_HOUR + 1);
   });
 
-  it('no column anywhere holds the address — only a 16-hex hash under a per-window salt', async () => {
+  it('🔴 no address is read: a varying CF-Connecting-IP on one network shares that network\'s hour', async () => {
+    const h = harness();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    for (let i = 0; i < ANON_PER_HOUR; i++) {
+      expect((await post(h, validReport(), { 'CF-Connecting-IP': `203.0.113.${i + 1}` }, MAA_JIO)).status).toBe(201);
+    }
+    expect((await post(h, validReport(), { 'CF-Connecting-IP': '198.51.100.250' }, MAA_JIO)).status).toBe(429);
+  });
+
+  it('no column anywhere holds an address or the network — only a 16-hex hash under a per-window salt', async () => {
     const h = harness();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     await post(h, validReport(), { 'CF-Connecting-IP': '203.0.113.7' });
@@ -130,6 +143,7 @@ describe('🔴 [Do 6] rate limits and spam control, without storing an address',
       h.db.rows('SELECT * FROM feedback_rate_salts'),
     ]);
     expect(everything).not.toContain('203.0.113.7');
+    expect(everything).not.toContain('55836');
     for (const w of h.db.rows('SELECT key_hash FROM feedback_rate_windows')) expect(String(w.key_hash)).toMatch(/^[0-9a-f]{16}$/);
   });
 
@@ -220,8 +234,10 @@ describe('🔴 [Do 5] the screenshot: stripped, private, never served by a route
     }
     const reads = app.routes.filter((r) => r.method === 'GET' || r.method === 'ALL').map((r) => r.path);
     // The one GET under /v1/feedback is the unsubscribe page (lane feedback-triage),
-    // which reads a token's address and serves a button, never an object.
-    expect(reads.filter((p) => p !== '/*' && p !== '*')).toEqual(['/v1/health', '/v1/feedback/unsubscribe']);
+    // which reads a token's address and serves a button, never an object. The
+    // platform's other GET routes are not this intake's, and none names a screenshot.
+    expect([...new Set(reads.filter((p) => p.startsWith('/v1/feedback') || p.startsWith('/v1/ops/feedback')))]).toEqual(['/v1/feedback/unsubscribe']);
+    expect(reads.filter((p) => /shot|screenshot/i.test(p))).toEqual([]);
   });
 });
 

@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-/// dio-backed [core.FeedbackTransport]: `POST {feedbackBaseUrl}/v1/feedback` →
-/// the feedback Worker (services/feedback) → a `feedback_reports` row in the
+/// dio-backed [core.FeedbackTransport]: `POST {platformBaseUrl}/v1/feedback` →
+/// the platform Worker's POST /v1/feedback (services/platform/src/routes/feedback.ts) → a `feedback_reports` row in the
 /// APAC platform database, and the screenshot in a private bucket. Lane
 /// feedback-intake, O-FEEDBACK-INTAKE-UNBUILT.
 ///
@@ -17,12 +17,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 /// Every answer is reduced to [core.FeedbackSendResult]: 201/200 sent; no
 /// answer, 5xx, 503 (`intake_closed`) and 429 retry later (the outbox keeps the
 /// report, and the Retry-After is passed on); any other 4xx refused.
-/// The feedback intake's one host (services/feedback/wrangler.jsonc `routes`).
-const String kFeedbackIntakeUrl = 'https://feedback.nikatru.com';
-
 class DioFeedbackTransport implements core.FeedbackTransport {
-  DioFeedbackTransport({String feedbackBaseUrl = kFeedbackIntakeUrl, Dio? httpClient})
-    : _base = feedbackBaseUrl,
+  DioFeedbackTransport({required String platformBaseUrl, Dio? httpClient})
+    : _base = platformBaseUrl,
       _dio = httpClient ?? Dio();
 
   final String _base;

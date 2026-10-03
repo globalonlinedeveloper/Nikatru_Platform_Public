@@ -266,6 +266,10 @@ class _ReportProblemPageState extends State<ReportProblemPage> {
                 : <Widget>[
                     DropdownButtonFormField<FeedbackCategory>(
                       key: FeedbackKeys.category,
+                      // Expanded, with each label ellipsised: a long category
+                      // in a long language overflowed a 375 px phone by 137 px
+                      // (test/width_report_test.dart).
+                      isExpanded: true,
                       initialValue: _category,
                       decoration: InputDecoration(labelText: s.categoryLabel),
                       items: <DropdownMenuItem<FeedbackCategory>>[
@@ -273,7 +277,10 @@ class _ReportProblemPageState extends State<ReportProblemPage> {
                             in FeedbackCategory.values)
                           DropdownMenuItem<FeedbackCategory>(
                             value: c,
-                            child: Text(_categoryLabel(s, c)),
+                            child: Text(
+                              _categoryLabel(s, c),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                       ],
                       onChanged: (FeedbackCategory? c) =>
@@ -358,7 +365,10 @@ class _ReportProblemPageState extends State<ReportProblemPage> {
                       onChanged: (bool? v) =>
                           setState(() => _reply = v ?? false),
                     ),
-                    if (_reply && !widget.host.signedIn())
+                    // An address is asked for whenever a box that needs one
+                    // is ticked — a reply, or the one "fixed" notice — and
+                    // only while signed out (the account's own is used then).
+                    if ((_reply || _notify) && !widget.host.signedIn())
                       TextField(
                         key: FeedbackKeys.email,
                         controller: _email,

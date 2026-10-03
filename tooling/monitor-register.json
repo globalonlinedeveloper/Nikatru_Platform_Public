@@ -589,26 +589,6 @@
         "closedOn": "2026-09-15",
         "howItWasClosed": "Honest closure (a) of the action above: an origin-side check on Box B beating a GlitchTip Heartbeat. Monitor 39 was created 2026-09-15T01:05:04Z by the session lead, not by this repository, and its first beat read back isUp true at 01:05:07Z. Re-read through the API (read-only GET organizations/nikatru/monitors/) at 2026-09-15T01:31:11Z: isUp true, project \"2\", interval 10800, checks at 01:05:07.187Z and 01:29:01.616Z (the :29 cron slot), both up."
       }
-    },
-    {
-      "hostname": "feedback.nikatru.com",
-      "what": "the feedback intake Worker (services/feedback) — POST /v1/feedback, \"Report a problem\" from every app, site and extension",
-      "derivedFrom": "workerCustomDomains",
-      "_why": "⏱ 2026-10-03 · lane feedback-intake. Bound as a custom domain in services/feedback/wrangler.jsonc. `monitor` is null until tooling/ops/ensure-monitors.mjs --apply creates the monitor `gap.create` describes (a vendor write, after the first deploy: a lead step), reads it back and writes it here with its id.",
-      "monitor": null,
-      "gap": {
-        "why": "feedback.nikatru.com is declared, and GlitchTip has no monitor for it yet: the Worker is not deployed until this lane merges and the lead has created its private bucket.",
-        "action": "node tooling/ops/ensure-monitors.mjs prints the POST; its --apply creates the monitor (a vendor write: a lead step, after the first deploy).",
-        "create": {
-          "name": "feedback health",
-          "type": "GET",
-          "path": "/v1/health",
-          "expectedStatus": 200,
-          "expectedBody": "\"ok\":true",
-          "intervalSeconds": 60,
-          "project": "platform"
-        }
-      }
     }
   ],
 

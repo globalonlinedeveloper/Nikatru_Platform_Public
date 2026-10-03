@@ -8,9 +8,9 @@
 //   node tooling/feedback/move.mjs FB-XXXXXXXXXX fixed --version 1.4.1
 //   node tooling/feedback/move.mjs FB-XXXXXXXXXX duplicate --of FB-YYYYYYYYYY
 //
-// It POSTs to the feedback Worker's /v1/ops/feedback/move with the bearer in
+// It POSTs to the platform Worker's /v1/ops/feedback/move with the bearer in
 // the FEEDBACK_OPS_SECRET environment variable (never an argument, never
-// printed). The WORKER enforces the lifecycle (services/feedback/src/lib/
+// printed). The WORKER enforces the lifecycle (services/platform/src/feedback/
 // lifecycle.ts): an illegal move — `new -> notified` above all — is refused
 // there, whatever this script sends. `notified` is the cron's alone.
 //
@@ -20,7 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPORT_ID } from './lib.mjs';
 
-export const MOVE_URL = 'https://feedback.nikatru.com/v1/ops/feedback/move';
+export const MOVE_URL = 'https://platform.nikatru.com/v1/ops/feedback/move';
 
 export function parseMoveArgs(argv) {
   const [id, to, ...rest] = argv;

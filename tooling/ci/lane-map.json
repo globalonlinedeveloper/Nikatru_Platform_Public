@@ -33,7 +33,6 @@
         "services/subscriptiontracker-api/**",
         "services/platform/**",
         "services/edge-shield/**",
-        "services/feedback/**",
         "services/_shared/**",
         "catalog/apps.json",
         "catalog/bundles.json",
@@ -81,6 +80,7 @@
     "sites": {
       "globs": [
         "sites/**",
+        "content/**",
         "packages/tokens/**",
         "contracts/tokens/**",
         "catalog/apps-landing.json",
@@ -259,16 +259,6 @@
       "tooling/ops/check-edge-shield.mjs",
       "tooling/ops/bounded-retry.mjs",
       "tooling/ci/text-reductions.mjs",
-      ".github/workflows/deploy-workers.yml"
-    ],
-    "feedback": [
-      "services/feedback/**",
-      "services/_shared/**",
-      "services/platform/src/lib/mor/contract.ts",
-      "services/platform/src/adapters/mail/resend.ts",
-      "services/platform/src/generated/entity.ts",
-      "tooling/i18n/messages/email.json",
-      "tooling/i18n/locales.json",
       ".github/workflows/deploy-workers.yml"
     ]
   }

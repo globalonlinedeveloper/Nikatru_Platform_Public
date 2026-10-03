@@ -18,7 +18,7 @@
     "review sheet. `{name}`-style placeholders are filled by the renderer, never translated.",
     "",
     "feedbackMail: the feedback Worker's two consented mails about a person's own problem report",
-    "(services/feedback/src/lib/notify.ts; lane feedback-triage): the receipt and the one \"fixed in",
+    "(services/platform/src/feedback/notify.ts; lane feedback-triage): the receipt and the one \"fixed in",
     "version X\" notice. The locale is the report's own `diagnostics.locale`; the same fallbacks."
   ],
   "digest": {

@@ -127,7 +127,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // (routes/box-manifest.ts).
   boxConfigManifest0024,
   // ⏱ 2026-10-03 · lane feedback-intake — the "Report a problem" intake's tables,
-  // WRITTEN by services/feedback (this Worker only migrates them).
+  // WRITTEN by src/routes/feedback.ts and src/feedback/ (lane feedback-intake).
   feedback0025,
 ];
 

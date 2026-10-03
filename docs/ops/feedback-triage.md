@@ -2,7 +2,7 @@
 
 Rows `O-FEEDBACK-TRIAGE-UNSPECIFIED`, `O-FEEDBACK-NOTIFY-FIXED-UNBUILT`,
 `O-FEEDBACK-TRIAGE-ROUTINE-UNSCHEDULED`. This file holds **no report content** and never will: it is
-the procedure. The reports live in the private intake (`services/feedback`, table `feedback_reports`
+the procedure. The reports live in the private intake (the platform Worker's `services/platform/src/routes/feedback.ts`, table `feedback_reports`
 in platform_db), never in this repository.
 
 The routine is a **scheduled agent** the lead creates from
@@ -76,7 +76,7 @@ new -> triaged -> duplicate | known | in-fix(PR) -> fixed(version) -> notified
 plus wontfix and spam
 ```
 
-The **feedback Worker** enforces it (`services/feedback/src/lib/lifecycle.ts`, route
+The **feedback Worker** enforces it (`services/platform/src/feedback/lifecycle.ts`, route
 `POST /v1/ops/feedback/move`): a move the graph does not list is refused with 409, and `notified` is
 reached only by the Worker's own cron after it has mailed the reporter. Every move is written with
 its time and writer into the report's `status_history`. `in-fix` needs the fix PR's number, `fixed`

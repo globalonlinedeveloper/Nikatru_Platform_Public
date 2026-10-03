@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
-import { runFeedbackCron } from '../src/scheduled';
-import { MOVES, STATUSES } from '../src/lib/lifecycle';
-import { MAX_NOTICES_PER_RUN } from '../src/lib/notify';
+import { runFeedbackCron } from '../src/feedback/cron';
+import { MOVES, STATUSES } from '../src/feedback/lifecycle';
+import { MAX_NOTICES_PER_RUN } from '../src/feedback/notify';
 import { createFakeMail } from '../../_shared/src/ports/fakes/mail';
-import { MAIL_FROM } from '../../platform/src/generated/entity';
-import { harness, validReport, type Harness } from './harness';
+import { MAIL_FROM } from '../src/generated/entity';
+import { harness, validReport, type Harness } from './feedback-harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // triage.test.ts — lane feedback-triage, Do 3, 4 and 5: the status lifecycle
@@ -55,7 +55,7 @@ async function walkToFixed(h: Harness, id: string, version = '1.4.1') {
   }
 }
 
-const statusOf = (h: Harness, id: string) => h.db.rows<{ status: string }>('SELECT status FROM feedback_reports WHERE id = ?', id)[0]?.status;
+const statusOf = (h: Harness, id: string) => (h.db.rows('SELECT status FROM feedback_reports WHERE id = ?', id) as { status: string }[])[0]?.status;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -93,10 +93,10 @@ describe('🔴 [Do 3] the status lifecycle is the Worker\'s, not the caller\'s',
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const id = await submit(h);
     await walkToFixed(h, id, '1.4.1');
-    const [row] = h.db.rows<{ status: string; fix_pr: number; fixed_version: string; status_history: string; status_at: string }>(
+    const [row] = (h.db.rows(
       'SELECT status, fix_pr, fixed_version, status_history, status_at FROM feedback_reports WHERE id = ?',
       id,
-    );
+    ) as { status: string; fix_pr: number; fixed_version: string; status_history: string; status_at: string }[]);
     expect(row).toMatchObject({ status: 'fixed', fix_pr: 1201, fixed_version: '1.4.1' });
     const history = JSON.parse(row.status_history) as { from: string; to: string; at: string; by: string }[];
     expect(history.map((e) => `${e.from}->${e.to}:${e.by}`)).toEqual(['new->triaged:ops', 'triaged->in-fix:ops', 'in-fix->fixed:ops']);
@@ -185,7 +185,7 @@ describe('🔴 [Do 4] "fixed in version X": one mail, to a consenting reporter o
       ctx() as never,
     );
     expect(post.status).toBe(200);
-    const stored = h.db.rows<{ address_hash: string }>('SELECT address_hash FROM feedback_mail_suppressed');
+    const stored = (h.db.rows('SELECT address_hash FROM feedback_mail_suppressed') as { address_hash: string }[]);
     expect(stored).toHaveLength(1);
     expect(stored[0].address_hash).toMatch(/^[0-9a-f]{64}$/);
     // A second report from the same address, fixed later, is never mailed.
@@ -231,7 +231,7 @@ describe('🔴 [Do 4] "fixed in version X": one mail, to a consenting reporter o
     await runFeedbackCron(h.env, Date.now(), { mail });
     expect(mail.attempts).toBe(1);
     expect(statusOf(h, id)).toBe('notified');
-    const beats = h.db.rows<{ ok: number }>("SELECT ok FROM cron_heartbeat WHERE target = 'notices' ORDER BY ran_at");
+    const beats = (h.db.rows("SELECT ok FROM cron_heartbeat WHERE target = 'notices' ORDER BY ran_at") as { ok: number }[]);
     expect(beats.map((b) => b.ok)).toEqual([0, 1]);
   });
 
@@ -299,7 +299,7 @@ describe('🔴 [Do 5] the receipt: only with "you may reply to me"', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     await submit(h, { contactEmail: 'a@example.com', consent: { reply: false, notifyFixed: false } });
     await submit(h, { contactEmail: 'b@example.com', consent: { reply: false, notifyFixed: true } });
-    expect(h.db.rows<{ contact_email: string | null }>('SELECT contact_email FROM feedback_reports ORDER BY contact_email').map((r) => r.contact_email)).toEqual([
+    expect((h.db.rows('SELECT contact_email FROM feedback_reports ORDER BY contact_email') as { contact_email: string | null }[]).map((r) => r.contact_email)).toEqual([
       null,
       'b@example.com',
     ]);

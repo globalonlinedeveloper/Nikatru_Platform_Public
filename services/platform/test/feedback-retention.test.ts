@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import inventoryRaw from '../../../tooling/legal/data-inventory.json?raw';
 import registerRaw from '../../../tooling/ops/register.json?raw';
-import { FEEDBACK_RETENTION_DAYS } from '../src/lib/limits';
+import { FEEDBACK_RETENTION_DAYS } from '../src/feedback/limits';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // retention.test.ts — 🔴 [Do 7] ONE NUMBER, THREE HOMES, HELD EQUAL.
@@ -21,7 +21,7 @@ const register = JSON.parse(registerRaw) as { rows: Array<{ id: string; rule?: s
 describe('the feedback retention period agrees in all three homes', () => {
   for (const [inv, reg] of [
     ['table:platform_db.feedback_reports', 'retention.d1.platform_db.feedback_reports'],
-    ['r2:nikatru-feedback', 'retention.r2.feedback.SCREENSHOTS'],
+    ['r2:nikatru-feedback', 'retention.r2.platform.SCREENSHOTS'],
   ] as const) {
     it(`${inv} — inventory, register and code all say ${FEEDBACK_RETENTION_DAYS} days`, () => {
       const i = inventory.stores.find((s) => s.id === inv);

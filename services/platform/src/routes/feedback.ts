@@ -24,11 +24,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import { bearer } from '../../../_shared/src/auth';
-import { sessionRevoked, verifySupabaseToken } from '../../../_shared/src/auth-middleware';
+import { NO_SYMMETRIC_FALLBACK, sessionRevoked, verifySupabaseToken } from '../../../_shared/src/auth-middleware';
 import { readBoundedBody } from '../lib/body';
-import { strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../lib/rate-limit';
+import { edgeCeilingKey, strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../../../_shared/src/rate-limit';
 import { firstRow, nowIso, run } from '../lib/d1';
-import { stripImage } from '../lib/image';
+import { stripImage } from '../feedback/image';
 import {
   ANON_PER_HOUR,
   AUTHED_PER_HOUR,
@@ -39,10 +39,10 @@ import {
   MAX_BODY_BYTES,
   MAX_IMAGE_BYTES,
   MAX_REPORT_JSON_BYTES,
-} from '../lib/limits';
-import { parseReport, type Report } from '../lib/report';
-import { windowLimiter } from '../lib/window-limiter';
-import { sendReceipt, suppress, tokenAddress } from '../lib/notify';
+} from '../feedback/limits';
+import { parseReport, type Report } from '../feedback/report';
+import { windowLimiter } from '../feedback/window-limiter';
+import { sendReceipt, suppress, tokenAddress } from '../feedback/notify';
 import { mailFor } from '../ports';
 import type { AppEnv, Env } from '../types';
 
@@ -63,9 +63,9 @@ async function whoIsCalling(env: Env, authorization: string | undefined, rid: st
   const token = bearer(authorization);
   if (token === null) return 'refused';
   try {
-    const { payload } = await verifySupabaseToken(token, env.SUPABASE_URL, env.JWKS_CACHE, {
-      legacyHs256Secret: env.SUPABASE_JWT_SECRET,
-    });
+    // ES256 through the JWKS only, as platformAuth verifies (middleware/auth.ts):
+    // this Worker holds no symmetric secret to fall back to.
+    const { payload } = await verifySupabaseToken(token, env.SUPABASE_URL, env.JWKS_CACHE, NO_SYMMETRIC_FALLBACK);
     if (typeof payload.sub !== 'string' || payload.sub === '') return 'refused';
     if (await sessionRevoked(env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, `[feedback] rid=${rid}`)) {
       return 'refused';
@@ -120,11 +120,11 @@ async function partsOf(
 
 /** Each window the caller must pass, in order: their own hour, then the
  *  intake's day. Through `strictRateLimit`, so a store error FAILS CLOSED. */
-async function overLimit(env: Env, who: Who, address: string | null): Promise<StrictVerdict> {
+async function overLimit(env: Env, who: Who, network: string): Promise<StrictVerdict> {
   const hourly =
     who.kind === 'user'
       ? { key: `user:${who.userId}`, limit: AUTHED_PER_HOUR }
-      : { key: `addr:${address ?? 'none'}`, limit: ANON_PER_HOUR };
+      : { key: `net:${network}`, limit: ANON_PER_HOUR };
   const mine = windowLimiter(env.PLATFORM_DB, { windowMs: HOUR_MS, limit: hourly.limit, scope: 0 });
   const one = await strictRateLimit(mine, hourly.key, 'feedback_rate_windows:hour');
   if (one !== 'within') return one;
@@ -187,7 +187,10 @@ feedback.post('/', async (c) => {
   );
   if (prior) return c.json({ id: prior.id, status: 'duplicate' }, 200);
 
-  const verdict = await overLimit(c.env, who, c.req.header('CF-Connecting-IP') ?? null);
+  // Signed out, the hour is the NETWORK's (the Cloudflare colo and ASN the request
+  // came through, edgeCeilingKey): no Worker reads a client address ([ADR 011] /
+  // [ADR 020]; tooling/ci/assert-glitchtip-no-ip.mjs holds it).
+  const verdict = await overLimit(c.env, who, edgeCeilingKey(c));
   if (verdict === 'over') return c.json({ error: 'rate_limited' }, 429, { 'Retry-After': '3600' });
   if (verdict === 'unavailable') return c.json({ error: 'temporarily_unavailable' }, 503);
 
@@ -200,11 +203,7 @@ feedback.post('/', async (c) => {
   }
   try {
     await run(
-      c.env.PLATFORM_DB.prepare(
-        'INSERT INTO feedback_reports (id, idempotency_key, user_id, app_id, app_version, surface, category, description, steps, ' +
-          'diagnostics, contact_email, reply_ok, notify_fixed, screenshot_key, status, created_at, purge_at) ' +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)",
-      ).bind(
+      c.env.PLATFORM_DB.prepare(`INSERT INTO feedback_reports (id, idempotency_key, user_id, app_id, reported_version, surface, category, description, steps, diagnostics, contact_email, reply_ok, notify_fixed, screenshot_key, status, created_at, purge_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).bind(
         id,
         report.idempotencyKey,
         who.kind === 'user' ? who.userId : null,
@@ -234,7 +233,7 @@ feedback.post('/', async (c) => {
   // ticked, after the answer, never holding it. sendReceipt re-reads the row.
   if (report.reply) {
     c.executionCtx.waitUntil(
-      sendReceipt(c.env.PLATFORM_DB, mailFor(c.env), id, nowIso()).then(
+      sendReceipt(c.env.PLATFORM_DB, mailFor('feedback', c.env), id, nowIso()).then(
         (r) => console.log(`[feedback-mail] rid=${rid} receipt ${r}`),
         (err: unknown) => console.log(`[feedback-mail] rid=${rid} receipt error ${err instanceof Error ? err.name : typeof err}`),
       ),

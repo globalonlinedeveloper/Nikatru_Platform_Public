@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { app } from '../src/index';
-import { DAY_MS, FEEDBACK_RETENTION_DAYS } from '../src/lib/limits';
-import { FEEDBACK_CRON_JOB, purgeExpired, runFeedbackCron, sweepOrphans } from '../src/scheduled';
-import { CTX, harness, multipart, pngWithMetadata, validReport, type Harness } from './harness';
+import { DAY_MS, FEEDBACK_RETENTION_DAYS } from '../src/feedback/limits';
+import { FEEDBACK_CRON_JOB, purgeExpired, runFeedbackCron, sweepOrphans } from '../src/feedback/cron';
+import { CTX, harness, multipart, pngWithMetadata, validReport, type Harness } from './feedback-harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // scheduled.test.ts — 🔴 [Do 7] the 90-day purge, and 🔴 [Do 8] the screenshot
@@ -41,7 +41,7 @@ describe('🔴 [Do 7] 90-day retention, enforced in code', () => {
     expect(h.bucket.keys()).toEqual([]);
     const counts = h.db.rows('SELECT * FROM feedback_counts');
     expect(counts).toEqual([
-      { day: new Date().toISOString().slice(0, 10), app_id: 'subscriptiontracker', app_version: '1.4.0', category: 'crash', status: 'new', n: 2 },
+      { day: new Date().toISOString().slice(0, 10), app_id: 'subscriptiontracker', reported_version: '1.4.0', category: 'crash', status: 'new', n: 2 },
     ]);
     const beats = h.db.rows('SELECT target, ok FROM cron_heartbeat WHERE job = ? ORDER BY target', FEEDBACK_CRON_JOB);
     expect(beats).toEqual([

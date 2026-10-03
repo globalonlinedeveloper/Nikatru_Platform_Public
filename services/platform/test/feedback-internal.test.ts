@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { app } from '../src/index';
-import { FeedbackInternal, reportsOf, screenshotOf } from '../src/internal';
-import { CTX, harness, multipart, pngWithMetadata, validReport } from './harness';
+import { FeedbackInternal, reportsOf, screenshotOf } from '../src/feedback/internal';
+import { CTX, harness, multipart, pngWithMetadata, validReport } from './feedback-harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // internal.test.ts — the ONE read path (src/internal.ts): a screenshot is read

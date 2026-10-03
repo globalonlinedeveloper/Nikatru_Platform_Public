@@ -793,6 +793,46 @@ const WIRE_CONTRACTS = [
     absentFromDart: '/v1/calendar/',
     absentCall: 'get',
   },
+  // ⏱ 2026-10-03 · lanes feedback-intake / feedback-triage — "Report a problem"
+  // (services/platform/src/routes/feedback.ts, routes/feedback-ops.ts).
+  {
+    id: 'feedback-submit',
+    kind: 'body',
+    server: 'services/platform/src/routes/feedback.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_feedback_transport.dart',
+      member: 'Future<core.FeedbackSendResult> submit(',
+      reader: 'body',
+    },
+    requiredBoth: ['id'],
+    clientOnly: {
+      error: 'read only from a REFUSAL (the `{ error }` envelope of a 4xx/5xx), never from a success body: the transport turns it into the outbox\'s retry-or-refuse word.',
+    },
+    serverOnly: {
+      status: 'the report\'s lifecycle status at submit (`new`, or `duplicate` for a replayed key); the app tells the person the id alone.',
+    },
+  },
+  {
+    id: 'feedback-unsubscribe-get',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is a person clicking the link in the one "fixed in version X" EMAIL. It answers an HTML page whose one button POSTs to the same URL; it changes nothing by itself.',
+    absentFromDart: '/v1/feedback/unsubscribe',
+  },
+  {
+    id: 'feedback-unsubscribe-post',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the callers are mail clients honouring `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) and the button on the GET page. It reads the status (200, or 404 for a token it does not know), not a body.',
+    absentFromDart: '/v1/feedback/unsubscribe',
+  },
+  {
+    id: 'feedback-ops-move',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is tooling/feedback/move.mjs on the lead\'s laptop, with FEEDBACK_OPS_SECRET. It posts `{id, to, pr?, version?, duplicateOf?}` and prints the `{id, from, to, at}` answer or the refusal word; both sides are pinned outside Dart, by services/platform/test/feedback-triage.test.ts and tooling/ci/test/feedback-triage.test.mjs.',
+    absentFromDart: '/v1/ops/',
+  },
   // ⏱ 2026-10-01 · PB-27 — a box's config-hash report (services/platform/src/routes/box-manifest.ts).
   {
     id: 'box-manifest',

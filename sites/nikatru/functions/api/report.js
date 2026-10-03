@@ -4,7 +4,7 @@
 // SITE PROMISE: "Your report goes to our private support system, never to a public page."
 //
 // WHAT IT DOES: reads the form, builds the same report JSON every app sends, and
-// forwards it over a SERVICE BINDING to the feedback Worker (services/feedback),
+// forwards it over a SERVICE BINDING to the platform Worker's POST /v1/feedback (services/platform/src/routes/feedback.ts),
 // which validates, PII-masks, rate-limits and stores it. So the page posts
 // SAME-ORIGIN: `form-action 'self'` and `connect-src 'self'` in `_headers` stay
 // exactly as they are, and no browser ever talks to another host.
@@ -14,11 +14,12 @@
 // request it receives; the request's own headers are passed on unchanged apart
 // from the ones dropped below, and nothing here reads any of them.
 //
-// SETUP (one time, a lead step — the Cloudflare dashboard, Pages project
-// "nikatru-apex" -> Settings -> Bindings -> Service binding):
-//   Variable name: FEEDBACK      Service: feedback      Environment: production
-// Without it every post answers the "could not send" message, which offers the
-// support mail; nothing is lost silently.
+// THE BINDING: `PLATFORM` -> the Worker `platform`, declared in
+// tooling/sites/nikatru-apex/wrangler.jsonc and the bindings table in
+// sites/nikatru/README.md (tooling/ci/assert-site-bindings.mjs holds the three
+// equal); the deploy job writes it onto the project. Without it every post answers
+// the "could not send" message, which offers the support mail; nothing is lost
+// silently.
 
 // ⚠️ Every Response this file makes goes through `respond`, or it ships bare:
 // `_headers` does not reach Pages Function responses (subscribe.js says why),
@@ -53,7 +54,7 @@ const text = (form, name) => {
 };
 
 export async function onRequestPost({ request, env }) {
-  if (!env.FEEDBACK || typeof env.FEEDBACK.fetch !== "function") return back("failed");
+  if (!env.PLATFORM || typeof env.PLATFORM.fetch !== "function") return back("failed");
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (!Number.isFinite(declared) || declared > MAX_FORM_BYTES) return back("too-large");
 
@@ -86,8 +87,8 @@ export async function onRequestPost({ request, env }) {
   headers.set("content-type", "application/json");
   let res;
   try {
-    res = await env.FEEDBACK.fetch(
-      new Request("https://feedback.internal/v1/feedback", { method: "POST", headers, body: JSON.stringify(report) }),
+    res = await env.PLATFORM.fetch(
+      new Request("https://platform.internal/v1/feedback", { method: "POST", headers, body: JSON.stringify(report) }),
     );
   } catch {
     return back("failed");

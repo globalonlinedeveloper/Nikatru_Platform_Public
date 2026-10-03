@@ -628,7 +628,7 @@ final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
     channel: AppConfig.releaseChannel,
     store: ref.watch(keyValueStoreProvider.future),
     transport: AppConfig.isBackendLive
-        ? DioFeedbackTransport()
+        ? DioFeedbackTransport(platformBaseUrl: kPlatformBaseUrl)
         : const core.UnavailableFeedbackTransport(),
     accessToken: ref.watch(authTokenProvider),
     userId: () => ref.read(authUserProvider).value?.id,

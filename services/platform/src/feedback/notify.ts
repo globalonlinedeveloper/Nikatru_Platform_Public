@@ -30,7 +30,7 @@ import emailJson from '../../../../tooling/i18n/messages/email.json';
 import registerJson from '../../../../tooling/i18n/locales.json';
 import type { MailTransport } from '../../../_shared/src/ports/mail';
 import type { SqlDb } from '../../../_shared/src/ports/sql';
-import { allRows, firstRow, run } from './d1';
+import { allRows, firstRow, run } from '../lib/d1';
 import { appendHistory } from './lifecycle';
 
 /**
@@ -43,7 +43,7 @@ import { appendHistory } from './lifecycle';
 export const MAX_NOTICES_PER_RUN = 20;
 
 /** Where the one-click unsubscribe link points: this Worker's own host. */
-export const FEEDBACK_LINK_ORIGIN = 'https://feedback.nikatru.com';
+export const FEEDBACK_LINK_ORIGIN = 'https://platform.nikatru.com';
 
 /** Each product's page, which carries its store and web links. A report from
  *  an app or extension not listed here links the home page. */
@@ -176,11 +176,7 @@ export async function runNotices(
     status_history: string | null;
   }>(
     db
-      .prepare(
-        "SELECT id, app_id, contact_email, fixed_version, diagnostics, status_history FROM feedback_reports " +
-          "WHERE status = 'fixed' AND notify_fixed = 1 AND contact_email IS NOT NULL AND notified_at IS NULL " +
-          'ORDER BY status_at LIMIT ?',
-      )
+      .prepare(`SELECT id, app_id, contact_email, fixed_version, diagnostics, status_history FROM feedback_reports WHERE status = 'fixed' AND notify_fixed = 1 AND contact_email IS NOT NULL AND notified_at IS NULL ORDER BY status_at LIMIT ?`)
       .bind(MAX_NOTICES_PER_RUN),
   );
   for (const r of rows) {
@@ -195,10 +191,7 @@ export async function runNotices(
     const history = appendHistory(r.status_history, { from: 'fixed', to: 'notified', at, by: 'cron' });
     const claim = await run(
       db
-        .prepare(
-          "UPDATE feedback_reports SET status = 'notified', status_at = ?, notified_at = ?, unsubscribe_hash = ?, status_history = ? " +
-            "WHERE id = ? AND status = 'fixed' AND notified_at IS NULL",
-        )
+        .prepare(`UPDATE feedback_reports SET status = 'notified', status_at = ?, notified_at = ?, unsubscribe_hash = ?, status_history = ? WHERE id = ? AND status = 'fixed' AND notified_at IS NULL`)
         .bind(at, at, await sha256Hex(token), history, r.id),
     );
     if (claim.meta.changes !== 1) continue;

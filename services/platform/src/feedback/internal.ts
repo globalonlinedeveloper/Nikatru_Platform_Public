@@ -16,15 +16,15 @@
 // already uses for D1 (lane feedback-triage's tooling/feedback/pull.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { allRows, firstRow } from './lib/d1';
-import type { Env } from './types';
+import { allRows, firstRow } from '../lib/d1';
+import type { Env } from '../types';
 
 const REPORT_ID = /^FB-[0-9A-Z]{10}$/;
 
 export interface ExportedReport {
   id: string;
   app_id: string;
-  app_version: string | null;
+  reported_version: string | null;
   surface: string;
   category: string;
   description: string;
@@ -43,10 +43,7 @@ export interface ExportedReport {
 export async function reportsOf(env: Env, userId: string): Promise<ExportedReport[]> {
   if (typeof userId !== 'string' || userId === '') return [];
   return allRows<ExportedReport>(
-    env.PLATFORM_DB.prepare(
-      'SELECT id, app_id, app_version, surface, category, description, steps, diagnostics, contact_email, reply_ok, ' +
-        'notify_fixed, screenshot_key, status, created_at, purge_at FROM feedback_reports WHERE user_id = ? ORDER BY created_at DESC',
-    ).bind(userId),
+    env.PLATFORM_DB.prepare(`SELECT id, app_id, reported_version, surface, category, description, steps, diagnostics, contact_email, reply_ok, notify_fixed, screenshot_key, status, created_at, purge_at FROM feedback_reports WHERE user_id = ? ORDER BY created_at DESC`).bind(userId),
   );
 }
 

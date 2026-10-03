@@ -1,35 +1,34 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// harness.ts — the feedback Worker under test, over the SHIPPED schema.
+// feedback-harness.ts — the platform Worker's "Report a problem" routes under
+// test (lanes feedback-intake and feedback-triage), over the SHIPPED schema.
 //
-// The tables are platform_db's, so the schema is services/platform's own
-// migrations imported `?raw` (0003 the heartbeat table this Worker's cron writes,
-// 0025 the intake's), run on the SQL port's node:sqlite engine; the bucket is the
-// object port's memory fake. Nothing here is a copy of a schema.
+// platform_db is the real migration set on the SQL port's node:sqlite engine
+// (realPlatformDb, test/harness.ts); the bucket is the object port's memory
+// fake; CONFIG_KV (the orphan sweep's cursor) the KV port's. Nothing here is a
+// copy of a schema.
 // ─────────────────────────────────────────────────────────────────────────────
-import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
 import { memoryObjects, type MemoryObjects } from '../../_shared/src/ports/fakes/objects';
+import { memoryKv } from '../../_shared/src/ports/fakes/kv';
 import { memoryRateLimiter } from '../../_shared/src/ports/fakes/ratelimit';
-import cronHeartbeat0003 from '../../platform/migrations/0003_cron_heartbeat.sql?raw';
-import feedback0025 from '../../platform/migrations/0025_feedback.sql?raw';
 import type { Env } from '../src/types';
-
-export const FEEDBACK_SCHEMA: readonly string[] = [cronHeartbeat0003, feedback0025];
+import { realPlatformDb, type RealDb } from './harness';
 
 export interface Harness {
   env: Env;
-  db: SqliteDb;
+  db: RealDb;
   bucket: MemoryObjects;
 }
 
 export function harness(over: Partial<Env> = {}): Harness {
-  const db = new SqliteDb(FEEDBACK_SCHEMA);
+  const db = realPlatformDb();
   const bucket = memoryObjects();
   const env = {
     PLATFORM_DB: db,
     SCREENSHOTS: bucket,
+    CONFIG_KV: memoryKv(),
     FEEDBACK_EDGE_LIMITER: memoryRateLimiter({ budget: 1000 }),
     JWKS_CACHE: { get: async () => null, put: async () => {}, delete: async () => {}, list: async () => ({ keys: [], list_complete: true }) },
-    APP_ID: 'feedback',
+    APP_ID: 'platform',
     SUPABASE_URL: 'https://id.example.test',
     API_VERSION: 'v1',
     ALLOWED_ORIGINS: 'https://nikatru.com',

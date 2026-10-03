@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// The closed category set `POST /v1/feedback` accepts
-/// (services/feedback/src/lib/limits.ts `CATEGORIES`). The wire name is the
+/// (services/platform/src/feedback/limits.ts `CATEGORIES`). The wire name is the
 /// enum's name.
 enum FeedbackCategory {
   bug,
@@ -135,7 +135,7 @@ class FeedbackDiagnostics {
 bool canSubmitReport(String description) => description.trim().isNotEmpty;
 
 /// The report JSON exactly as `POST /v1/feedback` reads it
-/// (services/feedback/src/lib/report.ts). The contact address rides ONLY with
+/// (services/platform/src/feedback/report.ts). The contact address rides ONLY with
 /// "you may reply to me", and only when signed out (the Worker takes a
 /// signed-in person's address from their session).
 Map<String, Object?> buildReport({
@@ -160,7 +160,8 @@ Map<String, Object?> buildReport({
     if (steps.trim().isNotEmpty) 'steps': steps.trim(),
     'diagnostics': diagnostics.toJson(),
     'consent': <String, Object?>{'reply': reply, 'notifyFixed': notifyFixed},
-    if (reply && typedEmail.isNotEmpty) 'contactEmail': typedEmail,
+    if ((reply || notifyFixed) && typedEmail.isNotEmpty)
+      'contactEmail': typedEmail,
     'elapsedMs': elapsedMs,
   };
 }

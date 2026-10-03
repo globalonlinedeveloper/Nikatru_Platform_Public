@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 /// One "Report a problem" report, as the feedback Worker's
-/// `POST /v1/feedback` takes it (services/feedback/src/lib/report.ts). Lane
+/// `POST /v1/feedback` takes it (services/platform/src/feedback/report.ts). Lane
 /// feedback-intake.
 ///
 /// [report] is the JSON the person saw in the preview, key for key: the

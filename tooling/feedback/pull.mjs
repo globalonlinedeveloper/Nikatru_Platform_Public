@@ -7,7 +7,7 @@
 // RUNS ON THE LEAD'S LAPTOP, never in CI: it reads `feedback_reports` from the
 // LIVE platform_db and the screenshots from the private bucket, through the
 // Cloudflare credential wrangler already holds there for D1 (no new secret).
-// Wrangler is run as `node <wrangler.js>` from services/feedback's own install,
+// Wrangler is run as `node <wrangler.js>` from services/platform's own install,
 // never through a shebang or a `.sh` shim, so the same command works on Windows.
 //
 // WHAT IT WRITES, and only into --out:
@@ -37,7 +37,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { insideGitTree, loadConfig, pathFor, ROOT } from './lib.mjs';
 
-export const WORKER_DIR = path.join(ROOT, 'services', 'feedback');
+export const WORKER_DIR = path.join(ROOT, 'services', 'platform');
 export const WRANGLER_JS = path.join(WORKER_DIR, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 export const DATABASE = 'platform_db';
 export const BUCKET = 'nikatru-feedback';
@@ -45,12 +45,12 @@ export const BUCKET = 'nikatru-feedback';
 /** The one query. No `contact_email`, no `user_id`: triage reads neither. */
 export function reportsQuery(limit) {
   return (
-    'SELECT id, app_id, app_version, surface, category, description, steps, diagnostics, created_at, screenshot_key ' +
+    'SELECT id, app_id, reported_version, surface, category, description, steps, diagnostics, created_at, screenshot_key ' +
     `FROM feedback_reports WHERE status = 'new' ORDER BY created_at LIMIT ${Number(limit)}`
   );
 }
 
-/** Wrangler, as `node <wrangler.js> …` in services/feedback. Returns { status, stdout }. */
+/** Wrangler, as `node <wrangler.js> …` in services/platform. Returns { status, stdout }. */
 export function wranglerRunner(args) {
   const r = spawnSync(process.execPath, [WRANGLER_JS, ...args], { cwd: WORKER_DIR, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status ?? 1, stdout: r.stdout ?? '' };
@@ -109,7 +109,7 @@ export function pull(opts, deps = {}) {
     return {
       id: r.id,
       app: r.app_id,
-      version: r.app_version,
+      version: r.reported_version,
       surface: r.surface,
       category: r.category,
       description: r.description,

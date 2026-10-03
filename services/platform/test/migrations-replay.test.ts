@@ -223,7 +223,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       'feature_set_members',
       'feature_sets',
       // ⏱ 2026-10-03 · migration 0025 — the "Report a problem" intake (lane
-      // feedback-intake), written by services/feedback.
+      // feedback-intake), written by src/routes/feedback.ts.
       'feedback_counts',
       // ⏱ 2026-10-03 · lane feedback-triage: the unsubscribe list.
       'feedback_mail_suppressed',

@@ -10,7 +10,7 @@
      report form on nikatru.com's /support page, with the extension's OWN state
      filled in. The person writes the description there, sees exactly what is
      sent, and sends it; the site's same-origin Pages Function forwards it to the
-     private intake (services/feedback). So the extension itself makes NO network
+     private intake (the platform Worker's POST /v1/feedback). So the extension itself makes NO network
      call (policy-check gate 1 stays "zero network") and asks for no permission.
 
    WHAT THE LINK MAY CARRY — a closed list, built here and nowhere else

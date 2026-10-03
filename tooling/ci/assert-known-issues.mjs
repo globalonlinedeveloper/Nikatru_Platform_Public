@@ -24,9 +24,10 @@
 // file could not be read). Zero files is a valid, printed answer: the help
 // centre then says "No known issues".
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 export const DIR = 'content/known-issues';
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
@@ -82,7 +83,7 @@ export function checkKnownIssue(name, text) {
 export function run(root) {
   const dir = path.join(root, DIR);
   if (!existsSync(dir)) return { code: 2, lines: [`assert-known-issues: COVERAGE LOST — ${DIR}/ does not exist`] };
-  const files = readdirSync(dir).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
+  const files = listDir(dir).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
   const findings = [];
   for (const f of files) {
     let text;

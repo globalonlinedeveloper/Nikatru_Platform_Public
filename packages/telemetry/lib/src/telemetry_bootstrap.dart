@@ -36,10 +36,7 @@ class TelemetryBootstrap {
       return const NoOpTelemetryClient();
     }
 
-    await SentryFlutter.init(
-      optionsCallback(config),
-      appRunner: appRunner,
-    );
+    await SentryFlutter.init(optionsCallback(config), appRunner: appRunner);
 
     return const SentryTelemetryClient();
   }
@@ -84,10 +81,13 @@ class TelemetryBootstrap {
     options.tracesSampleRate = config.tracesSampleRate;
     // Belt and braces: never attach default PII (ip address, ...).
     options.sendDefaultPii = false;
-    options.beforeSend = (event, hint) {
-      remember(event);
-      return bound.tryAcquire() ? scrubEvent(event) : null;
-    };
+    options.beforeSend = (event, hint) =>
+        bound.tryAcquire() ? scrubEvent(event) : null;
+    // What a "Report a problem" report may carry is read by an event
+    // processor, BEFORE beforeSend — so beforeSend stays the one PII choke
+    // point (assert-glitchtip-no-ip), and the processor keeps only an
+    // exception's TYPE and the event id, never a value (lane feedback-intake).
+    options.addEventProcessor(_RecentActivityProcessor());
     // The opt-in "logs" of a "Report a problem" report are these breadcrumbs,
     // kept on the device (RecentActivity) and scrubbed again when read.
     options.beforeBreadcrumb = (crumb, hint) {
@@ -287,4 +287,15 @@ class TelemetryBootstrap {
   static TelemetryClient clientFor(TelemetryConfig config) => config.enabled
       ? const SentryTelemetryClient()
       : const NoOpTelemetryClient();
+}
+
+/// Hands each event to [TelemetryBootstrap.remember] and passes it on
+/// unchanged. Runs only where crash reporting is on, so without consent
+/// nothing reaches [RecentActivity].
+class _RecentActivityProcessor implements EventProcessor {
+  @override
+  SentryEvent? apply(SentryEvent event, Hint hint) {
+    TelemetryBootstrap.remember(event);
+    return event;
+  }
 }
