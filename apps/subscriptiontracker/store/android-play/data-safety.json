@@ -254,7 +254,7 @@
       "and the app branches on them at four places that decide everything this form asks about:",
       "  providers/auth.dart:195          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:92  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
-      "  analytics_providers.dart:552  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
+      "  analytics_providers.dart:560  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:469                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
       "⚠️ THOSE FOUR LINE NUMBERS WERE RE-MEASURED 2026-08-10 AND THREE OF THEM WERE WRONG — the two",
@@ -449,10 +449,14 @@
       "evidence": [
         "packages/core/lib/src/auth/auth_models.dart",
         "packages/auth_supabase/lib/src/supabase_auth_repository.dart",
-        "apps/subscriptiontracker/lib/features/settings/settings_screen.dart"
+        "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
+        "packages/feedback/lib/src/privacy_rights_page.dart",
+        "services/platform/src/routes/account-nominee.ts"
       ],
-      "inventoryRows": [],
-      "basis": "⏱ CORRECTED 2026-09-25 · O-OAUTH-NAME-UNDECLARED. This row said 'not collected' on the ground that there was no name field anywhere in the app and that packages/core/lib/src/auth/auth_models.dart carried id and email only. Neither was still true: AuthUser carries `displayName`, packages/auth_supabase/lib/src/supabase_auth_repository.dart reads it from the Supabase user-metadata key `full_name` and `updateProfile` writes it there, and the Settings screen (apps/subscriptiontracker/lib/features/settings/settings_screen.dart, `_editProfile`) lets the user type or change it. The user can enter the name in Settings, and it comes from the Apple profile when the user chooses Sign in with Apple. OPTIONAL: an account needs no name and email sign-in never asks for one. ACCOUNT MANAGEMENT only. NOT SHARED: Supabase is a service provider processing on our behalf. FALSE under demo because InMemoryAuthRepository never opens a socket. Sign in with Google is built and OFF in this build (`AuthProviders.configured` says google: false); the row is declared now because Sign in with Apple and the Settings edit already reach it. ⚠️ platform_db.provider_notifications ALSO holds a buyer's name verbatim, and stays excluded: see `inventory.notFromThisApp` — that row is written by a merchant-of-record webhook arriving server-to-server from the provider, not by anything transmitted from this app, which is what Play's `collected` definition is about. ⏱ 2026-09-26: Sign in with Google is ON (`AuthProviders.configured` google: true, this PR), so the name can also come from the Google profile (`full_name`) when the user chooses Sign in with Google; the declaration itself is unchanged."
+      "inventoryRows": [
+        "table:platform_db.privacy_nominees"
+      ],
+      "basis": "⏱ CORRECTED 2026-09-25 · O-OAUTH-NAME-UNDECLARED. This row said 'not collected' on the ground that there was no name field anywhere in the app and that packages/core/lib/src/auth/auth_models.dart carried id and email only. Neither was still true: AuthUser carries `displayName`, packages/auth_supabase/lib/src/supabase_auth_repository.dart reads it from the Supabase user-metadata key `full_name` and `updateProfile` writes it there, and the Settings screen (apps/subscriptiontracker/lib/features/settings/settings_screen.dart, `_editProfile`) lets the user type or change it. The user can enter the name in Settings, and it comes from the Apple profile when the user chooses Sign in with Apple. OPTIONAL: an account needs no name and email sign-in never asks for one. ACCOUNT MANAGEMENT only. NOT SHARED: Supabase is a service provider processing on our behalf. FALSE under demo because InMemoryAuthRepository never opens a socket. Sign in with Google is built and OFF in this build (`AuthProviders.configured` says google: false); the row is declared now because Sign in with Apple and the Settings edit already reach it. ⚠️ platform_db.provider_notifications ALSO holds a buyer's name verbatim, and stays excluded: see `inventory.notFromThisApp` — that row is written by a merchant-of-record webhook arriving server-to-server from the provider, not by anything transmitted from this app, which is what Play's `collected` definition is about. ⏱ 2026-09-26: Sign in with Google is ON (`AuthProviders.configured` google: true, this PR), so the name can also come from the Google profile (`full_name`) when the user chooses Sign in with Google; the declaration itself is unchanged. ⏱ 2026-10-03 · lane dpdp-rights: the name of the one nominee an account names (privacy_nominees, DPDP Act s.14), set on the app's \"Your privacy rights\" screen."
     },
     {
       "category": "Personal info",
@@ -482,12 +486,16 @@
       "evidence": [
         "apps/subscriptiontracker/lib/features/auth/login_screen.dart",
         "packages/auth_supabase/lib/src/supabase_auth_repository.dart",
-        "packages/auth_supabase/lib/src/secure_session_storage.dart"
+        "packages/auth_supabase/lib/src/secure_session_storage.dart",
+        "packages/feedback/lib/src/privacy_rights_page.dart",
+        "services/platform/src/routes/account-nominee.ts"
       ],
       "inventoryRows": [
-        "table:platform_db.feedback_mail_suppressed"
+        "table:platform_db.feedback_mail_suppressed",
+        "table:platform_db.privacy_requests",
+        "table:platform_db.privacy_nominees"
       ],
-      "basis": "Under backend-live the address is sent to Supabase GoTrue on sign-in, sign-up and password reset, and the session it returns is held on device under the key `nikatru.auth.session` in OS-backed secure storage. REQUIRED, because there is no way to use an account without one. NOT SHARED: Supabase is a service provider processing on our behalf, which Play's own definition excludes from `shared`. Under `demo` the app resolves `InMemoryAuthRepository` (packages/auth_supabase/lib/src/in_memory_auth_repository.dart), which never opens a socket, so the address never leaves the device. ⚠️ The address is never attached to an analytics event or a crash report: packages/core/lib/src/analytics/analytics.dart:64-90 caps params to enumerable scalars, and packages/telemetry/lib/src/pii_scrubber.dart redacts email addresses out of every crash surface it reaches. ⏱ 2026-10-03 · lanes feedback-intake/-triage: \"Report a problem\" stores an address only when the person ticks \"you may reply to me\" or \"tell me when it is fixed\" (services/platform/src/routes/feedback.ts contactOf), and mails it at most a receipt and one \"fixed in\" notice; pressing unsubscribe keeps only a SHA-256 of the address in table:platform_db.feedback_mail_suppressed so it is never mailed again (services/platform/src/feedback/notify.ts)."
+      "basis": "Under backend-live the address is sent to Supabase GoTrue on sign-in, sign-up and password reset, and the session it returns is held on device under the key `nikatru.auth.session` in OS-backed secure storage. REQUIRED, because there is no way to use an account without one. NOT SHARED: Supabase is a service provider processing on our behalf, which Play's own definition excludes from `shared`. Under `demo` the app resolves `InMemoryAuthRepository` (packages/auth_supabase/lib/src/in_memory_auth_repository.dart), which never opens a socket, so the address never leaves the device. ⚠️ The address is never attached to an analytics event or a crash report: packages/core/lib/src/analytics/analytics.dart:64-90 caps params to enumerable scalars, and packages/telemetry/lib/src/pii_scrubber.dart redacts email addresses out of every crash surface it reaches. ⏱ 2026-10-03 · lanes feedback-intake/-triage: \"Report a problem\" stores an address only when the person ticks \"you may reply to me\" or \"tell me when it is fixed\" (services/platform/src/routes/feedback.ts contactOf), and mails it at most a receipt and one \"fixed in\" notice; pressing unsubscribe keeps only a SHA-256 of the address in table:platform_db.feedback_mail_suppressed so it is never mailed again (services/platform/src/feedback/notify.ts). ⏱ 2026-10-03 · lane dpdp-rights: the address a rights request is answered at (privacy_requests.contact_email), and the address of the one nominee an account names (privacy_nominees, DPDP Act s.14)."
     },
     {
       "category": "Personal info",
@@ -1312,17 +1320,20 @@
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
-  "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
-  "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-  "packages/feedback/lib/src/report_page.dart",
-  "services/platform/src/routes/feedback.ts"
-],
+        "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "packages/feedback/lib/src/report_page.dart",
+        "services/platform/src/routes/feedback.ts",
+        "packages/feedback/lib/src/privacy_rights_page.dart",
+        "services/platform/src/feedback/privacy.ts"
+      ],
       "inventoryRows": [
-  "table:subscriptiontracker_db.subscriptions",
-  "table:platform_db.feedback_reports",
-  "r2:nikatru-feedback"
-],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:707). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS. ⏱ 2026-10-03 · lane feedback-intake: \"Report a problem\" (Settings > Help, packages/feedback) is a SECOND source of this type, and it is OPTIONAL — the person chooses to send it. It carries what they typed (description and steps, PII-masked by the Worker before storage) and, only if they switch it on, one screenshot of the app with every text field and every Sensitive widget painted over on the device before it is sent. Under backend-live both are stored by the platform Worker's POST /v1/feedback (services/platform/src/routes/feedback.ts) (platform_db.feedback_reports and the private bucket nikatru-feedback) for 90 days; under demo the transport is UnavailableFeedbackTransport and nothing is transmitted. The row stays `required: true` for the subscription name above; the report is never a condition of using the app. The screenshot is declared HERE, not under Photos and videos: it is a picture of this app's own screen that the person chose to attach, never an image from their photo library, and the app requests no media permission (see clientAbsence on that row)."
+        "table:subscriptiontracker_db.subscriptions",
+        "table:platform_db.feedback_reports",
+        "r2:nikatru-feedback",
+        "table:platform_db.privacy_requests"
+      ],
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:707). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS. ⏱ 2026-10-03 · lane feedback-intake: \"Report a problem\" (Settings > Help, packages/feedback) is a SECOND source of this type, and it is OPTIONAL — the person chooses to send it. It carries what they typed (description and steps, PII-masked by the Worker before storage) and, only if they switch it on, one screenshot of the app with every text field and every Sensitive widget painted over on the device before it is sent. Under backend-live both are stored by the platform Worker's POST /v1/feedback (services/platform/src/routes/feedback.ts) (platform_db.feedback_reports and the private bucket nikatru-feedback) for 90 days; under demo the transport is UnavailableFeedbackTransport and nothing is transmitted. The row stays `required: true` for the subscription name above; the report is never a condition of using the app. The screenshot is declared HERE, not under Photos and videos: it is a picture of this app's own screen that the person chose to attach, never an image from their photo library, and the app requests no media permission (see clientAbsence on that row). ⏱ 2026-10-03 · lane dpdp-rights: a privacy rights request's own words (correction, grievance, withdrawal) typed on the app's \"Your privacy rights\" screen, stored in platform_db.privacy_requests until 400 days after it is closed."
     },
     {
       "category": "App activity",
@@ -1424,13 +1435,13 @@
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
-  "packages/telemetry/lib/src/telemetry_bootstrap.dart",
-  "packages/telemetry/lib/src/telemetry_config.dart",
-  "packages/feedback/lib/src/report.dart"
-],
+        "packages/telemetry/lib/src/telemetry_bootstrap.dart",
+        "packages/telemetry/lib/src/telemetry_config.dart",
+        "packages/feedback/lib/src/report.dart"
+      ],
       "inventoryRows": [
-  "table:platform_db.feedback_reports"
-],
+        "table:platform_db.feedback_reports"
+      ],
       "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. 📌 THE CONTENTS ARE NO LONGER A 'WHATEVER IT CONTAINS' — this used to end by saying the identifier half was `null` under Device or other IDs and written up in `unresolved`. Both were settled on 2026-08-04 by reading the pinned SDK (see `resolved` and `crashSdkSurface`). sentry-android 8.51.0 DeviceInfoUtil.collectDeviceInformation sets manufacturer, brand, family, model, modelId, archs, chipset, orientation, simulator, screen width/height/density/dpi, boot time, timezone, locale, processor count/frequency and total memory — every one of which is diagnostic data leaving the device, so this answer stays `true`. The one field that is an IDENTIFIER rather than a characteristic is `device.id`, and it is now declared under Device or other IDs (true in both postures) rather than kept as an open question. ⏱ 2026-10-03 · lane feedback-intake: a \"Report a problem\" report also carries diagnostics the person sees in its preview before sending (app version, build, channel, platform, device CLASS, locale, text scale, theme, recent error CODES, the last crash's event id where crash reporting is on, and scrubbed log lines only if they tick that box), stored with the report in platform_db.feedback_reports for 90 days. No device model or identifier: the Worker refuses any key it does not know."
     },
     {
@@ -1663,8 +1674,8 @@
       "table:platform_db.provider_payment_links": "⏱ 2026-10-02 · PR #1149. Derived server-side from a Razorpay `subscription.charged` notification: the payment id, the subscription it charged and the account id, so a later refund resolves its subscription. Server-to-server from the provider; not transmitted by this app. Same reasoning as provider_notifications, and held by the same flag in `notFromThisAppWhile`.",
       "table:platform_db.unclaimed_payments": "Written when a payment arrives that cannot be attributed. Server-to-server from the provider; not transmitted by this app.",
       "table:platform_db.bundle_grants": "The record of a BUNDLE PURCHASE, written by services/platform from a merchant-of-record notification or a server-side receipt pull — never on a client claim, which is the whole design ([ADR 057]; the bundle entitlement design, 2026-09-09 §3.2). It holds the Supabase `sub`, which rail the purchase came from, and the dates that bound access; it holds no name, no email and no payment instrument. NOTHING LEAVES THE DEVICE TO PRODUCE IT: this app has no bundle purchase surface, and the bundle is not purchasable at all today — the derived gate in tooling/bundle-availability.mjs answers false because exactly one product is `live`. ⚠️ WHEN A BUNDLE PURCHASE SURFACE SHIPS IN THIS APP this exclusion becomes false and the row must move into the Purchase-history answer, exactly as table:platform_db.entitlements did with P2.4b. 🔴 AND ONE STEP EARLIER THAN THAT: a purchase made through Play Billing would be reported to this backend by GOOGLE, not by the app, so even then the question the form asks — what the APP collects — has to be asked again rather than answered by analogy.",
-    "table:platform_db.cancellation_requests": "Written by POST /v1/plan/cancel on the shared platform Worker. This app has no cancel SURFACE — nothing in this app calls that route (the manage-plan screen that will arrives with P2.6a; nikatru_purchases became a dependency in P2.4b but has zero call sites). When the surface lands, this exclusion becomes false and must move into an answer row — the same rule that already moved table:platform_db.entitlements into the Purchase-history row with P2.4b.",
-    "table:platform_db.content_reports": "Written by POST /v1/report on the shared platform Worker (O-PLAY-AI-CONTENT-REPORTING). SubscriptionTracker generates no content with AI, so it shows no report control and nothing in this app calls that route. When an app that generates AI content ships, ITS Data safety form must move this into an answer row (User-generated content / App interactions), not exclude it.",
+      "table:platform_db.cancellation_requests": "Written by POST /v1/plan/cancel on the shared platform Worker. This app has no cancel SURFACE — nothing in this app calls that route (the manage-plan screen that will arrives with P2.6a; nikatru_purchases became a dependency in P2.4b but has zero call sites). When the surface lands, this exclusion becomes false and must move into an answer row — the same rule that already moved table:platform_db.entitlements into the Purchase-history row with P2.4b.",
+      "table:platform_db.content_reports": "Written by POST /v1/report on the shared platform Worker (O-PLAY-AI-CONTENT-REPORTING). SubscriptionTracker generates no content with AI, so it shows no report control and nothing in this app calls that route. When an app that generates AI content ships, ITS Data safety form must move this into an answer row (User-generated content / App interactions), not exclude it.",
       "table:platform_db.signups": "⏱ 2026-09-15 · [ADR 087]. The nikatru.com launch-notification list (email address and signup time), written by sites/nikatru/functions/api/subscribe.js from a form on the website into platform_db. Not reachable from any app build: the only writer is the Pages Function, and no app route reads or writes the table.",
       "kv:nikatru-signups": "The nikatru.com website's signup rate-limit counter: since [ADR 087] (2026-09-15) only `rl:` keys — a salted one-way fingerprint of the requesting network address, one-hour expiry, no email — written by sites/nikatru/functions/api/subscribe.js. The launch-notification list itself moved to `table:platform_db.signups` above. Not reachable from any app build.",
       "kv:d73cf5ffd0fd4d8396012fccd15906ad": "THE SAME STORE AS `kv:nikatru-signups` ABOVE, SEEN FROM A SECOND BINDING, and excluded for the same reason: it is the website's launch-notification list and no app build can reach it. It became a second row on 2026-09-05 when services/platform bound the namespace READ-ONLY so the nightly export could back it up; the two walks that find it derive different ids for one namespace, and the Pages id could not be renamed because THIS FILE cites it verbatim.",

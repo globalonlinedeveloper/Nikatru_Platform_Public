@@ -1006,10 +1006,12 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-03 · lane feedback-intake. MEASURED, not chosen: 3 reachable
     // surfaces (ReportProblemPage, MarkupEditorPage, ShotPreview), all 3 swept by
     // test/a11y_report_test.dart's 3 cases (tap target, label, contrast each).
+    // ⏱ 2026-10-03 · lane dpdp-rights: 3 -> 5 surfaces, PrivacyRightsPage and
+    // PrivacyRightPage, both swept by test/a11y_privacy_rights_test.dart's 2 cases.
     dir: 'packages/feedback',
-    surfaces: 3,
-    a11yFiles: 1,
-    cases: 3,
+    surfaces: 5,
+    a11yFiles: 2,
+    cases: 5,
     label: 'the "Report a problem" sheet, its markup editor and its screenshot preview, mounted by every app',
   },
   // ⏱ 2026-10-01 · T16 XP-03: the app lock, derived as a root the day it
