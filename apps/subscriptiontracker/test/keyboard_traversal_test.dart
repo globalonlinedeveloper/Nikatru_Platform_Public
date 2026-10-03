@@ -171,7 +171,7 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 3130 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3200 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
@@ -197,7 +197,10 @@ import 'support/width_harness.dart';
 // short at 3080 on its own branch. Merged over T16 XP-03 the two growths
 // together are 38 px short at 3080 — measured by [_everythingIsLaidOut] on the
 // merged tree — so 3130 holds both and stays.
-const Size kKeyboardSurface = Size(1079, 3130);
+// ⏱ 2026-10-03 · club-rt-rights (lane dpdp-rights): 3130 -> 3200. The Privacy
+// card's "Your privacy rights" row scrolled Settings by 53 px at 3130 —
+// measured by [_everythingIsLaidOut].
+const Size kKeyboardSurface = Size(1079, 3200);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -715,8 +718,10 @@ void main() {
         // sweep for the signed-in account rows, where it is wired.
         // ⏱ 2026-10-03 · help-search: 36 -> 37 and 33 -> 34 — the Help card's
         // "Help centre" _LinkRow, wired and in the orbit.
-        controls: 37 + core.Money.symbols.length,
-        reachable: 34 + core.Money.symbols.length,
+        // ⏱ 2026-10-03 · club-rt-rights (dpdp-rights): 37 -> 38 and 34 -> 35 —
+        // the Privacy card's "Your privacy rights" row, wired and in the orbit.
+        controls: 38 + core.Money.symbols.length,
+        reachable: 35 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,
