@@ -4,6 +4,7 @@ import { nowIso } from '../lib/d1';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { requestGeo } from '../../../_shared/src/geo';
+import type { SqlStatement } from '../../../_shared/src/ports/sql';
 // ONE registry predicate for the whole Worker. `routes/config.ts`,
 // `routes/entitlements.ts` and both write routes here now ask the same question
 // of the same source — an app the shared server will answer for is one thing,
@@ -325,7 +326,7 @@ events.post('/events', async (c) => {
 
   // Each bound row keeps the install it belongs to, so the consent verdict
   // below can drop exactly the rows it refuses and no others.
-  const rows: Array<{ anonId: string; stmt: D1PreparedStatement }> = [];
+  const rows: Array<{ anonId: string; stmt: SqlStatement }> = [];
   for (const e of list as AnalyticsEvent[]) {
     const eventId = str(e?.event_id, MAX_ID_LEN);
     const name = str(e?.event, MAX_EVENT_NAME_LEN);
@@ -435,7 +436,7 @@ events.post('/events', async (c) => {
  * in ONE query. See the block above `CONSENT_NOT_RECORDED` for the rule.
  */
 async function consentVerdicts(
-  lookup: D1PreparedStatement,
+  lookup: SqlStatement,
   appId: string,
   anonIds: readonly string[],
 ): Promise<Map<string, ConsentVerdict>> {
