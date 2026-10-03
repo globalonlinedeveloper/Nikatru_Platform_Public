@@ -168,6 +168,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // The ONE workflow parse (tooling/workflow-readers.json): ci-gate's needs, for the NOT CI-GATE line.
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
+import { snapshotTree, restoreTree, describeRestore } from '../kit/stamp-sandbox.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const FAST = process.argv.includes('--fast');
@@ -551,6 +552,123 @@ export function untrackedLeg({ root = ROOT } = {}) {
   }
   if (repos.length && !plain.length) lines.push('  Fix: gitignore or move the embedded repository, then re-run.');
   return { code: 1, out: lines.join('\n') };
+}
+
+// ── 5 · the stamped probe's body (2026-10-03, fix-brick-stamp-outside-repo) ──
+
+/** Leg 5's body: stamp the throwaway probe IN the tree (assert-app-dod.mjs grades
+ *  it as a workspace member, so it cannot be stamped under os.tmpdir()), grade it,
+ *  and put the tree back in a FINALLY.
+ *  🔴 THE STAMP MUTATES TRACKED FILES — pubspec.yaml gains apps/probe as a
+ *  workspace member, post_gen RENDERS catalog/apps.json and writes the channel
+ *  register, the store folders and more. Until 2026-10-03 this leg put back three
+ *  NAMED files (catalog/apps.json joined the list only after TRAPS ci-30), not in
+ *  a finally, so a throw left the stamp behind, and every file post_gen writes
+ *  that the list did not name stayed changed: guards that list apps/ then read
+ *  the probe as a real app. The restore is measured by git now
+ *  (tooling/kit/stamp-sandbox.mjs): whatever this run changed goes back, a
+ *  person's own uncommitted edit is kept as they left it, and a stamp that
+ *  cannot be snapshotted is never made. `root` and `runner` are injectable for
+ *  tooling/ci/test/stamp-sandbox.test.mjs, which asserts `git status` is
+ *  unchanged afterwards on a real repository. */
+export function stampLeg({ root = ROOT, runner = run } = {}) {
+  let snap;
+  try {
+    snap = snapshotTree(root);
+  } catch (e) {
+    return { code: 1, out: `🔴 COVERAGE LOST — the tree could not be snapshotted before the stamp (${e.message}), so nothing was stamped: a stamp that cannot be put back is not made.` };
+  }
+  let verdict;
+  let restore;
+  try {
+    verdict = stampAndGrade(root, runner);
+  } catch (e) {
+    verdict = { code: 1, out: `🔴 THE STAMP THREW — graded as a failure:\n${e?.stack ?? e}` };
+  } finally {
+    try {
+      restore = restoreTree(snap);
+    } catch (e) {
+      restore = { restored: [], removed: [], left: [`the whole tree (${e.message})`] };
+    }
+  }
+  const line = `stamp-sandbox: ${describeRestore(restore)}`;
+  if (restore.left.length) return { code: 1, out: `${verdict.out}\n${line}` };
+  return { code: verdict.code, out: `${verdict.out}\n${line}` };
+}
+
+function stampAndGrade(root, runner) {
+  const pub = process.env.LOCALAPPDATA
+    ? `${process.env.LOCALAPPDATA}\\Pub\\Cache\\bin`
+    : `${process.env.HOME}/.pub-cache/bin`;
+  const env = { PATH: `${pub}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}` };
+  const mason = runner('mason', ['make', 'app', '-c', 'tooling/bricks/app/_probe_vars.json', '-o', '.', '--on-conflict', 'overwrite'], { env, cwd: root });
+  if (mason.code !== 0) return { code: 1, out: `mason stamp failed:\n${mason.out}` };
+  // 🔴 THE FORMAT HALF IS ADVISORY WHEN THE LOCAL SDK IS NOT THE CI PIN, and
+  // that is not caution — it is measured. `dart format`'s output is a
+  // function of the bundled `dart_style`, so a local Flutter that differs
+  // from `flutter-version:` in ci.yml disagrees with CI about files nobody
+  // has touched: on 2026-08-11, local 3.44.7 against the pinned 3.44.9
+  // reported 18 of 26 STAMPED files "changed" on a tree whose CI format leg
+  // was green — including on `main`, with no local edits at all. Hard-failing
+  // on that is a preflight that cries wolf, which is the failure this script
+  // exists to prevent (same calibration as leg 3).
+  // 🔴 THE PIN IS IN tooling/versions.json, AND READING IT FROM ci.yml MADE
+  // THIS WHOLE PROTECTION DEAD. Until 2026-09-12 this parsed
+  // `flutter-version:\s*([0-9.]+)` out of ci.yml. That key is not in ci.yml
+  // any more — it moved into .github/actions/setup-flutter/action.yml, where
+  // it is not even a literal (`flutter-version: ${{ steps.pin.outputs.flutter }}`,
+  // resolved by a step that reads tooling/versions.json). So `ciPin` was
+  // null, `skewed` was ALWAYS false, and the downgrade below could never
+  // fire: every format disagreement hard-failed, which is the cry-wolf this
+  // leg's own comment says it exists to avoid. MEASURED on merged main
+  // (81e43918): pin 3.47.2, local 3.44.9 — skewed, and reported as a hard
+  // failure anyway while CI's brick job was green on the same commit.
+  //
+  // ⚠️ AND A NULL PIN IS NOW LOUD RATHER THAN SILENT. That is the actual
+  // repair: "I cannot tell whether this machine agrees with CI" must not
+  // look like "this machine disagrees with CI". The same shape took
+  // guard-sweep.mjs's invocation matcher out of service on 2026-09-11 when
+  // `--single-threaded` was added to the lines it parses — a local script
+  // reading a moved workflow detail, failing closed into nonsense.
+  const PIN_FILE = 'tooling/versions.json';
+  let ciPin = null;
+  let pinError = null;
+  try {
+    const pinned = JSON.parse(readFileSync(resolve(root, PIN_FILE), 'utf8')).flutter;
+    if (typeof pinned === 'string' && pinned.trim()) ciPin = pinned.trim();
+    else pinError = `${PIN_FILE} carries no usable \`flutter\` version`;
+  } catch (e) {
+    pinError = `${PIN_FILE} could not be read (${e?.code ?? e?.message ?? e})`;
+  }
+  const localVer = (runner('flutter', ['--version'], { cwd: root }).out.match(/Flutter\s+([0-9.]+)/) || [])[1] ?? null;
+  const skewed = ciPin && localVer && ciPin !== localVer;
+  const fmt = runner('dart', ['format', '--output=none', '--set-exit-if-changed', 'apps/probe'], { cwd: root });
+  const dod = runner('node', ['tooling/ci/assert-app-dod.mjs'], { cwd: root });
+  // The pin could not be resolved, so the skew question was never answered.
+  // Say THAT, instead of presenting a formatting diff as the finding — a leg
+  // that blames the tree for its own blindness is how this one spent a month
+  // hard-failing on a green commit.
+  if (fmt.code !== 0 && pinError) {
+    fmt.out =
+      `🔴 COVERAGE LOST on the skew check — ${pinError}, so this leg cannot tell whether ` +
+      `local Flutter ${localVer ?? '(unknown)'} is CI's. The formatting diff below is NOT the finding; ` +
+      `the unresolvable pin is. Fix the pin lookup (CI reads it via .github/actions/setup-flutter) ` +
+      `before reading anything into these files.\n${fmt.out.split(/\r?\n/).slice(-3).join('\n')}`;
+    return { code: 1, out: fmt.out };
+  }
+  if (fmt.code !== 0 && skewed) {
+    // Report it, do not fail on it — and say WHY, so nobody "fixes" the
+    // formatting to satisfy a toolchain CI does not use.
+    fmt.code = 0;
+    // The FILE is named, not just the version. This line said "the ci.yml
+    // pin" while the pin had moved to tooling/versions.json — the same stale
+    // pointer that killed the check above, left in the message that explains
+    // it, which would send the next reader to a file with no pin in it.
+    fmt.out = `⬜ dart format disagrees on the stamped app, but local Flutter ${localVer} != the ${PIN_FILE} pin ${ciPin} (CI reads it via .github/actions/setup-flutter), so this machine's dart_style is not CI's. NOT failed. To make this leg trustworthy, match the pin: flutter version ${ciPin}.\n${fmt.out.split(/\r?\n/).slice(-3).join('\n')}`;
+  }
+  return fmt.code !== 0 || dod.code !== 0
+    ? { code: 1, out: `${fmt.code !== 0 ? `dart format (stamped):\n${fmt.out}\n` : ''}${dod.code !== 0 ? `assert-app-dod:\n${dod.out}` : ''}` }
+    : { code: 0, out: `${fmt.out}\n${dod.out}` };
 }
 
 // ── the backup's headroom: this machine's state (2026-09-26, header) ────────
@@ -1263,95 +1381,7 @@ if (!FAST) {
   step(
     STAMP_LEG,
     'CI stamps a throwaway probe and formats it; the brick template cannot be formatted directly, so this is the only place that check is real.',
-    () => {
-      const pub = process.env.LOCALAPPDATA
-        ? `${process.env.LOCALAPPDATA}\\Pub\\Cache\\bin`
-        : `${process.env.HOME}/.pub-cache/bin`;
-      const env = { PATH: `${pub}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}` };
-      const mason = run('mason', ['make', 'app', '-c', 'tooling/bricks/app/_probe_vars.json', '-o', '.', '--on-conflict', 'overwrite'], { env });
-      if (mason.code !== 0) return { code: 1, out: `mason stamp failed:\n${mason.out}` };
-      // 🔴 THE FORMAT HALF IS ADVISORY WHEN THE LOCAL SDK IS NOT THE CI PIN, and
-      // that is not caution — it is measured. `dart format`'s output is a
-      // function of the bundled `dart_style`, so a local Flutter that differs
-      // from `flutter-version:` in ci.yml disagrees with CI about files nobody
-      // has touched: on 2026-08-11, local 3.44.7 against the pinned 3.44.9
-      // reported 18 of 26 STAMPED files "changed" on a tree whose CI format leg
-      // was green — including on `main`, with no local edits at all. Hard-failing
-      // on that is a preflight that cries wolf, which is the failure this script
-      // exists to prevent (same calibration as leg 3).
-      // 🔴 THE PIN IS IN tooling/versions.json, AND READING IT FROM ci.yml MADE
-      // THIS WHOLE PROTECTION DEAD. Until 2026-09-12 this parsed
-      // `flutter-version:\s*([0-9.]+)` out of ci.yml. That key is not in ci.yml
-      // any more — it moved into .github/actions/setup-flutter/action.yml, where
-      // it is not even a literal (`flutter-version: ${{ steps.pin.outputs.flutter }}`,
-      // resolved by a step that reads tooling/versions.json). So `ciPin` was
-      // null, `skewed` was ALWAYS false, and the downgrade below could never
-      // fire: every format disagreement hard-failed, which is the cry-wolf this
-      // leg's own comment says it exists to avoid. MEASURED on merged main
-      // (81e43918): pin 3.47.2, local 3.44.9 — skewed, and reported as a hard
-      // failure anyway while CI's brick job was green on the same commit.
-      //
-      // ⚠️ AND A NULL PIN IS NOW LOUD RATHER THAN SILENT. That is the actual
-      // repair: "I cannot tell whether this machine agrees with CI" must not
-      // look like "this machine disagrees with CI". The same shape took
-      // guard-sweep.mjs's invocation matcher out of service on 2026-09-11 when
-      // `--single-threaded` was added to the lines it parses — a local script
-      // reading a moved workflow detail, failing closed into nonsense.
-      const PIN_FILE = 'tooling/versions.json';
-      let ciPin = null;
-      let pinError = null;
-      try {
-        const pinned = JSON.parse(readFileSync(resolve(ROOT, PIN_FILE), 'utf8')).flutter;
-        if (typeof pinned === 'string' && pinned.trim()) ciPin = pinned.trim();
-        else pinError = `${PIN_FILE} carries no usable \`flutter\` version`;
-      } catch (e) {
-        pinError = `${PIN_FILE} could not be read (${e?.code ?? e?.message ?? e})`;
-      }
-      const localVer = (run('flutter', ['--version']).out.match(/Flutter\s+([0-9.]+)/) || [])[1] ?? null;
-      const skewed = ciPin && localVer && ciPin !== localVer;
-      const fmt = run('dart', ['format', '--output=none', '--set-exit-if-changed', 'apps/probe']);
-      const dod = run('node', ['tooling/ci/assert-app-dod.mjs']);
-      // The pin could not be resolved, so the skew question was never answered.
-      // Say THAT, instead of presenting a formatting diff as the finding — a leg
-      // that blames the tree for its own blindness is how this one spent a month
-      // hard-failing on a green commit.
-      if (fmt.code !== 0 && pinError) {
-        fmt.out =
-          `🔴 COVERAGE LOST on the skew check — ${pinError}, so this leg cannot tell whether ` +
-          `local Flutter ${localVer ?? '(unknown)'} is CI's. The formatting diff below is NOT the finding; ` +
-          `the unresolvable pin is. Fix the pin lookup (CI reads it via .github/actions/setup-flutter) ` +
-          `before reading anything into these files.\n${fmt.out.split(/\r?\n/).slice(-3).join('\n')}`;
-        return { code: 1, out: fmt.out };
-      }
-      if (fmt.code !== 0 && skewed) {
-        // Report it, do not fail on it — and say WHY, so nobody "fixes" the
-        // formatting to satisfy a toolchain CI does not use.
-        fmt.code = 0;
-        // The FILE is named, not just the version. This line said "the ci.yml
-        // pin" while the pin had moved to tooling/versions.json — the same stale
-        // pointer that killed the check above, left in the message that explains
-        // it, which would send the next reader to a file with no pin in it.
-        fmt.out = `⬜ dart format disagrees on the stamped app, but local Flutter ${localVer} != the ${PIN_FILE} pin ${ciPin} (CI reads it via .github/actions/setup-flutter), so this machine's dart_style is not CI's. NOT failed. To make this leg trustworthy, match the pin: flutter version ${ciPin}.\n${fmt.out.split(/\r?\n/).slice(-3).join('\n')}`;
-      }
-      // 🔴 THE STAMP MUTATES TRACKED FILES — pubspec.yaml gains apps/probe as a
-      // workspace member, and the stamp writes apps/probe/app.yaml and RENDERS
-      // catalog/apps.json from every declaration in the tree. Left behind, a
-      // later `git add -A` commits the throwaway probe's registration.
-      //
-      // 🔴 `catalog/apps.json` WAS MISSING FROM THIS LIST AND THAT IS TRAPS ci-30
-      // IN FULL: the stamp wrote the catalogue, this leg did not put it back, and
-      // leg 6 below — "the checks did not edit the tree behind you" — then
-      // reported the file THIS SCRIPT had just changed. A preflight that fails
-      // its own last leg for its own edit is read as a broken tree, and the two
-      // "failures" get dismissed together. `sites/_shared/_data/apps.json` is
-      // kept beside it: it is generated FROM the catalogue, and it was on this
-      // list while its own source was not.
-      run('git', ['checkout', '--', 'pubspec.yaml', 'catalog/apps.json', 'sites/_shared/_data/apps.json']);
-      if (existsSync(resolve(ROOT, 'apps/probe'))) rmSync(resolve(ROOT, 'apps/probe'), { recursive: true, force: true });
-      return fmt.code !== 0 || dod.code !== 0
-        ? { code: 1, out: `${fmt.code !== 0 ? `dart format (stamped):\n${fmt.out}\n` : ''}${dod.code !== 0 ? `assert-app-dod:\n${dod.out}` : ''}` }
-        : { code: 0, out: `${fmt.out}\n${dod.out}` };
-    },
+    () => stampLeg(),
   );
 }
 

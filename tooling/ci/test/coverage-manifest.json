@@ -1058,6 +1058,9 @@
   "stamp-properties.test.mjs":
     30,
 
+  "stamp-sandbox.test.mjs":
+    11,
+
   "stamp-text-fidelity.test.mjs":
     44,
 
