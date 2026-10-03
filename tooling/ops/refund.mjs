@@ -171,18 +171,7 @@ function authHeader(provider, env) {
   return `Basic ${Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')}`;
 }
 
-export async function main(
-  argv,
-  {
-    env = process.env,
-    fetchImpl = globalThis.fetch,
-    out = (s) => process.stdout.write(s),
-    err = (s) => process.stderr.write(s),
-    now = () => new Date().toISOString(),
-    readLedger = (f) => readFileSync(f, 'utf8'),
-    appendLedger = (f, line) => appendFileSync(f, line),
-  } = {},
-) {
+export async function main(argv, { env = process.env, fetchImpl = globalThis.fetch, out = (s) => process.stdout.write(s), err = (s) => process.stderr.write(s), now = () => new Date().toISOString() } = {}) {
   if (env.GITHUB_ACTIONS === 'true') {
     err('✗ refund.mjs refuses to run in CI (GITHUB_ACTIONS=true): a refund is the owner\'s per-action yes, on the laptop.\n');
     return 2;
@@ -228,7 +217,7 @@ export async function main(
     err(`✗ ${missing.join(', ')} not set in this environment (load the vault keys by name). Nothing was sent.\n`);
     return 1;
   }
-  const seen = ledgerPrior(a.ledger, plan, token, { read: readLedger });
+  const seen = ledgerPrior(a.ledger, plan, token);
   if (seen.error) {
     err(`✗ ${seen.error}, so it cannot show this refund was not already made. Nothing was sent.\n`);
     return 2;
@@ -242,7 +231,7 @@ export async function main(
   }
   const reason = plan.body.reason ?? plan.body.notes?.reason;
   try {
-    appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund_intent', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason })}\n`);
+    appendFileSync(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund_intent', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason })}\n`);
   } catch (e) {
     err(`✗ the ledger would not take the intent line (${e?.code ?? 'error'}); no refund leaves without its ledger row. Nothing was sent.\n`);
     return 1;
@@ -264,11 +253,11 @@ export async function main(
     }
   } catch (e) {
     err(`✗ the ${plan.provider} call got no answer (${e?.name ?? 'error'}); check the rail's dashboard before any retry.\n`);
-    appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status: 'no_answer', refund_id: null })}\n`);
+    appendFileSync(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status: 'no_answer', refund_id: null })}\n`);
     return 1;
   }
   const ok = status >= 200 && status < 300;
-  appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status, refund_id: id })}\n`);
+  appendFileSync(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status, refund_id: id })}\n`);
   if (!ok) {
     err(`✗ ${plan.provider} answered ${status}; recorded in the ledger. Nothing more was sent.\n`);
     return 1;

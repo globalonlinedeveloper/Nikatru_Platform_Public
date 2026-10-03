@@ -13,7 +13,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -39,7 +39,7 @@ function harness(env = {}, answer = { data: { id: 'adj_01test' } }, io = {}) {
     if (io.noAnswer) throw new Error('socket hang up');
     return new Response(JSON.stringify(answer), { status: 201 });
   };
-  return { calls, out, err, run: (argv) => main(argv, { env: { PADDLE_API_KEY: 'pdl_sdbx_x', ...env }, fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s), now: () => '2026-10-02T00:00:00.000Z', ...io.deps }) };
+  return { calls, out, err, run: (argv) => main(argv, { env: { PADDLE_API_KEY: 'pdl_sdbx_x', ...env }, fetchImpl: io.fetchImpl ?? fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s), now: () => '2026-10-02T00:00:00.000Z' }) };
 }
 
 describe('tooling/ops/refund.mjs', () => {
@@ -148,18 +148,20 @@ describe('tooling/ops/refund.mjs', () => {
   test('🔴 the intent is written BEFORE the send; a ledger that will not take it sends nothing', async () => {
     const ledger = join(TMP, 'order.jsonl');
     const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
-    const order = [];
+    let atSend = null;
     const h = harness({}, undefined, {
-      deps: {
-        appendLedger: (f, line) => order.push(`append:${JSON.parse(line).kind}`),
-        fetchImpl: async () => (order.push('send'), new Response(JSON.stringify({ data: { id: 'adj_01x' } }), { status: 201 })),
+      fetchImpl: async () => {
+        atSend = readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind);
+        return new Response(JSON.stringify({ data: { id: 'adj_01x' } }), { status: 201 });
       },
     });
     assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', ledger]), 0);
-    assert.deepEqual(order, ['append:manual_refund_intent', 'send', 'append:manual_refund']);
+    assert.deepEqual(atSend, ['manual_refund_intent']);
+    assert.deepEqual(readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['manual_refund_intent', 'manual_refund']);
 
-    const refused = harness({}, undefined, { deps: { appendLedger: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } } });
-    assert.equal(await refused.run([...ARGS, '--execute', '--confirm', token, '--ledger', join(TMP, 'readonly.jsonl')]), 1);
+    // A ledger whose directory does not exist: read is ENOENT (empty), the append fails.
+    const refused = harness();
+    assert.equal(await refused.run([...ARGS, '--execute', '--confirm', token, '--ledger', join(TMP, 'no-such-dir', 'l.jsonl')]), 1);
     assert.equal(refused.calls.length, 0);
     assert.match(refused.err.join(''), /would not take the intent line/);
   });
@@ -171,8 +173,11 @@ describe('tooling/ops/refund.mjs', () => {
     let h = harness();
     assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', bad]), 2);
     assert.equal(h.calls.length, 0);
-    h = harness({}, undefined, { deps: { readLedger: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } } });
-    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', join(TMP, 'x.jsonl')]), 2);
+    // A directory where the ledger file should be: unreadable (EISDIR), not empty.
+    const dir = join(TMP, 'ledger-is-a-dir');
+    mkdirSync(dir, { recursive: true });
+    h = harness();
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', dir]), 2);
     assert.equal(h.calls.length, 0);
     assert.deepEqual(ledgerPrior(join(TMP, 'never-written.jsonl'), buildPlan({ provider: 'paddle', ref: 'txn_01habc', reason: 'abc' }), 't'), { prior: null });
   });
