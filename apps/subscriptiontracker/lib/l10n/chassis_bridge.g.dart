@@ -27,11 +27,15 @@ extension ChassisBridge on AppLocalizations {
       lookupChassisLocalizations;
 
   ChassisLocalizations get _chassis {
+    // gen-l10n names a locale `ll`, `ll_RR`, `ll_Ssss` or `ll_Ssss_RR`: a
+    // four-letter subtag is a script, never a country (#1161 nit 7b).
     final List<String> parts = localeName.split('_');
+    final bool scripted = parts.length > 1 && parts[1].length == 4;
     return lookup(
       Locale.fromSubtags(
         languageCode: parts.first,
-        countryCode: parts.length > 1 ? parts.last : null,
+        scriptCode: scripted ? parts[1] : null,
+        countryCode: parts.length > (scripted ? 2 : 1) ? parts.last : null,
       ),
     );
   }

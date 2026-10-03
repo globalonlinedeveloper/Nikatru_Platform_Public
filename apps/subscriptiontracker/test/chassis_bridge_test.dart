@@ -5,9 +5,39 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/l10n/app_localizations_en.dart';
 import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 
 void main() {
+  // ⏱ 2026-10-03 · club-nits-b (#1161 nit 7b). RED before: the second subtag
+  // of `localeName` was always read as a country, so `zh_Hant` asked the
+  // chassis for country `Hant`.
+  group('the bridge reads localeName subtags as gen-l10n writes them', () {
+    Locale? asked;
+    setUp(() {
+      asked = null;
+      ChassisBridge.lookup = (Locale locale) {
+        asked = locale;
+        return lookupChassisLocalizations(const Locale('en'));
+      };
+    });
+    tearDown(() => ChassisBridge.lookup = lookupChassisLocalizations);
+
+    void reads(String name, {String? script, String? country}) {
+      test('$name -> script $script, country $country', () {
+        AppLocalizationsEn(name).signIn;
+        expect(asked?.languageCode, name.split('_').first);
+        expect(asked?.scriptCode, script);
+        expect(asked?.countryCode, country);
+      });
+    }
+
+    reads('zh_Hant', script: 'Hant');
+    reads('pt_BR', country: 'BR');
+    reads('zh_Hant_TW', script: 'Hant', country: 'TW');
+    reads('ta');
+  });
+
   for (final RegisteredLocale row in kSupportedLocales) {
     test(
       '[${row.code}] a bridged key is the chassis string in that locale',
