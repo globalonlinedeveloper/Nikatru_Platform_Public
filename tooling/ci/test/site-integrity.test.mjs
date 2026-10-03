@@ -263,6 +263,11 @@ function selfHosted(dir, { root = 'a' } = {}) {
   );
   // …and the statement itself, noindex like every page but the homepage here.
   writeFileSync(join(site, 'accessibility.html'), realPage('Accessibility statement').replace('<html', '<meta name="robots" content="noindex"><html'));
+  // ⏱ 2026-10-03 · lane help-search: the help centre, FullShot's own support page and the known issues.
+  for (const rel of ['help/index.html', 'help/fullshot/index.html', 'help/known-issues.html']) {
+    mkdirSync(dirname(join(site, rel)), { recursive: true });
+    writeFileSync(join(site, rel), realPage('Help').replace('<html', '<meta name="robots" content="noindex"><html'));
+  }
   writeFixtureFile(
     dir,
     join(site, 'sitemap.xml'),
@@ -318,7 +323,7 @@ function writeShot(dir, root, { web = 'RIFF-web-copy', master = 'PNG-master', ca
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
 /** The shared footer region tooling/sites/chrome.mjs splices into every page. */
-const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
+const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
 
 /** A policy page that clears the floor: an <h1> plus >1000 visible characters. */
@@ -1388,6 +1393,18 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-footer-a11y', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/accessibility">Accessibility</a>', ''));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /index\.html: the footer does not link \/accessibility/);
+  });
+
+  test('🔴 a missing /help/fullshot/ page FAILS (lane help-search)', () => {
+    const r = afterEdit('cf-no-help-fs', (d) => rmSync(join(d, 'sites/nikatru/help/fullshot'), { recursive: true }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing sites\/nikatru\/help\/fullshot\/index\.html — the help centre/);
+  });
+
+  test('🔴 a footer that does not link /help/ FAILS (lane help-search)', () => {
+    const r = afterEdit('cf-footer-help', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/help/">Help</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link \/help\//);
   });
 
   test('a root with no chrome footer at all is COVERAGE LOST for that limb', () => {
