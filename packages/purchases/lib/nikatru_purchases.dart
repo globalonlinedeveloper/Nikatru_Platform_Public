@@ -40,4 +40,5 @@ export 'src/purchase_capabilities.dart';
 export 'src/purchase_rail.dart';
 export 'src/purchase_rail_kind.dart';
 export 'src/rail_config.dart';
+export 'src/redeem_code.dart';
 export 'src/store_plan.dart';

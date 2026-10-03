@@ -65,6 +65,7 @@ import aiMeter0028 from '../migrations/0028_ai_meter.sql?raw';
 import refundRequests0029 from '../migrations/0029_refund_requests.sql?raw';
 import cancelAttempts0030 from '../migrations/0030_cancel_attempts.sql?raw';
 import privacyRequests0031 from '../migrations/0031_privacy_requests.sql?raw';
+import offerCodes0032 from '../migrations/0032_offer_codes.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -159,6 +160,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   cancelAttempts0030,
   // ⏱ 2026-10-03 · lane dpdp-rights — rights requests and nominees.
   privacyRequests0031,
+  offerCodes0032,
 ];
 
 /**
@@ -219,8 +221,9 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   aiMeter0028,
   // 0029 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   refundRequests0029,
-  // 0031 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  // 0031 and 0032 are CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — they replay.
   privacyRequests0031,
+  offerCodes0032,
 ];
 
 /**

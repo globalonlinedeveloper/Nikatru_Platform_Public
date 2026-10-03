@@ -320,6 +320,22 @@
         "privacy_nominees": {
           "resolver": "exempt",
           "reason": "⏱ 2026-10-03 · lane dpdp-rights. NO app_version COLUMN AND NO OTHER MARKER: 0031_privacy_requests.sql gives this table `user_id`, `name`, `email` and two timestamps — the one nominee an account names (DPDP s.14), written only by PUT /v1/account/nominee. Nothing about a build, an app or a money world, so it is exempt; a marker column added later re-opens this rule. Every column, named: `user_id`, `name`, `email`, `created_at`, `updated_at`."
+        },
+        "offer_codes": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane growth-codes. NO BUILD MARKER: 0032_offer_codes.sql gives this table a code's SHA-256, the offer and app it redeems, its cap, count, expiry and the operator record (`issued_by`). Rows are written by the OPERATOR issuing codes, never by a build; the grant a redemption writes is a `bundle_grants` row, whose own rule attributes it to its money world. Exempt; a marker column added later re-opens this rule. Every column, named: `code_hash`, `offer_id`, `app_id`, `max_redemptions`, `redeemed`, `expires_at`, `issued_by`, `created_at`."
+        },
+        "offer_redemptions": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane growth-codes. NO app_version COLUMN: 0032_offer_codes.sql gives this table the redemption id, the code's hash, `user_id`, offer, app, idempotency key, grant id and expiry — the receipt that makes a replay grant once. The access it carries is the `bundle_grants` row it names, and THAT row records its money world (`provider_environment`); this one names no build or world of its own. Exempt; a marker column added later re-opens this rule. Every column, named: `redemption_id`, `code_hash`, `user_id`, `offer_id`, `app_id`, `idempotency_key`, `grant_id`, `expires_at`, `created_at`."
+        },
+        "invite_links": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane growth-codes. NO BUILD MARKER: 0032_offer_codes.sql gives this table `user_id`, `app_id`, an invite code's SHA-256 and when it was minted, written by POST /v1/invites/code from any build that can call it. No row names a build or a money world, so it is exempt; a marker column added later re-opens this rule. Every column, named: `user_id`, `app_id`, `code_hash`, `created_at`."
+        },
+        "invites": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane growth-codes. NO BUILD MARKER: 0032_offer_codes.sql gives this table the invitee (`user_id`), app, inviter (`inviter_user_id`), state, refusal rule, reward grant ids and two timestamps. The rewards it records are `bundle_grants` rows, whose own rule attributes them to a money world; this row names none. Exempt; a marker column added later re-opens this rule. Every column, named: `user_id`, `app_id`, `inviter_user_id`, `state`, `refused_reason`, `reward_grant_ids`, `claimed_at`, `settled_at`."
         }
       }
     },

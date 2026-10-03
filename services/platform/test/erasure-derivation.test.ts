@@ -102,6 +102,12 @@ describe('the delete set is derived from the real platform schema', () => {
       // the platform's nightly feedback orphan sweep (src/feedback/cron.ts) then deletes their screenshots.
       'feedback_reports',
       'identity',
+      // ⏱ 2026-10-03 · 0032, lane growth-codes. Spelt `user_id` ON PURPOSE: an
+      // account's invite code, the invites it accepted and the codes it redeemed
+      // leave with it (the inviter side is `inviter_user_id`, unlinked below).
+      'invite_links',
+      'invites',
+      'offer_redemptions',
       // ⏱ 2026-10-03 · 0031, lane dpdp-rights. Spelt `user_id` ON PURPOSE: a
       // person's nominee and their rights requests leave with the account.
       'privacy_nominees',
@@ -127,7 +133,10 @@ describe('the delete set is derived from the real platform schema', () => {
     // REFERENCES a user without being theirs. It must be UNLINKED and must never
     // appear in `deleted` — the distinction the second limb exists for, with a
     // real instance behind it rather than a hypothetical.
+    // ⏱ 2026-10-03 · 0032 (lane growth-codes) adds the second: the INVITER of an
+    // invite, unlinked when they leave while the invitee keeps their reward.
     expect(Object.keys(body.unlinked as Record<string, number>)).toEqual([
+      'invites.inviter_user_id',
       'unclaimed_payments.claimed_user_id',
     ]);
     expect(Object.keys(body.deleted as Record<string, number>)).not.toContain(
@@ -170,13 +179,33 @@ describe('the delete set is derived from the real platform schema', () => {
     // Joins the one platform_db already has, rather than replacing it.
     expect(unlinked).toEqual([
       'audit_trail.actor_user_id',
+      'invites.inviter_user_id',
       'unclaimed_payments.claimed_user_id',
     ]);
-    // Disjoint by construction: nothing is both swept and unlinked.
-    expect(deleted.filter((t) => unlinked.some((u) => u.startsWith(`${t}.`)))).toEqual([]);
+    // Disjoint but for ONE table, by design: ⏱ 2026-10-03 · 0032 `invites` names two
+    // people — the invitee owns the row (`user_id`, swept) and the inviter is
+    // referenced (`inviter_user_id`, unlinked). The two statements address
+    // different rows (a self-invite is refused), which the next case proves.
+    expect(deleted.filter((t) => unlinked.some((u) => u.startsWith(`${t}.`)))).toEqual(['invites']);
     expect(db.rows('SELECT id, actor_user_id FROM audit_trail ORDER BY id')).toEqual([
       { id: 'a1', actor_user_id: null },
       { id: 'a2', actor_user_id: 'u-other' },
+    ]);
+  });
+
+  it('🔑 a table that both OWNS and REFERENCES a person: the invitee\'s row goes, the inviter\'s name comes off', async () => {
+    stubHops();
+    const db = realPlatformDb();
+    db.db.exec(
+      `INSERT INTO invites (user_id, app_id, inviter_user_id, state, claimed_at) VALUES
+         ('u-derive', 'subscriptiontracker', 'u-other', 'rewarded', '2026-10-01'),
+         ('u-other', 'subscriptiontracker', 'u-derive', 'rewarded', '2026-10-01'),
+         ('u-third', 'subscriptiontracker', 'u-other', 'pending', '2026-10-01')`,
+    );
+    expect((await erase(db)).status).toBe(200);
+    expect(db.rows('SELECT user_id, inviter_user_id FROM invites ORDER BY user_id')).toEqual([
+      { user_id: 'u-other', inviter_user_id: null },
+      { user_id: 'u-third', inviter_user_id: 'u-other' },
     ]);
   });
 

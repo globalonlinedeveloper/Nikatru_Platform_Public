@@ -1562,6 +1562,145 @@
       }
     },
     {
+      "id": "table:platform_db.offer_codes",
+      "kind": "d1-table",
+      "name": "offer_codes",
+      "personalData": false,
+      "holds": "⏱ 2026-10-03 · lane growth-codes. One row per offer code an operator issued: the code's SHA-256 (never the code), the offer and app it redeems, its cap, how many have redeemed it, its expiry, and the operator record of who issued it. Nothing about anybody who redeems it.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The OPERATOR RECORD behind every `promo_code` grant written from it (tooling/ci/assert-bundle-provenance.mjs limb 5): deleting it would leave grants whose authority nobody can show. It holds no personal data."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A code's hash, an offer, counts, an expiry and the issuing operator's ticket reference."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0032_offer_codes.sql",
+        "services/platform/src/routes/codes.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.offer_redemptions",
+      "kind": "d1-table",
+      "name": "offer_redemptions",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane growth-codes. One row per (code, account) that redeemed it: the account (`user_id`), the code's hash, the offer, the app, the request's idempotency key, the grant it wrote and when the free months end. It is what makes a replay grant once. Written only by POST /v1/codes/redeem.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: the receipt of a free grant the account still holds or held, and the reason the same code never grants twice. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The column is spelled `user_id` ON PURPOSE (0032_offer_codes.sql): the shared erasure walk deletes every redemption with the account."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0032_offer_codes.sql",
+        "services/platform/src/routes/codes.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "If you redeem an offer code, we keep a record"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-export.ts"
+      },
+      "notice": {
+        "item": "The offer codes you redeemed",
+        "purpose": "To give you the free months a code offers, and only once.",
+        "ta": {
+          "item": "நீங்கள் பயன்படுத்திய சலுகைக் குறியீடுகள்",
+          "purpose": "ஒரு குறியீடு வழங்கும் இலவச மாதங்களை, ஒருமுறை மட்டும், உங்களுக்கு வழங்குவதற்காக."
+        },
+        "hi": {
+          "item": "आपके द्वारा भुनाए गए ऑफ़र कोड",
+          "purpose": "किसी कोड के मुफ़्त महीने आपको देने के लिए, और केवल एक बार।"
+        }
+      }
+    },
+    {
+      "id": "table:platform_db.invite_links",
+      "kind": "d1-table",
+      "name": "invite_links",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane growth-codes. At most one row per account and app: the SHA-256 of the account's own invite code (never the code) and when it was minted. Written only by POST /v1/invites/code; asking again replaces it.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: the one live invite code of an account, replaced on every new ask. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The column is spelled `user_id` ON PURPOSE (0032_offer_codes.sql): the shared erasure walk deletes it with the account, and the code stops working."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0032_offer_codes.sql",
+        "services/platform/src/routes/invites.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "If you invite a friend"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-export.ts"
+      },
+      "notice": {
+        "item": "Your invite code, kept scrambled",
+        "purpose": "So that a friend you invite can name you.",
+        "ta": {
+          "item": "உங்கள் அழைப்புக் குறியீடு, குழப்பப்பட்ட வடிவில்",
+          "purpose": "நீங்கள் அழைக்கும் நண்பர் உங்களைக் குறிப்பிடுவதற்காக."
+        },
+        "hi": {
+          "item": "आपका आमंत्रण कोड, बदले हुए रूप में",
+          "purpose": "ताकि आपके द्वारा आमंत्रित मित्र आपका नाम बता सके।"
+        }
+      }
+    },
+    {
+      "id": "table:platform_db.invites",
+      "kind": "d1-table",
+      "name": "invites",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane growth-codes. THE INVITE RELATION, about two people: one row per invited account and app — the invitee (`user_id`), the inviter (`inviter_user_id`), the state (pending, rewarded, refused), the rule that refused it, the two reward grants and when it was claimed and settled. Written only by POST /v1/invites/claim and /settle.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE INVITED ACCOUNT EXISTS: it is the one-reward-per-invitee rule (PRIMARY KEY user_id, app_id) and the count behind the inviter's five-a-year cap, so deleting it by age would let the same account be rewarded again. It leaves with the invitee's account, and the inviter is unlinked when theirs goes."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The invitee column is spelled `user_id` ON PURPOSE (0032_offer_codes.sql), so the shared erasure walk DELETES the row with the invitee's account; the inviter column is `inviter_user_id`, a `*_user_id` reference the same walk NULLs when the INVITER's account goes (services/_shared/src/erasure.ts)."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0032_offer_codes.sql",
+        "services/platform/src/routes/invites.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "a record of who invited whom"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-export.ts"
+      },
+      "notice": {
+        "item": "Who invited whom, if you invite a friend or accept an invitation",
+        "purpose": "To give one free month to both of you, once, and to stop the reward being abused.",
+        "ta": {
+          "item": "நீங்கள் நண்பரை அழைத்தால் அல்லது அழைப்பை ஏற்றால், யார் யாரை அழைத்தார்",
+          "purpose": "உங்கள் இருவருக்கும் ஒருமுறை ஒரு இலவச மாதம் வழங்கவும், வெகுமதி தவறாகப் பயன்படுத்தப்படாமல் தடுக்கவும்."
+        },
+        "hi": {
+          "item": "किसने किसे आमंत्रित किया, यदि आप किसी मित्र को आमंत्रित करते हैं या आमंत्रण स्वीकार करते हैं",
+          "purpose": "आप दोनों को एक बार एक मुफ़्त महीना देने के लिए, और पुरस्कार के दुरुपयोग को रोकने के लिए।"
+        }
+      }
+    },
+    {
       "id": "r2:nikatru-feedback",
       "kind": "r2-bucket",
       "name": "nikatru-feedback",

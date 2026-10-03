@@ -894,6 +894,7 @@
   },
   {
     "claims": [
+      "ADR 020",
       "ADR 081",
       "ADR 087",
       "K-8"
@@ -1800,6 +1801,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-obfuscation-coupled.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-offers.mjs",
     "references": [],
     "state": "WIRED"
   },

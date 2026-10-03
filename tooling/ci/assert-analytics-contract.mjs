@@ -968,6 +968,66 @@ const WIRE_CONTRACTS = [
     bodyIsNotTheContract:
       'DioPrivacyDataTransport.removeNominee reads only the status: success is a 204 with no body and every refusal is `{error}` beside a literal status, so the STATUS SET is the contract.',
   },
+  // ⏱ 2026-10-03 · lane growth-codes — our own offer codes and invite-a-friend
+  // (services/platform/src/routes/codes.ts, invites.ts), called by packages/api_client
+  // DioOfferCodeTransport; the answers are parsed by packages/core offer_code_transport.dart.
+  {
+    id: 'codes-redeem',
+    kind: 'body',
+    server: 'services/platform/src/routes/codes.ts',
+    client: {
+      file: 'packages/core/lib/src/offer_code_transport.dart',
+      member: 'static RedeemedOffer? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['offer', 'app', 'expiresAt', 'replay', 'months'],
+    clientOnly: {},
+    serverOnly: {},
+  },
+  {
+    id: 'invites-code',
+    kind: 'body',
+    server: 'services/platform/src/routes/invites.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_offer_code_transport.dart',
+      member: 'Future<core.Result<String>> inviteCode(',
+      reader: 'data',
+    },
+    requiredBoth: ['code'],
+    clientOnly: {},
+    serverOnly: {
+      state: 'claim/settle answer it; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).',
+      expiresAt: 'settle answers it; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).',
+      waitingOn: 'settle answers it; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).',
+      rule: 'settle answers it; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).',
+    },
+  },
+  {
+    id: 'invites-claim',
+    kind: 'body',
+    server: 'services/platform/src/routes/invites.ts',
+    client: {
+      file: 'packages/core/lib/src/offer_code_transport.dart',
+      member: 'static InviteState? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['state', 'expiresAt', 'waitingOn', 'rule'],
+    clientOnly: {},
+    serverOnly: { code: 'POST /v1/invites/code answers it, read by DioOfferCodeTransport.inviteCode; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).' },
+  },
+  {
+    id: 'invites-settle',
+    kind: 'body',
+    server: 'services/platform/src/routes/invites.ts',
+    client: {
+      file: 'packages/core/lib/src/offer_code_transport.dart',
+      member: 'static InviteState? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['state', 'expiresAt', 'waitingOn', 'rule'],
+    clientOnly: {},
+    serverOnly: { code: 'POST /v1/invites/code answers it, read by DioOfferCodeTransport.inviteCode; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).' },
+  },
   {
     id: 'feedback-verify-get',
     kind: 'gap',

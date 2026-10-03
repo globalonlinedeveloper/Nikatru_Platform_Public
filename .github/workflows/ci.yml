@@ -664,6 +664,12 @@ jobs:
       - name: The rail price ids render from the price register, and every store price keeps ADR 093's rule
         if: ${{ !cancelled() }}
         run: node tooling/catalog/render-rail-prices.mjs --check
+      # why: lane growth-codes (O-DISCOUNT-FLOOR-UNGUARDED) — never below cost, never free AI:
+      # every discount in tooling/catalog/offers.json nets at least a Pro month's cost on every
+      # rail, no free offer carries an AI allowance, and every channel has a code mechanism.
+      - name: Every offer is above cost on every rail, no free offer carries AI, and every channel has a code mechanism
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-offers.mjs
       - name: The money funnel is wired, and the pseudonymity firewall holds
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-pseudonymity-firewall.mjs

@@ -1,0 +1,99 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// THE PROMO GRANT (lane growth-codes): free Pro months on ONE app, written as a
+// `bundle_grants` row through the ONE writer (src/lib/mor/bundle-store.ts).
+//
+//   source            `promo_code` — requires_receipt 0, so the AI meter
+//                     (src/lib/ai/meter.ts planOf) never counts it as PAID: a
+//                     code or an invite reward NEVER buys an AI allowance.
+//   feature set       `promo_<app>` version 1, one member: the app. Pinned here
+//                     on first use (ON CONFLICT DO NOTHING, so it is minted once
+//                     and its membership can never be rewritten).
+//   term              `one_time`: the grant resolves to its pinned version and
+//                     never rolls to a bundle.
+//   provider          `nikatru_code`, with the redemption (or invite reward) id
+//                     as the subscription id — so a retry derives the same
+//                     grant_id and the upsert stays an upsert.
+//   last_event_id     the OPERATOR RECORD: `code:<issued_by>` or
+//                     `invite:<offer>` — tooling/ci/assert-bundle-provenance.mjs
+//                     limb 5.
+//
+// 🔴 A RELAY, NOT A DOOR (assert-bundle-provenance limb 3b): every caller must
+// verify first — routes/codes.ts through `codeVerifier(...).verify(`, and
+// routes/invites.ts through `inviteEligibility.verify(` — and nothing here takes
+// a field from a request body.
+// ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../../_shared/src/ports/sql';
+import { upsertBundleGrant } from '../mor/bundle-store';
+import type { MoneyEnvironment } from '../mor/contract';
+import { catalogueApp } from '../catalog';
+import { nowIso, run } from '../d1';
+
+export const PROMO_PROVIDER = 'nikatru_code';
+// @ceiling none — a feature-set version number, not a platform resource
+export const PROMO_FEATURE_SET_VERSION = 1;
+export const promoFeatureSet = (appId: string): string => `promo_${appId}`;
+
+/** `iso` plus `months` calendar months, UTC. */
+export function addMonths(iso: string, months: number): string {
+  const d = new Date(iso);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString();
+}
+
+export interface PromoGrant {
+  /** The verified session's `sub`, or the inviter the server read from its own row. */
+  readonly userId: string;
+  readonly appId: string;
+  readonly months: number;
+  /** The redemption id or invite reward id: the grant's identity. */
+  readonly grantKey: string;
+  /** Who authorised it: `code:<issued_by>` or `invite:<offer id>`. */
+  readonly operator: string;
+  readonly nowIso: string;
+}
+
+/** Mint `promo_<app>`@1 with the app as its one member. Throws for an app no catalogue row knows. */
+async function pinPromoSet(db: SqlDb, appId: string): Promise<void> {
+  if (catalogueApp(appId) === undefined) throw new Error(`promo grant: ${appId} is not a catalogue app`);
+  const name = promoFeatureSet(appId);
+  await run(
+    db
+      .prepare(`INSERT INTO feature_sets (name, version, minted_at, minted_from, status) VALUES (?,?,?,?,?) ON CONFLICT (name, version) DO NOTHING`)
+      .bind(name, PROMO_FEATURE_SET_VERSION, nowIso(), 'tooling/catalog/offers.json', 'sellable'),
+  );
+  await run(
+    db
+      .prepare(`INSERT INTO feature_set_members (name, version, product_slug, product_kind) VALUES (?,?,?,?) ON CONFLICT (name, version, product_slug) DO NOTHING`)
+      .bind(name, PROMO_FEATURE_SET_VERSION, appId, 'app'),
+  );
+}
+
+/** Write the grant. Returns its expiry. */
+export async function grantPromoMonths(
+  deps: { db: SqlDb; environment: MoneyEnvironment },
+  g: PromoGrant,
+): Promise<{ expiresAt: string; grantKey: string }> {
+  await pinPromoSet(deps.db, g.appId);
+  const expiresAt = addMonths(g.nowIso, g.months);
+  await upsertBundleGrant(deps, {
+    userId: g.userId,
+    source: 'promo_code',
+    term: 'one_time',
+    featureSetName: promoFeatureSet(g.appId),
+    featureSetVersion: PROMO_FEATURE_SET_VERSION,
+    provider: PROMO_PROVIDER,
+    providerSubscriptionId: g.grantKey,
+    providerTransactionId: null,
+    providerStatus: 'active',
+    lastEventId: g.operator, // the operator record (limb 5)
+    occurredAt: g.nowIso,
+    currentPeriodEnd: expiresAt,
+    trialEnd: null,
+    expiresAt,
+    graceUntil: null,
+    revokedAt: null,
+    revocationReason: null,
+    creditDaysApplied: null,
+  });
+  return { expiresAt, grantKey: g.grantKey };
+}

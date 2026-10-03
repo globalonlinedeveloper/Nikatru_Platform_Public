@@ -16,6 +16,7 @@ export 'src/dio_consent_transport.dart';
 export 'src/dio_content_pack_source.dart';
 export 'src/dio_event_transport.dart';
 export 'src/dio_fx_transport.dart';
+export 'src/dio_offer_code_transport.dart';
 export 'src/dio_privacy_data_transport.dart';
 export 'src/dio_reminder_channels_transport.dart';
 export 'src/dio_sessions_transport.dart';

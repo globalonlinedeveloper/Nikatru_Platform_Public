@@ -147,7 +147,7 @@ export const ACCOUNT_READ_TIMEOUT_MS = ACCOUNT_READ_ATTEMPTS * ACCOUNT_READ_ATTE
  * nightly erasure retry and the reminder job — gets the retry from this one place.
  */
 export type AccountRead =
-  | { kind: 'found'; email: string; email_confirmed_at: string | null }
+  | { kind: 'found'; email: string; email_confirmed_at: string | null; created_at?: string | null }
   | { kind: 'no_account' }
   | { kind: 'transient'; why: string }
   | { kind: 'failed'; why: string };
@@ -187,9 +187,9 @@ async function readAccountOnce(
   if (res.status === 404) return { kind: 'no_account' };
   if (res.status >= 500 || res.status === 429) return { kind: 'transient', why: `the identity provider answered ${res.status}` };
   if (!res.ok) return { kind: 'failed', why: `the identity provider answered ${res.status}` };
-  let user: { email?: unknown; email_confirmed_at?: unknown };
+  let user: { email?: unknown; email_confirmed_at?: unknown; created_at?: unknown };
   try {
-    user = (await res.json()) as { email?: unknown; email_confirmed_at?: unknown };
+    user = (await res.json()) as { email?: unknown; email_confirmed_at?: unknown; created_at?: unknown };
   } catch {
     return { kind: 'transient', why: 'the identity provider answered with a body that is not JSON' };
   }
@@ -198,6 +198,8 @@ async function readAccountOnce(
     kind: 'found',
     email: typeof user?.email === 'string' ? user.email.trim() : '',
     email_confirmed_at: typeof confirmedAt === 'string' && confirmedAt !== '' ? confirmedAt : null,
+    // ⏱ 2026-10-03 · lane growth-codes: the account's age decides an invite reward.
+    created_at: typeof user?.created_at === 'string' && user.created_at !== '' ? user.created_at : null,
   };
 }
 

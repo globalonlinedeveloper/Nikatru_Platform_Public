@@ -216,7 +216,7 @@
     13,
 
   "bundle-provenance.test.mjs":
-    10,
+    13,
 
   "business-facts.test.mjs":
     13,
@@ -754,6 +754,9 @@
 
   "obfuscation-coupled.test.mjs":
     40,
+
+  "offers.test.mjs":
+    12,
 
   "one-entitlement-reader.test.mjs":
     13,

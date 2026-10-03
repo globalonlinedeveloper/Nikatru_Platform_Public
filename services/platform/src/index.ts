@@ -62,6 +62,8 @@ import { requestId } from './lib/request-id';
 import { platformAuth } from './middleware/auth';
 import accountExport from './routes/account-export';
 import accountNominee from './routes/account-nominee';
+import codes from './routes/codes';
+import invites from './routes/invites';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
 import appleCode from './routes/apple-code';
@@ -264,6 +266,13 @@ app.route('/v1', account);
 app.route('/v1', accountExport);
 app.route('/v1', accountNominee);
 app.route('/v1', providerToken);
+// ⏱ 2026-10-03 · lane growth-codes: our own offer codes and invite-a-friend
+// (routes/codes.ts, routes/invites.ts). The subject is the point — the grant is
+// written to the verified session's account — so both sit behind `platformAuth`.
+app.use('/v1/codes/*', platformAuth);
+app.route('/v1', codes);
+app.use('/v1/invites/*', platformAuth);
+app.route('/v1', invites);
 // ⏱ 2026-10-02 · review of #1155, findings 1 and 3: the native Apple sheet's
 // code exchange (routes/apple-code.ts) and the recency check before a sign-in
 // method is linked or unlinked (routes/identity-change.ts), under the same line.

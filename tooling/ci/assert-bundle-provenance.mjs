@@ -122,7 +122,13 @@ const VERIFY_CALL = /\.\s*verify\s*\(|verifierFor\s*\(|receiptVerifierFor\s*\(|i
 // the grant. The root's import (`from '../ports'`) is accepted beside the two above, and
 // its lookup `inboundFor(` beside `verifierFor(` — the nightly re-derivation (scheduled.ts)
 // replays a stored, door-verified notification through it, as it did through verifierFor.
-const VERIFY_IMPORT = /from\s+['"](?:[^'"]*(?:receipts|mor)\/(?:registry|verifiers)|(?:\.\.?\/)+ports)['"]/;
+// ⏱ WIDENED 2026-10-03 (lane growth-codes): a `promo_code` grant's evidence is the
+// OPERATOR RECORD, not a rail — the code's hash found in `offer_codes`, unexpired and
+// under its cap (src/lib/codes/verify.ts `codeVerifier(...).verify(`), or an invite
+// whose rules the server judged over its own facts (`inviteEligibility.verify(`,
+// imported beside it). That module is accepted as a seam beside the two above, and
+// the same `.verify(` above the write is still required of every caller.
+const VERIFY_IMPORT = /from\s+['"](?:[^'"]*(?:receipts|mor)\/(?:registry|verifiers)|[^'"]*lib\/codes\/verify|(?:\.\.?\/)+ports)['"]/;
 
 const problems = [];
 const notes = [];

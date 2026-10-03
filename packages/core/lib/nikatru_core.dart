@@ -46,6 +46,7 @@ export 'src/feedback_transport.dart';
 export 'src/dates/recurrence_schedule.dart';
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_transport.dart';
+export 'src/offer_code_transport.dart';
 export 'src/privacy_data_transport.dart';
 export 'src/reminder_channels_transport.dart';
 export 'src/result.dart';

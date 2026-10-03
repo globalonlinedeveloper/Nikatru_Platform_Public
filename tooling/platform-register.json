@@ -667,6 +667,58 @@
       }
     },
     {
+      "id": "codes-redeem",
+      "method": "POST",
+      "path": "/v1/codes/redeem",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/codes.ts",
+      "purpose": "⏱ 2026-10-03 · lane growth-codes (O-PROMO-CODES-NO-REDEEM-ROUTE). Redeems an operator-issued offer code for the verified session's account: `{ code, idempotencyKey }` only (a grant-deciding key is 400 client_supplied_grant), body bounded at 512 B. Rate-limited per account in D1 (tooling/catalog/offers.json codePolicy.redeemPerMinute, then 429), idempotent (a replay answers the first outcome), hashed (SHA-256, never stored), capped and expiring (404 unknown, 410 expired, 409 exhausted). Grants the offer's free months as a `promo_code` bundle grant — never an AI allowance.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_offer_code_transport.dart",
+        "expression": "'/v1/codes/redeem'",
+        "note": "The real `_dio.post` inside DioOfferCodeTransport.redeem (packages/api_client); the redeem field is packages/purchases RedeemCodeEntry, rendered only on a channel whose tooling/catalog/offers.json row allows our own code."
+      }
+    },
+    {
+      "id": "invites-code",
+      "method": "POST",
+      "path": "/v1/invites/code",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/invites.ts",
+      "purpose": "⏱ 2026-10-03 · lane growth-codes (O-INVITE-REWARD-UNBUILT). Mints (or rotates) the account's invite code for `{ app }`: 80 bits, returned once, stored as its SHA-256. EVENTS_LIMITER keyed `invites:<sub>`; 503 while the app's invite offer is not live.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_offer_code_transport.dart",
+        "expression": "'/v1/invites/code'",
+        "note": "The real `_dio.post` inside DioOfferCodeTransport.inviteCode (packages/api_client); the redeem field is packages/purchases RedeemCodeEntry, rendered only on a channel whose tooling/catalog/offers.json row allows our own code."
+      }
+    },
+    {
+      "id": "invites-claim",
+      "method": "POST",
+      "path": "/v1/invites/claim",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/invites.ts",
+      "purpose": "⏱ 2026-10-03 · lane growth-codes. The invitee names who invited them: `{ app, code }`. A self-invite is 422; a second claim for the same invitee and app is 409 (one reward per invitee). EVENTS_LIMITER keyed `invites:<sub>`.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_offer_code_transport.dart",
+        "expression": "'/v1/invites/claim'",
+        "note": "The real `_dio.post` inside DioOfferCodeTransport.claimInvite (packages/api_client); the redeem field is packages/purchases RedeemCodeEntry, rendered only on a channel whose tooling/catalog/offers.json row allows our own code."
+      }
+    },
+    {
+      "id": "invites-settle",
+      "method": "POST",
+      "path": "/v1/invites/settle",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/invites.ts",
+      "purpose": "⏱ 2026-10-03 · lane growth-codes. Judges the invite under tooling/catalog/offers.json `st-invite.rules` over the server's own facts (the identity provider's account age and confirmed address, the app's own rows for activation, the money tables for prior Pro or trial, the inviter's rewards in 365 days) and, once met, grants one free month to BOTH as `promo_code` grants. 202 while a rule time can lift is unmet; 200 refused for good otherwise.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_offer_code_transport.dart",
+        "expression": "'/v1/invites/settle'",
+        "note": "The real `_dio.post` inside DioOfferCodeTransport.settleInvite (packages/api_client); the redeem field is packages/purchases RedeemCodeEntry, rendered only on a channel whose tooling/catalog/offers.json row allows our own code."
+      }
+    },
+    {
       "id": "entitlements",
       "method": "GET",
       "path": "/v1/entitlements",

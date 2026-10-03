@@ -5914,6 +5914,94 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.platform_db.offer_codes",
+      "kind": "retention",
+      "store": "d1:platform_db:offer_codes",
+      "what": "⏱ 2026-10-03 · lane growth-codes. One row per offer code an operator issued: the code's SHA-256, offer, app, cap, count, expiry and the issuing operator's record. No personal data.",
+      "rule": "keep",
+      "keepWhy": "THE OPERATOR RECORD behind every `promo_code` grant written from it (assert-bundle-provenance limb 5): deleting it would leave grants whose authority nobody can show. One row per issued code, so it grows only by an operator act (tooling/legal/data-inventory.json `table:platform_db.offer_codes`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0032_offer_codes.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.offer_redemptions",
+      "kind": "retention",
+      "store": "d1:platform_db:offer_redemptions",
+      "what": "⏱ 2026-10-03 · lane growth-codes. One row per (code, account) that redeemed it — the receipt that makes a replay grant once. Written only by POST /v1/codes/redeem.",
+      "rule": "keep",
+      "keepWhy": "Kept WHILE THE ACCOUNT EXISTS: the receipt of a free grant and the reason one code never grants twice to one account. It carries `user_id`, so it leaves with the account through the derived erasure sweep (tooling/legal/data-inventory.json `table:platform_db.offer_redemptions`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0032_offer_codes.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.invite_links",
+      "kind": "retention",
+      "store": "d1:platform_db:invite_links",
+      "what": "⏱ 2026-10-03 · lane growth-codes. At most one invite code per account and app, stored as its SHA-256. Written only by POST /v1/invites/code.",
+      "rule": "keep",
+      "keepWhy": "Kept WHILE THE ACCOUNT EXISTS and replaced on every new ask, so one row per account and app at most. It carries `user_id`, so it leaves with the account (tooling/legal/data-inventory.json `table:platform_db.invite_links`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0032_offer_codes.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.invites",
+      "kind": "retention",
+      "store": "d1:platform_db:invites",
+      "what": "⏱ 2026-10-03 · lane growth-codes. The invite relation: one row per invited account and app, naming the inviter. Written only by POST /v1/invites/claim and /settle.",
+      "rule": "keep",
+      "keepWhy": "Kept WHILE THE INVITED ACCOUNT EXISTS: the row IS the one-reward-per-invitee rule and the count behind the five-a-year cap, so deleting it by age would let the same account be rewarded again. The invitee's `user_id` deletes it with their account; the inviter's `inviter_user_id` is NULLed when theirs goes (tooling/legal/data-inventory.json `table:platform_db.invites`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0032_offer_codes.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "kind": "retention",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations and wrangler configs, so a store cannot leave the domain by having no rule.",
       "cadence": "365d",

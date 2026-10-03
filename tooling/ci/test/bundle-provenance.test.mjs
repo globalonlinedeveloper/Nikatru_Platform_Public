@@ -151,10 +151,13 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
     // ⏱ 2026-09-27 · the writer has TWO callers now — the receipt route and the
     // grant relay (src/lib/mor/grant.ts) — so both go, or the case grades the one
     // left and stops testing "no caller".
+    // ⏱ 2026-10-03 · THREE callers: the promo relay (src/lib/codes/grant.ts, lane
+    // growth-codes) goes with them, for the same reason.
     const r = run(
       tree(DIRS, (d) => {
         rmSync(join(d, ROUTE));
         rmSync(join(d, RELAY));
+        rmSync(join(d, 'services/platform/src/lib/codes/grant.ts'));
       }),
     );
     assert.equal(r.code, 2, r.out);
@@ -207,5 +210,44 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
     // it by scanning rather than by a path constant, and a scan that quietly found
     // a DIFFERENT file would otherwise look identical.
     assert.match(r.out, new RegExp(WRITER.replaceAll('/', '\\/')));
+  });
+
+  // ⏱ 2026-10-03 · lane growth-codes — a `promo_code` grant's seam is the operator
+  // record (src/lib/codes/verify.ts), and its relay (src/lib/codes/grant.ts) is held
+  // to the same rule: every caller verifies ABOVE the grant.
+  test('BP9 — the promo relay passes because the redeem and invite routes verify first', () => {
+    const r = run(tree(DIRS));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /services\/platform\/src\/lib\/codes\/grant\.ts calls upsertBundleGrant\(\) as a RELAY/);
+    assert.match(r.out, /routes\/codes\.ts/);
+    assert.match(r.out, /routes\/invites\.ts/);
+  });
+
+  test('BP10 — the redeem route granting a code it never verified goes RED', () => {
+    const r = run(
+      tree(DIRS, (d) =>
+        editText(d, 'services/platform/src/routes/codes.ts', (s) => {
+          const out = s.replace('await codeVerifier(db).verify(code, at)', 'await codeVerifier(db).lookup(code, at)');
+          if (out === s) throw new Error('BP10: anchor moved');
+          return out;
+        }),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /routes\/codes\.ts calls grantPromoMonths\(\) at offset \d+ with no verification seam above it/);
+  });
+
+  test('BP11 — the promo relay writing `promo_code` with no operator record goes RED (limb 5)', () => {
+    const r = run(
+      tree(DIRS, (d) =>
+        editText(d, 'services/platform/src/lib/codes/grant.ts', (s) => {
+          const out = s.replace('    lastEventId: g.operator, // the operator record (limb 5)\n', '    lastEventId: null,\n');
+          if (out === s) throw new Error('BP11: anchor moved');
+          return out;
+        }),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /writes the EXEMPT source 'promo_code' with no operator record/);
   });
 });

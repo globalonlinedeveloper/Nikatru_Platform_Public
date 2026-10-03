@@ -1,0 +1,104 @@
+{
+  "_why": [
+    "THE OFFERS REGISTER (lane growth-codes, O-DISCOUNT-FLOOR-UNGUARDED, O-PROMO-CODES-NO-REDEEM-ROUTE, O-INVITE-REWARD-UNBUILT).",
+    "",
+    "POLICY (owner lock, quoted in the lane brief): NEVER BELOW COST, AND NEVER FREE AI.",
+    "  · A DISCOUNT (kind `discount` or `winback`) must leave us, on EVERY rail it is offered on, at least what one",
+    "    Pro month costs us: `cost.infraUsdPerUserMonth` plus, when the plan carries an AI allowance, that allowance",
+    "    priced at the dearest candidate model of the AI port (tooling/ports/ai.json). The net is after the rail's",
+    "    highest commission cell and the highest tax region in tooling/catalog/fee-register.json, the same safe-side",
+    "    arithmetic as port-switch.mjs `creditFloor`.",
+    "  · A FREE month (kind `free-month` or `invite`) carries NO AI allowance: `aiAllowance` is 0, and the grant is a",
+    "    `promo_code` bundle grant, which the AI meter never counts as paid (src/lib/ai/meter.ts planOf).",
+    "tooling/ci/assert-offers.mjs holds both, and every channel of tooling/channel-register.json has a row in `channels`.",
+    "",
+    "THE SERVER READS THIS FILE (services/platform/src/lib/codes/offers.ts bundles it): what an own code redeems, and",
+    "the invite rules, are these rows and nothing else. Prices are NOT here: they are read from",
+    "services/platform/src/app-config-data.json `prices`, the rails' own read-back."
+  ],
+  "cost": {
+    "infraUsdPerUserMonth": {
+      "value": 0.1,
+      "basis": "declared",
+      "asOf": "2026-10-03",
+      "why": "DECLARED, not measured: the marginal Workers, D1 and mail cost of one Pro account in a month. No per-account cost has been measured; the figure is set high on purpose (the platform's whole paid Cloudflare plan is a flat monthly fee and one account's reads are far under a cent). The money review replaces it with a measurement and sets basis: measured."
+    },
+    "aiAllowanceFrom": "services/platform/src/lib/ai/meter.ts PRO_MONTHLY_ALLOWANCE",
+    "aiFeature": "import"
+  },
+  "codePolicy": {
+    "minEntropyBits": 80,
+    "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+    "length": 16,
+    "hash": "sha256",
+    "redeemPerMinute": 5,
+    "why": "A code is 16 characters of a 32-symbol alphabet (80 bits), stored only as its SHA-256. Five redeem attempts per account per minute: the sixth is throttled, so guessing a code by trial is out of reach."
+  },
+  "channels": [
+    { "channel": "web", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "Our own site: no store policy. An own code redeems here, and a discount is a Paddle discount on the hosted checkout." },
+    { "channel": "android-play", "mechanism": "play-promo-code", "rail": "play-billing", "ownCodeField": false, "discountBy": "play-promo-code", "why": "Play requires Play Billing for in-app digital goods, and a code that unlocks them outside Play Billing is the same steering. Codes are Play promo codes, redeemed in the Play Store." },
+    { "channel": "ios-appstore", "mechanism": "apple-offer-code", "rail": "apple-iap", "ownCodeField": false, "discountBy": "apple-offer-code", "why": "App Store Review Guideline 3.1.1: unlocking content with our own code is a mechanism other than in-app purchase. Codes are App Store offer codes (the system redemption sheet); the build renders NO own-code field." },
+    { "channel": "macos-appstore", "mechanism": "apple-offer-code", "rail": "apple-iap", "ownCodeField": false, "discountBy": "apple-offer-code", "why": "The same 3.1.1 family as iOS." },
+    { "channel": "windows-store", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "Microsoft Store Policies 10.8.1 permit a third-party purchase API for a non-game app; the sale is our own, so our own code is too." },
+    { "channel": "windows-direct", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "Direct download: no store, no policy." },
+    { "channel": "linux-snap", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "The Snap Store takes no part in the sale." },
+    { "channel": "linux-appimage", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "Direct download from dl.nikatru.com: no gatekeeper." },
+    { "channel": "apps-gov-in", "mechanism": "own-code", "rail": "none", "ownCodeField": true, "discountBy": "none", "why": "Nothing is sold through this storefront (channel-register purchaseRail none), so no discount exists; an own code is a free grant, not a sale, and unlocks the same server entitlement a web purchase would. Whether the Mobile Seva terms allow it is read with the commerce terms (owner queue A-17)." },
+    { "channel": "chrome-webstore", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "The store cannot take money (Chrome Web Store Payments ended 2021); the sale and the code are our own." },
+    { "channel": "edge-addons", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "Edge Add-ons has no billing of its own (policy 1.8.1)." },
+    { "channel": "amo", "mechanism": "own-code", "rail": "paddle", "ownCodeField": true, "discountBy": "paddle-discount", "why": "AMO is a storefront and a signing service, never a checkout." }
+  ],
+  "offers": [
+    {
+      "id": "st-free-month",
+      "kind": "free-month",
+      "app": "subscriptiontracker",
+      "months": 1,
+      "aiAllowance": 0,
+      "status": "draft",
+      "why": "One free Pro month on an own code (support make-goods, launch codes). No AI allowance: it is a promo_code grant."
+    },
+    {
+      "id": "st-invite",
+      "kind": "invite",
+      "app": "subscriptiontracker",
+      "months": 1,
+      "aiAllowance": 0,
+      "status": "draft",
+      "rules": {
+        "minAccountAgeDays": 7,
+        "verifiedEmail": true,
+        "activation": { "database": "SUBSCRIPTIONTRACKER_DB", "table": "subscriptions", "minRows": 1, "why": "The invitee has tracked at least one subscription: the app's own first value moment, read from the app's own user-keyed rows (never from the pseudonymous analytics rail, which is never linked to an account)." },
+        "maxRewardsPerInviterPerYear": 5,
+        "oneRewardPerInvitee": true,
+        "noPriorProOrTrial": true,
+        "noSelfInvite": true
+      },
+      "why": "Invite a friend: one free Pro month for BOTH, once the invitee is a real, active, new user. No AI allowance for either."
+    },
+    {
+      "id": "st-monthly-20-off-3",
+      "kind": "discount",
+      "app": "subscriptiontracker",
+      "plan": "pro_monthly",
+      "percentOff": 20,
+      "months": 3,
+      "carriesAi": true,
+      "rails": ["paddle", "apple-iap", "play-billing"],
+      "status": "draft",
+      "why": "20% off the first three months, on the rail's own discount mechanism."
+    },
+    {
+      "id": "st-winback-monthly-40-off-2",
+      "kind": "winback",
+      "app": "subscriptiontracker",
+      "plan": "pro_monthly",
+      "percentOff": 40,
+      "months": 2,
+      "carriesAi": true,
+      "rails": ["paddle"],
+      "status": "draft",
+      "why": "A lapsed subscriber's way back: 40% off two months on the web checkout. lifecycle-mail's win-back may carry it."
+    }
+  ]
+}
