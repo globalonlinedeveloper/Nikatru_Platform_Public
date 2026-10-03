@@ -62,6 +62,7 @@ import {
   derivePagesProjects,
   judgeProject,
   foldVerdicts,
+  okSummary,
   newestCommitTouching,
   isAncestorOf,
   classifyStage,
@@ -926,6 +927,14 @@ describe('foldVerdicts — 2 outranks 1, because an unjudged half could hold any
     const v = foldVerdicts([{ code: 0, line: 'a' }, { code: 0, inflight: true, line: 'b' }], meta);
     assert.equal(v.code, 0);
     assert.equal(v.inflight, 1);
+  });
+
+  test('🔴 okSummary — a sweep with ONLY a pending project counts it, and IN FLIGHT stays 0 (#1166 review)', () => {
+    const v = foldVerdicts([{ code: 0, line: 'a' }, { code: 0, pending: true, line: 'b' }], meta);
+    const line = okSummary(v);
+    assert.match(line, /; 0 newer build\(s\) still IN FLIGHT inside the ceiling \(⏳\) and 1 PENDING behind a CI run/);
+    assert.match(okSummary(foldVerdicts([{ code: 0, inflight: true, line: 'b' }], meta)), /; 1 newer build\(s\) still IN FLIGHT .* and 0 PENDING/);
+    assert.match(okSummary(foldVerdicts([{ code: 0, line: 'a' }], meta)), /^ok {2}every derived Pages project's newest PRODUCTION deployment succeeded/);
   });
 });
 

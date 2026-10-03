@@ -1312,6 +1312,22 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
   return { code, lines, reds, unknowns, inflight, pending, projectsSwept, ungraded };
 }
 
+/** PURE. The `ok` line main() prints for a green sweep, from foldVerdicts. IN FLIGHT and PENDING are
+ *  counted apart (foldVerdicts keeps them apart), so each clause carries its own number. */
+export function okSummary(verdict) {
+  if (verdict.inflight === 0 && verdict.pending === 0) {
+    return (
+      `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names, ` +
+      `or at one whose unit files are identical to it.`
+    );
+  }
+  return (
+    `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
+    `IN FLIGHT inside the ceiling (⏳) and ${verdict.pending} PENDING behind a CI run that has not deployed yet (⏸), ` +
+    `each named above, which the next slot grades.`
+  );
+}
+
 /** PURE. One DECLARED rollback-only project against its live project record
  *  (GET /pages/projects/{name}), plus the derived set it must not be part of.
  *
@@ -1634,14 +1650,7 @@ async function main() {
   for (const line of verdict.lines) console.log(`    ${line}`);
 
   if (verdict.code === 0) {
-    console.log(
-      verdict.inflight === 0 && verdict.pending === 0
-        ? `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names, ` +
-            `or at one whose unit files are identical to it.`
-        : `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
-            `IN FLIGHT inside the ceiling (⏳) or PENDING behind a CI run that has not deployed yet (⏸), each named ` +
-            `above, which the next slot grades.`,
-    );
+    console.log(okSummary(verdict));
     console.log(`    ${verdict.reds} RED, ${verdict.pending} PENDING, ${verdict.unknowns} NOT JUDGED.`);
   } else {
     console.error('');
