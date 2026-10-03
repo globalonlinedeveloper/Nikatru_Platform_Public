@@ -135,6 +135,17 @@ const OPS_WATCH_REL = '.github/workflows/ops-watch.yml';
 const LIVE_DUTY = 'duty.laptop.glitchtip-no-ip-live';
 const realText = (rel) => readFileSync(join(REPO, ...rel.split('/')), 'utf8');
 const DELEGATE_FILES = Object.fromEntries([DELEGATE_REL, OPS_REL, CI_REL, OPS_WATCH_REL].map((r) => [r, realText(r)]));
+
+/** Limb 6's join, as the REAL map over the REAL ops register: every provider row
+ *  the map names that the fixture does not already carry is added as a deferred
+ *  store row, which no other limb scopes. A test removes one to break the join. */
+const REAL_ACCESS_MAP = JSON.parse(realText('tooling/legal/provider-register.json')).accessProviderMap;
+DEFAULT_PROVIDERS.accessProviderMap = structuredClone(REAL_ACCESS_MAP);
+for (const id of new Set(Object.values(REAL_ACCESS_MAP.map).flatMap((e) => e.rows ?? []))) {
+  if (!DEFAULT_PROVIDERS.providers.some((p) => p.id === id)) {
+    DEFAULT_PROVIDERS.providers.push({ id, name: `Stub ${id}`, role: 'store_billing', status: 'deferred', receives: [] });
+  }
+}
 const withOps = (f) => {
   const o = JSON.parse(DELEGATE_FILES[OPS_REL]);
   f(o);
@@ -553,5 +564,73 @@ describe('limb 5 — the sink ceiling names its probe, and refuses when the prob
     const r = run(fixture({ providers }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /that live row no longer declares the category transit-only/);
+  });
+});
+
+// ⏱ 2026-10-01 · SYN-P1's class fix (O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED): every vendor a
+// tooling/ops/register.json row runs through maps, by `accessProviderMap`, to provider rows that exist.
+describe('limb 6 — every ops accessProvider maps to a disclosure row or is argued out of being a sink', () => {
+  test('the baseline joins every ops accessProvider, and google maps to the Workspace and Drive row', () => {
+    const r = run(fixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /limb 6: 13 ops accessProvider\(s\) across \d+ ops row\(s\) joined/);
+    // The Drive sink was printed as `undisclosed` until privacy 2026-10-02 (#1140) gave it a row.
+    assert.ok(REAL_ACCESS_MAP.map.google.rows.includes('google-workspace'));
+  });
+
+  test('a known undisclosed sink with an open row PRINTS, and does not fail', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.accessProviderMap.map.google.undisclosed = [{ what: 'a fixture service', openRow: 'O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED' }];
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /UNDISCLOSED SINK \(O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED\) · ops accessProvider `google`: a fixture service/);
+  });
+
+  test('RED CONTROL: a duty whose accessProvider maps to a provider row that does not exist FAILS', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.providers = providers.providers.filter((p) => p.id !== 'oracle-cloud');
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accessProviderMap\.map\.oci \(named by [^)]*\) maps to provider row "oracle-cloud", which does not exist/);
+  });
+
+  test('RED CONTROL: a fixture duty naming an accessProvider with no map entry FAILS', () => {
+    const ops = withOps((o) => {
+      o.rows.push({ id: 'duty.fixture.newco-backup', kind: 'duty', what: 'copies a dump to NewCo', accessProviders: ['newco'] });
+    });
+    const r = run(fixture({ files: { [OPS_REL]: ops } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /ops accessProvider "newco" \(named by duty\.fixture\.newco-backup\) has NO entry in accessProviderMap\.map/);
+  });
+
+  test('an entry with neither rows nor a `notASink` reason FAILS', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    delete providers.accessProviderMap.map.github.notASink;
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accessProviderMap\.map\.github \([^)]*\) names no provider row and gives no `notASink` reason/);
+  });
+
+  test('an undisclosed entry with no open row FAILS — a known gap needs an owner', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.accessProviderMap.map.google.undisclosed = [{ what: 'a fixture service with no owner' }];
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accessProviderMap\.map\.google\.undisclosed carries an entry without/);
+  });
+
+  test('a map entry for a vendor no ops row names FAILS as stale', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.accessProviderMap.map.gonevendor = { notASink: 'retired' };
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accessProviderMap\.map\.gonevendor maps a vendor no row/);
+  });
+
+  test('NO map at all is COVERAGE LOST, not an empty pass', () => {
+    // `undefined` because the fixture spreads its argument over the defaults; JSON drops the key.
+    const r = run(fixture({ providers: { accessProviderMap: undefined } }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — tooling\/legal\/provider-register\.json carries no `accessProviderMap\.map`/);
   });
 });

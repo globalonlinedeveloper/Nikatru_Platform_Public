@@ -100,7 +100,7 @@ export const DECLARED_STORES = [
     store: 'microsoft',
     channels: ['windows-store', 'edge-addons'],
     why:
-      'ONE Partner Center account (seller 95860710, Company, LIVE) covers both the Microsoft Store ' +
+      'ONE Partner Center account (Company, LIVE; its seller id is in nikatru/vendors/microsoft.md § APPENDED 2026-08-28, never in this tree) covers both the Microsoft Store ' +
       'and Edge Add-ons. manifest.json says so in the row itself: `channel: "windows + edge ' +
       'add-ons"`. The two register rows are different surfaces — an app and a browser extension — ' +
       'which is exactly why they cannot be one channel row.',

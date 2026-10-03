@@ -211,7 +211,7 @@
       "ownerItem": "O-3",
       "trigger": "Before the first sale on ANY channel. terms.html and refund.html now name Paddle as the merchant of record and split the channels by who takes the payment ([ADR 039]); privacy.html §3 still describes the role without naming anybody, and that page cannot be corrected without a policy-version bump.",
       "verification": "in-tree",
-      "note": "The guard is built and the remaining gaps print every run (tooling/legal/provider-register.json disclosureGaps). ✅ TWO THINGS CLOSED: the `website-seller-contradiction` gap was RETIRED — the pages no longer name a gateway for a purchase privacy.html says does not happen — and the open decision this row used to carry ('which rails is a buyer offered') was ANSWERED by [ADR 039] D6 on measurement rather than preference: Paddle serves Indian buyers too, Razorpay is not the app rail. 🔴 WHAT REMAINS IS NOT WORDING. It is the seller account (A-1) and one owner signature on privacy.html, which is version-gated; the buyer-facing pages are already consistent with the register and with packages/purchases/lib/src/purchase_capabilities.dart, channel by channel. ⚠️ TWO WORDING ITEMS FOR THE OWNER'S EYE THAT WERE DELIBERATELY NOT CHANGED, because guessing at them would be worse than naming them: (1) terms.html §4 still ends 'Prices are inclusive of applicable taxes unless stated otherwise', and a merchant of record may present tax either inclusively or added at checkout depending on the buyer's country — whichever Paddle's checkout actually does for our SKUs is a LIVE-VERIFY item at A-1, not a fact this tree holds, and the bullet is left standing rather than rewritten from a guess; (2) refund.html §1 no longer lists a Microsoft order-history link, because [ADR 039] D1 puts Microsoft Store purchases on the Paddle rail and Microsoft therefore has no order to refund — the page's opening line ('who handles your refund depends on who sold you the product, and your receipt names them') is what keeps a buyer un-stranded if a store ever bills directly for a paid app listing. ⏱ 2026-10-01 · fix-india-rail-tax-data (business-004): wording item (1) is CLOSED — terms.html §4's tax bullet, pricing.html's and the landing's are now ONE generated sentence per rail, rendered from each rail's `taxMode` in the price book (tooling/sites/generate-discovery.mjs `taxSentences`; assert-discovery-surface.mjs limb T fails a differing or a hand one). Paddle's mode stays `unread` until the vendor read-back records it, so its sentence says only what holds in every mode."
+      "note": "The guard is built and the remaining gaps print every run (tooling/legal/provider-register.json disclosureGaps). ✅ TWO THINGS CLOSED: the `website-seller-contradiction` gap was RETIRED — the pages no longer name a gateway for a purchase privacy.html says does not happen — and the open decision this row used to carry ('which rails is a buyer offered') was ANSWERED by [ADR 039] D6 on measurement rather than preference: Paddle serves Indian buyers too, Razorpay is not the app rail. 🔴 WHAT REMAINS IS NOT WORDING. It is the seller account (A-1) and one owner signature on privacy.html, which is version-gated; the buyer-facing pages are already consistent with the register and with packages/purchases/lib/src/purchase_capabilities.dart, channel by channel. ⚠️ TWO WORDING ITEMS FOR THE OWNER'S EYE THAT WERE DELIBERATELY NOT CHANGED, because guessing at them would be worse than naming them: (1) terms.html §4 still ends 'Prices are inclusive of applicable taxes unless stated otherwise', and a merchant of record may present tax either inclusively or added at checkout depending on the buyer's country — whichever Paddle's checkout actually does for our SKUs is a LIVE-VERIFY item at A-1, not a fact this tree holds, and the bullet is left standing rather than rewritten from a guess; (2) refund.html §1 no longer lists a Microsoft order-history link, because [ADR 039] D1 puts Microsoft Store purchases on the Paddle rail and Microsoft therefore has no order to refund — the page's opening line ('who handles your refund depends on who sold you the product, and your receipt names them') is what keeps a buyer un-stranded if a store ever bills directly for a paid app listing. ⏱ 2026-10-01 · fix-india-rail-tax-data (business-004): wording item (1) is CLOSED — terms.html §4's tax bullet, pricing.html's and the landing's are now ONE generated sentence per rail, rendered from each rail's `taxMode` in the price book (tooling/sites/generate-discovery.mjs `taxSentences`; assert-discovery-surface.mjs limb T fails a differing or a hand one). Paddle's mode stays `unread` until the vendor read-back records it, so its sentence says only what holds in every mode. ⏱ REFRESHED 2026-10-03 (rv2-business 015): `trigger` above still says 'privacy.html §3 still describes the role without naming anybody'. That stopped being true with policy 2026-09-26, whose §4 names Paddle, Razorpay and the stores per rail, and assert-policy-claims.mjs's `seller-by-rail` rows hold all three pages to one seller per rail. Since policy 2026-10-03 the list of channels on the Paddle rail is generated from tooling/channel-register.json (tooling/sites/seller-channels.mjs), so a ruled-out channel cannot be named as sold. What remains owner-gated is unchanged: the A-1 live-verify of how tax is shown at checkout."
     },
     {
       "id": "india-seller-issues-gst-tax-invoice",
@@ -571,7 +571,55 @@
       "trigger": "🔴 AN INCIDENT, WHICH ARRIVES WITHOUT NOTICE AND ON ITS OWN CLOCK. This row exists because the gap is real and unowned, not because it is scheduled.",
       "verification": "COULD-NOT-ESTABLISH",
       "wouldNeed": "The breach-notification rule that applies to us, read from meity.gov.in, and a decision about who is notified.",
-      "note": "⚠️ THE PSEUDONYMOUS DESIGN MAKES ONE HALF OF IT UNIMPLEMENTABLE AS WRITTEN: analytics rows are keyed on an install id with no path back to a person, so 'notify the affected individuals' has no mechanism for that store. One sentence from the owner settles whether this is a duty row or a written cut — and until it is settled the honest state is this row, printing."
+      "note": "⚠️ THE PSEUDONYMOUS DESIGN MAKES ONE HALF OF IT UNIMPLEMENTABLE AS WRITTEN: analytics rows are keyed on an install id with no path back to a person, so 'notify the affected individuals' has no mechanism for that store. One sentence from the owner settles whether this is a duty row or a written cut — and until it is settled the honest state is this row, printing. ⏱ REFRESHED 2026-10-03 (rv2-business 015): 'no stage claims that duty' is no longer the whole of it. ONE notification duty is now named, with its own clock: reporting a cyber incident to CERT-In is row `certin-directions-2022` below, and its owner act is O-CERTIN-POINT-OF-CONTACT. What this row still holds is the rest — whether and how the PEOPLE affected are told, which is the half the pseudonymous design cannot do for analytics."
+    },
+    {
+      "id": "certin-directions-2022",
+      "requirement": "K-13",
+      "markets": ["in"],
+      "duty": "CERT-In's Directions of 28 April 2022 under section 70B(6) of the Information Technology Act, 2000: report a listed cyber incident to CERT-In within 6 hours of noticing it, designate a Point of Contact who answers CERT-In, keep the logs of ICT systems for a rolling 180 days within India, and synchronise system clocks to an NTP source traceable to NIC or NPL.",
+      "status": "owner-gated",
+      "ownerItem": "O-CERTIN-POINT-OF-CONTACT",
+      "trigger": "🔴 IN FORCE NOW, NOT ON A DATE. The Directions bind every service provider and body corporate in India, so the 6-hour clock starts on the next incident whether or not a Point of Contact has been named. Naming one to CERT-In is the owner's act (O-CERTIN-POINT-OF-CONTACT); the 180-day log window is a property of every sink in tooling/ops/register.json `retention` rows.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The Directions (CERT-In No. 20(3)/2022-CERT-In, 28 April 2022) and CERT-In's FAQs on them, read from cert-in.org.in — the body that wrote them, and a host this matrix's `sourceHosts.allowed` does not carry yet — or from meity.gov.in, which is on it. Not fetched in the session that wrote this row, so it carries no URL.",
+      "note": "⏱ ADDED 2026-10-03 (rv2-business 015). The duty existed and had no row, so nothing printed it. Where the owner's act is recorded: the business brain's open owner item O-CERTIN-POINT-OF-CONTACT (nikatru/, a separate private repo CI cannot open — a pointer, not an assertion). Pairs with `breach-response-has-no-owner`, which keeps the half about telling the people affected."
+    },
+    {
+      "id": "grievance-contact-published",
+      "requirement": "K-5",
+      "duty": "The site publishes a Grievance Officer — a named person, a role and a contact — with the acknowledgement and resolution times we promise, where a buyer or a data principal finds it without asking.",
+      "status": "implemented",
+      "artefact": "sites/nikatru/contact.html",
+      "trigger": "Already in force and already published: sites/nikatru/contact.html, the `Grievance Officer` card. The promise binds the day a complaint arrives — acknowledged within 48 hours, resolved within 30 days.",
+      "verification": "in-tree",
+      "siteText": {
+        "page": "sites/nikatru/contact.html",
+        "mustRead": [
+          "Grievance Officer",
+          "We acknowledge within 48 hours and resolve within 30 days."
+        ]
+      },
+      "note": "⏱ ADDED 2026-10-03 (rv2-business 015). A PUBLISHED PROMISE is a duty whether or not a statute names it, and this one had no row: the card could be reworded or deleted and nothing would notice. `siteText` is what makes it notice — tooling/ci/check-site-integrity.mjs reads every row carrying one and FAILS when the page's visible text stops saying each `mustRead` line. The site source is sites/nikatru/contact.html itself, the `Grievance Officer` card. The NAMES on this card (the officer, the proprietor, the address, the number) are not repeated here: they are FACT regions rendered from tooling/house-identity.json, and assert-business-facts holds each to the entity source and refuses the same literal typed anywhere else, this file included."
+    },
+    {
+      "id": "ecommerce-rules-4-2-display",
+      "requirement": "K-5",
+      "markets": ["in"],
+      "duty": "Rule 4(2) of the Consumer Protection (E-Commerce) Rules, 2020: an e-commerce entity DISPLAYS on its platform its legal name, the principal geographic address of its headquarters and all branches, its website details, and its customer-care contact details.",
+      "status": "implemented",
+      "artefact": "sites/nikatru/contact.html",
+      "trigger": "Already in force: the display duty applies to every page a buyer reaches. contact.html, about.html, support.html, shipping.html and terms.html carry the full registered address since PR #564.",
+      "verification": "in-tree",
+      "siteText": {
+        "page": "sites/nikatru/contact.html",
+        "mustRead": [
+          "Nikatru — a proprietorship of",
+          "Registered MSME",
+          "Chennai, Tamil Nadu"
+        ]
+      },
+      "note": "⏱ ADDED 2026-10-03 (rv2-business 015). The site source is sites/nikatru/README.md, 'What replaced it': the owner ruling of 2026-09-09 to publish the address, and the rule it rests on (⛔ not RBI circular clause 7.2, repealed 2025-09-15). Two limbs hold it in-tree: `siteText` here (the legal name and the city on contact.html — the street address is deliberately not copied into this file), and check-site-integrity.mjs's email_off limb, which keeps the customer-care address readable in the served bytes. The rule's text itself is not fetched into this matrix: indiacode.nic.in is on the allowlist, and a `source` should be added the next time it is read. The NAMES on this card (the officer, the proprietor, the address, the number) are not repeated here: they are FACT regions rendered from tooling/house-identity.json, and assert-business-facts holds each to the entity source and refuses the same literal typed anywhere else, this file included."
     }
   ]
 }

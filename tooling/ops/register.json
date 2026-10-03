@@ -4305,7 +4305,7 @@
       ],
       "ownerGated": false,
       "source": "verified",
-      "expiryKnownAt": "App Store Connect `GET v1/profiles/JWVU72A2N6` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/5PM2N74969` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
     },
     {
       "id": "expiring.profile.apple-appstore-macos",
@@ -4328,7 +4328,7 @@
       ],
       "ownerGated": false,
       "source": "verified",
-      "expiryKnownAt": "App Store Connect `GET v1/profiles/26RV2N2Y4L` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/B5VRU86G9J` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
     },
     {
       "id": "expiring.store-enrolment.microsoft",
