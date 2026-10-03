@@ -893,6 +893,9 @@
   "regen-chain.test.mjs":
     6,
 
+  "regen-gradle-verify-workflow.test.mjs":
+    11,
+
   "release-durable.test.mjs":
     204,
 
