@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/auth/legal_consent_fields.dart';
 import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'support/raw_vendor_error.dart';
@@ -19,8 +20,12 @@ void main() {
     Future<void> Function()? onSignOut,
     VoidCallback? onOpenTerms,
     VoidCallback? onOpenPrivacy,
+    List<core.LegalChangeNote> changes = const <core.LegalChangeNote>[],
+    ValueChanged<core.LegalDocument>? onOpenDocument,
   }) =>
       ReacceptTermsView(
+        changes: changes,
+        onOpenDocument: onOpenDocument,
         onAccept: onAccept ?? () async {},
         onSignOut: onSignOut ?? () async {},
         // The real adapter hands the view the BRICK's `LegalConsentFields`; this
@@ -64,6 +69,92 @@ void main() {
 
     testWidgets('kDesktop — the cap still holds', (WidgetTester tester) async {
       expect(await paneWidthAt(tester, kDesktop), AppBreakpoints.form);
+    });
+  });
+
+  // ── (1b) WHAT CHANGED (EN-23, 2026-10-01) ─────────────────────────────────
+  //
+  // The notes come from the app's register through `core.legalChangesSince`;
+  // this is the widget half: a note renders its version, date, lines and link,
+  // and no note keeps the plain sentence.
+  group('property: reaccept-terms-says-what-changed', () {
+    const core.LegalVersions accepted =
+        core.LegalVersions(terms: '2026-09-25', privacy: '2026-09-26');
+    const core.LegalVersions bumped =
+        core.LegalVersions(terms: '2026-10-01', privacy: '2026-09-26');
+    const List<core.LegalChangeNote> register = <core.LegalChangeNote>[
+      core.LegalChangeNote(
+        document: core.LegalDocument.terms,
+        version: '2026-10-01',
+        date: '1 October 2026',
+        lines: <String>[
+          'First change.',
+          'Second change.',
+          'Third change.',
+        ],
+      ),
+    ];
+
+    testWidgets('🔴 a version bump renders its summary and its link',
+        (WidgetTester tester) async {
+      final List<core.LegalDocument> opened = <core.LegalDocument>[];
+      final List<core.LegalChangeNote> notes = core.legalChangesSince(
+        acceptedStamp: accepted.stamp,
+        current: bumped,
+        register: register,
+      );
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(changes: notes, onOpenDocument: opened.add),
+      );
+      final ChassisLocalizations l10n = lookupChassisLocalizations(
+        const Locale('en'),
+      );
+      expect(find.byKey(ReacceptTermsView.plainBody), findsNothing);
+      expect(find.text(l10n.reacceptTermsChangedIntro), findsOneWidget);
+      expect(
+        find.text(
+          l10n.reacceptTermsNoteHeading(
+            l10n.termsOfService,
+            '2026-10-01',
+            '1 October 2026',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(l10n.reacceptTermsNoteLine('Second change.')),
+        findsOneWidget,
+      );
+      final Finder link =
+          find.byKey(ReacceptTermsView.openDocument(core.LegalDocument.terms));
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      expect(opened, <core.LegalDocument>[core.LegalDocument.terms]);
+      // The privacy policy did not move, so it has no note.
+      expect(
+        find.byKey(ReacceptTermsView.openDocument(core.LegalDocument.privacy)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('no summary for the new version → the plain sentence',
+        (WidgetTester tester) async {
+      final List<core.LegalChangeNote> notes = core.legalChangesSince(
+        acceptedStamp: accepted.stamp,
+        current: const core.LegalVersions(terms: '2026-11-01', privacy: '2026-09-26'),
+        register: register,
+      );
+      expect(notes, isEmpty);
+      await pumpChassis(tester, kPhone, view(changes: notes));
+      expect(find.byKey(ReacceptTermsView.plainBody), findsOneWidget);
+      expect(
+        find.text(
+          lookupChassisLocalizations(const Locale('en')).reacceptTermsBody,
+        ),
+        findsOneWidget,
+      );
     });
   });
 

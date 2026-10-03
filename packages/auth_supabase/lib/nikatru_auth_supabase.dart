@@ -20,6 +20,7 @@ export 'src/handoff_loopback_stub.dart'
 export 'src/in_memory_auth_repository.dart';
 export 'src/native_attestation_client.dart';
 export 'src/native_credential_client.dart';
+export 'src/native_sign_in_sheets.dart';
 export 'src/secure_session_storage.dart';
 export 'src/supabase_auth_repository.dart';
 

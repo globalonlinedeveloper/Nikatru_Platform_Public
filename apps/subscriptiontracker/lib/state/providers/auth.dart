@@ -19,7 +19,13 @@ import 'dart:async';
 // second one — `features/auth/turnstile_gate.dart` reports its own handled
 // misconfiguration the same way.
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, FlutterError, FlutterErrorDetails, TargetPlatform;
+    show
+        ChangeNotifier,
+        FlutterError,
+        FlutterErrorDetails,
+        TargetPlatform,
+        defaultTargetPlatform,
+        kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
 import 'package:flutter_riverpod/legacy.dart';
@@ -31,6 +37,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         AuthProviders,
         AuthRedirects,
         InMemoryAuthRepository,
+        NativeSignInSheets,
         RetryAfterLatch,
         SupabaseAuthRepository,
         failedEventFlowOf,
@@ -41,6 +48,7 @@ import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
     show platformNativeAttestor;
+import 'package:nikatru_widgets/nikatru_widgets.dart' show GlancePublisher;
 
 import '../../core/app_config.dart';
 import '../../data/api/api_client.dart' show ApiClient;
@@ -50,6 +58,7 @@ import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
 import 'account_preferences.dart' show forgetAccountPreferences;
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
+import 'device_surfaces.dart' show glancePublisherProvider;
 import 'notifications.dart';
 import 'persistence.dart';
 import 'subscriptions.dart' show apiClientProvider, nowProvider;
@@ -157,6 +166,14 @@ final Provider<AuthRepository> authRepositoryProvider =
               // target in [kAuthCallbackTargets] registers and
               // `tooling/ci/assert-auth-callbacks.mjs` proves.
               redirects: AuthRedirects.current(appId: AppConfig.appId),
+              // ⏱ 2026-10-01 · EN-19 — the native Apple sheet on iOS and
+              // macOS (no browser). Google keeps the browser door on every
+              // target until its sheet lands (NativeSignInSheets.forPlatform
+              // says what it waits for).
+              nativeSheets: NativeSignInSheets.forPlatform(
+                defaultTargetPlatform,
+                isWeb: kIsWeb,
+              ),
               // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and
               // resend go through the platform Worker's native route, which
               // GoTrue does not captcha; null on web, which keeps Turnstile.
@@ -468,6 +485,14 @@ final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
       provider,
       token,
     ),
+    // ⏱ 2026-10-02 · review of #1155, finding 1: the native Apple sheet's
+    // session carries a code, not a token; the server exchanges it.
+    sendAuthorizationCode: (String provider, String code) =>
+        sendAppleAuthorizationCode(
+          ref.read(platformRestClientProvider),
+          provider,
+          code,
+        ),
     onError: reportAppleTokenNotKept,
     retryDelays: ref.watch(appleTokenRetryDelaysProvider),
   );
@@ -493,6 +518,26 @@ Future<void> sendProviderRefreshToken(
     client,
     provider: provider,
     refreshToken: token,
+    appId: AppConfig.appId,
+  );
+}
+
+/// ⏱ 2026-10-02 · review of #1155, finding 1 — WHERE A NATIVE APPLE SHEET'S
+/// AUTHORIZATION CODE GOES: `PUT /account/apple-code`, body
+/// `{authorizationCode, appId}`. Only Apple's sheet mints one; a code naming
+/// another provider is refused here rather than sent somewhere it means
+/// nothing. NAMED for the reason [sendProviderRefreshToken] is.
+Future<void> sendAppleAuthorizationCode(
+  RestClient client,
+  String provider,
+  String code,
+) {
+  if (provider != 'apple') {
+    throw ArgumentError.value(provider, 'provider', 'only Apple mints a code');
+  }
+  return exchangeAppleAuthorizationCode(
+    client,
+    authorizationCode: code,
     appId: AppConfig.appId,
   );
 }
@@ -682,7 +727,18 @@ List<UserStateDrop> userStateDrops(
   // [accountDeleted] (review 4 of #1080): the account is gone, so its pending
   // preference sends go with it instead of waiting for a sign-in.
   forgetAccountPreferences(ref, erase: accountDeleted),
+  // ⏱ 2026-10-02 · review of #1155, finding 7: the home-screen widget and the
+  // PWA badge show this account's renewals OUTSIDE the app; a signed-out
+  // device must not keep them on its home screen.
+  clearGlanceDrop(ref.read(glancePublisherProvider)),
 ];
+
+/// The glance's sign-out drop. STARTED, not awaited: the clear goes over a
+/// platform channel to a widget extension that may not exist in this build,
+/// and a sign-out must neither wait on nor fail over a mirror.
+UserStateDrop clearGlanceDrop(GlancePublisher glance) => () async {
+  unawaited(glance.clear());
+};
 
 /// 🔴 THE ONE ORDER IN WHICH THIS DEVICE FORGETS A USER'S OFFLINE STATE —
 /// called by EVERY sign-out path: the explicit drops ([userStateDrops]: Log
