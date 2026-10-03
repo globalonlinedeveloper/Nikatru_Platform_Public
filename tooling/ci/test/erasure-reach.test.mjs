@@ -289,8 +289,8 @@ describe('limb 5 — the signup list is reached by confirmed email, before the i
       (root) =>
         edit(root, PLATFORM_ROUTE, (t) =>
           t
-            .replace('const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);', "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;")
-            .replace("  deleted['identity'] = 1;\n", "  deleted['identity'] = 1;\n  await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);\n"),
+            .replace('const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, identityFor(c.env), userId);', "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;")
+            .replace("  deleted['identity'] = 1;\n", "  deleted['identity'] = 1;\n  await purgeVerifiedSignups(c.env.PLATFORM_DB, identityFor(c.env), userId);\n"),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stderr);
@@ -304,7 +304,7 @@ describe('limb 5 — the signup list is reached by confirmed email, before the i
       (root) =>
         edit(root, PLATFORM_SCHEDULED, (t) =>
           t.replace(
-            'const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, serviceRoleKey, subject);',
+            'const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, identityFor(env), subject);',
             "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;",
           ),
         ),
