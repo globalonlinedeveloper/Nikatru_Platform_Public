@@ -107,6 +107,7 @@
       "claim",
       "settle",
       "mine",
+      "help-chat",
       "health",
       "config",
       "webhooks",

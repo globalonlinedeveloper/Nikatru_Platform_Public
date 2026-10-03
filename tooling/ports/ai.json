@@ -239,6 +239,25 @@
       "candidates": ["claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"],
       "tokensPerCall": null,
       "why": "Reviewing a user's subscriptions. No shape is fixed yet, so neither the model, the tokens per call nor an input cap is declared: all three are T17's measurement. With no cap every call is refused, and the dry run prints this feature LOST."
+    },
+    "help": {
+      "adapter": "anthropic",
+      "model": null,
+      "effort": null,
+      "maxInputTokens": 8000,
+      "candidates": [
+        "claude-haiku-4-5",
+        "claude-sonnet-5-5",
+        "claude-opus-5-5"
+      ],
+      "tokensPerCall": {
+        "input": 2000,
+        "output": 300,
+        "basis": "declared",
+        "asOf": "2026-10-03",
+        "why": "DECLARED, not measured: the help chat's stable rules (about 400 tokens), at most three help articles as context (about 1,400) and the question (at most 500 characters), and a short cited answer back (about 300). Recorded per candidate when the quality bar is run on recorded answers (services/platform/test/help-chat-quality.test.ts), which sets basis: measured."
+      },
+      "why": "The help chat (lane help-ai-chat, O-HELP-AI-CHAT-UNBUILT): a Pro user's question answered in words, grounded ONLY in the help articles the server retrieves from the same index the help centre searches, citing them. The model is NULL until the quality bar (at least 30 recorded question/answer fixtures: citation correct, no invented feature, no price, no refund or terms restatement) is run on each candidate's RECORDED answers and the cheapest that passes is set here; until then aiFor('help') answers 'no model yet' and POST /v1/ai/help-chat answers 503 ai_unavailable after the user's own refusals. The input cap, 8,000 tokens, is bounded from bytes (1 token per UTF-8 byte): the rules (2,048 bytes), three articles at 1,600 bytes each (4,800), the question (500 characters, at most 2,000 bytes in UTF-8) and the framing fit under it."
     }
   },
   "selection": {

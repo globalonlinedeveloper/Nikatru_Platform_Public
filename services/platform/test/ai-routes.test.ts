@@ -54,7 +54,7 @@ beforeEach(() => {
   // The model is config and null until measured, so the test stands in a selection
   // that reaches the counting stub — built WITH the route's own meter (beforeCall).
   aiRouteDeps.select = (feature, _env, wiring) => {
-    stub = createStubAi({ limits: { ...aiLimits(), maxInputTokens: { import: 24000, review: 24000 } }, defaultText: ONE_CANDIDATE, beforeCall: wiring?.beforeCall });
+    stub = createStubAi({ limits: { ...aiLimits(), maxInputTokens: { import: 24000, review: 24000, help: 24000 } }, defaultText: ONE_CANDIDATE, beforeCall: wiring?.beforeCall });
     stubs.push(stub);
     return { ok: true, feature, model: 'claude-haiku-4-5', effort: null, provider: stub };
   };

@@ -6,6 +6,7 @@
 library;
 
 export 'src/assistant.dart';
+export 'src/help_chat.dart';
 export 'src/help_index.dart';
 export 'src/help_page.dart';
 export 'src/l10n/help_strings.g.dart';

@@ -605,6 +605,20 @@ const WIRE_CONTRACTS = [
       'NO CLIENT YET, A STATE: as ai-import. ai-routes.test.ts pins {advisory, provenance, suggestions[{name, action, reason, generated_by, provenance}]}.',
     absentFromDart: '/v1/ai/review',
   },
+  // ⏱ 2026-10-03 · lane help-ai-chat — the help chat, parsed by packages/help helpChatReplyFromWire.
+  {
+    id: 'ai-help-chat',
+    kind: 'body',
+    server: 'services/platform/src/routes/ai-help-chat.ts',
+    client: {
+      file: 'packages/help/lib/src/help_chat.dart',
+      member: 'HelpChatReply helpChatReplyFromWire(',
+      reader: 'j',
+    },
+    requiredBoth: ['generated_by', 'provenance', 'answer', 'citations', 'refusal'],
+    clientOnly: { error: 'read only from a 402 refusal body (ai_requires_plan vs ai_credits_exhausted, the meter\'s words), never from a 200.' },
+    serverOnly: { ask_us: 'the client offers Ask us on every refusal, so the flag is for other readers of the answer.' },
+  },
   {
     id: 'plan-refund',
     kind: 'gap',

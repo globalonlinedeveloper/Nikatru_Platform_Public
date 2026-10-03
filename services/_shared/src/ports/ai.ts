@@ -60,7 +60,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The features that may call a model. Each one's model is config (ai.json). */
-export const AI_FEATURES = ['import', 'review'] as const;
+export const AI_FEATURES = ['import', 'review', 'help'] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 
 /** The models a feature may be set to. Exact ids, never with a date suffix. */

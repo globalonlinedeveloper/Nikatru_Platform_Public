@@ -845,6 +845,20 @@
       "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded by the same meter as ai-import."
     },
     {
+      "id": "ai-help-chat",
+      "method": "POST",
+      "path": "/v1/ai/help-chat",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ai-help-chat.ts",
+      "purpose": "⏱ 2026-10-03 · lane help-ai-chat (O-HELP-AI-CHAT-UNBUILT). A Pro user's help question answered from the help articles the server retrieves (the help centre's own index and ranker), citing them; metered exactly like T17's features through the meter and aiFor('help'), every refusal before a call; out of scope or an attempt on the rules is the scoped refusal with no call; every answer validated (cites what it was given, no price, no link, no refund or terms wording) and marked generated_by: ai with provenance. Nothing stored or logged.",
+      "client": {
+        "file": "packages/help/lib/src/help_chat.dart",
+        "expression": "'/v1/ai/help-chat'",
+        "note": "The path ServerHelpChat.ask posts through the host's platform client; the answer is parsed by helpChatReplyFromWire. Answers 503 ai_unavailable until features.help.model is set from the quality bar."
+      },
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded by the AI meter (per-user daily cap, global spend breaker, kill switch)."
+    },
+    {
       "id": "plan-refund",
       "method": "POST",
       "path": "/v1/plan/refund",

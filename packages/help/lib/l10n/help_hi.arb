@@ -9,5 +9,19 @@
   "helpStillStuck": "अब भी अटके हैं?",
   "helpAskUs": "हमसे पूछें",
   "helpAccessibility": "सुलभता विवरण",
-  "helpArticlesInEnglish": "सहायता लेख अभी केवल अंग्रेज़ी में हैं।"
+  "helpArticlesInEnglish": "सहायता लेख अभी केवल अंग्रेज़ी में हैं।",
+  "helpChatTitle": "AI सहायक से पूछें",
+  "helpChatNoticeTitle": "आप एक AI से बात कर रहे हैं",
+  "helpChatNoticeBody": "यह सहायक एक AI सिस्टम है। यह केवल हमारे सहायता लेखों से उत्तर देता है, और इसके उत्तर गलत हो सकते हैं। किसी व्यक्ति तक पहुँचने के लिए 'हमसे पूछें' का उपयोग करें।",
+  "helpChatNoticeOk": "मैं समझ गया/गई",
+  "helpChatQuestionLabel": "आपका प्रश्न",
+  "helpChatSend": "पूछें",
+  "helpChatAiLabel": "AI",
+  "helpChatAiSemantics": "AI द्वारा तैयार किया गया उत्तर",
+  "helpChatOutOfScope": "मैं केवल हमारे सहायता लेखों से उत्तर दे सकता हूँ, और उनमें से कोई इसे कवर नहीं करता। हमसे पूछें, कोई व्यक्ति उत्तर देगा।",
+  "helpChatNeedsCredits": "AI सहायक AI क्रेडिट का उपयोग करता है। आपके पास कोई क्रेडिट नहीं बचा है।",
+  "helpChatBuyCredits": "प्लान और AI क्रेडिट देखें",
+  "helpChatUnavailable": "AI सहायक अभी उपलब्ध नहीं है। लेख खोजें, या हमसे पूछें।",
+  "helpChatCopy": "बातचीत कॉपी करें",
+  "helpChatSources": "इन लेखों से:"
 }

@@ -294,6 +294,8 @@
       "tooling/i18n/locales.json",
       "tooling/i18n/messages/email.json",
       "tooling/catalog/offers.json",
+      "tooling/help/search.mjs",
+      "sites/nikatru/help/index.en.json",
       ".github/workflows/deploy-workers.yml",
       ".github/workflows/migrate-platform-db.yml"
     ],

@@ -1,0 +1,425 @@
+{
+  "_why": [
+    "lane help-ai-chat, Do 4 — the help chat's QUALITY BAR. Each fixture is a question people ask (the article's own `asked:` lines in content/help/), the article that answers it, and a RECORDED answer: here the reference answer (the article's summary, citing it), authored, never generated. Per-candidate recorded answers (one file per model in tooling/ports/ai.json features.help.candidates) are recorded by the lead with the vault key and graded by the same test; the cheapest model whose answers all pass is set as features.help.model. No live model is called by this repository's tests."
+  ],
+  "fixtures": [
+    {
+      "question": "How do I delete my account?",
+      "article": "platform/delete-account",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Delete your account and its data from the app or from nikatru.com.",
+        "citations": [
+          "platform/delete-account"
+        ]
+      }
+    },
+    {
+      "question": "Does deleting my account cancel my plan?",
+      "article": "platform/delete-account",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Delete your account and its data from the app or from nikatru.com.",
+        "citations": [
+          "platform/delete-account"
+        ]
+      }
+    },
+    {
+      "question": "How do I log out of all devices?",
+      "article": "platform/log-out-everywhere",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Sign out every device signed in to your account at once.",
+        "citations": [
+          "platform/log-out-everywhere"
+        ]
+      }
+    },
+    {
+      "question": "How do I sign out everywhere?",
+      "article": "platform/log-out-everywhere",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Sign out every device signed in to your account at once.",
+        "citations": [
+          "platform/log-out-everywhere"
+        ]
+      }
+    },
+    {
+      "question": "How do I contact Nikatru?",
+      "article": "platform/report-a-problem",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Tell us what went wrong, or ask anything, from the support page; we reply within 2 business days.",
+        "citations": [
+          "platform/report-a-problem"
+        ]
+      }
+    },
+    {
+      "question": "Where do I report a problem with the website?",
+      "article": "platform/report-a-problem",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Tell us what went wrong, or ask anything, from the support page; we reply within 2 business days.",
+        "citations": [
+          "platform/report-a-problem"
+        ]
+      }
+    },
+    {
+      "question": "Is Nikatru down?",
+      "article": "platform/service-status",
+      "recorded": {
+        "in_scope": true,
+        "answer": "The status page shows whether each Nikatru service is working right now, and what went wrong before.",
+        "citations": [
+          "platform/service-status"
+        ]
+      }
+    },
+    {
+      "question": "Why is the app not loading for me?",
+      "article": "platform/service-status",
+      "recorded": {
+        "in_scope": true,
+        "answer": "The status page shows whether each Nikatru service is working right now, and what went wrong before.",
+        "citations": [
+          "platform/service-status"
+        ]
+      }
+    },
+    {
+      "question": "How do I reset my password?",
+      "article": "platform/sign-in-problems",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Fix a sign-in link that did not arrive, a forgotten password, or being signed out.",
+        "citations": [
+          "platform/sign-in-problems"
+        ]
+      }
+    },
+    {
+      "question": "Why was I signed out?",
+      "article": "platform/sign-in-problems",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Fix a sign-in link that did not arrive, a forgotten password, or being signed out.",
+        "citations": [
+          "platform/sign-in-problems"
+        ]
+      }
+    },
+    {
+      "question": "How do I add a subscription?",
+      "article": "subscriptiontracker/add-a-subscription",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Pick a popular service or add one by hand, with its price, cycle and next renewal date.",
+        "citations": [
+          "subscriptiontracker/add-a-subscription"
+        ]
+      }
+    },
+    {
+      "question": "How do I add a service that is not in the list?",
+      "article": "subscriptiontracker/add-a-subscription",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Pick a popular service or add one by hand, with its price, cycle and next renewal date.",
+        "citations": [
+          "subscriptiontracker/add-a-subscription"
+        ]
+      }
+    },
+    {
+      "question": "How do I add renewals to Google Calendar?",
+      "article": "subscriptiontracker/calendar-feed",
+      "recorded": {
+        "in_scope": true,
+        "answer": "A private calendar link shows every renewal date in Google Calendar, Apple Calendar or Outlook.",
+        "citations": [
+          "subscriptiontracker/calendar-feed"
+        ]
+      }
+    },
+    {
+      "question": "Can I see my subscriptions in my calendar app?",
+      "article": "subscriptiontracker/calendar-feed",
+      "recorded": {
+        "in_scope": true,
+        "answer": "A private calendar link shows every renewal date in Google Calendar, Apple Calendar or Outlook.",
+        "citations": [
+          "subscriptiontracker/calendar-feed"
+        ]
+      }
+    },
+    {
+      "question": "How do I cancel Netflix or another subscription?",
+      "article": "subscriptiontracker/cancel-a-subscription",
+      "recorded": {
+        "in_scope": true,
+        "answer": "The tracker shows you where to stop the charge: the provider, the store, your bank or your UPI app.",
+        "citations": [
+          "subscriptiontracker/cancel-a-subscription"
+        ]
+      }
+    },
+    {
+      "question": "Does deleting from the tracker cancel my subscription?",
+      "article": "subscriptiontracker/cancel-a-subscription",
+      "recorded": {
+        "in_scope": true,
+        "answer": "The tracker shows you where to stop the charge: the provider, the store, your bank or your UPI app.",
+        "citations": [
+          "subscriptiontracker/cancel-a-subscription"
+        ]
+      }
+    },
+    {
+      "question": "How do I add my own category?",
+      "article": "subscriptiontracker/categories",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Use the built-in categories or add your own, and rename or delete them.",
+        "citations": [
+          "subscriptiontracker/categories"
+        ]
+      }
+    },
+    {
+      "question": "Can I rename a category?",
+      "article": "subscriptiontracker/categories",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Use the built-in categories or add your own, and rename or delete them.",
+        "citations": [
+          "subscriptiontracker/categories"
+        ]
+      }
+    },
+    {
+      "question": "How do I change the currency?",
+      "article": "subscriptiontracker/currency",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Your home currency is used for new subscriptions; existing amounts are not converted.",
+        "citations": [
+          "subscriptiontracker/currency"
+        ]
+      }
+    },
+    {
+      "question": "Can I track subscriptions in different currencies?",
+      "article": "subscriptiontracker/currency",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Your home currency is used for new subscriptions; existing amounts are not converted.",
+        "citations": [
+          "subscriptiontracker/currency"
+        ]
+      }
+    },
+    {
+      "question": "How do I edit a subscription?",
+      "article": "subscriptiontracker/edit-or-delete",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Change a subscription's details, pause its reminders, or remove it from the tracker.",
+        "citations": [
+          "subscriptiontracker/edit-or-delete"
+        ]
+      }
+    },
+    {
+      "question": "How do I change the price of a subscription?",
+      "article": "subscriptiontracker/edit-or-delete",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Change a subscription's details, pause its reminders, or remove it from the tracker.",
+        "citations": [
+          "subscriptiontracker/edit-or-delete"
+        ]
+      }
+    },
+    {
+      "question": "How do I export my subscriptions?",
+      "article": "subscriptiontracker/export-your-data",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Download every subscription as a CSV file you can open in a spreadsheet.",
+        "citations": [
+          "subscriptiontracker/export-your-data"
+        ]
+      }
+    },
+    {
+      "question": "Can I download my data as CSV?",
+      "article": "subscriptiontracker/export-your-data",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Download every subscription as a CSV file you can open in a spreadsheet.",
+        "citations": [
+          "subscriptiontracker/export-your-data"
+        ]
+      }
+    },
+    {
+      "question": "How do I track a free trial?",
+      "article": "subscriptiontracker/free-trials",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Record when a trial ends and what it will cost after, and get a reminder before the first charge.",
+        "citations": [
+          "subscriptiontracker/free-trials"
+        ]
+      }
+    },
+    {
+      "question": "Will I be reminded before my trial ends?",
+      "article": "subscriptiontracker/free-trials",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Record when a trial ends and what it will cost after, and get a reminder before the first charge.",
+        "citations": [
+          "subscriptiontracker/free-trials"
+        ]
+      }
+    },
+    {
+      "question": "What does the insights page show?",
+      "article": "subscriptiontracker/insights",
+      "recorded": {
+        "in_scope": true,
+        "answer": "See your monthly and yearly spend, the next 30 days of charges and your biggest costs.",
+        "citations": [
+          "subscriptiontracker/insights"
+        ]
+      }
+    },
+    {
+      "question": "How do I see my yearly spending?",
+      "article": "subscriptiontracker/insights",
+      "recorded": {
+        "in_scope": true,
+        "answer": "See your monthly and yearly spend, the next 30 days of charges and your biggest costs.",
+        "citations": [
+          "subscriptiontracker/insights"
+        ]
+      }
+    },
+    {
+      "question": "How do I set a monthly budget?",
+      "article": "subscriptiontracker/monthly-budget",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Set what you want to spend a month and see what is left.",
+        "citations": [
+          "subscriptiontracker/monthly-budget"
+        ]
+      }
+    },
+    {
+      "question": "What are category caps?",
+      "article": "subscriptiontracker/monthly-budget",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Set what you want to spend a month and see what is left.",
+        "citations": [
+          "subscriptiontracker/monthly-budget"
+        ]
+      }
+    },
+    {
+      "question": "How do I mark a subscription as paid?",
+      "article": "subscriptiontracker/payments-and-history",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Mark a renewal as paid and see every payment and price change on the subscription's page.",
+        "citations": [
+          "subscriptiontracker/payments-and-history"
+        ]
+      }
+    },
+    {
+      "question": "Where is my payment history?",
+      "article": "subscriptiontracker/payments-and-history",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Mark a renewal as paid and see every payment and price change on the subscription's page.",
+        "citations": [
+          "subscriptiontracker/payments-and-history"
+        ]
+      }
+    },
+    {
+      "question": "How do renewal reminders work?",
+      "article": "subscriptiontracker/renewal-reminders",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Get a notification, an e-mail or a calendar entry before a subscription renews.",
+        "citations": [
+          "subscriptiontracker/renewal-reminders"
+        ]
+      }
+    },
+    {
+      "question": "How do I get notified before a subscription renews?",
+      "article": "subscriptiontracker/renewal-reminders",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Get a notification, an e-mail or a calendar entry before a subscription renews.",
+        "citations": [
+          "subscriptiontracker/renewal-reminders"
+        ]
+      }
+    },
+    {
+      "question": "How do I report a bug?",
+      "article": "subscriptiontracker/report-a-problem",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Send us a description, an optional blurred screenshot and the diagnostics you see before you send.",
+        "citations": [
+          "subscriptiontracker/report-a-problem"
+        ]
+      }
+    },
+    {
+      "question": "How do I send feedback?",
+      "article": "subscriptiontracker/report-a-problem",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Send us a description, an optional blurred screenshot and the diagnostics you see before you send.",
+        "citations": [
+          "subscriptiontracker/report-a-problem"
+        ]
+      }
+    },
+    {
+      "question": "How do I sync my subscriptions between phone and computer?",
+      "article": "subscriptiontracker/sync-and-devices",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Your subscriptions sync to every device you sign in on; changes made offline sync when you reconnect.",
+        "citations": [
+          "subscriptiontracker/sync-and-devices"
+        ]
+      }
+    },
+    {
+      "question": "Does the app work offline?",
+      "article": "subscriptiontracker/sync-and-devices",
+      "recorded": {
+        "in_scope": true,
+        "answer": "Your subscriptions sync to every device you sign in on; changes made offline sync when you reconnect.",
+        "citations": [
+          "subscriptiontracker/sync-and-devices"
+        ]
+      }
+    }
+  ]
+}

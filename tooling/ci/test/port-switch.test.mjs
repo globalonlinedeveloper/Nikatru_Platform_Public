@@ -673,4 +673,17 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
     assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
     assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
+
+  // ⏱ 2026-10-03 · lane help-ai-chat, Do 4: the help chat's credit floor is the dry run's, never typed.
+  it('🔴 the help chat floor on the REAL registry equals the hand computation', () => {
+    const r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run']);
+    // By hand: C = 2000 × 1.25 / 1e6 (input priced as cache writes) + 300 × 5 / 1e6 = 0.0025 + 0.0015 = 0.004;
+    // Apple 4C × 1.27 / 0.7 = 0.029028… → 0.0291 per unit.
+    const c = (2000 * 1.25 + 300 * 5) / 1_000_000;
+    assert.equal(c, 0.004);
+    const apple = Math.ceil(((4 * c * 1.27) / 0.7) * 10_000) / 10_000;
+    assert.equal(apple, 0.0291);
+    assert.match(r.out, /help on claude-haiku-4-5: 2000 in \(priced as cache writes\) \+ 300 out \(declared\) = USD 0\.004000 per call/);
+    assert.match(r.out, new RegExp(`help — claude-haiku-4-5, cost USD 0\\.004000 per call[\\s\\S]*?ios-appstore\\s+apple-iap\\s+≥ ${apple.toFixed(4).replace('.', '\\.')} per unit`));
+  });
 });

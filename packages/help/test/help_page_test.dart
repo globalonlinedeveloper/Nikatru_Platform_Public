@@ -194,13 +194,32 @@ void main() {
   });
 
   group(
-    '🔴 the chat entry (help-ai-chat slot) renders only with flag AND Pro AND credits',
+    '🔴 the chat entry (help-ai-chat slot) renders only with the flag AND (Pro OR an own key)',
     () {
-      testWidgets('Pro with zero credits: none', (WidgetTester tester) async {
+      // ⏱ 2026-10-03 · lane help-ai-chat: Pro with zero credits now gets the
+      // entry, and it is the plan or credit-pack prompt — never a call
+      // (help_chat_test.dart); a Free user without their own key gets none.
+      testWidgets('Pro with zero credits: the entry, which needs credits', (
+        WidgetTester tester,
+      ) async {
+        const HelpChatGate gate = HelpChatGate(flagOn: true, hasPro: true);
+        await tester.pumpWidget(_page(gate: gate));
+        expect(find.byKey(HelpCentreKeys.chatEntry), findsOneWidget);
+        expect(helpChatNeedsCredits(gate), isTrue);
+      });
+      testWidgets('🔴 Free without a key: none', (WidgetTester tester) async {
         await tester.pumpWidget(
-          _page(gate: const HelpChatGate(flagOn: true, hasPro: true)),
+          _page(gate: const HelpChatGate(flagOn: true)),
         );
         expect(find.byKey(HelpCentreKeys.chatEntry), findsNothing);
+      });
+      testWidgets('Free WITH their own key: the entry, needing no credits', (
+        WidgetTester tester,
+      ) async {
+        const HelpChatGate gate = HelpChatGate(flagOn: true, ownKey: true);
+        await tester.pumpWidget(_page(gate: gate));
+        expect(find.byKey(HelpCentreKeys.chatEntry), findsOneWidget);
+        expect(helpChatNeedsCredits(gate), isFalse);
       });
       testWidgets('flag off: none', (WidgetTester tester) async {
         await tester.pumpWidget(

@@ -79,6 +79,7 @@ import cancellation from './routes/cancellation';
 import report from './routes/report';
 import refund from './routes/refund';
 import ai from './routes/ai';
+import aiHelpChat from './routes/ai-help-chat';
 import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
@@ -351,6 +352,8 @@ app.route('/v1', report);
 // (src/lib/ai/meter.ts) and nothing is ever free (owner lock 2026-10-01).
 app.use('/v1/ai/*', platformAuth);
 app.route('/v1', ai);
+// ⏱ 2026-10-03 · lane help-ai-chat: the help chat, behind the same `/v1/ai/*` platformAuth line.
+app.route('/v1', aiHelpChat);
 
 // AUTHENTICATED: the Paddle create-transaction half ([ADR 044] rung 2).
 //

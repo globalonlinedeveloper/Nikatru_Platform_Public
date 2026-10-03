@@ -150,7 +150,7 @@ export const CONFORMANCE_PRICES: AiCostModel = {
 export const CONFORMANCE_INPUT_CAP = 8000;
 export const CONFORMANCE_LIMITS: AiLimits = {
   prices: CONFORMANCE_PRICES,
-  maxInputTokens: { import: CONFORMANCE_INPUT_CAP, review: null },
+  maxInputTokens: { import: CONFORMANCE_INPUT_CAP, review: null, help: null },
   fallbacks: { 'claude-opus-5-5': ['claude-opus-4-8', 'claude-opus-5'] },
   maxOutputTokens: AI_MODEL_MAX_OUTPUT_TOKENS,
 };

@@ -76,8 +76,9 @@ Future<void> openHelpCentre(
 /// and editable. Only what the person then SENDS leaves the device.
 ///
 /// [chatEntry] is the help-ai-chat slot: built only when [helpChatAvailable]
-/// holds for [chatGate] (flag on AND Pro AND AI credits). Nothing here calls a
-/// model; [assistant] defaults to [SearchOnlyAssistant].
+/// holds for [chatGate] (flag on AND (Pro OR the person's own key)); the
+/// entry it builds is [HelpChatPanel]. Nothing here calls a model; [assistant]
+/// defaults to [SearchOnlyAssistant].
 class HelpCentrePage extends StatefulWidget {
   const HelpCentrePage({
     super.key,

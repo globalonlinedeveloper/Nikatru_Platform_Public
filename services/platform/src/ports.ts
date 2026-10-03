@@ -251,6 +251,8 @@ export function errorSinkFor(env: Env): ErrorSink {
 export const AI_FEATURE_TABLE: Readonly<Record<AiFeature, { adapter: 'anthropic'; model: AiModelId | null; effort: AiEffort | null; maxInputTokens: number | null }>> = {
   import: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: 24000 },
   review: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: null },
+  // ⏱ 2026-10-03 · lane help-ai-chat: the help chat (routes/ai-help-chat.ts).
+  help: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: 8000 },
 };
 
 /** The price per million tokens of every model a call may reach — the candidates and their fallbacks (ai.json, `asOf` and `verify` there). */
@@ -273,7 +275,7 @@ export const AI_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
 export function aiLimits(): AiLimits {
   return {
     prices: AI_COST_MODEL,
-    maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens },
+    maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens, help: AI_FEATURE_TABLE.help.maxInputTokens },
     fallbacks: AI_FALLBACKS,
     maxOutputTokens: AI_MODEL_MAX_OUTPUT_TOKENS,
   };
