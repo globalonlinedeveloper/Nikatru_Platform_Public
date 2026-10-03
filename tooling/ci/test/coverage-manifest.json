@@ -161,6 +161,9 @@
   "brick-payment-fakes.test.mjs":
     4,
 
+  "build-provenance.test.mjs":
+    24,
+
   "built-artifact-pr-lane.test.mjs":
     27,
 

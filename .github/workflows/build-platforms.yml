@@ -1127,10 +1127,14 @@ jobs:
       - windows
       - apple
       - durable_symbols
+    # why id-token and attestations: this job ALONE signs the build-provenance attestation of every file the
+    # Release publishes (O-RELEASES-HAVE-NO-PROVENANCE); assert-build-provenance.mjs fails any other job that gains them.
     permissions:
       contents: write
       deployments: write
       actions: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -1214,6 +1218,29 @@ jobs:
             tar -czf "dist/${TAG}-${n}.tar.gz" -C "$d" .
             echo "archived  ${TAG}-${n}.tar.gz"
           done
+      # why: every file the Release publishes gets a signed SLSA build-provenance attestation, AFTER it is staged and
+      # BEFORE it is described, so release.json can name the attestation and SHA256SUMS can name release.json
+      # (O-RELEASES-HAVE-NO-PROVENANCE). UNCONDITIONAL, like the record steps below: a cron or a dispatch rehearses
+      # the tag's attestation on its untagged dist. assert-build-provenance.mjs holds this order and this path.
+      - name: Attest the build provenance of every file this release publishes
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      # why: an attestation nobody verified is a claim; this reads every file back with gh attestation verify, pinned
+      # to this workflow as the signer, and checks the verified subject digest is the file's own sha256.
+      - name: Verify every file's provenance before the release is described
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: >
+          node tooling/release/verify-provenance.mjs --dir dist --repo "$REPO"
+          --signer-workflow "${REPO}/.github/workflows/build-platforms.yml"
+          --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
+          --out "${RUNNER_TEMP}/provenance.json"
       # why: BEFORE the manifest, never after. SHA256SUMS has to NAME release.json
       # or the one file that describes the release is the one file nobody can
       # verify — and `sha256sum -c` would still print ok, because it only checks
@@ -1259,7 +1286,8 @@ jobs:
             --released-at "$RELEASED_AT" \
             --version "${RELEASE_LINE}.${RUN_NUMBER}" \
             --build "$RUN_NUMBER" \
-            --stamps stamps
+            --stamps stamps \
+            --provenance "${RUNNER_TEMP}/provenance.json"
       - name: Write the checksum manifest, naming the gated commit
         env:
           APP: ${{ matrix.app }}
@@ -1316,6 +1344,10 @@ jobs:
             echo "Verify every download with a tool you already have:"
             echo
             echo "    sha256sum -c SHA256SUMS"
+            echo
+            echo "and check that this repository's release workflow built it (docs/release/verify-a-download.md):"
+            echo
+            echo "    gh attestation verify <file> --repo ${GH_REPO}"
             echo
             echo "Produced by ${RUN_URL}"
           } > dist-notes.md

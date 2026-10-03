@@ -484,6 +484,11 @@
         "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-build-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-built-info-plist.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
@@ -3935,6 +3940,11 @@
           "signature": "other:No publishing lane finishes without a [<n>]D-<n> record:✗ <n> publishing lane(s) can finish without a [<n>]D-<n> record:"
         }
       ]
+    },
+    "tooling/release/verify-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
     },
     "tooling/scripts/assert-business-facts.mjs": {
       "catches": 0,

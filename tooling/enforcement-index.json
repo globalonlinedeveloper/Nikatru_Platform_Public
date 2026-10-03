@@ -506,6 +506,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-build-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/build-platforms.yml#apple"
     ],
     "kind": "guard",
@@ -4363,6 +4373,17 @@
     ],
     "kind": "script",
     "ref": "tooling/release/submit-windows-store.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/verify-provenance.mjs",
     "references": [],
     "state": "WIRED"
   },

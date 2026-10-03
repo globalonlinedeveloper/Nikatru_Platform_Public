@@ -775,6 +775,11 @@ jobs:
       - name: No release lane finishes with the artifact stuck inside the run
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-durable.mjs
+      # why: O-RELEASES-HAVE-NO-PROVENANCE. Every release job attests and verifies its directory before
+      # it is described, and no other job holds id-token or attestations write.
+      - name: Every release file is attested and verified, and only a release job can sign
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-build-provenance.mjs
       # why: THE ONLY PLACE THIS GUARD CAN RUN ON MAIN. It grades a staged release
       # directory, and no such directory exists outside a release run — so on every
       # other commit it would never execute, and a guard nobody has seen run is a
