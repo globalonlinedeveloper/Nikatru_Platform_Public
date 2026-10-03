@@ -72,15 +72,17 @@ class InMemoryKeyValueStore implements KeyValueStore {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 WHAT IS *NOT* OURS TO NAMESPACE, SO NOBODY "FIXES" IT LATER.
 //
-// The gotrue session key `sb-<project-ref>-auth-token` is written into
-// `localStorage` by the Supabase SDK itself, under a name derived from the
-// PROJECT ref rather than from any app. The chassis never sees that write, so
-// no prefix here could reach it — and, more importantly, IT MUST NOT BE
-// PREFIXED. One shared session across every app on the origin is the DELIBERATE
-// and accepted consequence of path routing: the portfolio's stated premise is
-// that one login reaches everything, and per-app auth storage would break that
-// premise on purpose. The same holds for the single secure-store session key
-// that `SecureSessionStorage` writes.
+// The auth session. `initNikatruAuth` hands the Supabase SDK its own storage —
+// `SecureSessionStorage` (packages/auth_supabase), one secure-store key,
+// `nikatru.auth.session` — so the session never passes through this store, and
+// the SDK's default `sb-<project-ref>-auth-token` key is not written at all
+// (it belongs to the SDK's SharedPreferencesLocalStorage, which the override
+// replaces; 2026-10-01, rv2-security-008 — this paragraph used to say the SDK
+// wrote it into `localStorage`). The session key IS NOT PREFIXED, and must not
+// be: one shared session across every app on the origin is the DELIBERATE and
+// accepted consequence of path routing. The portfolio's stated premise is that
+// one login reaches everything, and per-app auth storage would break that
+// premise on purpose.
 //
 // So: a session shared between apps on this origin is the FEATURE. It is not a
 // leak, not an oversight, and not a bug report. Namespacing it would be the

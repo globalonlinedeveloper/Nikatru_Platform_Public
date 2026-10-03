@@ -186,13 +186,17 @@
     "_readme": [
       "THE PRICE BOOK: what each served offering costs on each STORE and what each RAIL sells it under (O-RAIL-PRICE-IDS-HAND-KEPT).",
       "",
-      "NOT SERVED. services/platform/src/config.ts reads `sharedApiBaseUrl`, `defaults` and `apps` and nothing else, so no",
-      "client and no KV override ever sees this section. The web price a buyer is shown stays `amount_minor` in",
+      "NOT SERVED, WITH ONE FIELD EXCEPTED. services/platform/src/config.ts reads `sharedApiBaseUrl`, `defaults` and `apps`, and",
+      "from this section `webInrMinor` alone (O-WEB-INR-PRICE-BOOK, 2026-10-01): `GET /config/<app>?market=IN`, the buyer's",
+      "own declaration and never cf.country, serves each offering at its India web price in INR (config.ts `priceForMarket`).",
+      "No KV override sees or moves this section. The web price every other buyer is shown stays `amount_minor` in",
       "`apps.<id>.paywall.offerings`; an entry here is keyed by that offering's `product_id` and adds only what the served",
       "wire does not carry: the plan, the India web price, the store column and the rail handles.",
       "",
       "`apps.<id>.<product_id>`: `plan` (single-monthly | single-yearly | single-lifetime, the same enum as app.yaml",
-      "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093), `store`",
+      "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093; ABSENT on a",
+      "one-time offering until the Razorpay order path exists, so India buyers are never shown a plan the India rail cannot",
+      "sell: render-rail-prices.mjs limb J, PR #1149 ruling item 5), `store`",
       "(ADR 093 section 2's store column: `USD`, `INR` and `readBack`, absent on the lifetime plan, which no store sells) and",
       "`readBack.<apple|google>` is null until that store's console accepts the price, then `{USD, INR, readAt}` as read there;",
       "render-rail-prices.mjs limb H refuses a null one for a plan apps/<id>/app.yaml declares live on that store.",
@@ -211,7 +215,18 @@
       "",
       "WHAT A SALE NETS is not written here or anywhere as prose: `render-rail-prices.mjs --net-sheet` derives it per plan and per",
       "channel from this section and tooling/catalog/fee-register.json (each vendor's published fee, read and dated), and every",
-      "--check run fails a channel that can sell and nets below the web row of the same plan."
+      "--check run fails a channel that can sell and nets below the web row of the same plan.",
+      "",
+      "TAX MODE (O-TAX-TREATMENT-STATED-TWO-WAYS, ADR draft tax-mode-per-rail): every rail entry, a read-back or pending, carries",
+      "`taxMode`, whether the price it sells already includes the tax due on it: `inclusive`, `exclusive`, or `unread`. `unread`",
+      "is allowed only where the mode is a VENDOR READ-BACK nobody has recorded yet: Paddle reports it on the same read that",
+      "fetches the price (`GET /prices/<id>` `tax_mode`; `account_setting` resolves through the account tax setting), and the",
+      "2026-09-22 and 2026-09-26 reads did not record it, so the next read writes it beside `amountMinor` and `readAt`. Razorpay",
+      "is `inclusive` by ADR 093 (Nikatru is the GST seller on that rail and the INR web price includes GST). Every entry of one",
+      "rail states the same mode, because the buyer reads ONE tax sentence per rail: tooling/sites/generate-discovery.mjs",
+      "renders it into pricing.html, the product page and terms section 4 from this field, and render-rail-prices.mjs limb I",
+      "refuses a rail entry with no `taxMode`, a value outside the three, `unread` on a rail whose mode is decided rather than",
+      "read (razorpay), and two modes on one rail."
     ],
     "apps": {
       "fullshot": {
@@ -220,10 +235,12 @@
           "webInrMinor": 14900,
           "rails": {
             "paddle": {
-              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission"
+              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission",
+              "taxMode": "unread"
             },
             "razorpay": {
-              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here"
+              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here",
+              "taxMode": "inclusive"
             }
           }
         },
@@ -232,10 +249,12 @@
           "webInrMinor": 99900,
           "rails": {
             "paddle": {
-              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission"
+              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission",
+              "taxMode": "unread"
             },
             "razorpay": {
-              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here"
+              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here",
+              "taxMode": "inclusive"
             }
           }
         }
@@ -253,8 +272,8 @@
             }
           },
           "rails": {
-            "paddle": { "priceId": "pri_01m346p0fjtaffk6waj5x5vz1c", "amountMinor": 599, "readAt": "2026-09-22T09:20:50Z" },
-            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+            "paddle": { "priceId": "pri_01m346p0fjtaffk6waj5x5vz1c", "amountMinor": 599, "readAt": "2026-09-22T09:20:50Z", "taxMode": "unread" },
+            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here", "taxMode": "inclusive" }
           }
         },
         "pro_yearly": {
@@ -269,16 +288,15 @@
             }
           },
           "rails": {
-            "paddle": { "priceId": "pri_01m346p0v8103kqy1zb8zmmj7y", "amountMinor": 3499, "readAt": "2026-09-22T09:20:50Z" },
-            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+            "paddle": { "priceId": "pri_01m346p0v8103kqy1zb8zmmj7y", "amountMinor": 3499, "readAt": "2026-09-22T09:20:50Z", "taxMode": "unread" },
+            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here", "taxMode": "inclusive" }
           }
         },
         "pro_lifetime": {
           "plan": "single-lifetime",
-          "webInrMinor": 249900,
           "rails": {
-            "paddle": { "priceId": "pri_01m346p14yzeqjjwj153thx8p2", "amountMinor": 8900, "readAt": "2026-09-26T23:43:12Z" },
-            "razorpay": { "pending": "no Razorpay one-time item exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+            "paddle": { "priceId": "pri_01m346p14yzeqjjwj153thx8p2", "amountMinor": 8900, "readAt": "2026-09-26T23:43:12Z", "taxMode": "unread" },
+            "razorpay": { "pending": "not sold in India: the Razorpay order path (POST /v1/orders) is not built, so this one-time offering carries no webInrMinor and is out of the India book (render-rail-prices.mjs limb J) until it is and the owner creates the item (ADR 094)", "taxMode": "inclusive" }
           }
         }
       }

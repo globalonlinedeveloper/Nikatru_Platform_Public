@@ -236,6 +236,30 @@
       }
     },
     {
+      "id": "table:platform_db.provider_payment_links",
+      "kind": "d1-table",
+      "name": "provider_payment_links",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · PR #1149 ruling item 2 (O-RAZORPAY-CHECKOUT-ADAPTER). One row per subscription charge on a rail whose refunds and disputes name a PAYMENT rather than a subscription (Razorpay): the rail's payment id, the subscription id it charged, our account id when the charge resolved one, the money world, and the notification that carried both ids. Written once, first link wins, on the signed `subscription.charged`, so a later refund or chargeback of that payment resolves its subscription without trusting the payment entity's own fields. No name, no email, no payment detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "It is the answer to 'which subscription does this refunded or disputed payment belong to', and a refund or chargeback can arrive for as long as the subscription's payments can be reversed — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`, and the shared erasure route derives the tables it empties from the schema."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0026_provider_payment_links.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.unclaimed_payments",
       "kind": "d1-table",
       "name": "unclaimed_payments",
@@ -735,6 +759,15 @@
       "name": "events",
       "personalData": true,
       "holds": "Usage-statistics events, collected only after consent. Each row carries the client's install id (anon_id), the app, platform, version and a coarse geo derived at the network edge.",
+      "consentGate": {
+        "enforcedBy": "services/platform/src/routes/events.ts",
+        "anchors": [
+          "consent_artifacts",
+          "consent_not_recorded",
+          "consent_withdrawn"
+        ],
+        "reason": "⏱ 2026-10-01 · consent enforced at ingest (full review r2, services-005). \"Only after consent\" is enforced AT INGEST, not only in the app: POST /v1/events reads the LATEST `purpose='analytics'` row of `consent_artifacts` for each install in the batch (one indexed read, `idx_consent_lookup`) and stores nothing for an install with no artifact (409 consent_not_recorded) or whose latest artifact is a withdrawal (403 consent_withdrawn). Until then the route never read that table, so the claim held for our client only — a forked or old build, or a queue flushed after withdrawal, stored rows for people who had not consented. Proven by services/platform/test/events.test.ts; tooling/ci/assert-data-inventory.mjs fails when this file stops carrying the anchors."
+      },
       "retention": {
         "kind": "swept",
         "periodDays": 400,

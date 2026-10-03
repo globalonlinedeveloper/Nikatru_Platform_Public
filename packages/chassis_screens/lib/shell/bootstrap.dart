@@ -159,6 +159,9 @@ Future<void> bootstrapNikatru({
   bool isDebugBuild = kDebugMode,
   TargetPlatform? platform,
 }) async {
+  // Step 0, before anything can log: `debugPrint` writes to the device log in a
+  // RELEASE build, so it is a no-op there (design_system release_logging.dart).
+  silenceDebugPrintInRelease();
   WidgetsFlutterBinding.ensureInitialized();
   enableWebSemantics();
   registerVendoredAssetLicences();
