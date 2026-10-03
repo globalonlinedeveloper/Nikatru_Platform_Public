@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin, callCostUsd, chainCallCostUsd, creditFloor } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -417,5 +417,143 @@ describe('port-switch — a MAIL switch moves more than code (C9–C14)', () => 
     assert.match(r.out, /PASS\s+C9 dns: `fake` is a fake/);
     const live = run(['mail', '--to', 'fake', '--dry-run', '--root', root]);
     assert.match(live.first, /FAIL — C1 target: `fake` is a fake/);
+  });
+});
+
+describe('port-switch — an AI switch prices every feature and floors it per channel (C15–C17)', () => {
+  // A FIXTURE fee register and channel register, so the floor below is a hand
+  // computation over numbers this file states, not over whatever the real
+  // register says today.
+  const FEES = {
+    cells: {
+      'apple-iap-standard': { rail: 'apple-iap', value: { percentBps: 3000 } },
+      'apple-iap-small-business': { rail: 'apple-iap', value: { percentBps: 1500 } },
+      'play-billing-subscription': { rail: 'play-billing', value: { percentBps: 1500 } },
+      'paddle-checkout': { rail: 'paddle', value: { percentBps: 500, fixedMinor: 50, fixedCurrency: 'USD' } },
+      'razorpay-platform': { rail: 'razorpay', value: { percentBps: 200 } },
+      'razorpay-subscription-add-on': { rail: 'razorpay', value: { percentBps: 50 } },
+      'india-gst': { rail: 'razorpay', value: { percentBps: 1800 } },
+    },
+    taxRegions: { rows: { IN: { value: { percentBps: 1800 } }, HU: { value: { percentBps: 2700 } } } },
+  };
+  const CHANNELS = {
+    channels: [
+      { id: 'web', surface: 'app', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] } },
+      { id: 'ios-appstore', surface: 'app', purchaseRail: { rail: 'apple-iap' } },
+      { id: 'android-play', surface: 'app', purchaseRail: { rail: 'play-billing' } },
+      { id: 'apps-gov-in', surface: 'app', purchaseRail: { rail: 'none' } },
+    ],
+  };
+  const OPUS = { inputUsdPerMTok: 4, outputUsdPerMTok: 20, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 5, asOf: '2026-10-02', source: 'https://example.invalid/pricing', verify: 'a fixture price' };
+  const HAIKU = { inputUsdPerMTok: 1, outputUsdPerMTok: 5, cacheReadUsdPerMTok: 0.1, cacheWriteUsdPerMTok: 1.25, asOf: '2026-10-02', source: 'https://example.invalid/pricing', verify: 'a fixture price' };
+  const DECLARED = { input: 3000, output: 500, basis: 'declared', asOf: '2026-10-02', why: 'the fixture case the brief names' };
+  const aiPort = (featureModel = null, tokens = DECLARED) =>
+    port({
+      port: 'ai',
+      adapters: [
+        adapter({ id: 'acme', cost: { feeCells: [], unit: null, models: { 'claude-opus-5-5': OPUS, 'claude-haiku-4-5': HAIKU } } }),
+        adapter({ id: 'acme-byok', status: 'built', half: 'client', secrets: [], environments: ['test', 'sandbox', 'live'], conformance: { file: 'test/beta.test.ts' } }),
+        adapter({ id: 'fake', vendor: null, status: 'fake', secrets: [], identity: [], environments: ['test'], conformance: { file: 'test/fake.test.ts' } }),
+      ],
+      features: {
+        import: { adapter: 'acme', model: featureModel, effort: null, maxInputTokens: 8000, candidates: ['claude-haiku-4-5', 'claude-opus-5-5'], tokensPerCall: tokens, why: 'the fixture import feature' },
+      },
+      selection: { by: 'per-call', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
+      switch: { runbook: 'Private/runbooks/switch-vendor.md#ai', dryRun: 'node tooling/ops/port-switch.mjs ai --to <adapter> --dry-run' },
+    });
+  const aiFixture = (doc, fees = FEES) => fixture(doc, { 'tooling/catalog/fee-register.json': JSON.stringify(fees), 'tooling/channel-register.json': JSON.stringify(CHANNELS) });
+
+  it('🔴 Opus 5.5 at 3,000 in and 500 out: the floor per channel is the hand computation', () => {
+    // C = 3000 × max(4, 5 cache-write) / 1e6 + 500 × 20 / 1e6 = 0.015 + 0.010 = 0.025 USD per call; 4C = 0.1.
+    // The tax is the HIGHEST region's (HU 27%) everywhere but the India web book (IN 18%):
+    //   paddle      0.1 / (1/1.27 − 0.05)       = 0.1 / 0.737401… = 0.135612… → 0.1357 per unit,
+    //               + 0.50 / 0.737401…          = 0.678060… → 0.6781 per pack
+    //   razorpay    0.1 / (1/1.18 − 0.02)       = 0.1 / 0.827457… = 0.120852… → 0.1209
+    //   apple-iap   0.1 × 1.27 / (1 − 0.30)     = 0.181428… → 0.1815 (the 30% cell, not the 15% one)
+    //   play        its only cell is subscription-only → LOST, never 15% guessed for a one-time pack
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /PASS  C16 features: import on claude-opus-5-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.025000 per call/);
+    assert.match(r.out, /import — claude-opus-5-5, cost USD 0\.025000 per call, 4× = 0\.100000/);
+    assert.match(r.out, /web\s+paddle\s+≥ 0\.1357 per unit \+ 0\.6781 per pack/);
+    assert.match(r.out, /web\/IN\s+razorpay\s+≥ 0\.1209 per unit/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1815 per unit\s+\(4C × \(1 \+ 27% tax, HU\) \/ \(1 − 30% apple-iap-standard\)\)/);
+    assert.match(r.out, /android-play\s+play-billing\s+LOST — .*no cell for a one-time pack on `play-billing` \(play-billing-subscription is subscription-only/);
+    assert.doesNotMatch(r.out, /apps-gov-in/);
+    // A LOST floor is exit 2, never a pass.
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C17 floor: 1 floor\(s\) not derived — first: import\/android-play/);
+  });
+
+  it('green control: with a one-time Play cell the same switch passes, and a model switch keeps the adapter (C7)', () => {
+    const fees = structuredClone(FEES);
+    fees.cells['play-billing-one-time'] = { rail: 'play-billing', value: { percentBps: 3000 } };
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort(), fees)]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /android-play\s+play-billing\s+≥ 0\.1815 per unit/);
+    assert.match(r.out, /PASS  C7 standby: a model switch keeps `acme`; the rollback is each feature's previous model \(import: unset\)/);
+    assert.match(r.out, /PASS  C17 floor: 1 feature\(s\) × 4 channel row\(s\) floored at 4× cost/);
+  });
+
+  it('a feature with no model yet, or no tokens per call, is LOST — never a guess', () => {
+    let r = run(['ai', '--to', 'acme', '--dry-run', '--from', 'acme-byok', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /LOST  C16 features: import: no model \(features\.import\.model is unset until measured\)/);
+    assert.equal(r.code, 2, r.out);
+    r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run', '--root', aiFixture(aiPort(null, null))]);
+    assert.match(r.out, /LOST  C16 features: import: no tokens per call/);
+  });
+
+  it('naming a cheaper model floors lower', () => {
+    const r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run', '--root', aiFixture(aiPort('claude-opus-5-5'))]);
+    // Haiku: 3000 × max(1, 1.25) / 1e6 + 500 × 5 / 1e6 = 0.00375 + 0.0025 = 0.00625; ×4 = 0.025;
+    // Apple: 0.025 × 1.27 / 0.7 = 0.045357… → 0.0454.
+    assert.match(r.out, /import on claude-haiku-4-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.006250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.0454 per unit/);
+  });
+
+  it("a bring-your-own-key adapter prices nothing of ours: the user's key pays", () => {
+    const r = run(['ai', '--to', 'acme-byok', '--dry-run', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /PASS  C15 models: `acme-byok` runs on the USER's own key/);
+  });
+
+  it('creditFloor and callCostUsd are the formulas the table prints', () => {
+    assert.equal(callCostUsd(OPUS, { input: 3000, output: 500 }), 0.025);
+    const apple = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows);
+    assert.ok(Math.abs(apple.perUnit - (0.1 * 1.27) / 0.7) < 1e-12);
+    assert.match(creditFloor('play-billing', 0.025, FEES.cells, FEES.taxRegions.rows).lost, /subscription-only/);
+  });
+
+  it('🔴 the floor takes the HIGHEST region tax, and with no tax table it is LOST — never India for every region', () => {
+    const india = { IN: FEES.taxRegions.rows.IN };
+    const low = creditFloor('apple-iap', 0.025, FEES.cells, india).perUnit;
+    const high = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows).perUnit;
+    assert.ok(high > low, 'adding a 27% region raises the store floor');
+    assert.match(creditFloor('apple-iap', 0.025, FEES.cells, undefined).lost, /no taxRegions\.rows/);
+    assert.match(creditFloor('razorpay', 0.025, FEES.cells, { HU: FEES.taxRegions.rows.HU }).lost, /no taxRegions\.rows\.IN/);
+  });
+
+  it('🔴 a fallback chain is priced at its DEAREST model: the floor follows the fallback, not the requested model', () => {
+    const DEAR = { ...OPUS, inputUsdPerMTok: 5, outputUsdPerMTok: 25, cacheWriteUsdPerMTok: 6.25 };
+    const priced = { 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-opus-4-8'] }, 'claude-opus-4-8': DEAR };
+    // Opus 4.8: 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.03125 (Opus 5.5 alone: 0.025).
+    assert.deepEqual(chainCallCostUsd(priced, 'claude-opus-5-5', DECLARED), { cost: 0.03125, pricedAt: 'claude-opus-4-8' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': OPUS }, 'claude-opus-5-5', DECLARED), { cost: 0.025, pricedAt: 'claude-opus-5-5' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-x'] } }, 'claude-opus-5-5', DECLARED), { unpriced: 'claude-x' });
+    // Through the dry run: Apple 4 × 0.03125 × 1.27 / 0.7 = 0.226785… → 0.2268, not Opus 5.5's 0.1815.
+    const doc = aiPort();
+    doc.adapters[0].cost.models = priced;
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(doc)]);
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): .* = USD 0\.031250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
+  });
+
+  it("on the REAL registry: the AI dry run names T17's gaps — no tokens for review yet, and Play has no one-time cell", () => {
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run']);
+    assert.equal(r.code, 2, r.out);
+    // Opus 5.5 falls back to Opus 4.8 and Opus 5 ($5/$25, cache write 6.25), so the call is priced there:
+    // C = 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.01875 + 0.0125 = 0.03125; Apple 4C × 1.27 / 0.7 = 0.226785… → 0.2268.
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.031250 per call/);
+    assert.match(r.out, /review: no tokens per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
+    assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
 });
