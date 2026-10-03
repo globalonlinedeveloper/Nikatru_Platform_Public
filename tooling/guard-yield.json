@@ -1380,6 +1380,11 @@
         "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-incidents.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-input-contract.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
@@ -2812,6 +2817,11 @@
         "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-status-components.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-stop-copy.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
@@ -4063,6 +4073,11 @@
       "firstSeen": "2026-09-24",
       "evidence": []
     },
+    "tooling/sites/gen-help-centre.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/sites/generate-apps-data.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-17",
@@ -4112,6 +4127,11 @@
     "tooling/smoke/web-a11y-tree.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
+      "evidence": []
+    },
+    "tooling/status/build-status.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/store/capture-backend.mjs": {
