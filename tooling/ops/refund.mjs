@@ -51,6 +51,18 @@ export const RAILS = {
 /** @ceiling none — a client-side patience budget for one call, not a platform resource. */
 export const REFUND_TIMEOUT_MS = 20_000;
 
+/**
+ * The ONE thing the rail's answer may put in the ledger: its refund id, and only
+ * in the shape both rails use (`adj_…` on Paddle, `rfnd_…` on Razorpay). Anything
+ * else is recorded as null, so the response never writes free text into the file
+ * (CodeQL js/http-to-file-access #595; the ledger path is the operator's --ledger).
+ */
+export const REFUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export const refundIdOf = (j) => {
+  const id = j?.data?.id ?? j?.id ?? null;
+  return typeof id === 'string' && REFUND_ID.test(id) ? id : null;
+};
+
 export function parseArgs(argv) {
   const a = { execute: false, sandbox: false };
   for (let i = 0; i < argv.length; i++) {
@@ -167,8 +179,7 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     });
     status = res.status;
     try {
-      const j = await res.json();
-      id = j?.data?.id ?? j?.id ?? null;
+      id = refundIdOf(await res.json());
     } catch {
       id = null;
     }

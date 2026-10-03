@@ -18,7 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { buildPlan, confirmationToken, insideGitWorkTree, isThisModule, main } from '../../ops/refund.mjs';
+import { buildPlan, confirmationToken, insideGitWorkTree, isThisModule, main, refundIdOf } from '../../ops/refund.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ops', 'refund.mjs');
@@ -30,13 +30,13 @@ before(() => {
 });
 after(() => rmSync(TMP, { recursive: true, force: true }));
 
-function harness(env = {}) {
+function harness(env = {}, answer = { data: { id: 'adj_01test' } }) {
   const calls = [];
   const out = [];
   const err = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, init });
-    return new Response(JSON.stringify({ data: { id: 'adj_01test' } }), { status: 201 });
+    return new Response(JSON.stringify(answer), { status: 201 });
   };
   return { calls, out, err, run: (argv) => main(argv, { env: { PADDLE_API_KEY: 'pdl_sdbx_x', ...env }, fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s), now: () => '2026-10-02T00:00:00.000Z' }) };
 }
@@ -92,6 +92,21 @@ describe('tooling/ops/refund.mjs', () => {
     assert.deepEqual(JSON.parse(h.calls[0].init.body), { action: 'refund', transaction_id: 'txn_01habc', reason: 'goodwill: charged twice', type: 'full' });
     const line = JSON.parse(readFileSync(ledger, 'utf8').trim());
     assert.deepEqual(line, { at: '2026-10-02T00:00:00.000Z', kind: 'manual_refund', provider: 'paddle', ref: 'txn_01habc', amount_minor: null, reason: 'goodwill: charged twice', status: 201, refund_id: 'adj_01test' });
+  });
+
+  test('🔴 the answer writes only a rail-shaped refund id to the ledger: free text from the response is recorded as null', async () => {
+    const plan = buildPlan({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const ledger = join(TMP, 'shaped.jsonl');
+    const h = harness({}, { data: { id: 'adj_01\n{"kind":"forged"}' } });
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', confirmationToken(plan), '--ledger', ledger]), 0);
+    const lines = readFileSync(ledger, 'utf8').trim().split('\n');
+    assert.equal(lines.length, 1);
+    assert.equal(JSON.parse(lines[0]).refund_id, null);
+    assert.equal(refundIdOf({ id: 'rfnd_FP8QHiV938haTz' }), 'rfnd_FP8QHiV938haTz');
+    assert.equal(refundIdOf({ data: { id: 'adj_01h' } }), 'adj_01h');
+    assert.equal(refundIdOf({ id: 42 }), null);
+    assert.equal(refundIdOf({ id: 'x'.repeat(65) }), null);
+    assert.equal(refundIdOf(null), null);
   });
 
   test('the token binds the request: another amount or reference is another token', () => {
