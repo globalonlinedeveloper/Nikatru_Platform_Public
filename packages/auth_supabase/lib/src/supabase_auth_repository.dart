@@ -622,6 +622,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
       // On native this is the scheme the OS hands back to THIS installation,
       // which is the only one holding the PKCE verifier the exchange needs.
       redirectTo: redirects(AuthFlow.oauth),
+      // ⏱ 2026-10-01 · AB-A1-02: iOS and macOS stay on the EXTERNAL browser,
+      // read off the pinned plugins. `inAppBrowserView` is SFSafariViewController
+      // on iOS (url_launcher_ios 6.4.1), not ASWebAuthenticationSession, and
+      // supabase_flutter 2.16.0 never closes it after the return;
+      // url_launcher_macos 3.2.5 supports no in-app mode, so the sheet would not
+      // open. An auth session needs a plugin of its own.
       authScreenLaunchMode: kIsWeb
           ? sb.LaunchMode.platformDefault
           : sb.LaunchMode.externalApplication,

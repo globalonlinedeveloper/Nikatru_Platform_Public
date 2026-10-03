@@ -748,7 +748,7 @@
     },
     {
       "path": "integration_test/native_auth_proof_steps.dart",
-      "lines": 277,
+      "lines": 289,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): the native sign-in proof's steps, apart from the binding so a local red run can drive the same sign-in step against a fake server; imported by integration_test/native_auth_proof_test.dart and stamped beside it; a test-only file under integration_test/, never in lib/."
     },
@@ -757,6 +757,12 @@
       "lines": 170,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): per-app by construction — the per-target native sign-in proof of THIS app (its form, its Home, its reset screen), run by .github/workflows/native-auth-proof.yml on each target's device through tooling/e2e/native_auth_proof.mjs. App #1 adopts the same file with its own login keys."
+    },
+    {
+      "path": "integration_test/native_oauth_return_test.dart",
+      "lines": 86,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-10-01 (AB-A1-02, O-NATIVE-AUTH-CALLBACK-UNBUILT): per-app by construction — the per-target OAuth-return proof of THIS app (its own main.dart, its own com.nikatru.<app> scheme), run by .github/workflows/native-auth-proof.yml's <target>-oauth-return jobs through tooling/e2e/native_auth_proof.mjs --oauth-return. It signs nobody in, so it needs no attested build; App #1 carries the same file."
     },
     {
       "path": "integration_test/store_capture_guard.dart",
