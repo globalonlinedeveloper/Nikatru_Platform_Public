@@ -39,7 +39,7 @@
 // Tested by tooling/ci/test/stamp-sandbox.test.mjs against real git repos.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync, rmdirSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync, rmdirSync, mkdirSync } from 'node:fs';
 import path, { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -77,9 +77,12 @@ export function porcelain(root) {
   return out;
 }
 
+/** The file's bytes, or null for a missing path or a directory. Read in ONE
+ *  call, never stat-then-read: a check-then-use pair is a file-system race
+ *  (CodeQL js/file-system-race, alert #592 on #1186). */
 function bytesOf(file) {
   try {
-    return statSync(file).isFile() ? readFileSync(file) : null;
+    return readFileSync(file);
   } catch {
     return null;
   }
