@@ -47,7 +47,7 @@
 // control being counted twice when an `InkWell` builds a `GestureDetector`
 // inside itself.
 //
-// ── THE SURFACE IS 1079×2600, AND BOTH NUMBERS ARE LOAD-BEARING ─────────────
+// ── THE SURFACE IS 1079×3130, AND BOTH NUMBERS ARE LOAD-BEARING ─────────────
 // 1079 is the width `AppScaffold` hands a branch on a maximised 1440 px desktop
 // — `min(1440 - 361, 1280)`, measured 2026-08-21, and already named `kShell` in
 // `width_settings_test.dart`. A keyboard sweep belongs at a DESKTOP width
@@ -58,7 +58,8 @@
 // stays at 1079: it is still a desktop-range body width, and every count below
 // was measured on it.
 //
-// 2600 tall (2400 until 2026-09-30, when Settings outgrew it) is what makes
+// 3130 tall (2400 until 2026-09-30, then raised each time Settings outgrew
+// it — the dated notes on [kKeyboardSurface]) is what makes
 // the sweep COMPLETE rather than merely long. A
 // `ListView` culls what is off-screen, and a culled control is neither
 // reachable nor unreachable — it does not exist, so a sweep run in a short
@@ -170,7 +171,7 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 3080 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3130 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
@@ -189,7 +190,10 @@ import 'support/width_harness.dart';
 // ⏱ 2026-10-01 · ST-SETTINGS (SE-09) merged over club apply-st: 3000 -> 3080
 // for the one Reminders card with its own Preferences card and heading —
 // measured by [_everythingIsLaidOut] on the merged tree (43 px short at 3000).
-const Size kKeyboardSurface = Size(1079, 3080);
+// ⏱ 2026-10-02 · club-st-singles T16 XP-03: 3080 -> 3130. The App lock row
+// joined the privacy card on top of every growth above, and Settings scrolled
+// by 41 px at 3080 — measured by [_everythingIsLaidOut].
+const Size kKeyboardSurface = Size(1079, 3130);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -517,7 +521,7 @@ void main() {
       return s;
     }
 
-    testWidgets('login · 15 of 15, registration included', (
+    testWidgets('login · 16 of 16, registration included', (
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-16 — 8 BECAME 14 WHEN SIGN IN WITH APPLE WAS ENABLED, and the
@@ -553,12 +557,15 @@ void main() {
       // stacked beside the merged field, so it is ONE more control and it is
       // Tab-reachable: 12 + 1 = 13 of 14 + 1 = 15. The dead list below is
       // unchanged — the reveal is not in it.
+      // ⏱ 2026-10-01 · EN-21 — 15 BECAME 16 AND 13 BECAME 14: "Email me a
+      // code", a TextButton under "Forgot password?", drawn because the demo
+      // identity can send a code (`emailCodeAvailable`). Tab-reachable.
       final _Sweep s = await pin(
         tester,
         'login',
         const LoginScreen(),
-        controls: 15,
-        reachable: 13,
+        controls: 16,
+        reachable: 14,
       );
       // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE
       // POINT. Until 2026-08-25 it read `expect(deadLabels.where(contains
@@ -697,8 +704,13 @@ void main() {
         // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
         // ⏱ 2026-10-01 · club apply-st on IM-01/IM-03: both sets — 35 controls,
         // 32 reachable.
-        controls: 35 + core.Money.symbols.length,
-        reachable: 32 + core.Money.symbols.length,
+        // ⏱ 2026-10-02 · club-st-singles T16 XP-03: 35 -> 36 and 32 -> 33 —
+        // the Privacy card's "App lock" switch, a `_Toggle` and so in the orbit.
+        // ⏱ 2026-10-02 · club-st-singles SE-04: unchanged — the inert
+        // "Connected accounts" row (never a control) left this signed-out
+        // sweep for the signed-in account rows, where it is wired.
+        controls: 36 + core.Money.symbols.length,
+        reachable: 33 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

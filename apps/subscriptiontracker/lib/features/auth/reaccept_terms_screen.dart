@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import 'auth_panel.dart';
+import 'legal_change_notes.dart';
 import 'legal_consent_fields.dart';
 
 /// The MATERIAL-CHANGE re-acceptance interstitial — the ADAPTER half.
@@ -43,13 +44,9 @@ import 'legal_consent_fields.dart';
 /// bump puts this interstitial in front of every signed-in account in the world
 /// and Decline is the only way past it that is not "agree".
 ///
-/// ⚠️ THE UNKNOWN-ERROR FALLBACK IS RE-RAISED HERE RATHER THAN LOST. The chassis
-/// view renders `'$e'` for a non-[core.AuthFailure] throw, because the chassis
-/// owns no generic auth string; this app has one (`authUnknownError`) and
-/// rendered it before this move. Wrapping the throw as a [core.AuthFailure]
-/// with that message lands it on the view's `on core.AuthFailure` branch, so the
-/// inline notice reads exactly what it read before — a behaviour PRESERVED, not
-/// a behaviour the delegation quietly dropped.
+/// ⚠️ A NON-[core.AuthFailure] THROW IS RE-RAISED AS ONE carrying this app's
+/// `authUnknownError`, so the notice never guesses from a vendor's sentence.
+/// (The view maps through `authErrorText` since 2026-09-24, not `'$e'`.)
 class ReacceptTermsScreen extends ConsumerWidget {
   const ReacceptTermsScreen({super.key});
 
@@ -60,6 +57,8 @@ class ReacceptTermsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => ReacceptTermsView(
     panel: const AuthPanel(),
+    changes: legalChangesFor(ref.watch(legalAcceptanceProvider)),
+    onOpenDocument: openLegalDocument,
     // `acceptTermsOnly`, never `accept(marketingEmail: false)`: this screen
     // shows no marketing box, so it must not speak for that decision.
     // Recording a fresh `granted: false` marketing artifact would silently

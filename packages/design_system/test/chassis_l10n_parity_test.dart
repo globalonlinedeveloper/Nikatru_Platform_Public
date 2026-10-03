@@ -241,8 +241,18 @@ void main() {
   group('every Tamil value is a translation, not the English pasted across', () {
     // Measured at 60b63fb9: four were identical; the three language names have
     // since left the ARBs for the locale register's nativeName, leaving one.
+    // Since then: the two provider brand names and the bulleted note line.
     const Map<String, String> sameInBothLocales = <String, String>{
       'legalese': 'the copyright mark and the company name',
+      'connectedAccountsApple':
+          'a provider\'s own brand name, written as the provider writes it '
+          '(SE-04, Connected accounts)',
+      'connectedAccountsGoogle':
+          'a provider\'s own brand name, written as the provider writes it '
+          '(SE-04, Connected accounts)',
+      'reacceptTermsNoteLine':
+          'a bullet around a placeholder: the line itself comes from the legal '
+          'register, already in the reader\'s language (EN-23)',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',

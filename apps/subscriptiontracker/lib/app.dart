@@ -11,6 +11,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'core/app_config.dart';
 import 'core/e2e_keys.dart';
 import 'core/router.dart';
+import 'features/shell/device_surfaces_host.dart';
 import 'l10n/chassis_bridge.g.dart';
 import 'state/analytics_funnel.dart';
 import 'state/notification_tap_observer.dart';
@@ -129,13 +130,6 @@ class SublyApp extends ConsumerWidget {
       // migrate onto `scheme.primary` — a brand change to a published, live app,
       // not a refactor. Nothing in this file may decide it.
       //
-      // 📌 `./theme-fork.md` DOES NOT EXIST AND NEVER DID. The warning pointed at
-      // it for "the exact three-line replacement". It is absent from the working
-      // tree and from the whole of git history (`git rev-list --all --objects |
-      // grep -c theme-fork` → 0, measured 2026-08-21). Do not go looking for it:
-      // everything it was deferred to is reconstructed above, except the owner
-      // question, which no document in this repo could have answered.
-      //
       // GUARDS, ANCHORED BY NAME RATHER THAN BY LINE. The old citations (:582 /
       // :597 / :598) had drifted onto unrelated lines — the `ci.yml:NNNN` failure
       // mode CLAUDE.md warns about, where a stale pointer still lands on a real
@@ -206,9 +200,15 @@ class SublyApp extends ConsumerWidget {
             title: AppLocalizations.of(context).updateRequiredTitle,
             message: AppLocalizations.of(context).updateRequiredMessage,
             buttonLabel: AppLocalizations.of(context).updateRequiredAction,
-            child: AnalyticsGate(
-              child: _NotificationTapGate(
-                child: _OfflineBanner(child: child ?? const SizedBox.shrink()),
+            // ⏱ 2026-10-01 · T16 — the app lock covers everything below it,
+            // and the glance, shortcuts and share-in are installed here.
+            child: DeviceSurfacesHost(
+              child: AnalyticsGate(
+                child: _NotificationTapGate(
+                  child: _OfflineBanner(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
               ),
             ),
           ),
