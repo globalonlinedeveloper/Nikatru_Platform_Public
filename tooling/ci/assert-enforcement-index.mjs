@@ -94,7 +94,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { parseAllActions, parseAllWorkflows, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { jobEnvPreloads, parseAllActions, parseAllWorkflows, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import {
   INDEX_REL, KINDS, STATES, CoverageLost, buildEnforcementIndex, serialiseIndex,
   readTriggers, laneOf, laneOfInvokers,
@@ -403,18 +403,16 @@ const wiredRows = committedRows.filter(
 );
 // ⏱ 2026-10-02 · PR #1160: a preload is passed as `node --import "$VAR"`, VAR an
 // absolute URL a composite step writes to $GITHUB_ENV. Such a job names the file
-// THROUGH the variable: VAR → the quoted tooling path(s) in the composite step that
-// writes it. Read here from the composites themselves, not from the generator.
-const viaVar = new Map();
-for (const action of parseAllActions(ROOT)) {
-  for (const step of action.lines.map((l) => l.text).join('\n').split(/\n {4}- /)) {
-    for (const m of step.matchAll(/echo\s+"?([A-Z_][A-Z0-9_]*)=[^\n]*>>\s*"?\$\{?GITHUB_ENV\b/g)) {
-      for (const x of step.matchAll(/['"](tooling\/[A-Za-z0-9._/-]+\.mjs)['"]/g)) viaVar.set(m[1], [...(viaVar.get(m[1]) ?? []), x[1]]);
-    }
-  }
-}
-/** Does text `t` name `ref` — whole, or as `--import "$VAR"` with VAR exported as it? */
-const names = (t, ref) =>
+// THROUGH the variable: VAR → the quoted tooling path(s) in the step that writes it.
+// ⏱ 2026-10-03 (review of #1160, nit 2): JOB-SCOPED — read from the job's own steps
+// and the composites IT uses (workflow-scan's jobEnvPreloads), never from every
+// composite in the repository: a job using "$VAR" without the action that sets it
+// names nothing. Read here from the tree, not from the generator.
+const ACTIONS = parseAllActions(ROOT);
+const viaVarOf = new Map();
+for (const w of parsed) for (const job of w.jobs.values()) viaVarOf.set(`${w.rel}#${job.name}`, jobEnvPreloads(job, ACTIONS));
+/** Does text `t` name `ref` — whole, or as `--import "$VAR"` with VAR exported as it in that job? */
+const names = (t, ref, viaVar = new Map()) =>
   t.includes(ref) ||
   [...t.matchAll(/--import(?:=|\s+)(['"]?)\$\{?([A-Z_][A-Z0-9_]*)\}?\1(?=\s|$)/g)].some((m) => (viaVar.get(m[2]) ?? []).includes(ref));
 for (const row of wiredRows) {
@@ -430,7 +428,7 @@ for (const row of wiredRows) {
       continue;
     }
     edges++;
-    const mentions = lines.filter((t) => names(t, row.ref));
+    const mentions = lines.filter((t) => names(t, row.ref, viaVarOf.get(edge)));
     if (mentions.length === 0) {
       problems.push(
         `"${row.ref}" is WIRED by "${edge}" and that job never names it. Comments are blanked and trigger ` +
@@ -441,7 +439,7 @@ for (const row of wiredRows) {
     // Matched on the FULL ref, never the basename: assert-artifact-signed.mjs is
     // a prefix of assert-artifact-signed-apple.mjs, and two more such pairs
     // exist, so a basename test lets a row ride on its neighbour's invocation.
-    const commanded = mentions.some((t) => shellSegments(t).some((seg) => names(seg, row.ref) && /(?:^|[^\w.\-/])node(?:\s|$)/.test(seg)));
+    const commanded = mentions.some((t) => shellSegments(t).some((seg) => names(seg, row.ref, viaVarOf.get(edge)) && /(?:^|[^\w.\-/])node(?:\s|$)/.test(seg)));
     if (!commanded) {
       prints.push(
         `"${row.ref}" is named in "${edge}" but in no segment that also runs \`node\` — it may be text in an ` +

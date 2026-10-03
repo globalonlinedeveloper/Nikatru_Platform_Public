@@ -27,7 +27,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
-import { parseAllActions, parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { jobEnvPreloads, parseAllActions, parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 export const INDEX_REL = 'tooling/enforcement-index.json';
 export const KINDS = new Set(['guard', 'script', 'lane', 'human', 'test', 'cross-repo', 'none']);
@@ -371,22 +371,17 @@ export async function buildEnforcementIndex(root, opts = {}) {
   };
   // ⏱ 2026-10-02 · A PRELOAD NAMED BY A VARIABLE: `node --import "$SPAWN_CEILING"`
   // (PR #1160 — a relative --import follows the cwd). The variable is written to
-  // $GITHUB_ENV by a composite step, so VAR's edge goes to the tooling path(s) that
-  // same composite step names, quoted. No such step names none: no edge, no row.
-  const envPreloads = new Map();
-  for (const action of parseAllActions(ROOT)) {
-    const text = action.lines.map((l) => l.text).join('\n');
-    for (const step of text.split(/\n {4}- /)) {
-      for (const m of step.matchAll(/echo\s+"?([A-Z_][A-Z0-9_]*)=[^\n]*>>\s*"?\$\{?GITHUB_ENV\b/g)) {
-        const paths = [...step.matchAll(/['"](tooling\/[A-Za-z0-9._/-]+\.mjs)['"]/g)].map((x) => x[1]);
-        envPreloads.set(m[1], [...(envPreloads.get(m[1]) ?? []), ...paths]);
-      }
-    }
-  }
+  // $GITHUB_ENV by a step, so VAR's edge goes to the tooling path(s) that same step
+  // names, quoted. No such step names none: no edge, no row.
+  // ⏱ 2026-10-03 (review of #1160, nit 2): JOB-SCOPED — the writing step must be the
+  // job's own or in a composite the job uses (workflow-scan's jobEnvPreloads); a job
+  // that uses "$VAR" without the action that sets it gets no edge.
+  const actions = parseAllActions(ROOT);
   let testRunnerJobs = [];
   for (const wf of workflows) {
     for (const job of wf.jobs.values()) {
       const edge = `${wf.rel}#${job.name}`;
+      const envPreloads = jobEnvPreloads(job, actions);
       for (const l of job.logical) {
         const text = l.text ?? '';
         for (const m of text.matchAll(/\btooling\/([A-Za-z0-9._/-]+\.mjs)/g)) {

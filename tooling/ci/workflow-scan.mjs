@@ -1405,6 +1405,40 @@ export function githubEnvWrites(job) {
 }
 
 /**
+ * ⏱ 2026-10-03 (review of #1160, nit 2) · THE PRELOADS A JOB CAN NAME BY VARIABLE.
+ * `node --import "$VAR"` names a file only in a job where some step writes VAR to
+ * $GITHUB_ENV: VAR → the quoted `tooling/…/*.mjs` path(s) in the run text of the
+ * step that writes it. Read from THIS job's own steps (githubEnvWrites, workflowSteps)
+ * and from the local composites (`uses: ./.github/actions/<name>`) its steps call,
+ * followed through nested composites — never from every composite in the repository,
+ * which credited a job that uses the variable without the action that sets it.
+ * `actions` is parseAllActions(root); a composite is read as a job by indenting its
+ * `runs:` block two columns, so its `steps:` sits where workflowSteps looks.
+ */
+export function jobEnvPreloads(job, actions) {
+  const byUses = new Map(actions.map((a) => [`./${a.rel.replace(/\/action\.ya?ml$/, '')}`, a]));
+  const vars = new Map();
+  const seen = new Set();
+  const walk = (j) => {
+    const steps = workflowSteps(j);
+    for (const w of githubEnvWrites(j)) {
+      const run = steps.find((st) => st.index === w.stepIndex)?.run?.text ?? '';
+      const paths = [...run.matchAll(/['"](tooling\/[A-Za-z0-9._/-]+\.mjs)['"]/g)].map((m) => m[1]);
+      vars.set(w.name, [...new Set([...(vars.get(w.name) ?? []), ...paths])]);
+    }
+    for (const st of steps) {
+      const action = st.uses ? byUses.get(st.uses.replace(/\/$/, '')) : undefined;
+      if (!action || seen.has(action.rel)) continue;
+      seen.add(action.rel);
+      const lines = action.lines.map((l) => ({ ...l, text: `  ${l.text}` }));
+      walk({ lines, logical: joinBlockScalars(lines) });
+    }
+  };
+  walk(job);
+  return vars;
+}
+
+/**
  * EVERY `flutter drive` A WORKFLOW RUNS, one record per shell segment:
  * `{ workflow, job, stepIndex, runLine, segment, defines, appVersionExpr,
  * teeTarget }`. `appVersionExpr` is the `--dart-define=APP_VERSION=` value as

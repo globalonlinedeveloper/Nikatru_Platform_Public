@@ -684,6 +684,30 @@ describe('build-enforcement-index — a preload named by a variable a composite 
     assert.equal(rows(false).find((x) => x.ref === 'tooling/scripts/pre-load.mjs'), undefined);
   });
 
+  // ⏱ 2026-10-03 (review of #1160, nit 2): the map is JOB-SCOPED. app_brick uses
+  // "$PRE_LOAD" without `uses: ./.github/actions/setup-node`, so in that job the
+  // variable is unset and names nothing. Under the old repo-wide map both of these
+  // were red: the generator gave app_brick an edge, and the guard credited it.
+  const bare = workflow.replace('      - run: echo brick\n', '      - run: echo brick\n      - run: node --import "$PRE_LOAD" --test "tooling/ci/test/*.test.mjs"\n');
+  const files = { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' };
+
+  test('🔴 a job using the variable WITHOUT the composite that sets it gets no edge from the generator', () => {
+    assert.ok(bare.includes('echo brick\n      - run: node --import "$PRE_LOAD"'), 'the fixture rewrite did not land');
+    const root = fixture({ workflow: bare, files, index: null, yieldDoc: null });
+    const r = spawnSync(process.execPath, [GENERATOR, root], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(rowFor(JSON.parse(r.stdout), 'tooling/scripts/pre-load.mjs').invokedBy, ['.github/workflows/ci.yml#platform']);
+  });
+
+  test('🔴 assert-enforcement-index refuses a row that credits that job as WIRED', () => {
+    const forged = (rows) => rows.map((row) => (row.ref === 'tooling/scripts/pre-load.mjs'
+      ? { ...row, invokedBy: [...row.invokedBy, '.github/workflows/ci.yml#app_brick'].sort() }
+      : row));
+    const r = run(fixture({ workflow: bare, files, index: forged }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /"tooling\/scripts\/pre-load\.mjs" is WIRED by "\.github\/workflows\/ci\.yml#app_brick" and that job never names it/);
+  });
+
   test('assert-enforcement-index reads the same edge: green with the write, red once the write is gone', () => {
     const files = { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' };
     const green = run(fixture({ workflow, files }));
