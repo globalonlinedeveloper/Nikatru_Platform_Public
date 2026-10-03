@@ -71,7 +71,10 @@ Offering _offering(String entry) {
   final List<String> f = entry.split('|');
   final int? amount = f.length == 4 ? int.tryParse(f[1]) : null;
   final OfferingTerm? term = f.length == 4 ? OfferingTerm.tryParse(f[3]) : null;
-  if (amount == null || amount < 1 || term == null || term == OfferingTerm.oneTime) {
+  if (amount == null ||
+      amount < 1 ||
+      term == null ||
+      term == OfferingTerm.oneTime) {
     throw StateError(
       'IAP_REVIEW_OFFERINGS entry "$entry" is not <product_id>|<amount minor>|'
       '<currency>|<month|year>: Apple asks a review screenshot of an '
