@@ -969,7 +969,11 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const rel = join(root, 'services/platform/src/generated/ports.ts');
     const before = readFileSync(rel, 'utf8');
     try {
-      writeFileSync(rel, before.replace("razorpay: 'none',", "razorpay: 'api',"));
+      // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay declares `cancel` now (api), so the hand edit
+      // flips it back — and the mutation is asserted to have changed the file (a no-op replace is vacuous).
+      const mutated = before.replace("razorpay: 'api',", "razorpay: 'none',");
+      assert.notEqual(mutated, before, 'the mutation must change the rendered table');
+      writeFileSync(rel, mutated);
       const r = run(root);
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /limb 3 \(waivers\): render --check: services\/platform\/src\/generated\/ports\.ts differs from its render/);
@@ -987,6 +991,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/payments\.json selection\.default\.live is the fake `fake`/);
     } finally { writeFileSync(rel, before); }
   });
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: razorpay keeps one case pending (`refund revokes`) in the REAL
+  // registry, so a case pending on the fake leaves paddle the one conformant adapter.
   it('red: claiming L3 with a scenario pending on the fake reddens limb 6', () => {
     const rel = join(root, 'tooling/ports/payments.json');
     const before = readFileSync(rel, 'utf8');

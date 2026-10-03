@@ -147,6 +147,13 @@
       "what": "The checkout compares the account behind the Upgrade URL's link id with the signed-in web user before it charges. Today nothing reads link (sites/nikatru/pricing.html reads app only, and no route takes it), so a web session signed in as account A can pay while the extension is linked to account B, which never becomes Pro.",
       "apps": ["fullshot"],
       "open": true
+    },
+    {
+      "id": "RAZORPAY-CHECKOUT-ADAPTER",
+      "what": "A buyer who declares India can buy on nikatru.com: the Razorpay checkout adapter of the payments port (O-RAZORPAY-CHECKOUT-ADAPTER) creates the checkout, its webhook grants through the one server reader keyed (user, app), its refund, dispute and cancel land on the same entitlement states as Paddle's (MF-9), and it passes the payments conformance suite with nothing pending. Closing it also needs what the adapter cannot build: Razorpay plans read back into app-config-data.json `prices` (ADR 094) and the GST tax-invoice and credit-note path (tooling/legal/duty-matrix.json `india-seller-issues-gst-tax-invoice`, owner-gated Q13). Until then the India monthly plan has no checkout that can sell it. assert-paywall-flip-ready.mjs refuses this row CLOSED while tooling/ports/payments.json razorpay declares no `checkout` or carries a pending case, or while the duty row is still owner-gated.",
+      "apps": ["*"],
+      "open": true,
+      "blockedOn": "Q13 (the GST tax-invoice source) and the owner's Razorpay plans (ADR 094)"
     }
   ]
 }
