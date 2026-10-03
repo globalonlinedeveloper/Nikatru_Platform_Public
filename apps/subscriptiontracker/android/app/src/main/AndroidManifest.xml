@@ -62,10 +62,10 @@
          appTitle untranslated, and that guard's limb C makes the label copy the
          day one does not. -->
     <application
+        android:localeConfig="@xml/locales_config"
         android:label="Subscriptions"
         android:name="${applicationName}"
         android:allowBackup="false"
-        android:localeConfig="@xml/locales_config"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

@@ -11,7 +11,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'core/app_config.dart';
 import 'core/e2e_keys.dart';
 import 'core/router.dart';
-import 'l10n/app_localizations.dart';
+import 'l10n/chassis_bridge.g.dart';
 import 'state/analytics_funnel.dart';
 import 'state/notification_tap_observer.dart';
 import 'state/providers.dart';

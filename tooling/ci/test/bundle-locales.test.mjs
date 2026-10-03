@@ -57,12 +57,13 @@ function tree(over = {}) {
     l10nYaml: 'arb-dir: lib/l10n\ntemplate-arb-file: app_en.arb\noutput-localization-file: app_localizations.dart\n',
     appYaml: 'id: demo\nname: Demo Brand App\nshortName: Demo\n',
     msix: 'en-us, ta-in',
+    // locale-list: the fixture app's own two arbs (en, ta), not the register's set.
     iosPlist: plist('Demo', ['en', 'ta']),
     macosPlist: plist('Demo', ['en', 'ta']),
     iosPbx: pbx(['en', 'Base', 'ta']),
     macosPbx: pbx(['en', 'Base', 'ta']),
     manifest: manifest(),
-    localesXml: localesXml(['en', 'ta']),
+    localesXml: localesXml(['en', 'ta']), // locale-list: the fixture app's own two arbs.
     channels: CHANNELS,
     listings: [], // `${channel}/${locale}` with a title.txt
     exemptions: CHANNELS.map((c) => exemption(c)),

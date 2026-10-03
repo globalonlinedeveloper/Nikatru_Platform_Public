@@ -3,7 +3,7 @@
 // make-recipe.mjs — the service catalogue's ONE hand-authored table, fanned out
 // into the shapes the pipeline reads (ST-X5).
 //
-//   node make-recipe.mjs           write recipe.json · content/en.json · content/ta.json
+//   node make-recipe.mjs           write recipe.json · content/<locale>.json (one per supported locale)
 //                                  · generation-log.json · gates/review.jsonl
 //                                  · gates/licence-clearance.json
 //   node make-recipe.mjs --check   exit 1 if any committed file differs from a render
@@ -52,6 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, sha256Hex } from '../../src/canonical.mjs';
 import { schemaProblems } from '../../src/recipe.mjs';
 import { deriveSample } from '../../src/sample.mjs';
+import { loadRegister, supportedCodes } from '../../../i18n/locales.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -333,7 +334,18 @@ export const ALIASES = Object.freeze({
 });
 
 export const INDEX_KEY = 'catalogue.services';
-export const LOCALES = Object.freeze(['en', 'ta']);
+// The pack ships one shard per SUPPORTED locale of the locale register
+// (tooling/i18n/locales.json), so a new app language reaches the catalogue
+// without an edit here — and `--check` fails until its shard is rendered.
+export const LOCALES = Object.freeze(supportedCodes(loadRegister()));
+
+/** Locales whose display name is a TRANSLITERATION, by table column. Every other
+ *  locale shows the brand exactly as the service styles it (Latin script), which
+ *  is what the prompt asks for: a brand name is a name, not copy. Hindi joined the
+ *  register 2026-10-01; a Devanagari transliteration of 202 brands is translation
+ *  work with its own provenance (it would be model output, which this table says
+ *  it is not), so it waits for the translation lane rather than being typed here. */
+const TRANSLITERATED = Object.freeze({ ta: 2 });
 
 const HAND = 'none/hand-authored';
 const HAND_REASON = 'not model output — a person wrote it, so there is no generated-content marking duty to discharge';
@@ -372,8 +384,8 @@ function shard(locale) {
   if (problems.length) throw new Error(`service-catalogue REFUSED — ${problems.join('; ')}`);
   const s = { [INDEX_KEY]: SERVICES.map(([id]) => id).join(',') };
   for (const row of SERVICES) {
-    const [id, en, ta] = row;
-    s[`svc.${id}.name`] = locale === 'ta' ? ta : en;
+    const [id, en] = row;
+    s[`svc.${id}.name`] = locale in TRANSLITERATED ? row[TRANSLITERATED[locale]] : en;
     s[`svc.${id}.facts`] = facts(row);
   }
   return s;
@@ -387,7 +399,7 @@ function promptFor(itemId) {
     return 'List the id of every service in the catalogue table, comma-separated, in table order. India-first plus widely available global services, at least one hundred and fifty.';
   }
   if (itemId.endsWith('.name')) {
-    return "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.";
+    return "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.";
   }
   return "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, the regions it serves, and any other names a person searches it by. Author no price and no logo.";
 }
@@ -505,8 +517,7 @@ export function render() {
   const hash = contentHash();
   return new Map([
     ['recipe.json', pretty(recipe())],
-    ['content/en.json', pretty(shard('en'))],
-    ['content/ta.json', pretty(shard('ta'))],
+    ...LOCALES.map((l) => [`content/${l}.json`, pretty(shard(l))]),
     ['generation-log.json', pretty(generationLog())],
     ['gates/review.jsonl', Buffer.from(reviewLog(hash), 'utf8')],
     ['gates/licence-clearance.json', pretty(licenceClearance(hash))],

@@ -242,6 +242,8 @@
       "catalog/bundles.json",
       "extensions/catalog/extensions.json",
       "tooling/channel-register.json",
+      "tooling/i18n/locales.json",
+      "tooling/i18n/messages/email.json",
       ".github/workflows/deploy-workers.yml",
       ".github/workflows/migrate-platform-db.yml"
     ],
