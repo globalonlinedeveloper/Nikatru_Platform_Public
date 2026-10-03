@@ -231,6 +231,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       'pending_erasures',
       'provider_accounts',
       'provider_notifications',
+      // ⏱ 2026-10-02 · migration 0026 — a Razorpay charge's payment → its subscription (PR #1149).
+      'provider_payment_links',
       // ⏱ 2026-09-24 · migration 0016 — one token row per (subject, provider)
       // (O-GOOGLE-SIGN-IN-NOT-BUILT). 0012's table above stays until a later drop.
       'provider_tokens',

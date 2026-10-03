@@ -84,6 +84,21 @@
 //       store's `store.readBack.<apple|google>` as { USD, INR, readAt }: the
 //       store accepted a price, so the register records what it accepted rather
 //       than leaving the target to stand in for the fact.
+//   I · TAX MODE (O-TAX-TREATMENT-STATED-TWO-WAYS) — every rail entry, a read-back
+//       or pending, carries `taxMode`: `inclusive`, `exclusive`, or `unread`, and
+//       `unread` only on a rail whose mode is a vendor READ-BACK (TAX_MODE_READ_BACK:
+//       Paddle reports `tax_mode` on the read that fetches the price). Every entry of
+//       one rail states the same mode: the buyer reads ONE tax sentence per rail, and
+//       tooling/sites/generate-discovery.mjs renders it from `railTaxModes` below. A
+//       rail with no taxMode is the row's red control.
+//   J · THE INDIA BOOK (⏱ 2026-10-02, PR #1149 ruling item 5) — `webInrMinor` is the
+//       India web book config.ts serves under `?market=IN` and the `PRICING:india` block
+//       quotes, so it prices exactly what the India rail can SELL: every recurring
+//       offering carries an integer `webInrMinor` (a Razorpay subscription PLAN sells
+//       it), and a one-time (lifetime) offering carries NONE while
+//       RAZORPAY_ORDER_PATH_BUILT is false — the order path (POST /v1/orders) that
+//       would sell it as a Razorpay ITEM is not built (razorpay-rail.ts), so an India
+//       buyer shown it would meet a 503 for a price the page advertised.
 //   COVERAGE LOST (exit 2) — the register missing or unparseable, no `prices`
 //   section, zero served offerings or zero price-book entries read, no
 //   TypeScript source to sweep, or catalog/bundles.json unreadable; the fee
@@ -258,6 +273,13 @@ export function railPriceMapFor(rail) {
 
 /** The served `term` → the plan an app offering is. */
 export const APP_PLANS = Object.freeze({ month: 'single-monthly', year: 'single-yearly', one_time: 'single-lifetime' });
+/** ⏱ 2026-10-02 · PR #1149 ruling item 5 (limb J). Whether the Razorpay ONE-TIME ORDER path (POST /v1/orders,
+ *  a Razorpay ITEM) exists. Until it does, the India rail sells subscription PLANS only, and a one-time offering is
+ *  out of the India book: no `webInrMinor`, so neither config.ts nor the `PRICING:india` block shows it. */
+export const RAZORPAY_ORDER_PATH_BUILT = false;
+/** Is an offering of this served `term` in the India web book? Read by limb J, generate-discovery.mjs's India
+ *  block and assert-discovery-surface.mjs limb T — one answer, three readers. */
+export const inIndiaBook = (term) => term !== 'one_time' || RAZORPAY_ORDER_PATH_BUILT;
 /** The served `term` → the plan a bundle offering is. A bundle has no lifetime plan. */
 export const BUNDLE_PLANS = Object.freeze({ month: 'bundle-monthly', year: 'bundle-yearly' });
 /** [ADR 093] §2: the store column carries these currencies and no other. */
@@ -308,6 +330,10 @@ export const MAP_NAMES = [
 ];
 
 const MIN_REASON = 20;
+/** Limb I: whether a rail's price already includes the tax due on it. */
+export const TAX_MODES = Object.freeze(['inclusive', 'exclusive', 'unread']);
+/** Limb I: the rails whose tax mode is a VENDOR READ-BACK, so `unread` is honest until the next read. */
+export const TAX_MODE_READ_BACK = Object.freeze(['paddle']);
 const RAIL_ID = Object.freeze({
   paddle: { key: 'priceId', re: /^pri_[a-z0-9]{26}$/, currency: 'USD' },
   razorpay: { key: 'planId', re: /^plan_[A-Za-z0-9]{14}$/, currency: 'INR' },
@@ -421,6 +447,63 @@ function gradeStore(where, entry, web, lifetime, problems, extension = false) {
   }
 }
 
+/** Limb I: one rail entry's `taxMode`. */
+function gradeTaxMode(where, rail, r, problems) {
+  if (!('taxMode' in r)) {
+    problems.push(
+      `${where}.rails.${rail} has no \`taxMode\`. Every rail entry says whether its price includes the tax due on it ` +
+        `(${TAX_MODES.join(' | ')}): the published tax sentence is rendered from it, so a rail without one has no sentence.`,
+    );
+    return;
+  }
+  if (!TAX_MODES.includes(r.taxMode)) {
+    problems.push(`${where}.rails.${rail}.taxMode is ${JSON.stringify(r.taxMode)}; it is one of ${TAX_MODES.join(', ')}.`);
+    return;
+  }
+  if (r.taxMode === 'unread' && !TAX_MODE_READ_BACK.includes(rail)) {
+    problems.push(
+      `${where}.rails.${rail}.taxMode is "unread", but ${rail}'s mode is decided, not read back from a vendor ` +
+        `(read-back rails: ${TAX_MODE_READ_BACK.join(', ')}). State it.`,
+    );
+  }
+}
+
+/**
+ * Limb I's answer: the ONE tax mode each rail states across every app entry, or a problem per
+ * rail whose entries disagree or carry none. generate-discovery.mjs renders the tax sentences
+ * from `modes`; a rail missing from it has no sentence and the generator refuses.
+ * @returns {{ modes: Record<string, string>, problems: string[] }}
+ */
+export function railTaxModes(data) {
+  const problems = [];
+  const seen = new Map(RAILS.map((rail) => [rail, new Map()]));
+  const bookApps = isObj(data?.prices?.apps) ? data.prices.apps : {};
+  for (const app of dataKeys(bookApps)) {
+    const entries = isObj(bookApps[app]) ? bookApps[app] : {};
+    for (const id of dataKeys(entries)) {
+      for (const rail of RAILS) {
+        const mode = entries[id]?.rails?.[rail]?.taxMode;
+        if (typeof mode !== 'string') continue;
+        const at = seen.get(rail);
+        if (!at.has(mode)) at.set(mode, []);
+        at.get(mode).push(`prices.apps.${app}.${id}`);
+      }
+    }
+  }
+  const modes = {};
+  for (const [rail, at] of seen) {
+    if (at.size === 1) modes[rail] = [...at.keys()][0];
+    else if (at.size === 0) problems.push(`no price-book entry states a taxMode for ${rail}, so ${rail} has no tax sentence.`);
+    else {
+      problems.push(
+        `${rail} states ${at.size} tax modes (${[...at].map(([m, w]) => `${m}: ${w.join(', ')}`).join('; ')}). ` +
+          'A buyer reads one tax sentence per rail; read the vendor and state one.',
+      );
+    }
+  }
+  return { modes, problems };
+}
+
 /** Limb C for one app entry. Returns the read-back ids it declares, for the duplicate check. */
 function gradeRails(where, entry, web, problems) {
   const rails = entry.rails;
@@ -439,8 +522,10 @@ function gradeRails(where, entry, web, problems) {
       problems.push(`${where}.rails.${rail} is missing. Declare it: a read-back, or { "pending": "<why>" }.`);
       continue;
     }
+    gradeTaxMode(where, rail, r, problems);
     if ('pending' in r) {
-      const extra = Object.keys(r).filter((k) => k !== 'pending');
+      // `taxMode` is a fact about the RAIL, not the price, so a pending entry carries it too (limb I).
+      const extra = Object.keys(r).filter((k) => k !== 'pending' && k !== 'taxMode');
       if (typeof r.pending !== 'string' || r.pending.trim().length < MIN_REASON) {
         problems.push(
           `${where}.rails.${rail}.pending is ${JSON.stringify(r.pending)}. A pending rail carries its reason ` +
@@ -519,6 +604,15 @@ export function plan(root, data) {
         problems.push(`apps.${app} offering "${id}" is served in ${JSON.stringify(o.currency_code)}; the web column here is USD.`);
       }
       const web = { USD: o.amount_minor, INR: entry.webInrMinor };
+      // J · the India book prices exactly what the India rail can sell.
+      if (inIndiaBook(o.term) && !(Number.isInteger(entry.webInrMinor) && entry.webInrMinor > 0)) {
+        problems.push(`${where} has no integer webInrMinor: a recurring offering is sold in India as a Razorpay plan, and the India book (config.ts ?market=IN, the PRICING:india block) needs its rupee price.`);
+      } else if (!inIndiaBook(o.term) && entry.webInrMinor !== undefined) {
+        problems.push(
+          `${where} is a one-time offering and carries webInrMinor, so India buyers would be shown it; the Razorpay order path ` +
+            '(POST /v1/orders) that would sell it is not built (RAZORPAY_ORDER_PATH_BUILT). Leave it out of the India book until it is.',
+        );
+      }
       // C · the rails.
       for (const hit of gradeRails(where, entry, web, problems)) {
         const prior = seenIds.get(hit.id);
@@ -600,6 +694,11 @@ export function plan(root, data) {
 
   // H · a plan live on a store records what the store accepted.
   counts.readBacks = gradeReadBacks(root, book, problems, lost);
+
+  // I · one tax mode per rail (each entry's own taxMode was graded with its rail, above).
+  const tax = railTaxModes(data);
+  problems.push(...tax.problems.filter((p) => !p.startsWith('no price-book entry')));
+  counts.taxModes = tax.modes;
 
   if (counts.served === 0) lost.push(`${REGISTER} serves zero offerings, so no rail map has anything to render.`);
   if (counts.entries === 0) lost.push(`${REGISTER} prices zero served offerings: the price book read as empty.`);
@@ -1097,6 +1196,10 @@ export function run(root, { check = false, sheet = null, net = false, now = Date
     `⬜ razorpay: ${p.counts.razorpayPending} of ${p.counts.razorpayTotal} offering(s) pending — no Razorpay plan exists ` +
       'until Razorpay PR B (designed, not briefed) and the owner\'s plans; RAZORPAY_PLAN_IDS renders empty for them',
   );
+  // I · each rail's one tax mode, printed on every run; `unread` stays visible until the vendor read records it.
+  for (const [rail, mode] of Object.entries(p.counts.taxModes ?? {})) {
+    out.push(`${mode === 'unread' ? '⬜' : '✓'} tax mode ${rail}: ${mode}${mode === 'unread' ? ' — the next vendor price read records it' : ''}`);
+  }
   if (sheet !== null) {
     const s = storeSheet(root, reg.data, sheet, p.book);
     if (s.lost.length) {

@@ -47,7 +47,7 @@ export const RAZORPAY_PRICE_PENDING: Readonly<Record<string, Readonly<Record<str
   subscriptiontracker: {
     pro_monthly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
     pro_yearly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
-    pro_lifetime: 'no Razorpay one-time item exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
+    pro_lifetime: 'not sold in India: the Razorpay order path (POST /v1/orders) is not built, so this one-time offering carries no webInrMinor and is out of the India book (render-rail-prices.mjs limb J) until it is and the owner creates the item (ADR 094)',
   },
 };
 
