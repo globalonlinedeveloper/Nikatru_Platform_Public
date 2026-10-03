@@ -686,6 +686,9 @@
   "new-tool-chain.test.mjs":
     12,
 
+  "no-account-ids.test.mjs":
+    15,
+
   "no-clone-tells.test.mjs":
     45,
 
@@ -780,7 +783,7 @@
     120,
 
   "play-declarations.test.mjs":
-    186,
+    191,
 
   "play-device-coverage.test.mjs":
     61,
@@ -792,7 +795,7 @@
     35,
 
   "policy-claims.test.mjs":
-    63,
+    74,
 
   "port-render.test.mjs":
     19,
@@ -1020,13 +1023,13 @@
     16,
 
   "sink-disclosure.test.mjs":
-    49,
+    57,
 
   "site-bindings.test.mjs":
     32,
 
   "site-integrity.test.mjs":
-    122,
+    129,
 
   "site-set.test.mjs":
     6,
