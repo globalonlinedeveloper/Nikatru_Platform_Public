@@ -113,10 +113,13 @@ export const MAX_REMINDER_MAILS_PER_DAY = 20;
 /**
  * Identity reads per run. Each digest costs one read (and, if confirmed, one
  * send), and a read that finds an unconfirmed address sends nothing, so reads
- * are bounded separately from sends: 25 reads + 20 sends = 45 external
- * subrequests from this limb at most, under workers.externalSubrequests' recorded
- * Free figure (50) on its own. The firing as a whole runs on Workers Paid
- * (tooling/ceilings.json `planOfRecord`), so the sum across limbs is not held to 50.
+ * are bounded separately from sends. ⏱ 2026-10-02 · review 1 of #1140: a read
+ * is up to ACCOUNT_READ_ATTEMPTS (2) requests since a transient answer is asked
+ * again (lib/platform-erasure.ts), so this limb's worst case is 25 x 2 reads +
+ * 20 sends = 70 external subrequests: ABOVE workers.externalSubrequests'
+ * recorded Free figure (50) and far under its Paid figure (10,000). It rests on
+ * the firing running on Workers Paid (tooling/ceilings.json `planOfRecord`);
+ * on Free this bound would have to fall to 15 reads.
  *
  * @ceiling none — a per-run bound we chose for this one limb; the arithmetic is above.
  */

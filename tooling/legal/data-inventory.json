@@ -1140,7 +1140,7 @@
       ],
       "disclosure": {
         "page": "privacy.html",
-        "quote": "stores account credentials and sign-in sessions for apps that offer accounts"
+        "quote": "holds the account credentials and sign-in sessions for apps that offer accounts"
       },
       "note": "The namespace is titled `platform-session-revoked` (created 2026-09-25). ONE namespace, bound by services/platform (the only writer), services/subscriptiontracker-api and the brick's backend (readers) — one identity project, so one revocation list. NOT in the nightly R2 export (services/platform/src/backup/index.ts): every record expires within the hour, so a restored copy would only resurrect expired refusals."
     },
