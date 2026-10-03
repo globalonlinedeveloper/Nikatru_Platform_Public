@@ -1693,10 +1693,11 @@
     {
       "signature": "pages-freshness:serving-older-commit:nikatru-apex",
       "rootCause": "ops-watch read the direct-upload nikatru-apex project while the ci.yml deploy that carries the newest commit touching its deploy unit was still queued or running, and graded the previous build a failure: runs 36673935750, 36674357743, 36675057329 (2026-09-30, CI 36673911318 running 05:32:55Z .. 05:58:49Z after four cancelled pushes), 36824019531 (2026-10-01, CI 36823713791 running 06:14Z .. 06:37Z), 37016683957 and 37024343900 (2026-10-02, CI 37012909401 and 37020790032 in progress), 37066450042 (2026-10-02, CI 37062734965 running 20:46Z .. 21:53Z).",
-      "fix": "not a defect of production: each deploy landed when its CI finished and the next ops-watch read the project fresh. PR #1166 (open on 2026-10-03) makes that state PENDING until the deploy run completes; when it merges this row becomes {merge, its sha, 1166}.",
+      "fix": "PR #1166 b076d22a (2026-10-03): past the deploy-lane ceiling a direct project asks the ci.yml push run whose head_sha is the expected commit, and reads PENDING (exit 0) while that run is queued or in progress, STUCK past 3 h, RED only when its deploy job failed. Production itself was never wrong: each deploy landed when its CI finished.",
       "fixedBy": {
-        "kind": "not-a-defect",
-        "reason": "the deploy carrying the commit was still queued or running when ops-watch read the project; production caught up when it landed"
+        "kind": "merge",
+        "sha": "b076d22a65567e9c76cd4ad9db9477444dddcedf",
+        "pr": 1166
       },
       "firstSeen": "2026-09-30",
       "lastSeen": "2026-10-02"

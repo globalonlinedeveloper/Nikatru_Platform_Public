@@ -1301,12 +1301,9 @@ class SettingsScreen extends ConsumerWidget {
     String? detail;
     try {
       if (user == null) throw core.AuthFailure('Not signed in');
-      // Re-authenticate through the SAME seam sign-in uses. O-OAUTH-DELETE-REAUTH
-      // (owner ruling, OWNER_QUEUE A-10) + AB-A5-01: an account with no password,
-      // or with Apple or Google LINKED, signs in with its provider AGAIN unless it
-      // just did (`core.deletionReauthOf`) — a native build cannot pass the
-      // password grant unattested. `DELETE /v1/account` refuses a password-less
-      // token without a recent sign-in (`reauth_required`).
+      // Re-authenticate through the SAME seam sign-in uses (O-OAUTH-DELETE-REAUTH,
+      // AB-A5-01, #1142 item 2): `core.deletionReauthOf`, plus a linked account's
+      // typed password where the grant passes; the server holds both to `amr`.
       if (core.deletionReauthOf(user) == core.DeletionReauth.password ||
           (password.isNotEmpty &&
               core.offersPasswordReauth(user, passwordGrant: passwordGrant))) {

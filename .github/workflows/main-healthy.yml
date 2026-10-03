@@ -1,8 +1,11 @@
 name: Main health status (posts CI's verdict)
 # why: this run is green whenever POSTING worked, whatever CI said, so the title
-# carries the verdict it posted (assert-workflow-hardening.mjs limb 16). Expressions
-# have no substring, hence the full sha.
-run-name: "main health: ${{ github.event.workflow_run.conclusion }} on ${{ github.event.workflow_run.head_sha }}"
+# carries the verdict it acted on (assert-workflow-hardening.mjs limb 16). The triggering
+# run's event is in the title too: a fork PR opened from the fork's own `main` also wakes
+# this, and land-gate.mjs posts nothing for it, so a bare "success on <sha>" would claim a
+# verdict that was never posted (#1168 review, minor 1). Expressions have no substring,
+# hence the full sha.
+run-name: "main health: ${{ github.event.workflow_run.conclusion }} on ${{ github.event.workflow_run.head_sha }} (${{ github.event.workflow_run.event }})"
 
 # The rules, the landers that read this status and the owner proposal beside it
 # are in docs/ci/main-healthy.md. Only `# why:` lines live here, and
@@ -14,8 +17,8 @@ on:
   # health is published from the run itself and no laptop reads a run listing for
   # it (rv2-pipe-a P-1: a filtered listing served a page 9 days stale). It is safe
   # here: the one expression that reads the triggering event is `run-name:`'s
-  # conclusion and head_sha (a GitHub enum and a 40-hex sha, display only, never
-  # a shell), the checkout is the default branch, and the only code run is
+  # conclusion, head_sha and event (two GitHub enums and a 40-hex sha, display
+  # only, never a shell), the checkout is the default branch, and the only code run is
   # tooling/ops/land-gate.mjs from it, which
   # reads the event from GITHUB_EVENT_PATH and posts nothing for a PR run or a
   # fork's `main`.

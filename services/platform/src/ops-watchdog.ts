@@ -597,8 +597,14 @@ export const OPS_WATCH_FRESHNESS_TARGET = 'ops-watch-freshness';
  *   it on the same firing. So a newest completion older than one grid interval
  *   means the previous firing's dispatch produced no completed run AND none of
  *   the twelve `schedule:` slots in between landed either.
+ *   ⏱ 2026-10-03 (#1165 review bd5d50ac minor, club-nits-b B14): 6 -> 7. A limit
+ *   EQUAL to the firing interval paged on a healthy ops-watch: the previous
+ *   firing's run COMPLETES some minutes after it was dispatched, so at the next
+ *   firing its age is a little under 6 h only if it ran instantly. 7 h is the
+ *   interval plus one firing's run time plus margin; a firing whose dispatch
+ *   produced nothing still pages on the next one.
  */
-export const OPS_WATCH_MAX_AGE_HOURS = 6;
+export const OPS_WATCH_MAX_AGE_HOURS = 7;
 
 /** PURE. The freshness row for main's newest completed ops-watch run, or the
  *  honest ok=0 when (b) could not read one — the age was then not judged. */

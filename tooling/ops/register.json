@@ -1059,7 +1059,7 @@
         "ok=0 on two consecutive firings mails the owner straight from the Worker (services/platform/src/lib/owner-page.ts,",
         "recipient is the entity support inbox, through the mail port; tooling/ops/alarm-chains.json `ownerPage`), the one page that does not leave from Box B; two",
         "firings is 12 h on the grid where it was 24-48 h nightly. ops_watchdog gained the `ops-watch-freshness` target",
-        "(PB-10): main's newest completed ops-watch run older than 6 h is a FINDING row and the same direct page.",
+        "(PB-10): main's newest completed ops-watch run older than 7 h (6 h until 2026-10-03: one firing interval, no slack) is a FINDING row and the same direct page.",
         "",
         "🔴 `ops_stuck_runs` KEEPS ITS OWN HOURLY CRON `15 * * * *`, added 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY):",
         "the stuck-run check, moved OFF the 6-hourly dispatcher grid, because a run stuck for hours froze the queue",
@@ -1843,7 +1843,7 @@
         "anchor": ".github/workflows/ops-watch.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 6 h and a direct owner page (services/platform/src/lib/owner-page.ts)",
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 7 h (the interval plus one run plus margin, 2026-10-03) and a direct owner page (services/platform/src/lib/owner-page.ts)",
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
@@ -2096,11 +2096,11 @@
       "_whyThisRowExists": "APPENDED 2026-10-02 for O-MERGES-DEPEND-ON-THE-LAPTOP. Every merge was made by a laptop script run by local daemons, so nothing landed while the laptop was off, rebooting, out of memory or switching accounts. This workflow is the merge actor on GitHub, with the run's own GITHUB_TOKEN and no new credential. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
       "id": "duty.workflow.land.yml",
       "kind": "duty",
-      "what": "The merge orchestrator: every 10 minutes, on a CI or E2E live completion and on a `land-ok` label, tooling/ci/land-next.mjs reads every open pull request into main and makes at most ONE write — a squash merge of the first eligible PR in land-ok label order (then dispatching ci.yml, codeql.yml and ops-watch.yml on main, because a GITHUB_TOKEN merge starts no run), an update-branch of a head whose skew against main is not disjoint, an E2E live dispatch on a head that needs one, a dispatch of ci.yml for a main head nobody started, or a `land-freeze` issue when main is NEWLY red after a merge. An open `land-freeze` issue stops every merge. Dry until the repository variable LAND_DRY_RUN is `false`.",
+      "what": "The merge orchestrator: every 10 minutes, on a CI completion and on a `land-ok` label, tooling/ci/land-next.mjs reads every open pull request into main and makes at most ONE write — a squash merge of the first eligible PR in land-ok label order (then dispatching ci.yml, codeql.yml and ops-watch.yml on main, because a GITHUB_TOKEN merge starts no run), an update-branch of a head whose skew against main is not disjoint, an E2E live dispatch on a head that needs one, a dispatch of ci.yml for a main head nobody started, or a `land-freeze` issue when main is NEWLY red after a merge. An open `land-freeze` issue stops every merge. Dry until the repository variable LAND_DRY_RUN is `false`.",
       "detector": "The run's own exit: land-next.mjs exits 1 when a write was refused (merge, update-branch, dispatch, issue) and 2 when it could not look; a red main after a merge is the `land-freeze` issue it opens, which names the run and the failing job. tooling/ci/test/land-next.test.mjs holds every decision, the dispatch parity of ci.yml and the shape of this workflow on every CI run.",
       "response": "Read the run: it prints every open PR's decision and reason, and the one write it made or was refused. A `land-freeze` issue is closed by the lead once main is fixed or the red is judged not to block; a PR can always be merged by hand meanwhile, after which this workflow dispatches main's pipeline if nothing started it.",
       "cadence": "trigger",
-      "trigger": "a 10-minute schedule, completion of CI or E2E live, a `land-ok` label on a pull request, or a manual dispatch (dry_run by default)",
+      "trigger": "a 10-minute schedule, completion of CI (an E2E live verdict is read over the API on every run, so the next slot sees it), a `land-ok` label on a pull request, or a manual dispatch (dry_run by default)",
       "mechanism": {
         "substrate": "github-actions",
         "anchor": ".github/workflows/land.yml",
@@ -2393,9 +2393,7 @@
           "unit": "run",
           "event": "schedule",
           "headBranch": "main",
-          "firstDue": "2026-10-03T00:00:00Z",
-          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.trufflehog.yml's and duty.workflow.codeql.yml's were (TRAPS ci-18): the both-directions coverage limb refuses a workflow with no duty row, and a run history does not exist until the file is on the default branch, so the row and the record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-09-28 07:10 UTC is that Monday; 2026-10-03 gives it ~113h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-24, which is the bound the guard enforces. ⚠️ IF THIS MERGES AFTER 2026-09-28 07:10 UTC the first slot is 2026-10-05, so this date must move to 2026-10-08 in the same pull request, or main's push run blocks between 2026-10-03 and that slot. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
-          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is indistinguishable from a person pressing the button and is therefore the opposite of a cadence claim; a re-run after COVERAGE LOST is a repair, not the duty. `headBranch: main` is stated rather than left implied by GitHub firing schedules only on the default branch. `unit: run` because the workflow has one job and no other row reads it."
+          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is indistinguishable from a person pressing the button and is therefore the opposite of a cadence claim; a re-run after COVERAGE LOST is a repair, not the duty. `headBranch: main` is stated rather than left implied by GitHub firing schedules only on the default branch. `unit: run` because the workflow has one job and no other row reads it. BOOTSTRAP SPENT, 2026-10-03: `firstDue` (2026-10-03T00:00:00Z) and `firstDueWhy` are deleted on the evidence of run 36442810933, `event: schedule` on `main`, success 2026-09-28T15:20:20Z, as duty.workflow.codeql.yml's row records its own retirement (club-nits-b B1)."
         }
       },
       "absenceWatcher": {
@@ -3555,42 +3553,39 @@
     {
       "id": "duty.supabase-identity-log-retention",
       "kind": "duty",
-      "what": "/opt/supabase/identity-log-retention.sh (docs/platform/supabase/boxc/identity-log-retention.sh), root cron `10 4 * * *` on the auth box (Box C), via /opt/supabase/hb-run.sh, the wrapper the other Box C duties run under: it POSTs the heartbeat ONLY when the job exited 0. Once a day it cuts the request logs of supabase-auth (GoTrue) and supabase-envoy into a root-only archive and deletes anything older than RETAIN_DAYS=7. 🔴 THE PRIVACY NOTICE PUBLISHES THAT 7 DAYS (tooling/legal/policy-claims.json), so the job is watched, not assumed: since review 1 of #1140 (finding 4) each container is cut on its own, the archive prune always runs, and the script itself FAILS (exit 1, no beat) on a container it cannot find, on no archive of a container inside 36 h, and on any archive older than 7 days still present. THE BOX IS ON Asia/Kolkata (IST): `10 4 * * *` is 22:40 UTC the day before.",
-      "detector": "GlitchTip heartbeat monitor 'Supabase identity log retention', project `ops`, Heartbeat, interval 129600s (24h cadence x 1.5), on the SERVICES box (Box B) — off-host from the duty, like the other Box C duties' monitors. ⚠️ NOT YET CREATED: see `degradedUntil`.",
+      "what": "/opt/supabase/identity-log-retention.sh (docs/platform/supabase/boxc/identity-log-retention.sh), root cron `10 4,16 * * *` on the auth box (Box C), every 12 h, via /opt/supabase/hb-run.sh, the wrapper the other Box C duties run under: it POSTs the heartbeat ONLY when the job exited 0. Each run cuts the request logs of supabase-auth (GoTrue) and supabase-envoy into a root-only archive and deletes anything older than RETAIN_DAYS=7. 🔴 THE PRIVACY NOTICE PUBLISHES THAT 7 DAYS (tooling/legal/policy-claims.json), so the job is watched, not assumed: since review 1 of #1140 (finding 4) each container is cut on its own, the archive prune always runs, and the script itself FAILS (exit 1, no beat) on a container it cannot find, on no archive of a container inside 36 h, and on any archive older than 7 days still present. THE BOX IS ON Asia/Kolkata (IST): `10 4,16 * * *` is 22:40 (the day before) and 10:40 UTC. ⏱ 2026-10-03 (club-nits-b B13): twice a day because GlitchTip caps a heartbeat interval at 86400 s, so a once-a-day beat could not carry any margin; the script header in docs/platform/supabase/boxc/ still shows the once-a-day line it was first installed with.",
+      "detector": "GlitchTip heartbeat monitor 43 'Box C identity log retention', project `ops`, Heartbeat, interval 86400s (12h cadence x 2 — GlitchTip's ceiling for a monitor interval), alert rule 2, on the SERVICES box (Box B) — off-host from the duty, like the other Box C duties' monitors.",
       "response": "Read the newest lines of /var/log/nikatru-identity/run.log on Box C: every step prints `ok` or `FAIL` with the container it is about. A missing container is usually a compose rename; fix the name in the script's container list, re-install it, and run it by hand through hb-run.sh so the beat lands.",
-      "cadence": "24h",
+      "cadence": "12h",
       "mechanism": {
         "substrate": "supabase-box-cron",
         "anchor": "Private/runbooks/boxes/boxc.md",
-        "record": "GlitchTip heartbeat monitor 'Supabase identity log retention's check history",
+        "record": "GlitchTip heartbeat monitor 43 'Box C identity log retention''s check history",
         "failingValue": "no successful heartbeat inside the window — which is what a dead cron, a container the script cannot find, a cut that stopped happening, an archive kept past 7 days and a box that is off all look like",
         "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",
         "recordQuery": {
           "reader": "glitchtip-heartbeat",
           "org": "nikatru",
-          "monitor": "not-yet-created",
-          "monitorName": "Supabase identity log retention — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
-          "why": "⚠️ THE MONITOR DOES NOT EXIST YET, SO THE ID IS DELIBERATELY NOT A NUMBER: the probe then answers UNREADABLE (a print) rather than reading some other monitor's history. A guessed number could name a real, green monitor and report this duty healthy. The lead creates the monitor, beats it once by hand through hb-run.sh BEFORE filling the id (TRAPS ci-26: a monitor with no beat grades absent), and replaces this value with its id."
+          "monitor": 43,
+          "monitorName": "Box C identity log retention — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
+          "why": "The record is monitor 43's check history in GlitchTip, read with GLITCHTIP_TOKEN. ⏱ 2026-10-03 (club-nits-b B13): this value was the string `not-yet-created` until the monitor existed, so the probe answered UNREADABLE rather than reading another monitor's history; a lead sub-agent then read the live GlitchTip, found monitor 43 and a manual beat through hb-run.sh at 14:28:35Z answered 200 (TRAPS ci-26: a monitor with no beat grades absent), so the id is filled."
         }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
-        "what": "GlitchTip heartbeat monitor 'Supabase identity log retention', project `ops`, on the SERVICES box — off-host from the duty. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other Box C duties (tooling/ops/alarm-chains.json).",
-        "signal": "No heartbeat inside the monitor's 129600s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
-        "margin": "129600s against a 24h cadence — 1.5x, so a run that is late by hours is absorbed and one missed run alarms the next afternoon.",
+        "what": "GlitchTip heartbeat monitor 43 'Box C identity log retention', project `ops`, on the SERVICES box — off-host from the duty. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other Box C duties (tooling/ops/alarm-chains.json).",
+        "signal": "No heartbeat inside the monitor's 86400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
+        "margin": "86400s against a 12h cadence — 2x, so one missed run is absorbed and two are not. GlitchTip caps a heartbeat interval at 86400 s, which is why the cron runs every 12 h rather than the interval stretching past a day.",
         "ownerGated": true,
-        "gap": "⬜ THE MONITOR IS NOT CREATED YET (`degradedUntil`), so today NOTHING turns a failed run into a message; the script's own exit code and run.log are the whole of it until the lead step lands. And the down transition will not have been forced."
+        "gap": "The down transition has not been forced: the alert path from monitor 43 to email and ntfy is the same rule 2 the other Box C monitors use, but no deliberate missed beat has proven it for this monitor."
       },
       "accessProviders": [
         "hostinger"
       ],
       "ownerGated": true,
-      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-2 script on Box C (sha12 aacf07ad23e8, which also runs the MFA challenge address sweep; it replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id; (3) hb-run.sh is not in any backup set, as for every Box C duty.",
-      "degradedUntil": "2026-10-09",
-      "degradedWhy": "The heartbeat monitor this row reads does not exist yet (lead step of #1140 review 1, finding 4): until its id is filled, the probe is UNREADABLE and a failed run reaches nobody. One week, then this row reddens every branch until the id is in.",
-      "degradedLeadDays": 3,
-      "source": "unverified",
-      "unverifiedWhy": "Written before the monitor exists and before the review-1 script is installed on Box C: no beat has been observed. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs (a missing container, the prune that must still run, no fresh archive, a sweep that did not run); the box half is the lead's."
+      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-2 script on Box C (sha12 aacf07ad23e8, which also runs the MFA challenge address sweep; it replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) hb-run.sh is not in any backup set, as for every Box C duty.",
+      "source": "verified",
+      "verifiedHow": "2026-10-03 — measured on the live GlitchTip by a lead sub-agent (lead 7185eb, 14:55Z): monitor 43 'Box C identity log retention' exists in project `ops`, interval 86400 s, alert rule 2, created 2026-10-02T04:51:55Z, and receives beats from Box C's hb-run.sh; a manual beat at 14:28:35Z returned 200. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs."
     },
     {
       "id": "revert.worker.platform",

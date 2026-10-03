@@ -149,6 +149,60 @@ describe('the Cloudflare active version', () => {
   });
 });
 
+// ⏱ 2026-10-03 · #1165 review bd5d50ac nit (club-nits-b B14). RED before: the
+// ops-watch step fell back to the deploy token (CLOUDFLARE_API_TOKEN) for this read.
+describe('the shield read uses the read token only, deferred while it is unminted', () => {
+  const shieldRoot = () => {
+    const root = mkdtempSync(join(tmpdir(), 'wv-'));
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, 'services', 'edge-shield'), { recursive: true });
+    writeFileSync(join(root, 'services', 'edge-shield', 'wrangler.jsonc'), '{ "name": "edge-shield" }');
+    writeFileSync(
+      join(root, DEPLOY_WORKERS_REL),
+      'run: node tooling/ci/record-deployment.mjs platform https://platform.example\nrun: node tooling/ci/record-deployment.mjs edge-shield https://s.example\n',
+    );
+    return root;
+  };
+  const readers = {
+    ...fixtureReaders({ ledger: { platform: { sha: A }, 'edge-shield': { sha: B, payload: {} } }, health: { platform: A } }),
+    shieldHeader: async () => null,
+    cloudflare: async () => {
+      throw new Error('no CLOUDFLARE_API_TOKEN');
+    },
+  };
+  const matrix = () => ({ entries: [], lost: null });
+
+  test('deferred: a shield with no commit header PRINTS "not graded" and is not counted as serving its record', async () => {
+    const root = shieldRoot();
+    try {
+      const { code, lines } = await run({ root, readers, matrix, shieldDeferredUntil: '2026-10-21' });
+      assert.equal(code, 0, lines.join('\n'));
+      assert.ok(lines.some((l) => l.startsWith('--  edge-shield — NOT GRADED') && l.includes('deferred until 2026-10-21')), lines.join('\n'));
+      assert.match(lines.at(-1), /^ok {2}1 Worker unit\(s\) each serve the ledger's newest record; 1 deferred, not graded/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('not deferred: the same tokenless read is COVERAGE LOST, never a pass', async () => {
+    const root = shieldRoot();
+    try {
+      const { code } = await run({ root, readers, matrix });
+      assert.equal(code, 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('🔴 ops-watch.yml maps CLOUDFLARE_READ_TOKEN alone into the step, with the same deferral date as its siblings', () => {
+    const text = readFileSync(join(REPO, '.github', 'workflows', 'ops-watch.yml'), 'utf8');
+    const at = text.indexOf("- name: Every live Worker serves the ledger's newest record");
+    assert.ok(at >= 0, 'the step moved: ops-watch.yml no longer names it');
+    const step = text.slice(at, text.indexOf('\n      - ', at + 1));
+    assert.match(step, /^ {10}CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_READ_TOKEN \}\}$/m);
+    assert.doesNotMatch(step, /secrets\.CLOUDFLARE_API_TOKEN/, 'the deploy token is never a fallback for a read');
+    assert.match(step, /node tooling\/ops\/check-worker-versions\.mjs --cloudflare-read-pending-until \d{4}-\d{2}-\d{2}\n/);
+  });
+});
+
 describe('the ledger read', () => {
   test('the newest Deployment of the environment, with its payload parsed', async () => {
     const seen = [];

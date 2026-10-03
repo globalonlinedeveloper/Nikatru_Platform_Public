@@ -229,7 +229,21 @@ describe('PB-10: the ops-watch freshness row pages on ONE firing, once per strea
     const stale = gradeOpsWatchFreshness({ id: 7, status: 'completed', updated_at: hoursAgo(OPS_WATCH_MAX_AGE_HOURS + 0.1) }, NOW);
     expect(stale.ok).toBe(true); // a finding is never ok=0 - ops-watch must not latch its own staleness red
     expect(stale.detail).toMatch(/^FINDING: ops-watch\.yml has STOPPED: newest completed run 7/);
-    expect(stale.page).toMatch(/completed no run on main for 6\.1h/);
+    expect(stale.page).toMatch(/completed no run on main for 7\.1h/);
+  });
+
+  // ⏱ 2026-10-03 · #1165 review bd5d50ac minor (club-nits-b B14). RED before: the
+  // ceiling equalled the 6-hourly firing interval, so the previous firing's run,
+  // finished some minutes after its dispatch, read past it on a healthy ops-watch.
+  it('🔴 the ceiling has slack past one firing interval: 6.5h is healthy, just under 7h is healthy, just over pages', () => {
+    for (const h of [6.5, 6.95]) {
+      const row = gradeOpsWatchFreshness({ id: 11, status: 'completed', updated_at: hoursAgo(h) }, NOW);
+      expect(row.page, `${h}h`).toBeUndefined();
+      expect(row.detail).not.toMatch(/^FINDING: /);
+    }
+    const over = gradeOpsWatchFreshness({ id: 12, status: 'completed', updated_at: hoursAgo(7.05) }, NOW);
+    expect(over.detail).toMatch(/^FINDING: /);
+    expect(over.page).toMatch(/ceiling 7h/);
   });
 
   it('a pass that read no ops-watch run is ok=0 "not judged" and pages nobody', () => {
@@ -244,7 +258,7 @@ describe('PB-10: the ops-watch freshness row pages on ONE firing, once per strea
     const db = realPlatformDb();
     const { sent } = double({});
     const env = { PLATFORM_DB: db, RESEND_API_KEY: KEY } as unknown as Env;
-    const stale = () => gradeOpsWatchFreshness({ id: 9, status: 'completed', updated_at: new Date(T0 - 7 * 3_600_000).toISOString() }, Date.now());
+    const stale = () => gradeOpsWatchFreshness({ id: 9, status: 'completed', updated_at: new Date(T0 - 8 * 3_600_000).toISOString() }, Date.now());
     const freshRow = () => gradeOpsWatchFreshness({ id: 10, status: 'completed', updated_at: new Date(Date.now() - 3_600_000).toISOString() }, Date.now());
     nextFiring();
     await opsWatchdogJob(env, async () => [stale()]);

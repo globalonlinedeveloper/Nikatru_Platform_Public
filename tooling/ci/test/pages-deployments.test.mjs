@@ -62,6 +62,7 @@ import {
   derivePagesProjects,
   judgeProject,
   foldVerdicts,
+  okSummary,
   newestCommitTouching,
   isAncestorOf,
   classifyStage,
@@ -927,6 +928,14 @@ describe('foldVerdicts — 2 outranks 1, because an unjudged half could hold any
     assert.equal(v.code, 0);
     assert.equal(v.inflight, 1);
   });
+
+  test('🔴 okSummary — a sweep with ONLY a pending project counts it, and IN FLIGHT stays 0 (#1166 review)', () => {
+    const v = foldVerdicts([{ code: 0, line: 'a' }, { code: 0, pending: true, line: 'b' }], meta);
+    const line = okSummary(v);
+    assert.match(line, /; 0 newer build\(s\) still IN FLIGHT inside the ceiling \(⏳\) and 1 PENDING behind a CI run/);
+    assert.match(okSummary(foldVerdicts([{ code: 0, inflight: true, line: 'b' }], meta)), /; 1 newer build\(s\) still IN FLIGHT .* and 0 PENDING/);
+    assert.match(okSummary(foldVerdicts([{ code: 0, line: 'a' }], meta)), /^ok {2}every derived Pages project's newest PRODUCTION deployment succeeded/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1552,13 +1561,26 @@ describe('judgeDeployRun — a stale direct project asks the CI run for its expe
   });
 
   test('🔴 RED CONTROL — the lookup fails, finds nothing, or answers for another commit: RED, UNKNOWN, never pending', async () => {
+    // Page 1 serves the 3 recorded jobs and claims 86; page 2 serves none, so the read stops SHORT
+    // (#1166 review: a fake answering every page alike reached the 1000-job throw instead).
+    const shortJobs = async (url) => {
+      const body = !url.includes('/jobs?')
+        ? fixture('runs-completed.json')
+        : { total_count: 86, jobs: /[?&]page=1(?:&|$)/.test(url) ? fixture('jobs-completed.json').jobs : [] };
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    };
+    await assert.rejects(
+      readDeployRun(SHA, { env: ENV, fetchImpl: shortJobs, sleep: async () => {} }),
+      /37020790032 lists 86 jobs but 3 were served/,
+      'the short-list branch, not the 1000-job ceiling',
+    );
     const cases = [
       ['HTTP 403', async () => ({ ok: false, status: 403, text: async () => '{"message":"Resource not accessible by integration"}' })],
       ['transport', async () => { throw new TypeError('fetch failed'); }],
       ['no run', fakeFetch({ total_count: 0, workflow_runs: [] }, null)],
       ['another sha', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_sha: 'f'.repeat(40) }] }, null)],
       ['another branch', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_branch: 'feature' }] }, null)],
-      ['jobs short of total_count', fakeFetch(fixture('runs-completed.json'), { total_count: 86, jobs: fixture('jobs-completed.json').jobs })],
+      ['jobs short of total_count', shortJobs],
     ];
     for (const [why, fetchImpl] of cases) {
       let deployRun;
@@ -1583,11 +1605,101 @@ describe('judgeDeployRun — a stale direct project asks the CI run for its expe
     await assert.rejects(readDeployRun(SHA, { env: {}, fetchImpl: fakeFetch(null, null) }), CouldNotLook, 'no token is could-not-look');
   });
 
+  test('🔴 RED CONTROL — judgeDeployRun ITSELF refuses a run for another sha, whatever handed it in (#1166 review)', () => {
+    // Not through readDeployRun, whose own filter would drop the run first: the re-check is pinned alone.
+    const run = { ...fixture('runs-in-progress.json').workflow_runs[0], head_sha: 'f'.repeat(40) };
+    const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW, deployRun: { ok: true, run, jobs: null } });
+    assert.equal(v.code, 1, 'another commit\'s in-progress run is not this commit\'s deploy');
+    assert.notEqual(v.pending, true);
+    assert.match(v.line, /UNKNOWN: could not read the deploy run for fcf77f1 — the run returned \(37020790032\) is for "f{40}", not fcf77f1e/);
+  });
+
   test('a run in progress whose commit age cannot be read is RED, UNKNOWN', async () => {
     const deployRun = await lookup(fixture('runs-in-progress.json'), null);
     const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: null, now: NOW, deployRun });
     assert.equal(v.code, 1);
     assert.match(v.line, /UNKNOWN/);
+  });
+
+  // #1166 review: GitHub cancels an older pending run or job in the `ci-${ref}` and `deploy-web-<app>`
+  // groups even with cancel-in-progress: false, and the newer run still publishes the commit.
+  const NEWER_SHA = 'abcdef12' + '0'.repeat(32);
+  const NEWER_ID = 37020790099;
+  const cancelledRuns = () => {
+    const r = fixture('runs-completed.json');
+    r.workflow_runs[0].conclusion = 'cancelled';
+    return r;
+  };
+  /** The apex deploy job cancelled in the superseded run, as the concurrency group leaves it. */
+  const cancelledJobs = () => {
+    const j = fixture('jobs-completed.json');
+    for (const x of j.jobs) if (x.name.endsWith('(nikatru-apex)')) x.conclusion = 'cancelled';
+    return j;
+  };
+  const newerRuns = (over = {}) => ({
+    total_count: 1,
+    workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], id: NEWER_ID, head_sha: NEWER_SHA, ...over }],
+  });
+  /** Answers the run-for-the-commit read (head_sha=…), its jobs, and the newer-runs read apart. */
+  const fetch3 = (runs, jobs, newer, seen) => async (url) => {
+    seen.push(url);
+    const body = url.includes('/jobs?') ? jobs : url.includes('head_sha=') ? runs : newer;
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  };
+  const NEWER_URL = new RegExp(`/actions/workflows/${CI_WORKFLOW_FILE.replace('.', '\\.')}/runs\\?branch=main&event=push&per_page=50$`);
+  const descends = (a, b) => a === SHA && b === NEWER_SHA;
+  const superseded = async ({ newer, now = NOW, isAncestor = descends, jobs = cancelledJobs(), runs = cancelledRuns(), seen = [] }) => {
+    const deployRun = { ok: true, ...(await readDeployRun(SHA, { env: ENV, fetchImpl: fetch3(runs, jobs, newer, seen), sleep: async () => {} })) };
+    return judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now, deployRun, isAncestor });
+  };
+
+  test('🔴 SUPERSEDED — the run cancelled, a NEWER push run in progress carries the commit: PENDING, exit 0', async () => {
+    const seen = [];
+    const v = await superseded({ newer: newerRuns(), seen });
+    assert.equal(v.code, 0, 'a cancelled run a newer run supersedes is late, not failed');
+    assert.equal(v.pending, true);
+    assert.match(
+      v.line,
+      /^⏸ {3}nikatru-apex \(direct\) — PENDING: .*CI run 37020790032 for fcf77f1 was cancelled, superseded by CI run 37020790099 for abcdef1, which carries it and is `in_progress` \(30 min after the commit\)/,
+    );
+    assert.ok(seen.some((u) => NEWER_URL.test(u)), 'the newer push runs on main were asked');
+    // The newer run whose head IS the commit (a re-run of the push) carries it without asking git.
+    const same = await superseded({ newer: newerRuns({ head_sha: SHA }), isAncestor: () => false });
+    assert.equal(same.code, 0);
+    // A run cancelled before its deploy-web job existed ("has no deploy-web job") is superseded too.
+    const noJob = { total_count: 1, jobs: [fixture('jobs-completed.json').jobs[0]] };
+    assert.equal((await superseded({ newer: newerRuns(), jobs: noJob })).code, 0);
+  });
+
+  test('🔴 RED CONTROL — cancelled, and no newer run that carries the commit is still going: RED, as before', async () => {
+    const seen = [];
+    const v = await superseded({ newer: { total_count: 0, workflow_runs: [] }, seen });
+    assert.equal(v.code, 1);
+    assert.match(v.line, /DEPLOY FAILED: .*\(nikatru-apex\)` in CI run 37020790032 for fcf77f1 concluded `cancelled`/);
+    assert.ok(seen.some((u) => NEWER_URL.test(u)), 'the newer push runs on main were asked, and none was there');
+    const cases = [
+      ['a newer run that does not carry the commit', { newer: newerRuns(), isAncestor: () => false }],
+      ['ancestry unreadable (null) is not "carries"', { newer: newerRuns(), isAncestor: () => null }],
+      ['no ancestry check handed in', { newer: newerRuns(), isAncestor: null }],
+      ['the newer run already completed', { newer: newerRuns({ status: 'completed', conclusion: 'success' }) }],
+      ['an OLDER run id is not newer', { newer: newerRuns({ id: 37020790000 }) }],
+      ['another branch', { newer: newerRuns({ head_branch: 'feature' }) }],
+    ];
+    for (const [why, opts] of cases) {
+      const r = await superseded(opts);
+      assert.equal(r.code, 1, why);
+      assert.notEqual(r.pending, true, why);
+    }
+    const noJob = { total_count: 1, jobs: [fixture('jobs-completed.json').jobs[0]] };
+    const nj = await superseded({ newer: { total_count: 0, workflow_runs: [] }, jobs: noJob });
+    assert.equal(nj.code, 1);
+    assert.match(nj.line, /completed `cancelled` and it has no `deploy-web \/ …\(nikatru-apex\)` job/);
+  });
+
+  test('🔴 RED CONTROL — superseded, but the commit is past the 3 h ceiling: STUCK, exit 1', async () => {
+    const v = await superseded({ newer: newerRuns({ status: 'queued' }), now: COMMIT_AT + 4 * 60 * 60 * 1000 });
+    assert.equal(v.code, 1);
+    assert.match(v.line, /STUCK DEPLOY: .*superseded by CI run 37020790099 for abcdef1, which carries it and is still `queued` 240 min after the commit, past the 3-hour ceiling/);
   });
 
   test('only a direct row RED past the window is re-judged — green, ⏳, git and exit-2 verdicts pass through untouched', () => {

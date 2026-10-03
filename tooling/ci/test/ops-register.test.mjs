@@ -212,6 +212,8 @@ import {
   olderUnitPagePath,
   probeUnitFreshness,
   UNIT_WINDOW_PAGES,
+  checkNewBootstraps,
+  readBootstrapBase,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -6337,9 +6339,11 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(input.rows[0].mechanism.recordQuery.firstDue, committed, 'the committed register the caller holds is never mutated');
     // RED CONTROL: a firstDue far past any cadence window of the REAL clock is
     // still far past it in the replay, so the spawned guard still refuses it.
+    // ⏱ 2026-10-03 (club-nits-b B1): the row's own bootstrap is spent and
+    // deleted, so the control PLANTS the far-future date instead of moving one.
     const over = (register) => {
       const row = register.rows.find((r) => r.id === 'duty.workflow.name-clearance.yml');
-      assert.ok(row?.mechanism?.recordQuery?.firstDue, 'premise: the row carries a bootstrap');
+      assert.ok(row?.mechanism?.recordQuery?.reader === 'github-run-history', 'premise: the row reads the run history');
       row.mechanism.recordQuery.firstDue = '2099-01-01T00:00:00Z';
     };
     const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: over }) });
@@ -7433,5 +7437,65 @@ describe('a unit read covers the row\'s window, not a fixed number of runs (ops-
     const weekly = real.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history' && r.cadence === '7d' && unitOf(r.mechanism.recordQuery).kind === 'jobs');
     assert.ok(weekly.length >= 5, `failure-ledger, edge-shield and the three freshness rows; found ${weekly.map((r) => r.id).join(', ')}`);
     for (const r of weekly) assert.equal(recordWindowStartMs(r, base, 0), -252 * H, r.id);
+  });
+});
+
+// ⏱ 2026-10-03 · club-nits-b B8 (lead lesson 36, TRAPS ci-19). RED before: nothing
+// required a bootstrap on a NEW blocking row, so a duty for a workflow not yet on
+// main merged green (the PR only prints the live verdict) and blocked main's first
+// push run with "no successful run at all".
+describe('B8 · a new blocking duty whose record cannot exist yet carries firstDue + firstDueWhy', () => {
+  const row = (over = {}) => ({
+    id: 'duty.workflow.fresh.yml',
+    kind: 'duty',
+    cadence: '24h',
+    mechanism: { recordQuery: { reader: 'github-run-history', workflow: 'fresh.yml', event: 'schedule', headBranch: 'main', ...over } },
+  });
+  const base = (rows = [], files = []) => ({ ref: 'origin/main', rows, workflowOnBase: (f) => files.includes(f) });
+
+  test('🔴 a new row for a workflow not on the base, with no bootstrap, is refused', () => {
+    const r = checkNewBootstraps({ rows: [row()] }, base());
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /^duty\.workflow\.fresh\.yml — a NEW blocking duty whose record cannot exist yet: `fresh\.yml` is not on origin\/main/);
+  });
+  test('🔴 firstDue without firstDueWhy, or the reverse, is still refused', () => {
+    assert.equal(checkNewBootstraps({ rows: [row({ firstDue: '2026-10-05T00:00:00Z' })] }, base()).errors.length, 1);
+    assert.equal(checkNewBootstraps({ rows: [row({ firstDueWhy: 'the first slot is Monday' })] }, base()).errors.length, 1);
+  });
+  test('GREEN — the same row with both fields passes, and is counted', () => {
+    const r = checkNewBootstraps({ rows: [row({ firstDue: '2026-10-05T00:00:00Z', firstDueWhy: 'the first slot is Monday' })] }, base());
+    assert.deepEqual(r.errors, []);
+    assert.match(r.prints.join('\n'), /1 new blocking run-history row\(s\)/);
+  });
+  test('a row already on the base, a workflow already on the base, an owner-gated row, a trigger row and another reader are not this limb\'s', () => {
+    for (const [reg, b] of [
+      [{ rows: [row()] }, base([{ id: 'duty.workflow.fresh.yml' }])],
+      [{ rows: [row()] }, base([], ['fresh.yml'])],
+      [{ rows: [{ ...row(), ownerGated: true }] }, base()],
+      [{ rows: [{ ...row(), cadence: 'trigger' }] }, base()],
+      [{ rows: [row({ reader: 'glitchtip-heartbeat' })] }, base()],
+    ]) assert.deepEqual(checkNewBootstraps(reg, b).errors, [], JSON.stringify(reg));
+  });
+  test('an unreadable base PRINTS that the limb was not graded, and decides nothing', () => {
+    const r = checkNewBootstraps({ rows: [row()] }, { ref: 'origin/main', why: 'no such ref' });
+    assert.deepEqual(r.errors, []);
+    assert.match(r.prints.join('\n'), /not graded: the base register could not be read \(no such ref\)/);
+  });
+  test('readBootstrapBase reads the register and the workflow files on origin/<GITHUB_BASE_REF>, main by default', () => {
+    const asked = [];
+    const git = (args) => {
+      asked.push(args.join(' '));
+      if (args[0] === 'show') return { status: 0, stdout: JSON.stringify({ rows: [{ id: 'a' }] }) };
+      return { status: args[2].endsWith('/old.yml') ? 0 : 1 };
+    };
+    const b = readBootstrapBase({ GITHUB_BASE_REF: 'release' }, git);
+    assert.equal(b.ref, 'origin/release');
+    assert.deepEqual(b.rows, [{ id: 'a' }]);
+    assert.equal(b.workflowOnBase('old.yml'), true);
+    assert.equal(b.workflowOnBase('new.yml'), false);
+    assert.equal(asked[0], 'show refs/remotes/origin/release:tooling/ops/register.json');
+    assert.equal(readBootstrapBase({}, git).ref, 'origin/main');
+    assert.match(readBootstrapBase({}, () => ({ status: 128 })).why, /exited 128/);
+    assert.match(readBootstrapBase({ GITHUB_BASE_REF: '--evil' }, git).why, /not a branch name/);
   });
 });

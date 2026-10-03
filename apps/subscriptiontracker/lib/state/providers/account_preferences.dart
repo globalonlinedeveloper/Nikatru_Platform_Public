@@ -26,6 +26,8 @@ import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 import 'package:nikatru_api_client/nikatru_api_client.dart'
     show RestAccountPreferencesTransport, RestClient;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show localeOfTag;
 
 import '../../core/app_config.dart';
 import '../settings_controller.dart';
@@ -58,7 +60,7 @@ Map<String, Object?> accountPreferenceValuesOf(
   // The enum's own name, which is also the device store's spelling.
   kPrefThemeMode: theme.name,
   // '' is "follow the device" — a choice, and it follows the account too.
-  kPrefLocale: locale?.languageCode ?? '',
+  kPrefLocale: locale?.toLanguageTag() ?? '',
   kPrefReminderLeadDays: settings.reminderLeadDays,
   kPrefReminderMinuteOfDay: settings.reminderMinuteOfDay,
   for (final MapEntry<String, bool> e in settings.prefs.entries)
@@ -226,7 +228,7 @@ Future<void> applyAccountPreferences(
   if (locale is String && ref.mounted) {
     await ref
         .read(localeProvider.notifier)
-        .set(locale.isEmpty ? null : Locale(locale));
+        .set(locale.isEmpty ? null : localeOfTag(locale));
   }
 }
 
@@ -261,7 +263,7 @@ Future<void> setLocaleByUserWith(
   await read(localeProvider.notifier).set(locale);
   read(
     accountPreferencesSyncProvider,
-  )?.changed(kPrefLocale, locale?.languageCode ?? '');
+  )?.changed(kPrefLocale, locale?.toLanguageTag() ?? '');
 }
 
 /// The explicit sign-out's drop (review #1080 findings 4, 7; delta finding 1;

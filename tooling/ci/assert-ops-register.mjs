@@ -3355,6 +3355,68 @@ export function checkLaptopOutageHomes(reg) {
   return { errors, prints };
 }
 
+/** ⏱ 2026-10-03 · club-nits-b B8 (lead lesson 36, TRAPS ci-19). PURE. A NEW row
+ *  that would BLOCK (a scheduled, not owner-gated `github-run-history` duty) for a
+ *  workflow that is not yet on the base branch cannot have a record: GitHub keeps
+ *  no run history for a file until it is on the default branch. On the pull
+ *  request the live verdict only prints, so the row merges green, and the first
+ *  push run after the merge reads "NO SUCCESSFUL RUN AT ALL" and blocks main. Such
+ *  a row must carry `recordQuery.firstDue` AND `firstDueWhy` (the bootstrap gate
+ *  `evaluateRunRecord` reads; the schema limb bounds the date). `base` is
+ *  `{ ref, rows, workflowOnBase(file) }` read from git, or `{ ref, why }` when it
+ *  could not be read, which prints and decides nothing. Returns `{ errors, prints }`. */
+export function checkNewBootstraps(reg, base) {
+  const errors = [];
+  const prints = [];
+  if (!Array.isArray(base?.rows)) {
+    prints.push(`new-row bootstrap — not graded: the base register could not be read (${base?.why ?? 'no answer'}).`);
+    return { errors, prints };
+  }
+  const onBase = new Set(base.rows.map((r) => String(r?.id ?? '')));
+  let fresh = 0;
+  for (const r of reg?.rows ?? []) {
+    const id = String(r?.id ?? '');
+    const q = r?.mechanism?.recordQuery;
+    if (onBase.has(id) || r?.kind !== 'duty' || r?.ownerGated === true) continue;
+    if (q?.reader !== 'github-run-history' || !TIME_CADENCE.test(String(r?.cadence ?? ''))) continue;
+    if (base.workflowOnBase(String(q.workflow ?? ''))) continue;
+    fresh++;
+    if (!nonEmpty(q.firstDue) || !nonEmpty(q.firstDueWhy)) {
+      errors.push(
+        `${id} — a NEW blocking duty whose record cannot exist yet: \`${q.workflow}\` is not on ${base.ref}, and GitHub ` +
+          'keeps no run history for a file until it is on the default branch. The pull request only PRINTS the live ' +
+          'verdict, so this merges green and the first push run after it reads "no successful run at all" and BLOCKS ' +
+          'main (TRAPS ci-19). Give the row `recordQuery.firstDue` (its first slot, within one cadence window) AND ' +
+          '`recordQuery.firstDueWhy`.',
+      );
+    }
+  }
+  prints.push(`new-row bootstrap — ${fresh} new blocking run-history row(s) for a workflow not yet on ${base.ref}, each held to firstDue + firstDueWhy.`);
+  return { errors, prints };
+}
+
+/** IMPURE SHELL over an injected `git(args)`: the base side `checkNewBootstraps`
+ *  compares with — the register and the workflow files on `origin/<base>`, where
+ *  `<base>` is GITHUB_BASE_REF on a pull request and `main` otherwise. */
+export function readBootstrapBase(env, git) {
+  const name = String(env?.GITHUB_BASE_REF ?? '').trim() || 'main';
+  if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.includes('..') || name.startsWith('-')) {
+    return { ref: name, why: `base ${JSON.stringify(name)} is not a branch name this guard will hand to git` };
+  }
+  const ref = `origin/${name}`;
+  const shown = git(['show', `refs/remotes/${ref}:${REGISTER_REL}`]);
+  if (shown?.status !== 0) return { ref, why: `\`git show ${ref}:${REGISTER_REL}\` exited ${shown?.status ?? 'without a status'}` };
+  let rows;
+  try {
+    rows = JSON.parse(String(shown.stdout ?? '')).rows;
+  } catch (e) {
+    return { ref, why: `${ref}:${REGISTER_REL} is not JSON (${e.message})` };
+  }
+  if (!Array.isArray(rows)) return { ref, why: `${ref}:${REGISTER_REL} holds no \`rows\` array` };
+  const workflowOnBase = (file) => git(['cat-file', '-e', `refs/remotes/${ref}:${WORKFLOW_DIR_REL}/${file}`])?.status === 0;
+  return { ref, rows, workflowOnBase };
+}
+
 /** PURE. INV3 + INV4 in the register: every run-history row names a unit, the
  *  unit exists in the workflow file, no unit contains this guard's own verdict,
  *  units of rows sharing a workflow do not overlap, and every job of a shared
@@ -6228,6 +6290,11 @@ async function main() {
   const homes = checkLaptopOutageHomes(reg);
   errors.push(...homes.errors);
   prints.push(...homes.prints);
+  // ⏱ 2026-10-03 (club-nits-b B8) — a new blocking row whose record cannot exist
+  // yet carries its bootstrap (see `checkNewBootstraps`). STRUCTURAL.
+  const bootstraps = checkNewBootstraps(reg, readBootstrapBase(process.env, gitIn(ROOT)));
+  errors.push(...bootstraps.errors);
+  prints.push(...bootstraps.prints);
   // ⏱ 2026-09-29 (A-2) — a lane a guard names is run by a schedule (see
   // `checkNamedLanes`). STRUCTURAL. An empty guard set is COVERAGE LOST.
   // A fixture ROOT with no tooling/ci has no guard to hold; THIS checkout

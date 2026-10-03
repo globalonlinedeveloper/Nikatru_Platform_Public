@@ -36,7 +36,7 @@
       "relay and ntfy. So the platform Worker (Cloudflare) sends THIS one itself, straight to Resend over HTTPS,",
       "through the mail port's `reports` stream (RESEND_API_KEY, which it already holds) — services/platform/src/lib/owner-page.ts. It fires on (a) a",
       "boxb_reachability or boxa_reachability target ok=0 on two consecutive 6-hourly firings, and (b) the",
-      "ops_watchdog `ops-watch-freshness` row finding main's newest completed ops-watch run older than 6 h.",
+      "ops_watchdog `ops-watch-freshness` row finding main's newest completed ops-watch run older than 7 h (one 6-hourly interval plus one run plus margin, 2026-10-03).",
       "⏱ 2026-10-02 · NO ADDRESS LIVES HERE. The recipient is the published support inbox (`supportEmail` in",
       "tooling/house-identity.json, rendered into src/generated/entity.ts), which Workspace receives — off Box B",
       "([ADR 029] §1), the inbox GlitchTip's email recipient delivers to (chainsObserved below). The From is the",

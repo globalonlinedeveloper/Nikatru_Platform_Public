@@ -35,16 +35,20 @@
 //        [--template <play-console-export.csv>] [--apply] [--repo-root <dir>]
 //
 //   (dry)     render + validate, write the CSV, print what it declares. No network.
-//   --apply   additionally POST it. Reads the service-account JSON from the path in
+//   --apply   additionally POST it. REFUSED without --template: what reaches Play
+//             is rendered over Play's own export, never the built-in template.
+//             Reads the service-account JSON from the path in
 //             env PLAY_SERVICE_ACCOUNT_FILE, mints a token through submit-play.mjs'
-//             mintPlayAccessToken (the one copy), prints HTTP statuses only.
+//             mintPlayAccessToken (the one copy), prints HTTP statuses only (and
+//             Google's OAuth `error` code / status enum on a refusal).
 //   --template  the lead's Play Console CSV export. Its (Question ID, Response ID)
 //             set must equal PLAY_TEMPLATE exactly, and its requirement and label
 //             columns are then used verbatim (the embedded labels are the export's
 //             first 90 characters, and the usage rows carry none).
 //
 // Exit codes: 0 rendered (and applied); 1 a refusal; 2 COVERAGE LOST (the posture
-// could not be confirmed, or a file the render needs is missing).
+// could not be confirmed, or a file the render needs is missing) or a usage error
+// (a missing --app / --out, printed as "usage", not as lost coverage).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -529,8 +533,20 @@ export async function applyDataSafety({ csv, packageName, serviceAccount, fetchI
     keySource: `the file ${SA_FILE_ENV} names`,
     post: async (url, init) => {
       const res = await f(url, { method: 'POST', ...init });
-      log(`→    token exchange → HTTP ${res.status}`);
-      if (res.status !== 200) throw new Error(`token exchange answered HTTP ${res.status}.`);
+      let oauthError = '';
+      if (res.status !== 200) {
+        // Google's OAuth `error` code only (RFC 6749 §5.2: `invalid_grant`,
+        // `unauthorized_client`, …) — a fixed vocabulary, safe to print. Never
+        // `error_description`, never the body.
+        try {
+          const code = JSON.parse(await res.text())?.error;
+          if (typeof code === 'string' && /^[a-z_]{1,64}$/.test(code)) oauthError = ` ${code}`;
+        } catch {
+          /* the status is all that is printed either way */
+        }
+      }
+      log(`→    token exchange → HTTP ${res.status}${oauthError}`);
+      if (res.status !== 200) throw new Error(`token exchange answered HTTP ${res.status}${oauthError}.`);
       try {
         return JSON.parse(await res.text());
       } catch {
@@ -579,9 +595,10 @@ async function cli() {
   };
   const APPLY = argv.includes('--apply');
   const root = resolvePath(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-  const fail = (code, lines) => {
+  const USAGE = 'usage: node tooling/release/play-data-safety.mjs --app <id> --out <file.csv> [--template <export.csv>] [--apply] [--repo-root <dir>]';
+  const fail = (code, lines, { usage = false } = {}) => {
     console.error('');
-    console.error(code === 2 ? `FAIL COVERAGE LOST — ${lines[0]}` : `FAIL ${lines[0]}`);
+    console.error(usage ? `FAIL ${lines[0]}` : code === 2 ? `FAIL COVERAGE LOST — ${lines[0]}` : `FAIL ${lines[0]}`);
     for (const l of lines.slice(1)) console.error(`     ${l}`);
     console.error('\nplay-data-safety: FAILED');
     process.exit(code);
@@ -597,8 +614,15 @@ async function cli() {
 
   const app = opt('app');
   const out = opt('out');
-  if (!app || !out) fail(2, ['--app <id> and --out <file> are both required.', 'Usage: node tooling/release/play-data-safety.mjs --app <id> --out <file.csv> [--template <export.csv>] [--apply]']);
+  // A missing argument is a USAGE error (exit 2, "usage"), not lost coverage.
+  if (!app || !out) fail(2, ['--app <id> and --out <file> are both required.', USAGE], { usage: true });
   if (!/^[a-z0-9_-]+$/.test(app)) fail(1, [`--app ${JSON.stringify(app)} is not an app id.`]);
+  // --apply declares to Play, so it sends Play's own template: the built-in
+  // PLAY_TEMPLATE is a dry-run aid (one row more than the export, labels cut at
+  // 90 characters, no usage-row labels), never what reaches the console.
+  if (APPLY && !opt('template')) {
+    fail(1, ['--apply needs --template <the Play Console Data safety export (.csv)>.', 'The built-in PLAY_TEMPLATE is for dry runs only: it is not the export (row count, cut labels, no usage-row labels). Nothing was sent.']);
+  }
 
   const register = JSON.parse(read('tooling/channel-register.json') ?? 'null');
   const dirTpl = register?.channels?.find((c) => c?.id === 'android-play')?.storeMetadataDir;

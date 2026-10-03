@@ -441,16 +441,19 @@ jobs:
       # nothing re-read the Worker. Each /v1/health `build` must be the newest
       # record's sha; the shield (no health route) is read by its active Cloudflare
       # version against the record's worker_version_id. A READ: no secret beyond
-      # the read token and this job's deployments: read.
+      # the read token and this job's deployments: read. CLOUDFLARE_READ_TOKEN ONLY,
+      # no fallback to the deploy token (#1165 review bd5d50ac nit): until the owner
+      # mints it the shield's Cloudflare read is deferred to the same date as the
+      # usage and edge-zone steps, and is COVERAGE LOST after it.
       - name: Every live Worker serves the ledger's newest record
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
-          node tooling/ops/check-worker-versions.mjs
+          node tooling/ops/check-worker-versions.mjs --cloudflare-read-pending-until 2026-10-21
           code=$?
           set -e
           if [ "$code" -eq 2 ]; then

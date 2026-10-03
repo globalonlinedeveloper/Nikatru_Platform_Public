@@ -3624,6 +3624,26 @@ void main() {
       expect(reborn.read(localeProvider)?.languageCode, 'ta');
     });
 
+    // ⏱ 2026-10-03 · club-nits-b (#1161 nit 5). RED before: the store kept
+    // only languageCode, so a region-tagged choice came back as a bare `pt`.
+    test('a region-tagged choice SURVIVES a restart whole', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _container(store);
+      const Locale ptBr = Locale.fromSubtags(
+        languageCode: 'pt',
+        countryCode: 'BR',
+      );
+      await first.read(localeProvider.notifier).set(ptBr);
+      expect(store.data['nikatru.locale'], 'pt-BR');
+      first.dispose();
+
+      final ProviderContainer reborn = _container(store);
+      addTearDown(reborn.dispose);
+      reborn.read(localeProvider); // triggers the background hydrate
+      await Future<void>.delayed(Duration.zero);
+      expect(reborn.read(localeProvider), ptBr);
+    });
+
     test('choosing "follow the device" again clears the override', () async {
       final _MemStore store = _MemStore();
       final ProviderContainer c = _container(store);

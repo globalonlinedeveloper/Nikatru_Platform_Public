@@ -157,6 +157,11 @@
 //   RED as STUCK; a completed run whose deploy job for the project failed is RED
 //   naming the job; any other completed run leaves the RED as it was; no run, or
 //   a read that fails, leaves it RED with "UNKNOWN: could not read the deploy run".
+//   A run (or its deploy job) that concluded `cancelled` was usually SUPERSEDED —
+//   GitHub cancels an older pending run or job in the `ci-${ref}` and
+//   `deploy-web-<app>` groups even with `cancel-in-progress: false` — so a newer
+//   push run on main, queued or in progress, that carries the commit makes it
+//   PENDING on the same 3 h ceiling; with none it stays RED (#1166 review).
 //
 // ── A SITE MOVES TO DIRECT UPLOAD; ITS OLD PROJECT IS ROLLBACK-ONLY ─────────
 // 🔴 THIS READER JUDGED A PROJECT NOTHING WILL EVER BUILD AGAIN. At 16:27Z on
@@ -1085,16 +1090,22 @@ export function deployJobFor(jobs, project) {
  *  runs 37016683957 and 37024343900: production lacked fcf77f1e because its CI
  *  run had not reached deploy-web yet, and the reader called it a failed deploy).
  *
- *  `deployRun` is `{ ok: true, run, jobs }` (jobs read for a completed run only)
- *  or `{ ok: false, error }`:
+ *  `deployRun` is `{ ok: true, run, jobs, newer }` (jobs read for a completed run
+ *  only; `newer` read for a superseded one only) or `{ ok: false, error }`:
  *    · run queued / in progress, commit younger than PENDING_CEILING_MS → PENDING
  *      (exit 0, counted apart); older → RED, a deploy stuck that long.
+ *    · run (or this project's deploy job) concluded `cancelled`, and a NEWER push
+ *      run on main still queued / in progress carries the expected commit (its
+ *      head_sha IS it, or `isAncestor(expected, head)` is true) → PENDING / STUCK
+ *      on the same 3 h ceiling: GitHub cancels an older pending run or job in the
+ *      `ci-${ref}` and `deploy-web-<app>` groups even with `cancel-in-progress:
+ *      false`, and the newer run still publishes the commit. No such run → as below.
  *    · run completed, this project's deploy job failure/cancelled/timed_out → RED, naming it.
  *    · run completed any other way → RED, the existing meaning, with what the run said.
  *    · no run, a run for another commit, or a failed read → RED with
  *      "UNKNOWN: could not read the deploy run" — the stale verdict stands; never a pass.
  *  Any result without `awaitsRun` is returned untouched. */
-export function judgeDeployRun(result, { project, expectedCommit, expectedAt, now = Date.now(), deployRun }) {
+export function judgeDeployRun(result, { project, expectedCommit, expectedAt, now = Date.now(), deployRun, isAncestor = null }) {
   if (result?.awaitsRun !== true) return result;
   const at = `${project} (direct)`;
   const exp = short(expectedCommit);
@@ -1108,33 +1119,47 @@ export function judgeDeployRun(result, { project, expectedCommit, expectedAt, no
   }
   const ref = `CI run ${run.id}`;
 
-  if (RUN_NOT_DONE.has(run.status)) {
-    if (!Number.isFinite(expectedAt) || !Number.isFinite(now)) return unknown(`${ref} is ${run.status} but the commit's age cannot be read`);
+  /** A run that will still publish the commit is queued or in progress: PENDING until the commit is
+   *  PENDING_CEILING_MS old, then STUCK. `what` names that run and ends where "is `<status>`" follows. */
+  const waiting = (status, what) => {
+    if (!Number.isFinite(expectedAt) || !Number.isFinite(now)) return unknown(`${what} is ${status} but the commit's age cannot be read`);
     const ageMs = Math.max(0, now - expectedAt);
     const age = `${Math.round(ageMs / 60000)} min`;
     if (ageMs > PENDING_CEILING_MS) {
       return {
         code: 1,
         line:
-          `✗   ${at} — STUCK DEPLOY: production serves ${short(result.served)}, and ${ref} for ${exp} — the newest ` +
-          `\`main\` commit touching its deploy unit — is still \`${run.status}\` ${age} after the commit, past the ` +
-          `${PENDING_CEILING_MS / 3600000}-hour ceiling. A deploy waiting that long is an incident, not a queue.`,
+          `✗   ${at} — STUCK DEPLOY: production serves ${short(result.served)}, and ${what} is still \`${status}\` ${age} ` +
+          `after the commit, past the ${PENDING_CEILING_MS / 3600000}-hour ceiling. A deploy waiting that long is an ` +
+          `incident, not a queue.`,
       };
     }
     return {
       code: 0,
       pending: true,
       line:
-        `⏸   ${at} — PENDING: deployment ${result.deploymentId} serves ${short(result.served)}; ${ref} for ${exp}, the ` +
-        `newest \`main\` commit touching its deploy unit, is \`${run.status}\` (${age} after the commit), so its deploy ` +
-        `has not run yet. Late, not failed — the next ops-watch slot grades it; STUCK past ` +
-        `${PENDING_CEILING_MS / 3600000} h.`,
+        `⏸   ${at} — PENDING: deployment ${result.deploymentId} serves ${short(result.served)}; ${what} is ` +
+        `\`${status}\` (${age} after the commit), so its deploy has not run yet. Late, not failed — the next ` +
+        `ops-watch slot grades it; STUCK past ${PENDING_CEILING_MS / 3600000} h.`,
     };
+  };
+
+  if (RUN_NOT_DONE.has(run.status)) {
+    return waiting(run.status, `${ref} for ${exp}, the newest \`main\` commit touching its deploy unit,`);
   }
 
   if (run.status !== 'completed') return unknown(`${ref} has status ${JSON.stringify(run.status ?? null)}, outside GitHub's enum as read here`);
   if (!Array.isArray(jobs)) return unknown(`${ref} completed but its jobs were not read`);
   const job = deployJobFor(jobs, project);
+  if (run.conclusion === 'cancelled' || job?.conclusion === 'cancelled') {
+    // SUPERSEDED, not failed, when a newer push run still going carries the commit.
+    const carries = (sha) =>
+      typeof sha === 'string' && (sha === expectedCommit || (typeof isAncestor === 'function' && isAncestor(expectedCommit, sha) === true));
+    const next = Array.isArray(deployRun.newer) ? deployRun.newer.find((r) => carries(r?.head_sha)) : undefined;
+    if (next) {
+      return waiting(next.status, `${ref} for ${exp} was cancelled, superseded by CI run ${next.id} for ${short(next.head_sha)}, which carries it and`);
+    }
+  }
   if (job && JOB_FAILED.has(job.conclusion)) {
     return {
       code: 1,
@@ -1150,7 +1175,8 @@ export function judgeDeployRun(result, { project, expectedCommit, expectedAt, no
 }
 
 /** The CI push run on `main` whose head_sha IS `sha`, plus its jobs once it has
- *  completed: `{ run, jobs }`, `run` null when GitHub holds none. Every
+ *  completed: `{ run, jobs, newer }`, `run` null when GitHub holds none, and
+ *  `newer` the not-yet-done push runs on main after a cancelled one (else null). Every
  *  returned run's head_sha and head_branch are re-read off the answer — the
  *  filter is a request — and never "the latest run". A failed read throws
  *  CouldNotLook, which main() hands judgeDeployRun as `{ ok: false }`. */
@@ -1189,6 +1215,16 @@ export async function readDeployRun(sha, { fetchImpl = fetch, env = process.env,
       sleep ? { sleep } : {},
     );
 
+  /** The push runs on main NEWER than `older` (a larger id) and not yet done, re-read off the answer. */
+  const readNewer = async (older) => {
+    const path = `/repos/${repo}/actions/workflows/${CI_WORKFLOW_FILE}/runs?branch=main&event=push&per_page=50`;
+    const b = await get(path);
+    if (!Array.isArray(b?.workflow_runs)) throw new CouldNotLook(`GET ${path} carried no workflow_runs list`);
+    return b.workflow_runs.filter(
+      (r) => r?.head_branch === 'main' && r?.event === 'push' && RUN_NOT_DONE.has(r?.status) && Number.isInteger(r?.id) && r.id > older.id,
+    );
+  };
+
   const runsPath =
     `/repos/${repo}/actions/workflows/${CI_WORKFLOW_FILE}/runs?branch=main&event=push` +
     `&head_sha=${encodeURIComponent(sha)}&per_page=20`;
@@ -1208,7 +1244,11 @@ export async function readDeployRun(sha, { fetchImpl = fetch, env = process.env,
     jobs.push(...j.jobs);
     if (jobs.length >= j.total_count || j.jobs.length === 0) {
       if (jobs.length < j.total_count) throw new CouldNotLook(`${run.id} lists ${j.total_count} jobs but ${jobs.length} were served`);
-      return { run, jobs };
+      // A cancelled run (or job) is usually SUPERSEDED: GitHub cancels an older pending run or job in a
+      // concurrency group even with cancel-in-progress: false. So it brings the NEWER push runs on main
+      // still queued or in progress; judgeDeployRun asks which of them carries the commit.
+      const superseded = run.conclusion === 'cancelled' || jobs.some((x) => x?.conclusion === 'cancelled');
+      return { run, jobs, newer: superseded ? await readNewer(run) : null };
     }
   }
   throw new CouldNotLook(`run ${run.id} holds more than 1000 jobs; the read stopped, so its deploy job is unknown`);
@@ -1270,6 +1310,22 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
   const inflight = results.filter((r) => r.code === 0 && r.inflight === true).length;
   const pending = results.filter((r) => r.code === 0 && r.pending === true).length;
   return { code, lines, reds, unknowns, inflight, pending, projectsSwept, ungraded };
+}
+
+/** PURE. The `ok` line main() prints for a green sweep, from foldVerdicts. IN FLIGHT and PENDING are
+ *  counted apart (foldVerdicts keeps them apart), so each clause carries its own number. */
+export function okSummary(verdict) {
+  if (verdict.inflight === 0 && verdict.pending === 0) {
+    return (
+      `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names, ` +
+      `or at one whose unit files are identical to it.`
+    );
+  }
+  return (
+    `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
+    `IN FLIGHT inside the ceiling (⏳) and ${verdict.pending} PENDING behind a CI run that has not deployed yet (⏸), ` +
+    `each named above, which the next slot grades.`
+  );
 }
 
 /** PURE. One DECLARED rollback-only project against its live project record
@@ -1557,7 +1613,13 @@ async function main() {
         );
       }
       const deployRun = await runReads.get(expectedCommit);
-      judged = judgeDeployRun(judged, { project: p.project, expectedCommit, expectedAt, deployRun });
+      judged = judgeDeployRun(judged, {
+        project: p.project,
+        expectedCommit,
+        expectedAt,
+        deployRun,
+        isAncestor: (a, b) => isAncestorOf(ROOT, a, b, spawnSync),
+      });
       if (judged.pending === true && process.env.GITHUB_ACTIONS === 'true') {
         console.log(`::notice title=A Pages deploy is PENDING, not failed::${judged.line.replace(/%/g, '%25')}`);
       }
@@ -1588,14 +1650,7 @@ async function main() {
   for (const line of verdict.lines) console.log(`    ${line}`);
 
   if (verdict.code === 0) {
-    console.log(
-      verdict.inflight === 0 && verdict.pending === 0
-        ? `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names, ` +
-            `or at one whose unit files are identical to it.`
-        : `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
-            `IN FLIGHT inside the ceiling (⏳) or PENDING behind a CI run that has not deployed yet (⏸), each named ` +
-            `above, which the next slot grades.`,
-    );
+    console.log(okSummary(verdict));
     console.log(`    ${verdict.reds} RED, ${verdict.pending} PENDING, ${verdict.unknowns} NOT JUDGED.`);
   } else {
     console.error('');

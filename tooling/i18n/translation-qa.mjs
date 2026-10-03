@@ -16,6 +16,9 @@
 //                by --accept; a key with no fingerprint is "unaccepted")
 //   placeholder  a {placeholder} English uses that the translation drops, or one
 //                the translation invents (ICU-aware: arm bodies are walked)
+//   action       a Go template action (`{{ .Email }}`, the auth-mail copy) English
+//                has and the translation drops or misspells, or one it adds —
+//                compared verbatim, as a multiset (auth-mail.mjs `actionDiff`)
 //   icu          a plural/select English has and the translation does not (or of
 //                another kind), a plural without `other`, a plural missing a
 //                category the register's `plural` row requires, or a select
@@ -44,6 +47,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadRegister, supportedCodes, arbSuffix } from './locales.mjs';
 import { l10nRoots } from '../ci/assert-locale-register.mjs';
+import { actionDiff } from './auth-mail.mjs';
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FINGERPRINT_DIR = 'tooling/i18n/fingerprints';
@@ -118,6 +122,11 @@ export function compareMessage(en, tr, requiredPlural = []) {
   const b = icuShape(tr);
   for (const p of a.placeholders) if (!b.placeholders.has(p)) out.push(['placeholder', `drops {${p}}`]);
   for (const p of b.placeholders) if (!a.placeholders.has(p)) out.push(['placeholder', `invents {${p}}`]);
+  // Go template actions (the auth-mail copy): icuShape sees `{{ .Email }}` as a
+  // non-identifier brace body and skips it, so they are compared here, verbatim.
+  const { dropped, added } = actionDiff(en, tr);
+  for (const g of dropped) out.push(['action', `drops (or misspells) the Go action ${g}`]);
+  for (const g of added) out.push(['action', `adds the Go action ${g}, which English does not have`]);
   for (const [name, ea] of a.args) {
     const ta = b.args.get(name);
     if (!ta) {

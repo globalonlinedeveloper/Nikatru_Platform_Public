@@ -156,18 +156,21 @@ class RegisteredLocale {
   final bool pseudo;
 
   /// The [Locale] this row selects.
-  Locale get locale {
-    final List<String> parts = code.split('-');
-    return parts.length == 1
-        ? Locale(parts[0])
-        : Locale.fromSubtags(
-            languageCode: parts[0],
-            countryCode: parts.length > 1 && parts.last.length != 4
-                ? parts.last
-                : null,
-            scriptCode: parts[1].length == 4 ? parts[1] : null,
-          );
-  }
+  Locale get locale => localeOfTag(code);
+}
+
+/// The [Locale] a tag names (\`ll\`, \`ll-RR\`, \`ll-Ssss\`, \`ll-Ssss-RR\`; \`_\`
+/// is read as \`-\`): the inverse of [Locale.toLanguageTag], which is what a
+/// stored or synced language choice holds, so \`pt-BR\` comes back as pt_BR
+/// and never as a bare \`pt\` (#1161 nit 5).
+Locale localeOfTag(String tag) {
+  final List<String> parts = tag.split(RegExp('[-_]'));
+  final bool scripted = parts.length > 1 && parts[1].length == 4;
+  return Locale.fromSubtags(
+    languageCode: parts.first,
+    scriptCode: scripted ? parts[1] : null,
+    countryCode: parts.length > (scripted ? 2 : 1) ? parts.last : null,
+  );
 }
 
 /// Every row of the register, supported first, then pending, then pseudo.
@@ -298,6 +301,7 @@ export function renderChassisBridge(chassisArb) {
 // The app reads every CHASSIS string through this bridge rather than
 // re-declaring it in its own ARB (lane i18n-pipeline, ARB hygiene): one key,
 // one translation, in one place. A key the app ARB still declares wins.
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations, lookupChassisLocalizations;
@@ -312,16 +316,22 @@ export 'app_localizations.dart';
 extension ChassisBridge on AppLocalizations {
   /// How the bridge finds the chassis strings for a locale. Only a test that
   /// pumps a pseudo locale (whose chassis strings no real lookup can give)
-  /// points it elsewhere, and restores it in tearDown.
+  /// points it elsewhere, and restores it in tearDown. \`@visibleForTesting\`:
+  /// the analyzer refuses a write from production code (#1161 nit 7a).
+  @visibleForTesting
   static ChassisLocalizations Function(Locale locale) lookup =
       lookupChassisLocalizations;
 
   ChassisLocalizations get _chassis {
+    // gen-l10n names a locale \`ll\`, \`ll_RR\`, \`ll_Ssss\` or \`ll_Ssss_RR\`: a
+    // four-letter subtag is a script, never a country (#1161 nit 7b).
     final List<String> parts = localeName.split('_');
+    final bool scripted = parts.length > 1 && parts[1].length == 4;
     return lookup(
       Locale.fromSubtags(
         languageCode: parts.first,
-        countryCode: parts.length > 1 ? parts.last : null,
+        scriptCode: scripted ? parts[1] : null,
+        countryCode: parts.length > (scripted ? 2 : 1) ? parts.last : null,
       ),
     );
   }

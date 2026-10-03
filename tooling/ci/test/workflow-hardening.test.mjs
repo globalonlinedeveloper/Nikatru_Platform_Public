@@ -174,12 +174,51 @@ describe('assert-workflow-hardening limb 16 — a workflow_run publisher names t
     assert.match(out, /d\.yml:2 `run-name:` does not read `github\.event\.workflow_run\.conclusion`/);
   });
 
+  test('RED: the conclusion as bare text between two unrelated expressions does not count -> exit 1', () => {
+    const rn = 'run-name: "P ${{ github.sha }} github.event.workflow_run.conclusion ${{ github.ref_name }}"';
+    const { code, out } = run(tree('l16-between', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /d\.yml:2 `run-name:` does not read `github\.event\.workflow_run\.conclusion`/);
+  });
+
   test('RED: the conclusion only in a comment does not count -> exit 1', () => {
     const { code, out } = run(
       tree('l16-comment', { extra: { '.github/workflows/d.yml': publisher('run-name: "P" # ${{ github.event.workflow_run.conclusion }}') } }),
     );
     assert.equal(code, 1, out);
     assert.match(out, /d\.yml:2 `run-name:` does not read/);
+  });
+
+  test('all four admitted fields (conclusion, path, head_sha, event) -> exit 0', () => {
+    const rn =
+      "run-name: \"R ${{ format('{0} {1}', github.event.workflow_run.path, github.event.workflow_run.conclusion) }} on ${{ github.event.workflow_run.head_sha }} (${{ github.event.workflow_run.event }})\"";
+    const { code, out } = run(tree('l16-fields-ok', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('RED: a run-name reading a PR-authored field (head_commit.message) -> exit 1, naming the field', () => {
+    const rn = `${VERDICT.slice(0, -1)} ${'${{ github.event.workflow_run.head_commit.message }}'}"`;
+    const { code, out } = run(tree('l16-field', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /d\.yml:2 `run-name:` reads `github\.event\.workflow_run\.head_commit\.message`; a workflow_run title reads only/);
+  });
+
+  test('RED: a bracket read and a whole-event read are refused too -> exit 1, both named', () => {
+    const rn = `${VERDICT.slice(0, -1)} ${"${{ github.event['workflow_run'] }} ${{ toJSON(github.event) }}"}"`;
+    const { code, out } = run(tree('l16-bracket', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads `github\.event\['workflow_run'\]`/);
+    assert.match(out, /reads `github\.event`; /);
+  });
+
+  test('RED: the `name` exception is the "Autopilot watch" workflow\'s alone — another workflow reading `name` -> exit 1', () => {
+    const rn = `${VERDICT.slice(0, -1)} ${'${{ github.event.workflow_run.name }}'}"`;
+    const { code, out } = run(tree('l16-name', { extra: { '.github/workflows/d.yml': publisher(rn) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads `github\.event\.workflow_run\.name`/);
+    const own = publisher(rn).replace(/^name: P$/m, 'name: Autopilot watch');
+    const mine = run(tree('l16-name-own', { extra: { '.github/workflows/d.yml': own } }));
+    assert.equal(mine.code, 0, mine.out);
   });
 
   test('a push-only workflow is not judged: no run-name needed -> exit 0, 0 counted', () => {

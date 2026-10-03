@@ -101,7 +101,8 @@
 //      See "limb 15".
 //  16. every `workflow_run`-triggered workflow carries a top-level `run-name:` that reads
 //      `github.event.workflow_run.conclusion`: its own green says only that it ran, so
-//      the run list must show the verdict it acted on (⏱ 2026-10-02). See "limb 16".
+//      the run list must show the verdict it acted on (⏱ 2026-10-02), and reads no other
+//      event field than path, head_sha or event (#1168 review). See "limb 16".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -159,6 +160,7 @@ import {
   classifyPublishes,
   storePublishSteps,
   workflowEvents,
+  workflowName,
 } from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
@@ -2477,9 +2479,28 @@ if (pinRowsArmed) {
 // `workflowEvents` over the comment-blanked lines. On the real tree fewer than
 // RUN_NAME_FLOOR such workflows is COVERAGE LOST: "every publisher names its verdict"
 // would be true of a trigger reading that stopped seeing them.
-// Not caught: a run-name that reads the conclusion but words it misleadingly.
+// The conclusion must sit INSIDE one `${{ … }}` expression: `}}` ends an expression and a
+// lone `}` (format's `{0}`) does not, so bare text between two unrelated expressions is
+// not a read (#1168 review, nit 2).
+// Not caught: a run-name that reads the conclusion but words it misleadingly, or names
+// it only inside a string literal of an expression.
 const RUN_NAME_FLOOR = 2;
-const RUN_NAME_VERDICT = /\$\{\{.*\bgithub\.event\.workflow_run\.conclusion\b.*\}\}/;
+const RUN_NAME_VERDICT = /\$\{\{(?:(?!\}\}).)*\bgithub\.event\.workflow_run\.conclusion\b(?:(?!\}\}).)*\}\}/;
+// And the run-name reads ONLY fields no PR author writes (#1168 review, nit 3): a
+// `workflow_run` event also fires for a fork PR's CI run, so a field like
+// head_commit.message or display_title would put the fork's text in this repo's run
+// list. Every `github.event` reference inside an expression, bracket forms and a bare
+// `github.event` included, must be `github.event.workflow_run.<one of these>`.
+// The "Autopilot watch" workflow also reads `name`, admitted by its own test
+// (autopilot-ledger.test.mjs); docs/ci/main-healthy.md records that a run's `name` is
+// its run-name, so that exception is named here, for that one workflow, rather than
+// widened to all. Keyed by the workflow's top-level `name:`, not its file: a guard
+// whose code names exactly one workflow FILE is a lane-bound guard to
+// assert-release-lane-generic.mjs limb B, and this limb binds to no lane.
+const RUN_NAME_EXPR = /\$\{\{((?:(?!\}\}).)*)\}\}/g;
+const RUN_NAME_EVENT_REF = /\bgithub\.event\b(?:\.\w+|\[[^\]]*\])*/g;
+const RUN_NAME_FIELDS = ['conclusion', 'path', 'head_sha', 'event'];
+const RUN_NAME_FIELD_EXCEPTIONS = new Map([['Autopilot watch', ['name']]]);
 let runPublishers = 0;
 for (const wf of parsedAll) {
   if (!workflowEvents(wf).has('workflow_run')) continue;
@@ -2495,6 +2516,20 @@ for (const wf of parsedAll) {
       `${wf.rel}:${runName.n} \`run-name:\` does not read \`github.event.workflow_run.conclusion\`, so the run list still ` +
         'shows this workflow\'s own green, not the verdict of the run it acted on.',
     );
+  }
+  if (runName !== undefined) {
+    const allowed = new Set([...RUN_NAME_FIELDS, ...(RUN_NAME_FIELD_EXCEPTIONS.get(workflowName(wf)) ?? [])]);
+    for (const [, expr] of runName.text.matchAll(RUN_NAME_EXPR)) {
+      for (const [ref] of expr.matchAll(RUN_NAME_EVENT_REF)) {
+        const field = /^github\.event\.workflow_run\.(\w+)$/.exec(ref)?.[1];
+        if (field === undefined || !allowed.has(field)) {
+          problems.push(
+            `${wf.rel}:${runName.n} \`run-name:\` reads \`${ref}\`; a workflow_run title reads only ` +
+              `${[...allowed].map((f) => `github.event.workflow_run.${f}`).join(', ')} — values no PR author writes.`,
+          );
+        }
+      }
+    }
   }
 }
 if (scanningRealRepo && runPublishers < RUN_NAME_FLOOR) {
@@ -2582,5 +2617,5 @@ console.log(
 );
 console.log(
   `    limb 16 — ${runPublishers} \`workflow_run\`-triggered workflow(s), each with a \`run-name:\` that names the ` +
-    "triggering run's conclusion, so its own green never reads as that run's verdict",
+    "triggering run's conclusion, so its own green never reads as that run's verdict, and reads no PR-authored event field",
 );

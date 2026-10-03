@@ -664,6 +664,7 @@ async function remindApp(
     let deferred = 0;
     let unconfirmed = 0;
     let errors = 0;
+    let localeFallbacks = 0;
     let firstError = '';
     const fail = (why: string): void => {
       errors++;
@@ -692,8 +693,12 @@ async function remindApp(
       if (items.length === 0) continue;
       const unsubscribeUrl = `${REMINDER_LINK_ORIGIN}/v1/reminders/unsubscribe?t=${token}`;
       // The person's own language (their stored `locale` preference), English
-      // when there is none or the register does not support it.
-      const digest = buildDigest(target.appId, items, unsubscribeUrl, (await readStoredLocale(target.db, p.userId)) ?? SOURCE_LOCALE);
+      // when there is none or the register does not support it. A read that
+      // threw is English too, and is counted into the detail below.
+      const stored = await readStoredLocale(target.db, p.userId, () => {
+        localeFallbacks++;
+      });
+      const digest = buildDigest(target.appId, items, unsubscribeUrl, stored ?? SOURCE_LOCALE);
       let delivered = false;
       let refused = false;
       let why = '';
@@ -735,7 +740,7 @@ async function remindApp(
     const due = pending.reduce((n, p) => n + p.items.length, 0);
     const counts =
       `sent=${sent} deferred=${deferred} unconfirmed=${unconfirmed} errors=${errors} opted_in=${optedIn} due=${due} ` +
-      `sent_today=${state.sentToday}/${MAX_REMINDER_MAILS_PER_DAY} ${tail}`;
+      `sent_today=${state.sentToday}/${MAX_REMINDER_MAILS_PER_DAY} locale_fallback=${localeFallbacks} ${tail}`;
     return { target: target.appId, ok: errors === 0, detail: errors === 0 ? counts : `${counts} — first error: ${firstError}` };
   } catch (err) {
     return { target: target.appId, ok: false, detail: `reminder pass failed: ${String(err)}` };
