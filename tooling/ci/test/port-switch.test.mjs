@@ -707,7 +707,12 @@ describe('port-switch auth — the cutover preflight, wrapped and generalised', 
     const v = verdicts(o);
     assert.equal(v.C10, 'PASS');
     assert.match(text, /gotrue\s+origin \$SUPABASE_URL\/auth\/v1 · keys \/auth\/v1\/\.well-known\/jwks\.json · ES256 · aud authenticated/);
-    assert.match(text, /\+ \{ id: 'gotrue', originEnv: '<the target origin's Worker variable>'/);
+    assert.match(text, /\+ \{ id: 'gotrue', originEnv: '<a second Worker variable>'/);
+    // ⏱ 2026-10-03 · review of #1182, finding 2: the cutover keeps the OLD issuer trusted (the second
+    // row's variable holds the old origin) until the oldest supported app build has rotated.
+    assert.match(text, /the second row's variable is set to the OLD origin: the old issuer stays trusted/);
+    assert.match(text, /remove the old issuer only once the OLDEST SUPPORTED app build has rotated/);
+    assert.doesNotMatch(text, /the cutover removes the old one/);
     assert.equal(v.C11, 'PASS');
     for (const id of ['web', 'android-play', 'ios-appstore', 'macos-appstore', 'windows-store', 'linux-snap']) assert.match(text, new RegExp(`^ {6}${id}\\s`, 'm'));
     assert.match(text, /android-play\s+an APP RELEASE/);
