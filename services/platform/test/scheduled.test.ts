@@ -511,7 +511,7 @@ describe('[port-telemetry] a Box B outage PAGES the owner, and survives Box B ta
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 530 })));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await expect(boxbReachability(e)).resolves.toBeUndefined();
-    expect(bound[0][2]).toBe(0);
+    expect(insertsOf(bound)[0][2]).toBe(0); // ⏱ 2026-10-03 · club rt-ports stack: PB-02's read binds first now.
     expect(log.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/box B alert: NOT SENT \(invalid\)/);
   });
 });
