@@ -510,7 +510,7 @@ async function readToken(
 }
 
 /** Forget the token once its provider has settled it, or say why that failed. */
-async function settle(
+async function settleRevoke(
   env: Env,
   subjectRef: string,
   provider: ProviderName,
@@ -577,7 +577,7 @@ export async function revokeAppleToken(env: Env, subjectRef: string, rid: string
   }
 
   if (res.ok) {
-    const settled = await settle(env, subjectRef, 'apple', rid, { kind: 'revoked' });
+    const settled = await settleRevoke(env, subjectRef, 'apple', rid, { kind: 'revoked' });
     if (settled.kind === 'revoked') console.log(`[apple-revoke] rid=${rid} revoked 1 Sign in with Apple token`);
     return settled;
   }
@@ -620,7 +620,7 @@ export async function revokeGoogleToken(env: Env, subjectRef: string, rid: strin
   }
 
   if (res.ok) {
-    const settled = await settle(env, subjectRef, 'google', rid, { kind: 'revoked' });
+    const settled = await settleRevoke(env, subjectRef, 'google', rid, { kind: 'revoked' });
     if (settled.kind === 'revoked') console.log(`[google-revoke] rid=${rid} revoked 1 Google token`);
     return settled;
   }
@@ -630,7 +630,7 @@ export async function revokeGoogleToken(env: Env, subjectRef: string, rid: strin
     // Already revoked or expired: the grant this token stood for is gone, so
     // there is nothing to revoke and nothing to retry. The row goes with it.
     if (body?.error === 'invalid_token') {
-      const settled = await settle(env, subjectRef, 'google', rid, { kind: 'none' });
+      const settled = await settleRevoke(env, subjectRef, 'google', rid, { kind: 'none' });
       if (settled.kind === 'none') console.log(`[google-revoke] rid=${rid} the stored Google token was already invalid; forgotten`);
       return settled;
     }

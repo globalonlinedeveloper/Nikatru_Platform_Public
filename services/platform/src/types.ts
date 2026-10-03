@@ -616,6 +616,14 @@ export interface Env {
   AWS_SES_ACCESS_KEY_ID?: string;
   AWS_SES_SECRET_ACCESS_KEY?: string;
   /**
+   * port-ai · OUR Anthropic key, for the AI port's `anthropic` adapter
+   * (src/adapters/ai/anthropic.ts; tooling/ports/ai.json). Server-only: it never
+   * reaches a client or a log. src/ports.ts `aiFor` is the one reader, and it
+   * builds no provider without T17's meter (`beforeCall`), so the key alone can
+   * make no call. Held in the vault; provisioned on the Worker by T17.
+   */
+  NIKATRU_ANTHROPIC_API_KEY?: string;
+  /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has
    * never changed, so it groups every error the factory will ever report into

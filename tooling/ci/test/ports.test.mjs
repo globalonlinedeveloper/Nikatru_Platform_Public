@@ -331,6 +331,49 @@ describe('assert-ports — every limb reddens', () => {
     const missing = run(fixture({ ports: { widgets: port({ selection: { by: 'stream', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null } }) } }));
     assert.match(missing.first, /limb 1 .*selected by stream but declares no `streams`/);
   });
+  it('limb 1: a per-call port has features, each on an adapter of the port, with priced candidates and a model among them', () => {
+    const price = { inputUsdPerMTok: 1, outputUsdPerMTok: 5, cacheReadUsdPerMTok: 0.1, cacheWriteUsdPerMTok: 1.25, asOf: '2026-10-02', source: 'https://example.invalid/pricing', verify: 'a fixture price' };
+    const perCall = (features, models = { 'm-1': price }) => port({
+      adapters: [adapter({ cost: { feeCells: [], unit: null, models } }), port().adapters[1]],
+      selection: { by: 'per-call', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
+      ...(features ? { features } : {}),
+    });
+    const feature = (over = {}) => ({ adapter: 'acme', model: null, effort: null, maxInputTokens: 8000, candidates: ['m-1'], tokensPerCall: null, why: 'a fixture feature on acme', ...over });
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature() }) } })).code, 0);
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature({ maxInputTokens: null }) }) } })).code, 0, 'no cap is allowed: every call for the feature is refused');
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ maxInputTokens: undefined }) }) } })).first, /limb 1 .*missing required `maxInputTokens`/);
+    // A fallback is billable, so it is priced by the same adapter (review 1 of #1136).
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature() }, { 'm-1': { ...price, fallbacks: ['m-2'] }, 'm-2': price }) } })).code, 0);
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature() }, { 'm-1': { ...price, fallbacks: ['m-2'] } }) } })).first, /limb 1 .*model `m-1` falls back to `m-2`, which it does not price/);
+    assert.equal(run(fixture({ ports: { widgets: perCall({ f: feature({ model: 'm-1' }) }) } })).code, 0);
+    assert.match(run(fixture({ ports: { widgets: perCall(null) } })).first, /limb 1 .*selected per call and prices models but declares no `features`/);
+    // A per-call port that prices no model (channels: the channel picks the submitter) needs no features.
+    assert.equal(run(fixture({ ports: { widgets: perCall(null, {}) } })).code, 0);
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ adapter: 'nope' }) }) } })).first, /limb 1 .*feature `f` names adapter `nope`/);
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ candidates: ['m-2'] }) }) } })).first, /limb 1 .*feature `f` lists candidate `m-2`, which adapter `acme` does not price/);
+    assert.match(run(fixture({ ports: { widgets: perCall({ f: feature({ model: 'm-9' }) }) } })).first, /limb 1 .*feature `f` runs on `m-9`, which is not one of its candidates/);
+  });
+  it('limb 6: a Dart adapter is graded against the clientSuite, never the TS runner', () => {
+    const dart = (id) => adapter({ id, vendor: 'acme', status: 'built', impl: { file: 'services/w/src/lib/acme.ts', symbol: 'acmeVerifier' }, secrets: [], conformance: { file: `packages/p/test/${id}_test.dart` } });
+    const doc = port({
+      level: { claimed: 3, target: 3 },
+      adapters: [dart('acme'), dart('acme-two'), port().adapters[1]],
+      conformance: { suite: { file: 'services/w/test/suite.ts', runner: 'runWidgetConformance' }, clientSuite: { file: 'packages/p/lib/suite.dart', runner: 'runWidgetProviderConformance' }, pending: [] },
+    });
+    const files = {
+      'services/w/test/suite.ts': 'export function runWidgetConformance(s: unknown) { return s; }\n',
+      'packages/p/lib/suite.dart': 'void runWidgetProviderConformance(Object s) {}\n',
+      'tooling/ops/port-switch.mjs': '// the dry-run tool\n',
+    };
+    const calls = (runner) => ({ 'packages/p/test/acme_test.dart': `void main() { ${runner}('acme'); }\n`, 'packages/p/test/acme-two_test.dart': `void main() { ${runner}('two'); }\n` });
+    const green = run(fixture({ ports: { widgets: doc }, files: { ...files, ...calls('runWidgetProviderConformance') } }));
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /widgets\s+L3\s+L3\s+L3/);
+    // The same Dart tests calling the TS runner's NAME earn nothing: a Dart test cannot call a TS runner.
+    const red = run(fixture({ ports: { widgets: doc }, files: { ...files, ...calls('runWidgetConformance') } }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /widgets\s+L3\s+L2/);
+  });
   it('limb 8: one vendor behind two adapters of ONE port is placed once; in two ports, twice', () => {
     const two = port({ adapters: [adapter(), adapter({ id: 'acme-smtp', status: 'external', impl: { configAt: 'box env ACME_*', verify: 'node verify.mjs' }, secrets: [] }), port().adapters[1]] });
     assert.equal(run(fixture({ ports: { widgets: two } })).code, 0);
@@ -377,7 +420,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
-      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
+      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'packages/api_client/lib', 'packages/api_client/test', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
       // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
       'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
       // the channels port: the contract, its submitters and the conformance file that calls the runner
@@ -386,7 +429,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments and mail claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
+  it('green control: payments, mail and ai claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
@@ -394,6 +437,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     for (const p of ['auth', 'boxes', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
+    assert.match(r.out, /ai\s+L3\s+L3\s+L3/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
     assert.match(r.out, /limb 10: payments\/client — PurchaseRail 3 conformant, IapBridge 2 conformant/);
     assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
@@ -445,6 +489,40 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/mail\.json selection\.default\.live is the fake `fake`/);
     });
+  });
+  it('🔴 red: the AI stub listed for live reddens limb 7, and ai falls below its L3 claim', () => {
+    mutate('tooling/ports/ai.json', (s) => { const d = JSON.parse(s); d.adapters.find((a) => a.id === 'stub').environments.push('live'); return JSON.stringify(d); }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/ai\.json fake `stub` lists the `live` environment/);
+      assert.match(r.out, /ai\s+L3\s+L1/);
+    });
+  });
+  it('red: the AI stub selected for live reddens limb 7', () => {
+    mutate('tooling/ports/ai.json', (s) => { const d = JSON.parse(s); d.selection.default.live = 'stub'; return JSON.stringify(d); }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/ai\.json selection\.default\.live is the fake `stub`/);
+    });
+  });
+  it('red: a route importing the Anthropic adapter reddens limb 4', () => {
+    mutate('services/platform/src/lib/reminders.ts', (s) => `import { createAnthropicAi } from '../adapters/ai/anthropic';\nexport const _AI = createAnthropicAi;\n${s}`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /limb 4 \(imports\) tooling\/ports\/ai\.json: `services\/platform\/src\/lib\/reminders\.ts` imports the adapter `services\/platform\/src\/adapters\/ai\/anthropic\.ts`/);
+    });
+  });
+  it('ai keeps L3 through its client half when the TS tests stop calling the runner, and falls only when the Dart call goes too', () => {
+    const ts = ['services/_shared/test/ai-stub.conformance.test.ts', 'services/platform/test/ai-anthropic.conformance.test.ts'];
+    const dartRel = 'packages/api_client/test/ai_byok_conformance_test.dart';
+    const saved = [...ts, dartRel].map((rel) => [rel, readFileSync(join(root, rel), 'utf8')]);
+    try {
+      for (const rel of ts) writeFileSync(join(root, rel), readFileSync(join(root, rel), 'utf8').replace(/runAiConformance\(\{/g, 'void ({'));
+      let r = run(root);
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /ai\s+L3\s+L3\s+L3/);
+      writeFileSync(join(root, dartRel), readFileSync(join(root, dartRel), 'utf8').replace(/runAiProviderConformance\(/g, 'void ('));
+      r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /ai\s+L3\s+L2/);
+    } finally { for (const [rel, text] of saved) writeFileSync(join(root, rel), text); }
   });
   it('red: a sender put back as a literal in lib/report-notify.ts reddens limb 9', () => {
     mutate('services/platform/src/lib/report-notify.ts', (s) => `${s}\nexport const REPORT_NOTICE_FROM = 'Nikatru reports <alerts@mail.nikatru.com>';\n`, (r) => {

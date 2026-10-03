@@ -702,7 +702,7 @@
     7,
 
   "package-boundaries.test.mjs":
-    33,
+    35,
 
   "package-earned.test.mjs":
     25,
@@ -753,10 +753,10 @@
     19,
 
   "port-switch.test.mjs":
-    38,
+    47,
 
   "ports.test.mjs":
-    73,
+    79,
 
   "post-deploy-smoke.test.mjs":
     157,
