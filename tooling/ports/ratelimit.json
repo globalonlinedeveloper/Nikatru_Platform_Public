@@ -1,0 +1,108 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "ratelimit",
+  "level": {
+    "claimed": 2,
+    "target": 2
+  },
+  "interface": {
+    "ts": {
+      "file": "services/_shared/src/ports/ratelimit.ts",
+      "symbols": [
+        "RateLimiter"
+      ]
+    }
+  },
+  "adapters": [
+    {
+      "id": "cloudflare-ratelimit",
+      "vendor": "cloudflare",
+      "status": "live",
+      "impl": {
+        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
+        "symbol": "cloudflareRateLimiter"
+      },
+      "capabilities": [
+        "limit"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "STATELESS: the counters are a per-colo burst bound that expires within its own period (10 or 60 seconds) and record nothing. Export: nothing. Cannot move: nothing — a switch is a config change, and the budgets are the `ratelimits` blocks of each wrangler.jsonc.",
+      "readAt": null,
+      "c8Seam": {
+        "file": "packages/core/lib/src/config/config_loader.dart",
+        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). The Rate Limiting binding is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
+        "until": "port-sql"
+      }
+    },
+    {
+      "id": "memory",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/ratelimit.ts",
+        "symbol": "memoryRateLimiter"
+      },
+      "capabilities": [
+        "limit"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/ports-ratelimit.test.ts"
+      },
+      "exportDuty": "A test double: a fixed-window counter that lives for one test. Nothing to export.",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "environment",
+    "source": null,
+    "default": {
+      "live": "cloudflare-ratelimit",
+      "sandbox": "cloudflare-ratelimit",
+      "test": "memory"
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": {
+    "suite": {
+      "file": "services/_shared/test/conformance/ratelimit.ts",
+      "runner": "runRateLimitConformance"
+    },
+    "pending": [
+      {
+        "adapter": "cloudflare-ratelimit",
+        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      }
+    ]
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#ratelimit",
+    "dryRun": "node tooling/ops/port-switch.mjs ratelimit --to <adapter> --dry-run"
+  },
+  "_why": [
+    "Every `*_LIMITER` binding (services/platform, services/edge-shield) is declared as RateLimiterBinding, which is now the RateLimiter port re-exported by services/_shared/src/rate-limit.ts; the platform's limiters are reached only through that module's withinRateLimit / strictRateLimit / edge-ceiling helpers, and the edge shield's through its own fail-open `ask`. The failure policy stays with those callers; the port carries none.",
+    "L2 claimed, L2 target: selected by environment, no caller imports an adapter, one live adapter. A Workers Rate Limiting binding satisfies the port STRUCTURALLY; cloudflareRateLimiter is the identity, kept as the compile-time proof.",
+    "The conformance suite runs against the memory fake; against the binding it is PENDING, because no Worker suite runs on workerd (and the binding is per-colo and eventually consistent, so even there an over-budget answer is not deterministic)."
+  ]
+}

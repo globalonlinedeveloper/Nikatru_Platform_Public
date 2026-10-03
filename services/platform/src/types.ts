@@ -6,16 +6,30 @@
  *  limiter that reads it (services/_shared/src/rate-limit.ts). */
 import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
 export type { RateLimiterBinding };
+/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): every KV and
+ *  R2 binding is declared as its PORT, so no handler sees more of the binding
+ *  than the port carries. The Cloudflare binding satisfies each structurally —
+ *  services/_shared/src/ports/adapters/cloudflare.ts is the compile-time proof,
+ *  and assert-ports limb 12 refuses a `KVNamespace` / `R2Bucket` / `RateLimit`
+ *  type anywhere else. */
+import type { KvStore } from '../../_shared/src/ports/kv';
+/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
+ *  are declared as the SQL PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
+ *  assert-ports limb 12 refuses a `D1Database` type in any handler. */
+import type { SqlDb } from '../../_shared/src/ports/sql';
+import type { ObjectStore } from '../../_shared/src/ports/objects';
+export type { KvStore, ObjectStore };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
   // SHARED entitlements DB (platform is the sole migrations applier).
-  PLATFORM_DB: D1Database;
+  PLATFORM_DB: SqlDb;
   // Per-app DBs bound for the nightly renewals fan-out. Add one per app.
-  SUBSCRIPTIONTRACKER_DB: D1Database;
+  SUBSCRIPTIONTRACKER_DB: SqlDb;
 
   // Edge-cached per-app config overrides (key: `config:<app>`).
-  CONFIG_KV: KVNamespace;
+  CONFIG_KV: KvStore;
 
   /**
    * Warm cache for the Supabase JWKS document, so an ES256 verify does not fetch
@@ -27,7 +41,7 @@ export interface Env {
    * Verification never degrades to a weaker check — there is no fallback path
    * (see middleware/auth.ts for why the HS256 one was deliberately not ported).
    */
-  JWKS_CACHE?: KVNamespace;
+  JWKS_CACHE?: KvStore;
 
   /**
    * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The revocation list: key
@@ -42,7 +56,7 @@ export interface Env {
    * hole; tooling/ci/assert-session-revocation.mjs reds a carrier whose config
    * does not bind it.
    */
-  SESSION_REVOKED?: KVNamespace;
+  SESSION_REVOKED?: KvStore;
 
   /**
    * The signups namespace, bound for ONE reason: the nightly export
@@ -58,7 +72,7 @@ export interface Env {
    * Optional so a deploy without it still runs; the export then records the
    * namespace as FAILED rather than skipping it silently.
    */
-  SIGNUPS?: KVNamespace;
+  SIGNUPS?: KvStore;
 
   /**
    * The one portfolio backup bucket. Written by the 02:30 cron only.
@@ -66,7 +80,7 @@ export interface Env {
    * Optional for the same reason as the KV bindings above: absence must produce a
    * RED heartbeat row, not a build failure and not a green run that wrote nothing.
    */
-  BACKUPS_R2?: R2Bucket;
+  BACKUPS_R2?: ObjectStore;
 
   /**
    * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT
@@ -362,6 +376,17 @@ export interface Env {
   /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
   RAZORPAY_WEBHOOK_SECRET?: string;
   /**
+   * ⏱ 2026-10-01 · PB-27. The secrets POST /v1/ops/box-manifest
+   * (src/routes/box-manifest.ts) authenticates each box's config-hash report
+   * with — ONE PER BOX, so a box can write only its own row. The same value sits
+   * on that box only, in a root-only file the cron reads
+   * (tooling/ops/boxes/post-config-manifest.sh). Absent, that box's posts answer
+   * 503 before the body is read. `wrangler secret put`, NEVER a var.
+   */
+  BOX_MANIFEST_SECRET_BOXB?: string;
+  /** Box C's half of the pair above. `wrangler secret put`, NEVER a var. */
+  BOX_MANIFEST_SECRET_BOXC?: string;
+  /**
    * The fake rail's webhook HMAC key (services/_shared/src/ports/fakes/payments.ts).
    * 🔴 SET ON NO DEPLOY. The fake is registered for `test` only, so the door answers
    * 404 for `/v1/money/fake` on every deployed environment, and the fake's `verify`
@@ -385,6 +410,19 @@ export interface Env {
    *  declared anywhere in this repository, so absent ⇒ one ok=0 row saying
    *  "not configured", never a silent pass. A var or a secret both work. */
   BOXA_REACH_URLS?: string;
+  /** [port-telemetry] The ntfy TOPIC URL the owner-alert `ntfy` notifier POSTs
+   *  to (services/_shared/src/adapters/telemetry/notify-ntfy.ts). Absent ⇒ that
+   *  notifier answers `invalid` and sends nothing, and the route's fallback is
+   *  tried. A secret: `wrangler secret put NTFY_ALERT_URL`. */
+  NTFY_ALERT_URL?: string;
+  /** [port-telemetry] Optional ntfy access token for NTFY_ALERT_URL, sent as a
+   *  Bearer token. `wrangler secret put NTFY_ALERT_TOKEN`. */
+  NTFY_ALERT_TOKEN?: string;
+  /** [port-telemetry] The OFF-BOX-B owner-alert endpoint the `webhook` notifier
+   *  POSTs JSON to — the fallback that still reaches the owner when Box B (ntfy,
+   *  GlitchTip, the vault) is down. The URL is the credential:
+   *  `wrangler secret put ALERT_WEBHOOK_URL`. Absent ⇒ `invalid`, nothing sent. */
+  ALERT_WEBHOOK_URL?: string;
   /** [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] Read-only GlitchTip API token for the ops
    *  watchdog's monitor reads — the SAME name tooling/ci/assert-ops-register.mjs
    *  and the workflows already use. Absent ⇒ the monitor limb records
@@ -1112,5 +1150,5 @@ export interface Subscription {
 /** One app the nightly scheduler fans out to. */
 export interface AppTarget {
   appId: string;
-  db: D1Database;
+  db: SqlDb;
 }

@@ -78,7 +78,11 @@ class _DeployedServer implements HttpClientAdapter {
       rows.add(row);
       return _json(row, 201);
     }
-    if (options.method == 'GET' && options.path.endsWith('/subscriptions')) {
+    // Routed on the PATH, as the Worker routes: the deployed server ignores a
+    // query it does not know, so the paging client's `?limit=` (lane
+    // fix-st-api-bounds) gets the bare array — which the client reads whole.
+    if (options.method == 'GET' &&
+        options.uri.path.endsWith('/subscriptions')) {
       return _json(rows, 200);
     }
     return _json(<String, dynamic>{'error': 'not_found'}, 404);

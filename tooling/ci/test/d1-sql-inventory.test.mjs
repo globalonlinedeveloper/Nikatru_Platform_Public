@@ -78,6 +78,9 @@ function realTree() {
   // The ONE HOME both Workers inline ([ADR 067] decision 2); its statements are
   // every Worker's statements, so the trimmed copy carries it too.
   cpSync(join(REPO, SHARED_SRC), join(root, SHARED_SRC), { recursive: true });
+  // ⏱ 2026-10-02 · port-sql: the port registries, so the shared home's registered
+  // FAKE engines are derived out of the domain here exactly as in the real tree.
+  cpSync(join(REPO, 'tooling', 'ports'), join(root, 'tooling', 'ports'), { recursive: true });
   for (const d of ['tooling/e2e', 'tooling/ops', 'tooling/scripts']) {
     // SOURCE ONLY. The guard reads .ts/.js/.mjs; copying tooling/ops wholesale
     // dragged register.json (200 kB) into every one of the ~25 tree copies below
@@ -618,6 +621,45 @@ describe('the shared home is every Worker\'s src/ — 2026-09-10, the ONE entitl
       assert.ok(w.files.includes(`${SHARED_SRC}/reader.ts`), `files: ${w.files.join(', ')}`);
       assert.equal(w.statements.length, 2, 'the Worker\'s own statement AND the shared one');
       assert.ok(w.statements.some((s) => /FROM entitlements/.test(s.sql)), 'the shared statement is attributed to the Worker');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-10-02 · port-sql: a port's registered FAKE engine sits in the shared home
+  // (services/_shared/src/ports/fakes/) and sends nothing to D1; its plumbing
+  // `.prepare(sql)` is derived out of the domain by the registry, never by a list.
+  const ENGINE = `${SHARED_SRC}/ports/fakes/engine.ts`;
+  function withEngine(status) {
+    const root = domain();
+    mkdirSync(join(root, ...SHARED_SRC.split('/'), 'ports', 'fakes'), { recursive: true });
+    writeFileSync(join(root, ...ENGINE.split('/')), 'export const run = (db: any, sql: string) => db.prepare(sql).all();\n');
+    mkdirSync(join(root, 'tooling', 'ports'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'ports', 'sql.json'), JSON.stringify({ port: 'sql', adapters: [{ id: 'engine', status, impl: { file: ENGINE, symbol: 'run' } }] }));
+    return root;
+  }
+
+  test('a registered fake engine in the shared home is outside the domain — its plumbing prepare is no statement', () => {
+    const root = withEngine('fake');
+    try {
+      const [w] = inventoryServices(root);
+      assert.ok(!w.files.includes(ENGINE), `files: ${w.files.join(', ')}`);
+      assert.deepEqual(w.unparsed, []);
+      assert.equal(w.statements.length, 2, 'the Worker\'s own statement and the shared reader are still read');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 the same file NOT registered as a fake is in the domain, and its hidden prepare is reported', () => {
+    // The control: only the registry's `status: fake` takes a file out. A built
+    // adapter, or an unregistered helper in the same directory, is Worker code.
+    const root = withEngine('built');
+    try {
+      const [w] = inventoryServices(root);
+      assert.ok(w.files.includes(ENGINE));
+      assert.equal(w.unparsed.length, 1, JSON.stringify(w.unparsed));
+      assert.equal(w.unparsed[0].file, ENGINE);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

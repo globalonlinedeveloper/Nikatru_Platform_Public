@@ -8,7 +8,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeEach } from 'vitest';
 import subscriptions from '../src/routes/subscriptions';
-import { idempotentRowId } from '../src/lib/idempotency';
+import { Hono } from 'hono';
+import type { AppEnv } from '../src/types';
+import { SUBSCRIPTION_BODY_MAX_BYTES } from '../src/routes/subscriptions';
+import { boundedJson } from '../src/lib/json-body';
+import { CREATE_SCOPE, idempotentCreate, idempotentRowId } from '../src/lib/idempotency';
 import { realAppDb, asUser } from './harness';
 
 const BODY = {
@@ -203,5 +207,47 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
     const res = await post('user-a', CLIENT_ID, { name: {} });
     expect(res.status).toBe(400);
     expect(await count('user-a')).toBe(0);
+  });
+});
+
+// ⏱ 2026-10-01 · review of #1121, nit 1. `requestHash` chose the create's hash
+// by OBJECT IDENTITY (`scope === CREATE_SCOPE`), so a route mounted with an
+// equal literal `{ name: 'create' }` hashed every body down the prefixed branch
+// — and every claim already in production's ledger would answer 422 to its own
+// retry through it. Red control: restore `scope === CREATE_SCOPE` and this is
+// 422 idempotency_key_reused.
+describe('the create scope is chosen by NAME, not by object identity', () => {
+  it('🔴 a claim made by POST / is replayed (200) through a route mounted with an equal literal scope', async () => {
+    const first = await post('user-a', CLIENT_ID);
+    expect(first.status).toBe(201);
+    const made = (await first.json()) as { id: string };
+
+    const literal = new Hono<AppEnv>();
+    literal.post(
+      '/',
+      boundedJson(SUBSCRIPTION_BODY_MAX_BYTES),
+      idempotentCreate(
+        async (c, id) => {
+          const row = db.rows('SELECT id FROM subscriptions WHERE id = ? AND user_id = ?', id, c.get('userId'))[0];
+          return row ? c.json(row, 200) : null;
+        },
+        { name: 'create' }, // structurally equal to CREATE_SCOPE, a different object
+      ),
+      (c) => c.json({ error: 'the handler must not run on a replay' }, 500),
+    );
+    const viaLiteral = asUser(literal, '/v1/subscriptions', { APP_DB: db as never });
+    const again = await viaLiteral('user-a', '/v1/subscriptions', {
+      method: 'POST',
+      body: BODY,
+      headers: { 'Idempotency-Key': CLIENT_ID },
+    });
+    expect(again.status, 'an equal literal must hash as the create does').toBe(200);
+    expect(((await again.json()) as { id: string }).id).toBe(made.id);
+  });
+
+  it('…and the derived row id agrees: it is keyed by the scope NAME too', async () => {
+    expect(await idempotentRowId('user-a', CLIENT_ID, { name: 'create' })).toBe(
+      await idempotentRowId('user-a', CLIENT_ID, CREATE_SCOPE),
+    );
   });
 });

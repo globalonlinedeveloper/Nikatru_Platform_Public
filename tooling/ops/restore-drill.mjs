@@ -147,7 +147,9 @@ export function run(opts, { env = process.env, spawn = spawnSync } = {}) {
   // A tool given as a .js/.cjs/.mjs file runs under THIS node: Windows cannot spawn a
   // shebang file, and the drill spawns without a shell (#1148 — the test's fake rclone).
   const call = (bin, args) => (/\.[cm]?js$/i.test(bin) ? spawn(process.execPath, [bin, ...args], { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] }) : spawn(bin, args, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] }));
-  const toolMissing = (r, bin) => r.error?.code === 'ENOENT' ? `${bin} is not installed here (--${bin.includes('restic') ? 'restic' : 'rclone'}-bin)` : r.error ? `${bin} did not run (${r.error.code ?? r.error.message})` : null;
+  // A script-form tool that is not there runs node, which fails with its loader's text:
+  // checked first, so it reads as "not installed here" too (review of #1160, nit 3).
+  const toolMissing = (r, bin) => r.error?.code === 'ENOENT' || (/\.[cm]?js$/i.test(bin) && !existsSync(bin)) ? `${bin} is not installed here (--${bin.includes('restic') ? 'restic' : 'rclone'}-bin)` : r.error ? `${bin} did not run (${r.error.code ?? r.error.message})` : null;
 
   // the scratch directory: fresh, under --to, removed at the end whatever happened
   const scratchRoot = resolve(opts.to);

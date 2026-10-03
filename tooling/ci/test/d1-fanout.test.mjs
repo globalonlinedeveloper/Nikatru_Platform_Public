@@ -79,7 +79,15 @@ const X_CONFIG = `{
   ],
   "kv_namespaces": [
     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
-  ]
+  ],
+  // ⏱ 2026-10-01 (rv2-services-011): the sandbox block the brick stamps, which the
+  // renderer's sandbox-* regions read.
+  "env": { "sandbox": {
+    "vars": { "APP_ID": "x" },
+    "d1_databases": [
+      { "binding": "APP_DB", "database_name": "x_db_sandbox", "database_id": "00000000-0000-4000-8000-0000000000fe", "migrations_dir": "migrations" }
+    ]
+  } }
 }
 `;
 const X_FILES = {
@@ -119,8 +127,8 @@ describe('assert-d1-fanout.mjs — every owned D1 is backed up, bound, and (an a
   test('🔴 the fan-out stops reading the generated module: the app database is missing from the fan-out, named', () => {
     const root = tree({
       'services/platform/src/scheduled.ts': swap(
-        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));',
-        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, D1Database | undefined>)['SUBSCRIPTIONTRACKER_DB'] as D1Database }];",
+        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));',
+        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, SqlDb | undefined>)['SUBSCRIPTIONTRACKER_DB'] as SqlDb }];",
       ),
     });
     const r = run(GUARD, root);
@@ -179,6 +187,21 @@ describe('render-platform-app-block.mjs — the per-app block is rendered from t
     assert.equal(cfg.vars.APP_ERASURE_ENDPOINTS, 'subscriptiontracker=https://subscriptiontracker-api.nikatru.com,x=https://x-api.example.test');
     assert.deepEqual(cfg.services.map((s) => s.binding), ['ERASURE_SUBSCRIPTIONTRACKER', 'ERASURE_X']);
     assert.deepEqual(cfg.d1_databases.map((d) => d.binding), ['PLATFORM_DB', 'SUBSCRIPTIONTRACKER_DB', 'X_DB']);
+    // ⏱ 2026-10-01 (rv2-services-022): and every sandbox region, from x-api's own env.sandbox.
+    const sbx = cfg.env.sandbox;
+    assert.equal(
+      sbx.vars.APP_ERASURE_ENDPOINTS,
+      'subscriptiontracker=https://subscriptiontracker-api-sandbox.nikatru.workers.dev,x=https://x-api-sandbox.nikatru.workers.dev',
+    );
+    assert.deepEqual(sbx.services.map((x) => [x.binding, x.service]), [
+      ['ERASURE_SUBSCRIPTIONTRACKER', 'subscriptiontracker-api-sandbox'],
+      ['ERASURE_X', 'x-api-sandbox'],
+    ]);
+    assert.deepEqual(sbx.d1_databases.map((d) => [d.binding, d.database_name]), [
+      ['PLATFORM_DB', 'platform_db_sandbox'],
+      ['SUBSCRIPTIONTRACKER_DB', 'subscriptiontracker_db_sandbox'],
+      ['X_DB', 'x_db_sandbox'],
+    ]);
     const mod = readFileSync(join(root, 'services/platform/src/generated/app-targets.ts'), 'utf8');
     assert.match(mod, /\{ appId: 'x', dbBinding: 'X_DB', databaseName: 'x_db' \}/);
     // x-api's JWKS_CACHE IS the platform's namespace (the same id): deduplicated, not a second store.
@@ -219,6 +242,11 @@ describe('render-platform-app-block.mjs — the per-app block is rendered from t
     const b = run(RENDER, ownKv);
     assert.equal(b.code, 1, b.out);
     assert.match(b.out, /binds KV namespace\(s\) the platform Worker does not: X_JWKS_CACHE \(0000000000000000000000000000000f\)/);
+    // ⏱ 2026-10-01 (rv2-services-011/-022): an app Worker with no env.sandbox is refused, never skipped.
+    const noSandbox = tree({ ...X_FILES, 'services/x-api/wrangler.jsonc': X_CONFIG.replace(/,\n  \/\/ ⏱ 2026-10-01[\s\S]*\} \}\n\}\n$/, '\n}\n'), 'tooling/platform-register.json': withXRow });
+    const d = run(RENDER, noSandbox);
+    assert.equal(d.code, 1, d.out);
+    assert.match(d.out, /appWorkers\[1\] \(x-api\): services\/x-api\/wrangler\.jsonc declares no `env\.sandbox`/);
     const noMark = tree({ 'services/platform/wrangler.jsonc': swap('    // ── GENERATED END app-databases ──\n', '') });
     const c = run(RENDER, noMark, '--check');
     assert.equal(c.code, 1, c.out);

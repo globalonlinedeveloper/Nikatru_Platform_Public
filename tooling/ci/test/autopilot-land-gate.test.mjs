@@ -14,12 +14,20 @@ const R = 'o/r';
 const sha = (c) => c.repeat(40);
 const HEAD = sha('c');
 const OLD_HEAD = sha('d');
+// The approval binds to one head (land-next's `land-ok:<sha8>`, review of #1169): every
+// eligible fixture carries the label bound to HEAD, applied before any force-push.
+const LAND = `${LAND_LABEL}:${HEAD.slice(0, 8)}`;
+const LABEL_AT = '2026-10-02T08:00:00Z';
 const gate = (run) => ({ name: 'ci-gate', status: 'completed', conclusion: 'success', details_url: `https://github.com/${R}/actions/runs/${run}/job/1` });
 const pr = (over = {}) => ({
   number: 7,
   state: 'open',
   draft: false,
-  labels: [LAND_LABEL],
+  labels: [LAND],
+  labelTimes: { [LAND]: LABEL_AT },
+  forcePushes: [],
+  commits: [{ sha: HEAD, parents: [sha('b')], committer: 'someone', verified: false }],
+  commitsComplete: true,
   baseRef: 'main',
   headSha: HEAD,
   headRef: 'feat/x',
@@ -38,7 +46,7 @@ const pr = (over = {}) => ({
 });
 const verdict = (id, v, over = {}) => ({ id, author_association: 'OWNER', body: `VERDICT: ${v}\nHead: ${HEAD}\n- finding`, commit_id: HEAD, submitted_at: `2026-10-02T10:0${id % 10}:00Z`, state: 'COMMENTED', ...over });
 const decide = (over) => decidePr(pr(over), { repo: R, units: { web: ['apps/**'] } });
-const REVIEWED = [LAND_LABEL, NEEDS_REVIEW_LABEL, APPROVE_LABEL];
+const REVIEWED = [LAND, NEEDS_REVIEW_LABEL, APPROVE_LABEL];
 
 describe('the review gate', () => {
   test('the labels come from the contract', () => {
@@ -76,7 +84,7 @@ describe('the review gate', () => {
     assert.equal(decide({ labels: REVIEWED, reviews: [verdict(1, 'CHANGES'), verdict(2, 'APPROVE')] }).action, 'MERGE', 'a newer APPROVE wins back');
   });
   test('🔴 an APPROVE without the `review:approve` label, or with none at all → WAIT', () => {
-    assert.equal(decide({ labels: [LAND_LABEL, NEEDS_REVIEW_LABEL], reviews: [verdict(1, 'APPROVE')] }).action, 'WAIT');
+    assert.equal(decide({ labels: [LAND, NEEDS_REVIEW_LABEL], reviews: [verdict(1, 'APPROVE')] }).action, 'WAIT');
     assert.equal(decide({ labels: REVIEWED, reviews: [] }).action, 'WAIT');
   });
   test('🔴 a review whose FIRST line is not the verdict is not a verdict', () => {
@@ -90,16 +98,16 @@ describe('the review gate', () => {
   });
   test('🔴 a review-CLASSED PR with `land-ok` and NO `needs-review` label → WAIT (the label is a display, not the gate)', () => {
     const files = ['services/platform/src/lib/receipts/apple.ts'];
-    const d = decide({ labels: [LAND_LABEL], files });
+    const d = decide({ labels: [LAND], files });
     assert.equal(d.action, 'WAIT', d.why);
     assert.match(d.why, /needs-review: no owner verdict yet/);
-    assert.equal(reviewRequired({ labels: [LAND_LABEL], files, filesComplete: true }), 'review-classed: money, api');
-    const ok = decide({ labels: [LAND_LABEL, APPROVE_LABEL], files, reviews: [verdict(1, 'APPROVE')] });
+    assert.equal(reviewRequired({ labels: [LAND], files, filesComplete: true }), 'review-classed: money, api');
+    const ok = decide({ labels: [LAND, APPROVE_LABEL], files, reviews: [verdict(1, 'APPROVE')] });
     assert.equal(ok.action, 'MERGE', `an owner APPROVE on the head still lands it: ${ok.why}`);
   });
   test('🔴 an unreadable or capped file list with NO label never merges (SKIP: land by hand), and needs review (fail closed)', () => {
-    assert.equal(decide({ labels: [LAND_LABEL], filesComplete: false }).action, 'SKIP');
-    assert.equal(decide({ labels: [LAND_LABEL], files: null }).action, 'SKIP');
+    assert.equal(decide({ labels: [LAND], filesComplete: false }).action, 'SKIP');
+    assert.equal(decide({ labels: [LAND], files: null }).action, 'SKIP');
     assert.match(reviewRequired({ labels: [], files: null }), /fail closed/);
     assert.equal(reviewRequired({ labels: [], files: ['tooling/ci/x.mjs'], filesComplete: true }), null);
   });
@@ -163,7 +171,7 @@ describe('fix-first: only the fix merges during a freeze', () => {
     prs,
     ...over,
   });
-  const fix = (over = {}) => pr({ number: 11, labels: [LAND_LABEL, FIX_FIRST_LABEL], body: 'Rows: x\nDeploys: none\nFixes-freeze: #50\nLane-runner: fixer', ...over });
+  const fix = (over = {}) => pr({ number: 11, labels: [LAND, FIX_FIRST_LABEL], body: 'Rows: x\nDeploys: none\nFixes-freeze: #50\nLane-runner: fixer', ...over });
   test('the fix-first PR naming the open freeze MERGES', () => {
     const p = plan(snap([pr({ number: 7 }), fix()]));
     assert.equal(p.act?.kind, 'merge', report(p, { dryRun: true }).join('\n'));
@@ -178,11 +186,14 @@ describe('fix-first: only the fix merges during a freeze', () => {
   test('🔴 a fix naming ANOTHER issue → WAIT; a label without the line → WAIT', () => {
     assert.equal(plan(snap([fix({ body: 'Fixes-freeze: #49' })])).act, null);
     assert.equal(plan(snap([fix({ body: 'fixes the freeze' })])).act, null);
-    assert.equal(plan(snap([fix({ labels: [LAND_LABEL] })])).act, null);
+    assert.equal(plan(snap([fix({ labels: [LAND] })])).act, null);
   });
   test('🔴 a fix that is not green → WAIT; a fix still needs its review when review-classed', () => {
-    assert.equal(plan(snap([fix({ checks: [] })])).act, null);
-    assert.equal(plan(snap([fix({ labels: [LAND_LABEL, FIX_FIRST_LABEL, NEEDS_REVIEW_LABEL] })])).act, null);
+    // Its CI still running: no verdict yet. (A head no run will ever grade gets ci.yml
+    // dispatched instead — readying a head, never a merge.)
+    assert.equal(plan(snap([fix({ checks: [], runs: [{ id: 100, path: '.github/workflows/ci.yml', status: 'in_progress', conclusion: null, head_sha: HEAD }] })])).act, null);
+    assert.notEqual(plan(snap([fix({ checks: [] })])).act?.kind, 'merge');
+    assert.equal(plan(snap([fix({ labels: [LAND, FIX_FIRST_LABEL, NEEDS_REVIEW_LABEL] })])).act, null);
   });
   test('no freeze → fix-first makes no difference', () => {
     const p = plan(snap([fix({ number: 7, labeledAt: '2026-10-02T07:00:00Z' }), pr({ number: 8, labeledAt: '2026-10-02T06:00:00Z' })], { freezes: [], mainRuns: [{ id: 9, path: '.github/workflows/ci.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: sha('a'), status: 'completed', conclusion: 'success' }], failedJobs: {} }));
@@ -250,21 +261,23 @@ describe('readSnapshot (stubbed fetch)', () => {
   const PARENT = sha('b');
   const PR_HEAD = sha('e');
   const DOCS_HEAD = sha('f');
-  const run = (id, wf, over = {}) => ({ id, path: `.github/workflows/${wf}`, event: 'push', head_branch: 'main', head_sha: MAIN, status: 'completed', conclusion: 'success', html_url: `https://x/${id}`, ...over });
+  const run = (id, wf, over = {}) => ({ id, path: `.github/workflows/${wf}`, event: 'push', head_branch: 'main', head_sha: MAIN, status: 'completed', conclusion: 'success', html_url: `https://x/${id}`, created_at: '2026-10-02T08:59:00Z', updated_at: '2026-10-02T08:59:00Z', ...over });
   const routes = (over = {}) => [
     [/^\/commits\/main$/, () => ({ sha: MAIN, parents: [{ sha: PARENT }], commit: { committer: { date: '2026-10-02T08:00:00Z' } } })],
-    [new RegExp(`^/actions/runs\\?head_sha=${MAIN}&`), () => ({ workflow_runs: over.mainRuns ?? [run(21, 'ci.yml'), run(22, 'codeql.yml')] })],
+    [new RegExp(`^/actions/workflows/ci\\.yml/runs\\?head_sha=${MAIN}&`), () => ({ workflow_runs: over.mainRuns ?? [run(21, 'ci.yml')] })],
+    [new RegExp(`^/actions/workflows/codeql\\.yml/runs\\?head_sha=${MAIN}&`), () => ({ workflow_runs: over.mainRuns ? [] : [run(22, 'codeql.yml')] })],
     [/^\/issues\?labels=land-freeze&state=all&/, () => [{ number: 51, state: 'open', title: 'land-freeze: CodeQL', body: '<!-- land-freeze-jobs ["Analyze (javascript)"] -->' }]],
     [/^\/actions\/runs\/21\/jobs\?/, () => ({ jobs: [{ name: 'web', conclusion: 'success' }] })],
     [/^\/actions\/runs\/22\/jobs\?/, () => ({ jobs: [{ name: 'Analyze (javascript)', conclusion: 'success' }] })],
     [/^\/pulls\?state=open&base=main&/, () => [
-      { number: 7, title: 'token crypto', state: 'open', draft: false, labels: [{ name: LAND_LABEL }], base: { ref: 'main' }, head: { sha: PR_HEAD, ref: 'feat/x', repo: { full_name: R } } },
-      { number: 8, title: 'docs', state: 'open', draft: false, labels: [{ name: LAND_LABEL }], base: { ref: 'main' }, head: { sha: DOCS_HEAD, ref: 'docs/x', repo: { full_name: R } } },
+      { number: 7, title: 'token crypto', state: 'open', draft: false, labels: [{ name: `${LAND_LABEL}:${PR_HEAD.slice(0, 8)}` }], base: { ref: 'main' }, head: { sha: PR_HEAD, ref: 'feat/x', repo: { full_name: R } } },
+      { number: 8, title: 'docs', state: 'open', draft: false, labels: [{ name: `${LAND_LABEL}:${DOCS_HEAD.slice(0, 8)}` }], base: { ref: 'main' }, head: { sha: DOCS_HEAD, ref: 'docs/x', repo: { full_name: R } } },
     ]],
     [/^\/pulls\/[78]$/, () => ({ mergeable: true, mergeable_state: 'clean' })],
     [/^\/issues\/[78]\/events\?/, () => []],
     [/^\/commits\/[0-9a-f]{40}\/check-runs\?/, () => ({ check_runs: [] })],
-    [/^\/actions\/runs\?head_sha=[ef]{40}&/, () => ({ workflow_runs: [] })],
+    [/^\/actions\/workflows\/(ci|e2e)\.yml\/runs\?head_sha=[ef]{40}&/, () => ({ workflow_runs: [] })],
+    [/^\/pulls\/[78]\/commits\?/, () => []],
     [/^\/pulls\/7\/files\?/, () => [{ filename: 'services/platform/src/lib/token-crypto.ts' }]],
     [/^\/pulls\/8\/files\?/, () => [{ filename: 'docs/ci/README.md' }]],
     [/^\/compare\//, () => ({ ahead_by: 0, files: [] })],

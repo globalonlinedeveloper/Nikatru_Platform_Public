@@ -1,0 +1,12 @@
+[
+  {
+    "box": "boxb",
+    "manifest": "{\"compose\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "posted_at": "2026-10-01T05:17:02.000Z"
+  },
+  {
+    "box": "boxc",
+    "manifest": "{\"compose\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"override\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\", \"tunnel\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}",
+    "posted_at": "2026-10-01T05:17:04.000Z"
+  }
+]

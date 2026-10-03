@@ -91,12 +91,13 @@
 // SAME expected bytes (services/_shared/test/entitlement-parity.ts) against
 // their own carrier — neither suite imports the other Worker.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlStatement } from './ports/sql';
 
 /** What a carrier hands the reader. Every member is the carrier's own plumbing. */
 export interface EntitlementReadDeps {
-  readonly db: D1Database;
+  readonly db: SqlDb;
   /** The carrier's `allRows` — the transient-D1 retry lives with the carrier. */
-  readonly allRows: <T>(stmt: D1PreparedStatement) => Promise<T[]>;
+  readonly allRows: <T>(stmt: SqlStatement) => Promise<T[]>;
   /** The carrier's copy of the two-value money vocabulary ('live' | 'sandbox'). */
   readonly isMoneyEnvironment: (v: unknown) => boolean;
   /** Whether `id` is a product this deploy may answer for. */

@@ -6,8 +6,17 @@ Chrome (via `integration_test` + `flutter drive`), so it works despite the web
 build being a canvas with no DOM.
 
 ## What it does
+0. `purge_stale.mjs` — sweeps throwaway users an earlier run left behind:
+   only addresses `e2e_email.mjs` MARKED for this app (`E2E_SWEEP_APP`, set by
+   e2e.yml alone, so a store capture's or another app's user is never touched)
+   whose `created_at` and address tag are both over 2 h old, at most 20 per run,
+   through `purge.mjs`'s own per-user requests. Prints counts, never an address.
+   Best effort: a failure is one `::warning::` and exit 0, never a red run.
 1. `provision_user.mjs` — creates a throwaway, **pre-confirmed** `@nikatru.com`
-   user via the GoTrue admin API (email confirmation is ON in this project).
+   user via the GoTrue admin API (email confirmation is ON in this project),
+   and writes its `user_id` before the magic-link mint, so a failed mint still
+   leaves the always() purge an id to delete. After its first request it never
+   calls `process.exit()` (a libuv crash on Windows); it returns its code.
 2. `integration_test/app_test.dart` — logs in through the UI, then visits every
    screen (onboarding, login, scan, home, calendar, insights, budget, settings,
    notifications, add-sheet, detail), screenshotting each, and exercises the full
