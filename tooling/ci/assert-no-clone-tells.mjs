@@ -126,7 +126,12 @@ const REQUIRED_COVERAGE = [
     // cleared a floor meant to need several and vacuity-b's "packages/ thinned
     // to core" case went green. 80 is above any single package (core 61) and
     // below the tree less its largest-but-one (174 - design_system 27 = 147).
-    floor: 80,
+    // ⏱ 2026-10-03 · 80 -> 100, the same failure again: PR #1174's merge of main
+    // brought packages/core/lib to exactly 80 .dart (money/iso4217.g.dart from
+    // this branch, ai/ai_provider.dart from main), so vacuity-b's "thinned to
+    // core" case went green and failed. 100 is above any single package (core 80)
+    // and below the tree less its largest-but-one (259 - design_system 53 = 206).
+    floor: 100,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },
   {
