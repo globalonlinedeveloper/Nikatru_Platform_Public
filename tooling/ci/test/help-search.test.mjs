@@ -210,8 +210,10 @@ test('🔴 a mutated JS ranker fails the conformance fixture', async () => {
 
 test('each app gets its own Dart table — its scope and the platform — and the brick the platform only', () => {
   const tableOf = (rel) => {
-    const m = /'en': r'''(.*)''',/.exec(read(rel));
-    assert.ok(m, `${rel} carries no en table`);
+    // The shape `dart format` leaves (ci.yml's apps/ format gate): a value past
+    // 80 columns on its own line, so the key line `  'en': r'''…` is a red.
+    const m = /^  'en':\n      r'''(.*)''',$/m.exec(read(rel));
+    assert.ok(m, `${rel} carries no dart-format-clean en table`);
     return JSON.parse(m[1]);
   };
   const app = tableOf('apps/subscriptiontracker/lib/help/help_index.g.dart');

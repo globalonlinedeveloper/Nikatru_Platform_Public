@@ -211,7 +211,10 @@ void main() {
         await tester.tap(find.byKey(HelpKeys.helpCentre));
         await tester.pumpAndSettle();
         expect(find.byType(HelpCentrePage), findsOneWidget);
-        await tester.enterText(find.byKey(HelpCentreKeys.search), 'renewal reminder late');
+        await tester.enterText(
+          find.byKey(HelpCentreKeys.search),
+          'renewal reminder late',
+        );
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.byKey(HelpCentreKeys.askUs));
         await tester.tap(find.byKey(HelpCentreKeys.askUs));
