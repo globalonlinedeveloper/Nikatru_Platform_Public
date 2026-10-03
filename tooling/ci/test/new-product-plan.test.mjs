@@ -31,10 +31,10 @@ import { tmpdir } from 'node:os';
 import { REPO, STEPS, STEPS_BY_KIND, planProduct, exitCodeOf, main, resolveKind } from '../../kit/new-product.mjs';
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
 import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
+import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
 import { main as stampServiceMain } from '../../kit/stamp-service.mjs';
 import { run as runStampShared } from '../../kit/stamp-shared.mjs';
 import { BUNDLES_REGISTER, isStampedExclusion } from '../../catalog/read.mjs';
-import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -532,10 +532,10 @@ describe('step 9 · price row', () => {
     assert.match(a.command, /"offerings": \[\]\}` declares it free/);
   });
 
-  // ⏱ 2026-10-02 · the stamp now writes apps.<id> (its Snap Store update_url only,
-  // stamp-shared.mjs planSnapUpdateUrls). Red control: the reader that took any
-  // row's absent offerings as `[]` answered DONE here.
-  test('apps.<id> carrying only the stamped update_url → NEXT: a row is not a paywall decision', () => {
+  // The stamp writes apps.<id> with its update_url alone (snap-update-row.mjs); that
+  // row decides no price. Red control: with the `paywall` key test removed from the
+  // reader, this row reads DONE "declares no offering".
+  test('an apps.<id> row with no `paywall` (the stamp\'s update_url row) → NEXT, never "free"', () => {
     const restore = mutate('services/platform/src/app-config-data.json', (t) => {
       const j = JSON.parse(t);
       j.apps.nextapp = { update_url: { 'linux-snap': 'https://snapcraft.io/nextapp' } };
@@ -544,8 +544,7 @@ describe('step 9 · price row', () => {
     try {
       const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
       assert.equal(a.state, 'NEXT');
-      assert.match(a.detail, /declares no paywall\.offerings/);
-      assert.match(a.command, /"offerings": \[\]\}` declares it free/);
+      assert.match(a.detail, /apps\.nextapp declares no `paywall`/);
     } finally {
       restore();
     }

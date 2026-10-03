@@ -1064,6 +1064,9 @@
   "snap-submission.test.mjs":
     48,
 
+  "snap-update-row.test.mjs":
+    6,
+
   "snapcraft-generable.test.mjs":
     92,
 

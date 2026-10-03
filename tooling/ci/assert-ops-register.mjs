@@ -3574,13 +3574,11 @@ function jobsOfRun(repo, runId, cache) {
  *  job-list read — injected so a test can COUNT the reads: a run that predates every
  *  call of the unit must cost none (⏱ 2026-10-02, review of #1115, finding 2: the skip
  *  had no red control, and dropping it re-reads 30 runs' job lists and times the step
- *  out on a new call unit). `skipBeforeMs`, when finite, drops a run created before it
- *  (a deeper page's run older than the row's window cannot make it fresh). */
-export async function scanUnitRuns(q, runs, all, wf, jobsFor, skipBeforeMs = null) {
+ *  out on a new call unit). */
+export async function scanUnitRuns(q, runs, all, wf, jobsFor) {
   const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
-    if (Number.isFinite(skipBeforeMs) && Date.parse(run.created_at) < skipBeforeMs) continue; // older than the window: cannot make it fresh
     if (runOutsideScheduleDays(run, days)) {
       entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
       continue;
@@ -3597,18 +3595,21 @@ async function scanUnit(q, repo, wf, cache, filters, what, sinceMs = null) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
   let { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
-  const entries = [];
   // ⏱ 2026-10-03 · OPS-WATCH 37080147071. One page was the whole read: 100 runs of
   // ops-watch.yml on main are ~81h, the window of a 7d duty is 252h, so a weekly
   // unit's success fell off the page within four days of its slot. With no success
   // yet and `sinceMs` (the row's window start) not reached, the scan reads the next
   // OLDER page — `deeperUnitPage`, `olderUnitPage` (file end) — up to UNIT_WINDOW_PAGES.
   const { event, status } = splitRunFilters(filters);
+  const entries = [];
   let pages = 1;
   let short = null;
   for (;;) {
-    entries.push(...await scanUnitRuns(q, runs, all, wf, (runId) => jobsOfRun(repo, runId, cache), pages > 1 ? sinceMs : null));
-    if (entries.at(-1)?.c.verdict === 'success') break;
+    // older than the window: cannot make it fresh, so a deeper page's run before `sinceMs` is not read
+    const page = pages > 1 && Number.isFinite(sinceMs) ? runs.filter((run) => !(Date.parse(run.created_at) < sinceMs)) : runs;
+    const found = await scanUnitRuns(q, page, all, wf, (runId) => jobsOfRun(repo, runId, cache));
+    entries.push(...found);
+    if (found.at(-1)?.c.verdict === 'success') break;
     const next = deeperUnitPage({ pageFull, gapBelow, all: all ?? runs, sinceMs, pages, listing: Array.isArray(all) });
     if (!next.read) { short = next.short; break; }
     const older = olderUnitPage(await ghJson(olderUnitPagePath(repo, q.workflow, q.headBranch, next.boundary)), { branch: q.headBranch, boundary: next.boundary, what });

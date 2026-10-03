@@ -2,9 +2,9 @@
 // picks up the nearest flutter_test_config.dart and calls [testExecutable]).
 //
 // With `NIKATRU_TEST_NOW` unset — every pull request, every local run — the
-// clock is untouched (only the keychain below is answered). With it set,
-// `wallClock` (the seam behind `nowProvider`) starts at that instant, so the
-// weekly time-travel run executes this suite on another day. See test/support/test_clock.dart.
+// clock is untouched. With it set, `wallClock` (the seam behind
+// `nowProvider`) starts at that instant, so the weekly time-travel run executes
+// this suite on another day. See test/support/test_clock.dart.
 
 import 'dart:async';
 import 'dart:io' show Platform;

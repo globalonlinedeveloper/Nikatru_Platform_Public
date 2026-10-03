@@ -238,7 +238,13 @@ describe('M6 — the wiring in ci.yml', () => {
     const step = gm.slice(gm.lastIndexOf('- name:', at), at);
     assert.match(step, /if: \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && github\.ref == 'refs\/heads\/main'/);
     assert.match(gm, /fetch-depth: 0/);
-    assert.doesNotMatch(gm.slice(0, gm.indexOf('steps:')), /\n {4}if:/, 'a job-level if: on guard-meta would read as skipped in ci-gate');
+    // ⏱ 2026-10-03 · #1192: every job with no `needs` skips a DRAFT pull request, and ci-gate skips on the
+    // same predicate, so that one job-level `if:` never reads as skipped-red. Any other job-level `if:` would.
+    const jobIfs = (gm.slice(0, gm.indexOf('steps:')).match(/\n {4}if:[^\n]*/g) ?? []).map((l) => l.trim());
+    assert.ok(
+      jobIfs.every((l) => l === 'if: github.event.pull_request.draft != true'),
+      `a job-level if: on guard-meta would read as skipped in ci-gate: ${jobIfs.join(' | ')}`,
+    );
   });
 
   test('ci-gate still needs guard-meta, runs always and counts skipped red', () => {

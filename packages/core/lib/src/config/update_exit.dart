@@ -85,9 +85,9 @@ UpdateExit resolveUpdateExit({
 /// [listing] on a store-listing build with nothing [served], and otherwise
 /// [open]s [url] — the value the app resolved, `served ?? its compiled-in
 /// fallback`, which is the URL [resolveUpdateExit] picks in both cases.
-/// Best-effort: a throwing exit never crashes the update screen. [reload] is
-/// the page reload, injectable because a test running in a real browser
-/// (`dart test -p chrome`) would otherwise reload its own runner and hang.
+/// [reload] is the web exit, injectable because a test running in a browser
+/// that reached the real [reloadPage] would reload its own runner and hang.
+/// Best-effort: a throwing exit never crashes the update screen.
 Future<void> openUpdateExit(
   String url,
   String? served, {
