@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    12,
+    13,
 
   "agent-docs.test.mjs":
     21,
@@ -255,7 +255,7 @@
     55,
 
   "channel-register.test.mjs":
-    376,
+    380,
 
   "channel-surface.test.mjs":
     7,
@@ -289,6 +289,9 @@
 
   "code-scanning-age.test.mjs":
     15,
+
+  "codeql-lite.test.mjs":
+    51,
 
   "codeql-pr-no-new-high.test.mjs":
     22,
@@ -781,6 +784,9 @@
 
   "platform-register.test.mjs":
     120,
+
+  "play-data-safety.test.mjs":
+    37,
 
   "play-declarations.test.mjs":
     186,

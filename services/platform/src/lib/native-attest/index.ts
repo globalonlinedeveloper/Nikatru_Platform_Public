@@ -18,7 +18,7 @@
 //                 each encodeURIComponent(k)=encodeURIComponent(v), joined by &>]
 //
 //   kind            proof                                         who verifies
-//   play-integrity  Play Integrity verdict, nonce = SHA-256(cD)   Google signs, this server grades
+//   play-integrity  Play Integrity verdict, nonce = SHA-256(cD)   Google signs, decrypted, verified and graded HERE
 //   app-attest      App Attest assertion over SHA-256(cD)         Apple's chain, verified HERE
 //   install-key     Ed25519 signature by a per-install key        NOBODY vouches for the binary
 //
@@ -45,7 +45,7 @@ import type { SqlDb, SqlResult, SqlStatement } from '../../../../_shared/src/por
 import type { Env } from '../../types';
 import { b64url, fromB64, fromB64url, sha256 } from './bytes';
 import { appleRootDer, verifyAssertion, verifyAttestation } from './app-attest';
-import { parseServiceAccount, pinsFor, plausibleIntegrityToken, verifyPlayIntegrity } from './play-integrity';
+import { parsePlayKeys, pinsFor, plausibleIntegrityToken, verifyPlayIntegrity } from './play-integrity';
 
 export const ATTEST_KINDS = ['play-integrity', 'app-attest', 'install-key'] as const;
 export type AttestKind = (typeof ATTEST_KINDS)[number];
@@ -74,28 +74,12 @@ export const BINDING_PREFIX = 'nk-native-auth/v2';
  */
 export const NATIVE_ATTEST_CHALLENGE_TTL_SECONDS = 120;
 
-/**
- * Play Integrity decodes this deploy asks Google for, per UTC day, across every
- * app and network. Over it the kind answers 503 until midnight UTC.
- *
- * @ceiling none — a self-imposed budget BELOW Google's default Play Integrity
- * quota for classic requests (10,000 calls a day per Cloud project), not a
- * Cloudflare resource; the owner raises the Google quota before Android is served.
- */
-export const PLAY_INTEGRITY_DAILY_CEILING = 8_000;
-
-/**
- * Play Integrity decodes ONE network (`edge:<colo>:<asn>`) may spend per UTC
- * day. ⏱ 2026-09-30 (second review of #1070, finding 1b): the per-minute
- * NATIVE_AUTH_PLAY_VERIFY_LIMITER bounds a burst, not a day (10/min × 1,440 =
- * 14,400, above the ceiling), so without this one network could use up the whole
- * PLAY_INTEGRITY_DAILY_CEILING and switch Android sign-in off for everyone.
- * DERIVED, not chosen: 5% of the ceiling, so it takes at least twenty networks
- * to exhaust it — 8,000 / 20 = 400.
- *
- * @ceiling none — a share of PLAY_INTEGRITY_DAILY_CEILING, not a platform resource.
- */
-export const PLAY_INTEGRITY_DAILY_PER_NETWORK = PLAY_INTEGRITY_DAILY_CEILING / 20;
+// ⏱ 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY): PLAY_INTEGRITY_DAILY_CEILING and
+// PLAY_INTEGRITY_DAILY_PER_NETWORK are gone with the Google decode they rationed.
+// A Play proof is now decrypted and verified in this Worker, so it spends no
+// shared quota, and a daily counter bumped BEFORE verification was itself the
+// switch one script could flip to turn Android sign-in off for everyone. The
+// burst bound that remains is NATIVE_AUTH_PLAY_VERIFY_LIMITER (per network).
 
 /**
  * Native sign-in calls ONE registered key (one app install) may authorise per
@@ -153,7 +137,10 @@ export const challengesConfigured = (env: Env): boolean => !!env.PLATFORM_DB && 
 export function configured(env: Env, kind: AttestKind, app: string): boolean {
   if (!challengesConfigured(env)) return false;
   if (kind === 'play-integrity') {
-    return parseServiceAccount(env.PLAY_INTEGRITY_SERVICE_ACCOUNT) !== null && pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app) !== null;
+    return (
+      parsePlayKeys(env.PLAY_INTEGRITY_DECRYPTION_KEY, env.PLAY_INTEGRITY_VERIFICATION_KEY) !== null &&
+      pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app) !== null
+    );
   }
   if (kind === 'app-attest') return typeof env.APP_ATTEST_TEAM_ID === 'string' && /^[A-Z0-9]{10}$/.test(env.APP_ATTEST_TEAM_ID);
   return true;
@@ -335,8 +322,8 @@ const appleAppId = (env: Env, app: string) => `${env.APP_ATTEST_TEAM_ID}.com.nik
 
 /**
  * Verifies an op's proof. The challenge has already been redeemed. `network` is
- * the caller's `edge:<colo>:<asn>` (lib/edge-ceiling.ts), for the per-network
- * daily Play budget.
+ * the caller's `edge:<colo>:<asn>` (lib/edge-ceiling.ts); no kind's verification
+ * spends a per-network budget today (key registration's is in registerKey).
  */
 export async function verifyOp(
   env: Env,
@@ -349,23 +336,15 @@ export async function verifyOp(
 ): Promise<Outcome> {
   const db = env.PLATFORM_DB;
   if (kind === 'play-integrity') {
-    const sa = parseServiceAccount(env.PLAY_INTEGRITY_SERVICE_ACCOUNT);
+    const keys = parsePlayKeys(env.PLAY_INTEGRITY_DECRYPTION_KEY, env.PLAY_INTEGRITY_VERIFICATION_KEY);
     const pins = pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app);
-    if (!sa || !pins) return unavailable('play-integrity unconfigured');
-    // In order, each BEFORE anything costlier (second review of #1070, finding 1):
-    // a proof not even shaped like an integrity token moves no counter; one
-    // network stops at its daily share; and only then is the global ceiling below
-    // Google's quota counted, and the call made.
+    if (!keys || !pins) return unavailable('play-integrity unconfigured');
+    // Decrypted, verified and graded HERE (O-PLAY-INTEGRITY-LOCAL-VERIFY): no
+    // Google call and no shared daily counter, so no caller can spend another's
+    // sign-in. A token that does not decrypt or verify is refused, never 503.
     if (!plausibleIntegrityToken(h.proof)) return malformed('token shape');
-    if ((await bumpDailyCounter(db, `play:${network}`, now)) > PLAY_INTEGRITY_DAILY_PER_NETWORK) {
-      return overBudget('play-integrity daily share for this network');
-    }
-    if ((await bumpDailyCounter(db, 'play-integrity:decode', now)) > PLAY_INTEGRITY_DAILY_CEILING) {
-      return unavailable('play-integrity daily ceiling reached');
-    }
-    const v = await verifyPlayIntegrity(h.proof, `com.nikatru.${app}`, b64url(await sha256(clientData)), sa, pins, now);
-    if (v.ok) return { ok: true };
-    return v.unavailable ? unavailable(v.why) : invalid(v.why);
+    const v = await verifyPlayIntegrity(h.proof, `com.nikatru.${app}`, b64url(await sha256(clientData)), keys, pins, now);
+    return v.ok ? { ok: true } : invalid(v.why);
   }
 
   if (!h.key) return invalid('no key id');
