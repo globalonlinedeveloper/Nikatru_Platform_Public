@@ -261,7 +261,7 @@
     55,
 
   "channel-register.test.mjs":
-    377,
+    381,
 
   "channel-surface.test.mjs":
     7,
@@ -787,6 +787,9 @@
 
   "platform-register.test.mjs":
     120,
+
+  "play-data-safety.test.mjs":
+    37,
 
   "play-declarations.test.mjs":
     186,

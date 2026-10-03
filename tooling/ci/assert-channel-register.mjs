@@ -1424,9 +1424,39 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
       );
     }
   }
+  // ⏱ 2026-10-03 (lane play-data-safety): an OPERATOR TOOL is a release script a
+  // human runs against ONE channel's store that is not that channel's submission
+  // path — play-data-safety.mjs declares Play's Data safety form from the sworn
+  // data-safety.json. No row can name it as `submission.script` (that is
+  // submit-play.mjs), so it is admitted by name, with its channel and reason, and
+  // ONLY while that channel's row declares a submission script AND the tool
+  // imports that script's module: it is tied to the channel's submission path and
+  // goes stale with it, rather than being excused by a name alone. An entry for a
+  // channel this register declares whose file is gone is a stale entry and fails.
+  const RELEASE_OPERATOR_TOOLS = new Map([
+    ['play-data-safety.mjs', { channel: 'android-play', why: "renders data-safety.json into Play's Data safety CSV and, with --apply, declares it by API; run by the lead, never by a workflow" }],
+  ]);
+  for (const [tool, { channel: chId, why }] of RELEASE_OPERATOR_TOOLS) {
+    const rel = `${RELEASE_DIR}/${tool}`;
+    const row = channels.find((c) => c?.id === chId);
+    if (!releaseEntries.includes(tool)) {
+      if (row) problems.push(`${rel} is listed in RELEASE_OPERATOR_TOOLS for "${chId}" ("${why}") and does not exist. Remove the entry.`);
+      continue;
+    }
+    const script = row?.submission?.script;
+    if (typeof script !== 'string' || !script.startsWith(`${RELEASE_DIR}/`)) {
+      problems.push(`${rel} is an operator tool for channel "${chId}" (RELEASE_OPERATOR_TOOLS: "${why}"), and ${row ? 'that row declares no submission.script in ' + RELEASE_DIR : 'the register declares no such channel'}. A tool with no channel submission path to belong to is an orphan.`);
+      continue;
+    }
+    const literal = script.slice(RELEASE_DIR.length + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!new RegExp(String.raw`\bfrom\s+['"]\./${literal}['"]`).test(readFileSync(join(ROOT, rel), 'utf8'))) {
+      problems.push(`${rel} is an operator tool for channel "${chId}" (RELEASE_OPERATOR_TOOLS: "${why}") and does not import that channel's submission script ${script}. The admission is the tie to the channel's submission path; without it the name alone would excuse an orphan.`);
+    }
+  }
   for (const entry of releaseEntries) {
     const rel = `${RELEASE_DIR}/${entry}`;
     if (RELEASE_LIBRARIES.has(entry)) continue;
+    if (RELEASE_OPERATOR_TOOLS.has(entry)) continue;
     if (declaredScripts.has(rel)) continue;
     problems.push(
       `${rel} is a release script that NO channel row names in its \`submission.script\`. [10]D-10 limb (i) makes the register the one place a submission path is declared; an unreferenced script is a path nobody can reach from the register and nothing keeps working. Declare it on its channel or delete it.`,

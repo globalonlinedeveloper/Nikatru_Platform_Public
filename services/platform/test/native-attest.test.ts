@@ -14,23 +14,20 @@
 //     not. At the ROUTE, an App Attest op passes with a genuine assertion and a
 //     counter that does not move is refused;
 //   · PLAY INTEGRITY: the verdict grader passes a genuine verdict and refuses
-//     each field that is wrong; the Google calls are made with a correctly
-//     signed service-account JWT; a Google fault is 503, never a pass; and at
-//     the ROUTE a verdict answers only the request whose nonce it carries.
-// Nothing here reaches a network: Google and GoTrue are fakes behind `fetch`.
+//     each field that is wrong; a classic token (JWE A256KW/A256GCM around a
+//     JWS ES256, built here with fixture keys) is decrypted, verified and graded
+//     LOCALLY (O-PLAY-INTEGRITY-LOCAL-VERIFY) — a wrong key, a tampered byte or
+//     a foreign alg is refused, never 5xx; NO fetch leaves the Worker on any
+//     Play path and NO daily counter is written; and at the ROUTE a verdict
+//     answers only the request whose nonce it carries.
+// Nothing here reaches a network: GoTrue is a fake behind `fetch`, and any other
+// origin is recorded as a FOREIGN call that the Play tests assert never happens.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { app } from '../src/index';
 import type { AppEnv, RateLimiterBinding } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
-import {
-  bumpDailyCounter,
-  clientDataFor,
-  issueChallenge,
-  PLAY_INTEGRITY_DAILY_CEILING,
-  PLAY_INTEGRITY_DAILY_PER_NETWORK,
-  requestTarget,
-} from '../src/lib/native-attest';
+import { bumpDailyCounter, clientDataFor, issueChallenge, requestTarget } from '../src/lib/native-attest';
 import { b64url, concat, fromB64url, sha256 } from '../src/lib/native-attest/bytes';
 import { APPLE_APP_ATTEST_ROOT_PEM, appleRootDer, verifyAssertion, verifyAttestation } from '../src/lib/native-attest/app-attest';
 import { issuedBy, parseCertificate, pemToDer } from '../src/lib/native-attest/x509';
@@ -44,8 +41,21 @@ import {
   attestationFor,
   b64std,
   cbor,
+  playFixtureKeys,
+  playJwe,
+  playJws,
+  playToken,
+  type PlayFixtureKeys,
 } from './native-attest-fixtures';
-import { gradeVerdict, resetPlayIntegrityTokenCache, verifyPlayIntegrity, type CertPins } from '../src/lib/native-attest/play-integrity';
+import {
+  gradeVerdict,
+  parsePlayKeys,
+  plausibleIntegrityToken,
+  resetPlayIntegrityKeyCache,
+  verifyPlayIntegrity,
+  type CertPins,
+  type PlayKeys,
+} from '../src/lib/native-attest/play-integrity';
 
 // ── the wire protocol's test vector (protocol v2: the proof covers path and query) ──
 describe('the binding — the published vector, byte for byte', () => {
@@ -238,6 +248,165 @@ describe('Play Integrity — the verdict grader', () => {
   });
 });
 
+// ── Play Integrity, decoded LOCALLY (O-PLAY-INTEGRITY-LOCAL-VERIFY) ─────────────
+let keys: PlayFixtureKeys;
+let other: PlayFixtureKeys;
+const workerKeys = (k: PlayFixtureKeys): PlayKeys => parsePlayKeys(k.decryptionB64, k.verificationB64)!;
+
+/** Every fetch that is not GoTrue: the Play path must make NONE (auth-04 — the artefact that says which path ran). */
+let foreign: string[];
+let gotrueSeen: number;
+const SUPABASE_URL = 'https://native-attest-test.gotrue.example';
+
+beforeAll(async () => {
+  keys = await playFixtureKeys();
+  other = await playFixtureKeys();
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = String(input instanceof Request ? input.url : input);
+    // Routed by ORIGIN, never by string prefix (CodeQL js/incomplete-url-substring-sanitization).
+    if (new URL(url).origin === new URL(SUPABASE_URL).origin) {
+      gotrueSeen++;
+      return new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', user: { id: 'u', email_confirmed_at: null } }), { status: 200 });
+    }
+    foreign.push(url);
+    throw new Error(`unexpected fetch in test: ${url}`);
+  });
+});
+afterAll(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  foreign = [];
+  gotrueSeen = 0;
+  resetPlayIntegrityKeyCache();
+});
+
+describe('Play Integrity — the local verifier (JWE A256KW/A256GCM → JWS ES256 → gradeVerdict)', () => {
+  const H = 'vhEcb1KdwBN_Qi1H40RTtnWH4fDw60TeZxBYTwvGb8M';
+  const sideloadVerdict = (nonce: string) =>
+    verdict(nonce, {
+      appIntegrity: { appRecognitionVerdict: 'UNRECOGNIZED_VERSION', packageName: PKG, certificateSha256Digest: [toB64url(SIDELOAD_DIGEST)] },
+    });
+
+  it('a token encrypted and signed with the fixture keys grades exactly as gradeVerdict grades its payload — Play and sideload', async () => {
+    for (const [payload, channel] of [
+      [verdict(H), 'play'],
+      [sideloadVerdict(H), 'sideload'],
+    ] as const) {
+      const now = Date.now();
+      const local = await verifyPlayIntegrity(await playToken(payload, keys), PKG, H, workerKeys(keys), PINS, now);
+      expect(local).toEqual(gradeVerdict(payload, PKG, H, PINS, now));
+      expect(local).toEqual({ ok: true, channel });
+    }
+    // And a refusal the grader makes is the refusal the verifier makes: the grade is not short-circuited.
+    const wrongNonce = verdict('A'.repeat(43));
+    expect(await verifyPlayIntegrity(await playToken(wrongNonce, keys), PKG, H, workerKeys(keys), PINS, Date.now())).toEqual({ ok: false, why: 'nonce' });
+    expect(foreign).toEqual([]);
+  });
+
+  it('🔴 a wrong decryption key, a JWS signed by another key, and a tampered ciphertext, tag, IV, wrapped key or header are refused', async () => {
+    const token = await playToken(verdict(H), keys);
+    const wk = workerKeys(keys);
+    // Another AES key: the CEK does not unwrap.
+    expect(await verifyPlayIntegrity(token, PKG, H, { ...wk, decryption: workerKeys(other).decryption }, PINS, Date.now())).toEqual({ ok: false, why: 'decrypt' });
+    // A valid JWE under OUR AES key, around a JWS signed by ANOTHER key.
+    const forged = await playToken(verdict(H), { aes: keys.aes, signKey: other.signKey });
+    expect(await verifyPlayIntegrity(forged, PKG, H, wk, PINS, Date.now())).toEqual({ ok: false, why: 'signature' });
+    // One flipped character in each segment.
+    const flip = (t: string, seg: number) => {
+      const parts = t.split('.');
+      const p = parts[seg]!;
+      // Flip a MIDDLE character so the change lands on real bits, never on base64url padding bits.
+      const at = Math.floor(p.length / 2);
+      parts[seg] = p.slice(0, at) + (p[at] === 'A' ? 'B' : 'A') + p.slice(at + 1);
+      return parts.join('.');
+    };
+    for (const [seg, name] of [
+      [1, 'wrapped key'],
+      [2, 'iv'],
+      [3, 'ciphertext'],
+      [4, 'tag'],
+    ] as const) {
+      const v = await verifyPlayIntegrity(flip(token, seg), PKG, H, wk, PINS, Date.now());
+      expect(v, name).toMatchObject({ ok: false, why: 'decrypt' });
+    }
+    // The protected header is the AAD: an equivalent header, re-encoded, does not decrypt.
+    const [, ...rest] = token.split('.');
+    const reHeader = b64url(new TextEncoder().encode('{"enc":"A256GCM","alg":"A256KW"}'));
+    expect(await verifyPlayIntegrity([reHeader, ...rest].join('.'), PKG, H, wk, PINS, Date.now())).toEqual({ ok: false, why: 'decrypt' });
+    // The JWS must say ES256, and its payload must be a verdict object.
+    const hs = await playJwe(await playJws(verdict(H), keys.signKey, { alg: 'HS256' }), keys.aes);
+    expect(await verifyPlayIntegrity(hs, PKG, H, wk, PINS, Date.now())).toEqual({ ok: false, why: 'signature' });
+    const notJws = await playJwe('not a jws', keys.aes);
+    expect(await verifyPlayIntegrity(notJws, PKG, H, wk, PINS, Date.now())).toEqual({ ok: false, why: 'signature' });
+    const arrayPayload = await playJwe(await playJws([1, 2], keys.signKey), keys.aes);
+    expect(await verifyPlayIntegrity(arrayPayload, PKG, H, wk, PINS, Date.now())).toEqual({ ok: false, why: 'payload' });
+    expect(foreign).toEqual([]);
+  });
+
+  it('🔴 an alg or enc other than A256KW / A256GCM is refused BEFORE any crypto runs', async () => {
+    const jws = await playJws(verdict(H), keys.signKey);
+    const tokens = [
+      await playJwe(jws, keys.aes, { alg: 'A128KW', enc: 'A256GCM' }),
+      await playJwe(jws, keys.aes, { alg: 'A256KW', enc: 'A128GCM' }),
+      await playJwe(jws, keys.aes, { alg: 'dir', enc: 'A256GCM' }),
+      await playJwe(jws, keys.aes, { alg: 'A256KW', enc: 'A256GCM', zip: 'DEF' }),
+      await playJwe(jws, keys.aes, { alg: 'A256KW' }),
+    ];
+    const unwrap = vi.spyOn(crypto.subtle, 'unwrapKey');
+    const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
+    const importKey = vi.spyOn(crypto.subtle, 'importKey');
+    try {
+      for (const t of tokens) {
+        expect(plausibleIntegrityToken(t)).toBe(false);
+        expect(await verifyPlayIntegrity(t, PKG, H, workerKeys(keys), PINS, Date.now())).toEqual({ ok: false, why: 'token shape' });
+      }
+      expect(importKey).not.toHaveBeenCalled();
+      expect(unwrap).not.toHaveBeenCalled();
+      expect(decrypt).not.toHaveBeenCalled();
+      // Green control: the same spies DO see a well-shaped token's crypto.
+      expect((await verifyPlayIntegrity(await playJwe(jws, keys.aes), PKG, H, workerKeys(keys), PINS, Date.now())).ok).toBe(true);
+      expect(unwrap).toHaveBeenCalledTimes(1);
+      expect(decrypt).toHaveBeenCalledTimes(1);
+    } finally {
+      unwrap.mockRestore();
+      decrypt.mockRestore();
+      importKey.mockRestore();
+    }
+  });
+
+  it('the shape check is Play\'s: five segments, a 54-char wrapped key, a 16-char IV, a 22-char tag', async () => {
+    const good = await playToken(verdict(H), keys);
+    expect(plausibleIntegrityToken(good)).toBe(true);
+    const [h, w, iv, ct, tag] = good.split('.') as [string, string, string, string, string];
+    expect([w.length, iv.length, tag.length]).toEqual([54, 16, 22]);
+    for (const bad of [
+      [h, w.slice(1), iv, ct, tag],
+      [h, w, `${iv}AAAA`, ct, tag],
+      [h, w, iv, ct, tag.slice(1)],
+      [h, w, iv, '', tag],
+      [h, w, iv, ct],
+      [h, w, iv, ct, tag, tag],
+      [h, w, iv, `${ct.slice(0, -1)}+`, tag],
+    ]) {
+      expect(plausibleIntegrityToken(bad.join('.')), bad.map((p) => p.length).join(',')).toBe(false);
+    }
+  });
+
+  it('the two secrets parse only as Play Console issues them: 32 AES bytes and a P-256 SPKI, standard base64', async () => {
+    expect(parsePlayKeys(keys.decryptionB64, keys.verificationB64)).not.toBeNull();
+    const p384 = b64std(new Uint8Array((await crypto.subtle.exportKey('spki', ((await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-384' }, true, ['sign'])) as CryptoKeyPair).publicKey)) as ArrayBuffer));
+    for (const [d, v, why] of [
+      [undefined, keys.verificationB64, 'no decryption key'],
+      [keys.decryptionB64, undefined, 'no verification key'],
+      [b64std(new Uint8Array(16)), keys.verificationB64, 'a 128-bit AES key'],
+      [keys.decryptionB64, p384, 'a P-384 key'],
+      [keys.decryptionB64, keys.decryptionB64, 'the AES key twice'],
+      ['not base64!', keys.verificationB64, 'not base64'],
+    ] as const) {
+      expect(parsePlayKeys(d, v), why).toBeNull();
+    }
+  });
+});
+
 // ── the ROUTE, for App Attest and Play Integrity ──────────────────────────────
 class Limiter implements RateLimiterBinding {
   calls = 0;
@@ -248,56 +417,13 @@ class Limiter implements RateLimiterBinding {
 }
 let playVerify = new Limiter();
 
-const SUPABASE_URL = 'https://native-attest-test.gotrue.example';
 const BASE = '/v1/auth/native/subscriptiontracker';
-let rsa: CryptoKeyPair;
-let SERVICE_ACCOUNT: string;
 
 let db: RealDb;
-let google: { tokens: string[]; decodes: Array<{ url: string; auth: string | null; token: string }>; status: number };
-let gotrueSeen: number;
 
-beforeAll(async () => {
-  rsa = (await crypto.subtle.generateKey(
-    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: Uint8Array.of(1, 0, 1), hash: 'SHA-256' },
-    true,
-    ['sign', 'verify'],
-  )) as CryptoKeyPair;
-  const pkcs8 = new Uint8Array((await crypto.subtle.exportKey('pkcs8', rsa.privateKey)) as ArrayBuffer);
-  SERVICE_ACCOUNT = JSON.stringify({
-    client_email: 'play-integrity@test-project.iam.gserviceaccount.com',
-    private_key: ['-----BEGIN PRIVATE KEY-----', ...b64std(pkcs8).match(/.{1,64}/g)!, '-----END PRIVATE KEY-----', ''].join('\n'),
-  });
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    const url = String(input);
-    // Routed by ORIGIN, never by string prefix (CodeQL js/incomplete-url-substring-sanitization).
-    const origin = new URL(url).origin;
-    if (url === 'https://oauth2.googleapis.com/token') {
-      const assertion = new URLSearchParams(String(init.body)).get('assertion')!;
-      google.tokens.push(assertion);
-      return new Response(JSON.stringify({ access_token: 'google-access-token', expires_in: 3600 }), { status: 200 });
-    }
-    if (origin === 'https://playintegrity.googleapis.com') {
-      const token = (JSON.parse(String(init.body)) as { integrity_token: string }).integrity_token;
-      google.decodes.push({ url, auth: new Headers(init.headers).get('authorization'), token });
-      if (google.status !== 200) return new Response('{}', { status: google.status });
-      // The fake Google "decrypts" a JWE-shaped token whose second segment is the nonce into a genuine verdict for it.
-      return new Response(JSON.stringify({ tokenPayloadExternal: verdict(token.split('.')[1]!) }), { status: 200 });
-    }
-    if (origin === new URL(SUPABASE_URL).origin) {
-      gotrueSeen++;
-      return new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', user: { id: 'u', email_confirmed_at: null } }), { status: 200 });
-    }
-    throw new Error(`unexpected fetch in test: ${url}`);
-  });
-});
-afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
   db = realPlatformDb();
-  google = { tokens: [], decodes: [], status: 200 };
-  gotrueSeen = 0;
   playVerify = new Limiter();
-  resetPlayIntegrityTokenCache();
 });
 
 function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
@@ -312,8 +438,9 @@ function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
     NATIVE_AUTH_PLAY_VERIFY_LIMITER: playVerify,
     NATIVE_AUTH_ATTEST_KINDS: 'play-integrity,app-attest',
     NATIVE_ATTEST_CHALLENGE_KEY: 'challenge-key-made-up-for-this-test-0123456789',
-    PLAY_INTEGRITY_SERVICE_ACCOUNT: SERVICE_ACCOUNT,
-    PLAY_INTEGRITY_CERT_DIGESTS: JSON.stringify({ subscriptiontracker: { play: [PLAY_DIGEST] } }),
+    PLAY_INTEGRITY_DECRYPTION_KEY: keys.decryptionB64,
+    PLAY_INTEGRITY_VERIFICATION_KEY: keys.verificationB64,
+    PLAY_INTEGRITY_CERT_DIGESTS: JSON.stringify({ subscriptiontracker: { play: [PLAY_DIGEST], sideload: [SIDELOAD_DIGEST] } }),
     APP_ATTEST_TEAM_ID: TEAM,
     PLATFORM_DB: db,
     ...over,
@@ -331,38 +458,51 @@ const post = (path: string, text: string, headers: Record<string, string>, bindi
   return app.request(req, undefined, env(bindings));
 };
 
-/** A classic integrity token's SHAPE — a compact JWE — carrying `nonce` where the fake Google reads it. */
-const JWE_HEADER = b64url(new TextEncoder().encode('{"alg":"A256KW","enc":"A256GCM"}'));
-const jwe = (nonce: string) => `${JWE_HEADER}.${nonce}.aXYtaXYtaXYtaXY.Y2lwaGVydGV4dA.dGFndGFndGFndGFn`;
-
 describe('the route — Play Integrity', () => {
   const text = JSON.stringify({ email: 'a@example.test', password: 'pw' });
 
-  async function signedFor(op: 'token' | 'signup', body = text) {
+  type Payload = ReturnType<typeof verdict>;
+  async function signedFor(op: 'token' | 'signup', opts: { body?: string; payload?: (nonce: string) => Payload; signer?: Pick<PlayFixtureKeys, 'aes' | 'signKey'> } = {}) {
     const challenge = await issueChallenge(env(), 'subscriptiontracker', Date.now());
     const path = op === 'token' ? `${BASE}/token?grant_type=password` : `${BASE}/${op}`;
     const target = requestTarget(new URL(path, 'https://x.example'));
-    const requestHash = b64url(await sha256(await clientDataFor('subscriptiontracker', op, challenge, target, new TextEncoder().encode(body))));
-    return { 'X-NK-Attest-Kind': 'play-integrity', 'X-NK-Attest-Challenge': challenge, 'X-NK-Attest-Proof': jwe(requestHash) };
+    const requestHash = b64url(await sha256(await clientDataFor('subscriptiontracker', op, challenge, target, new TextEncoder().encode(opts.body ?? text))));
+    const proof = await playToken((opts.payload ?? verdict)(requestHash), opts.signer ?? keys);
+    return { 'X-NK-Attest-Kind': 'play-integrity', 'X-NK-Attest-Challenge': challenge, 'X-NK-Attest-Proof': proof };
   }
 
-  it('a genuine verdict passes, decoded at Google with a correctly signed service-account JWT', async () => {
+  const counter = (scope: string) =>
+    Number(db.rows('SELECT calls FROM native_attest_counters WHERE scope = ?', scope)[0]?.calls ?? 0);
+  /** The Play path's footprint: no fetch but GoTrue, and no Play counter row of any scope. */
+  const noGoogleNoCounters = () => {
+    expect(foreign, 'no fetch leaves the Worker on the Play path').toEqual([]);
+    expect(db.count('native_attest_counters', "scope = 'play-integrity:decode' OR scope LIKE 'play:%'"), 'no Play counter row').toBe(0);
+  };
+
+  it('a genuine token passes, decrypted and verified locally — no fetch but GoTrue, and no counter written', async () => {
     const res = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'));
     expect(res.status).toBe(200);
     expect(gotrueSeen).toBe(1);
-    expect(google.decodes[0]!.url).toBe(`https://playintegrity.googleapis.com/v1/${PKG}:decodeIntegrityToken`);
-    expect(google.decodes[0]!.auth).toBe('Bearer google-access-token');
-    const [h, p, s] = google.tokens[0]!.split('.');
-    const utf8 = (x: string) => new TextDecoder().decode(fromB64url(x)!);
-    expect(JSON.parse(utf8(h!))).toEqual({ alg: 'RS256', typ: 'JWT' });
-    expect(JSON.parse(utf8(p!))).toMatchObject({
-      iss: 'play-integrity@test-project.iam.gserviceaccount.com',
-      scope: 'https://www.googleapis.com/auth/playintegrity',
-      aud: 'https://oauth2.googleapis.com/token',
-    });
-    expect(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', rsa.publicKey, fromB64url(s!)!, new TextEncoder().encode(`${h}.${p}`))).toBe(true);
+    noGoogleNoCounters();
+    expect(db.count('native_attest_counters'), 'no daily counter of any scope on the Play path').toBe(0);
     // An attested channel is not held to the unattested channel's session rule.
     expect(await res.json()).toMatchObject({ access_token: 'a' });
+  });
+
+  it('a pinned SIDELOAD build (apps.gov.in) passes through the same local path', async () => {
+    const sideload = (nonce: string) =>
+      verdict(nonce, {
+        appIntegrity: { appRecognitionVerdict: 'UNRECOGNIZED_VERSION', packageName: PKG, certificateSha256Digest: [toB64url(SIDELOAD_DIGEST)] },
+      });
+    expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token', { payload: sideload }))).status).toBe(200);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Red control: the same build is refused while its channel has no pin.
+    const unpinned = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token', { payload: sideload }), {
+      PLAY_INTEGRITY_CERT_DIGESTS: JSON.stringify({ subscriptiontracker: { play: [PLAY_DIGEST] } }),
+    });
+    expect(unpinned.status).toBe(401);
+    expect(gotrueSeen).toBe(1);
+    noGoogleNoCounters();
   });
 
   it('🔴 a replayed request is 401, and a verdict minted for ANOTHER request\'s nonce does not open this one', async () => {
@@ -374,80 +514,107 @@ describe('the route — Play Integrity', () => {
     expect(res.status).toBe(401);
     expect(((await res.json()) as { error_code: string }).error_code).toBe('attestation_invalid');
     expect(gotrueSeen).toBe(1);
+    noGoogleNoCounters();
   });
 
-  it('🔴 a Google fault is 503, never a pass; a token Google rejects is 401', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    google.status = 500;
-    expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'))).status).toBe(503);
-    google.status = 400;
-    expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'))).status).toBe(401);
+  it('🔴 a token under another decryption key, signed by another key, or tampered is REFUSED (401 attestation_invalid) — never 5xx', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const tamper = async () => {
+      const h = await signedFor('token');
+      const parts = h['X-NK-Attest-Proof'].split('.');
+      const ct = parts[3]!;
+      parts[3] = ct.slice(0, 4) + (ct[4] === 'A' ? 'B' : 'A') + ct.slice(5);
+      return { ...h, 'X-NK-Attest-Proof': parts.join('.') };
+    };
+    for (const [why, headers] of [
+      ['decrypt', await signedFor('token', { signer: { aes: other.aes, signKey: keys.signKey } })],
+      ['signature', await signedFor('token', { signer: { aes: keys.aes, signKey: other.signKey } })],
+      ['decrypt', await tamper()],
+    ] as const) {
+      const res = await post(`${BASE}/token?grant_type=password`, text, headers);
+      expect(res.status, why).toBe(401);
+      expect(((await res.json()) as { error_code: string }).error_code).toBe('attestation_invalid');
+      expect(String(warn.mock.calls.at(-1)?.[0]), 'the log names the step that refused').toContain(`(${why})`);
+    }
     expect(gotrueSeen).toBe(0);
+    noGoogleNoCounters();
   });
 
-  it('🔴 an app with no pinned signing digest is 503 for this kind — the flag alone opens nothing', async () => {
+  it('🔴 an app with no pinned signing digest, or either response key absent or malformed, is 503 for this kind — the flag alone opens nothing', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const res = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), { PLAY_INTEGRITY_CERT_DIGESTS: JSON.stringify({ other: { play: [PLAY_DIGEST] } }) });
-    expect(res.status).toBe(503);
-    expect(google.decodes).toHaveLength(0);
+    // The AES secret where the P-256 SPKI belongs: valid base64, the wrong key entirely.
+    const aesWhereSpkiBelongs = String(keys.decryptionB64);
+    for (const over of [
+      { PLAY_INTEGRITY_CERT_DIGESTS: JSON.stringify({ other: { play: [PLAY_DIGEST] } }) },
+      { PLAY_INTEGRITY_DECRYPTION_KEY: undefined },
+      { PLAY_INTEGRITY_VERIFICATION_KEY: undefined },
+      { PLAY_INTEGRITY_DECRYPTION_KEY: b64std(new Uint8Array(16)) },
+      { PLAY_INTEGRITY_VERIFICATION_KEY: aesWhereSpkiBelongs },
+    ]) {
+      const res = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), over);
+      expect(res.status, Object.keys(over)[0]).toBe(503);
+    }
+    expect(gotrueSeen).toBe(0);
+    noGoogleNoCounters();
   });
 
-  it('🔴 the per-network Play limiter refuses BEFORE Google is asked (review of #1070)', async () => {
+  it('🔴 the per-network Play limiter refuses BEFORE any verification', async () => {
     playVerify = new Limiter(1);
     expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'))).status).toBe(200);
-    const over = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'));
-    expect(over.status).toBe(429);
-    expect(google.decodes).toHaveLength(1);
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const unbound = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), { NATIVE_AUTH_PLAY_VERIFY_LIMITER: undefined });
-    expect(unbound.status).toBe(503);
-    expect(google.decodes).toHaveLength(1);
+    const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
+    try {
+      const over = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'));
+      expect(over.status).toBe(429);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const unbound = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), { NATIVE_AUTH_PLAY_VERIFY_LIMITER: undefined });
+      expect(unbound.status).toBe(503);
+      expect(decrypt, 'no token was decrypted past the limiter').not.toHaveBeenCalled();
+    } finally {
+      decrypt.mockRestore();
+    }
+    expect(gotrueSeen).toBe(1);
+    noGoogleNoCounters();
   });
 
-  it('🔴 the daily global ceiling below Google\'s quota is 503 without a Google call once reached', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('🔴 O-PLAY-INTEGRITY-LOCAL-VERIFY · the retired daily counters gate nothing: a network at the old share and a day at the old ceiling still pass', async () => {
+    // Red control for the removal: before this change these rows answered 429 and 503.
     const day = new Date().toISOString().slice(0, 10);
-    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, 'play-integrity:decode', PLAY_INTEGRITY_DAILY_CEILING);
-    const res = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'));
-    expect(res.status).toBe(503);
-    expect(google.decodes).toHaveLength(0);
-    expect(PLAY_INTEGRITY_DAILY_CEILING).toBeLessThan(10_000);
-    // The counter is per UTC day, and a bump prunes the days before.
-    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run('2020-01-01', 'play-integrity:decode', 5);
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, 'play-integrity:decode', 8_000);
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, 'play:edge:SIN:64500', 400);
+    expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64500)).status).toBe(200);
+    expect((await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64501)).status).toBe(200);
+    expect(counter('play-integrity:decode'), 'not bumped').toBe(8_000);
+    expect(counter('play:edge:SIN:64500'), 'not bumped').toBe(400);
+    expect(counter('play:edge:SIN:64501'), 'never written').toBe(0);
+    expect(foreign).toEqual([]);
+    // The counter the key kinds still use is per UTC day, and a bump prunes the days before.
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run('2020-01-01', 'install:edge:SIN:64500', 5);
     expect(await bumpDailyCounter(db as unknown as D1Database, 'x', Date.now())).toBe(1);
     expect(db.count('native_attest_counters', 'day = ?', '2020-01-01')).toBe(0);
   });
 
-  const counter = (scope: string) =>
-    Number(db.rows('SELECT calls FROM native_attest_counters WHERE scope = ?', scope)[0]?.calls ?? 0);
-
-  it('🔴 SECOND REVIEW 1a · a proof not shaped like an integrity token is 400, and moves NO counter, limiter or Google call', async () => {
+  it('🔴 SECOND REVIEW 1a · a proof not shaped like an integrity token is 400, and moves NO counter, limiter or crypto', async () => {
     const good = await signedFor('token');
-    for (const junk of ['x', 'tok.abc', 'a.b.c.d.e', `${JWE_HEADER}.k..ct.tag`, `${b64url(new TextEncoder().encode('{"typ":"JWT"}'))}.enckey.iv-iv-iv.ciphertext.tagtagtag`, 'A'.repeat(16_000)]) {
+    const enc = (o: unknown) => b64url(new TextEncoder().encode(JSON.stringify(o)));
+    const [, w, iv, ct, tag] = good['X-NK-Attest-Proof'].split('.');
+    for (const junk of [
+      'x',
+      'tok.abc',
+      'a.b.c.d.e',
+      `${enc({ alg: 'A256KW', enc: 'A256GCM' })}.k..ct.tag`,
+      `${enc({ typ: 'JWT' })}.${w}.${iv}.${ct}.${tag}`,
+      `${enc({ alg: 'RSA-OAEP-256', enc: 'A256GCM' })}.${w}.${iv}.${ct}.${tag}`,
+      `${enc({ alg: 'A256KW', enc: 'A256CBC-HS512' })}.${w}.${iv}.${ct}.${tag}`,
+      'A'.repeat(16_000),
+    ]) {
       const res = await post(`${BASE}/token?grant_type=password`, text, { ...good, 'X-NK-Attest-Proof': junk });
       expect(res.status, junk.slice(0, 20)).toBe(400);
       expect(((await res.json()) as { error_code: string }).error_code).toBe('attestation_invalid');
     }
-    expect(counter('play-integrity:decode')).toBe(0);
     expect(db.count('native_attest_counters')).toBe(0);
     expect(playVerify.calls, 'the per-minute Play budget is not spent either').toBe(0);
-    expect(google.decodes).toHaveLength(0);
     expect(gotrueSeen).toBe(0);
-  });
-
-  it('🔴 SECOND REVIEW 1b · one network stops at its daily share (5% of the ceiling) while another network still passes', async () => {
-    expect(PLAY_INTEGRITY_DAILY_PER_NETWORK).toBe(PLAY_INTEGRITY_DAILY_CEILING / 20);
-    const day = new Date().toISOString().slice(0, 10);
-    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, 'play:edge:SIN:64500', PLAY_INTEGRITY_DAILY_PER_NETWORK);
-    const capped = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64500);
-    expect(capped.status).toBe(429);
-    expect(Number(capped.headers.get('retry-after'))).toBeGreaterThan(0);
-    expect(google.decodes, 'the capped network reached no Google call').toHaveLength(0);
-    expect(counter('play-integrity:decode'), 'nor the global ceiling').toBe(0);
-    const other = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64501);
-    expect(other.status).toBe(200);
-    expect(counter('play:edge:SIN:64501')).toBe(1);
-    expect(counter('play-integrity:decode')).toBe(1);
+    noGoogleNoCounters();
   });
 
   it('🔴 SECOND REVIEW nit 8 · a forged challenge spends none of the network\'s Play budget', async () => {
@@ -457,14 +624,7 @@ describe('the route — Play Integrity', () => {
     expect(res.status).toBe(401);
     expect(playVerify.calls).toBe(0);
     expect(db.count('native_attest_counters')).toBe(0);
-  });
-
-  it('a direct verify call reuses one OAuth token across decodes', async () => {
-    const sa = { client_email: 'play-integrity@test-project.iam.gserviceaccount.com', private_key: JSON.parse(SERVICE_ACCOUNT).private_key as string };
-    const H = 'vhEcb1KdwBN_Qi1H40RTtnWH4fDw60TeZxBYTwvGb8M';
-    expect((await verifyPlayIntegrity(jwe(H), PKG, H, sa, PINS, Date.now())).ok).toBe(true);
-    expect((await verifyPlayIntegrity(jwe(H), PKG, H, sa, PINS, Date.now())).ok).toBe(true);
-    expect(google.tokens).toHaveLength(1);
+    noGoogleNoCounters();
   });
 });
 

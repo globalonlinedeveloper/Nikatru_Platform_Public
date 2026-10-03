@@ -1552,6 +1552,37 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.doesNotMatch(out, /is a release script that NO channel row names/);
   });
 
+  // ── RELEASE_OPERATOR_TOOLS — a lead-run tool beside a channel's submission path ──
+  // play-data-safety.mjs is admitted by name ONLY while its channel's row declares a
+  // submission script and the tool imports that script's module. The fixture puts an
+  // `android-play` row beside the windows-store one, naming the same submission script.
+  const OPERATOR_TOOL = 'tooling/release/play-data-safety.mjs';
+  const withPlayRow = (sub = true) => (r) => {
+    const row = { ...structuredClone(r.channels[1]), id: 'android-play' };
+    if (!sub) delete row.submission;
+    r.channels.push(row);
+  };
+  test('an operator tool that imports its channel\'s submission script is admitted (green control)', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: withPlayRow(), extraFiles: { [OPERATOR_TOOL]: "import { x } from './submit-thing.mjs';\n" } }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /play-data-safety\.mjs/);
+  });
+  test('FAILS when the operator tool does not import its channel\'s submission script', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: withPlayRow(), extraFiles: { [OPERATOR_TOOL]: "import { x } from './submit-thingXmjs';\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /play-data-safety\.mjs is an operator tool for channel "android-play" .* does not import that channel's submission script tooling\/release\/submit-thing\.mjs/);
+  });
+  test('FAILS when the operator tool\'s channel declares no submission script', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: withPlayRow(false), extraFiles: { [OPERATOR_TOOL]: "import { x } from './submit-thing.mjs';\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /play-data-safety\.mjs is an operator tool for channel "android-play" .* that row declares no submission\.script/);
+  });
+  test('FAILS on a stale entry: the channel exists and the tool is gone', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: withPlayRow() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /play-data-safety\.mjs is listed in RELEASE_OPERATOR_TOOLS for "android-play" .* and does not exist/);
+  });
+
   // ── `submission.recipeScript` — the PACKAGING half ────────────────────────
   // A channel whose artifact has to be BUILT from a generated recipe before the
   // submission verb has anything to upload. It is admitted to the orphan check's

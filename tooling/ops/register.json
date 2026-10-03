@@ -5140,7 +5140,7 @@
       "id": "retention.d1.platform_db.native_attest_counters",
       "kind": "retention",
       "store": "d1:platform_db:native_attest_counters",
-      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's Play Integrity decodes (`play-integrity:decode`) and today's key registrations per network (`install:edge:<colo>:<asn>`). Written by bumpDailyCounter (services/platform/src/lib/native-attest/index.ts), which deletes the previous days' rows first.",
+      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's key registrations per network (`install:edge:<colo>:<asn>`) and today's ops per registered key (`key:<app>:<key id>`). Since 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY) no Play Integrity row is written. Written by bumpDailyCounter (services/platform/src/lib/native-attest/index.ts), which deletes the previous days' rows first.",
       "rule": "period",
       "periodDays": 1,
       "declaredBy": "ADR no.NNN: only today's row is read; swept in full once a day old. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_COUNTERS_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
