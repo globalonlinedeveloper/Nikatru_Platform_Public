@@ -28,8 +28,20 @@ run-name: "CodeQL (${{ github.event_name }})"
 # ⚠️ WHAT THIS DOES NOT COVER, stated rather than implied: DART. The `javascript-
 # typescript` pack does not read Flutter code, and CodeQL ships no Dart support
 # at all, so apps/ and packages/ are outside this lane by construction — not by
-# an omission somebody can quietly fix by adding a language to the matrix. The
-# Dart surface is covered by `melos run analyze` and the format gate in ci.yml.
+# an omission somebody can quietly fix by adding a language to the matrix.
+# ⏱ 2026-10-01 [rv2-security-006] — THIS LINE USED TO SAY THE DART SURFACE "IS
+# COVERED" by the analyzer, and nothing that reads Dart traces data flow. What
+# reads shipped Dart today, by name, and what each one asks:
+#   · the Dart analyzer (`melos run analyze`, `flutter analyze` in ci.yml) —
+#     types and lints; no taint, no sink;
+#   · tooling/ci/assert-package-boundaries.mjs limbs c2/c3 — no package goes
+#     around another's adapter (c2); no WebView import and no `dart:io`
+#     Process in shipped Dart (c3);
+#   · tooling/ci/assert-no-tls-pinning.mjs — no certificate pinning, no trust
+#     override (`badCertificateCallback`, a private SecurityContext).
+# Each is a DENY list over source text. None of them answers "does attacker-
+# controlled input reach a dangerous sink" for Dart, so that question is OPEN
+# for apps/ and packages/ — say so, never "covered".
 #
 # ⚠️ AND THIS IS AN ALERT SINK, NOT A MERGE GATE. Findings land in the repository
 # Security tab; nothing here fails `ci-gate`, and that is deliberate. A scanner

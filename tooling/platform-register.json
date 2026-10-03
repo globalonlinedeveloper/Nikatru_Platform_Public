@@ -235,6 +235,19 @@
           "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
         },
         {
+          "id": "subscriptiontracker-insights",
+          "method": "GET",
+          "path": "/v1/insights",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/insights.ts",
+          "purpose": "⏱ 2026-09-30 · ST-P6 (round-2 F23) + ST-I4 (round-2 X09). The user's payment_history rows and price_change rows over the last 12 calendar months, across every plan, in ONE read — the Insights trend is drawn from the first and the price-rise alert from the second. Named columns and GET /v1/subscriptions/:id's currency rule, so the two readers agree; ownership is in the SQL.",
+          "client": {
+            "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
+            "expression": "_rest.get('/insights')",
+            "note": "The real call inside `getSpendHistory()`, read by `spendHistoryProvider` for the Pro trend (forecast_card.dart) and the price-rise signal (signals.dart)."
+          }
+        },
+        {
           "id": "subscriptiontracker-budget-get",
           "method": "GET",
           "path": "/v1/budget",
@@ -536,7 +549,7 @@
       "path": "/v1/events",
       "auth": "public",
       "owningFile": "services/platform/src/routes/events.ts",
-      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated CLIENT-side. Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
+      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated on BOTH sides: the client collects nothing before a grant, and since 2026-10-01 the route stores nothing for an install whose latest `purpose='analytics'` artifact is missing (409 consent_not_recorded) or a withdrawal (403 consent_withdrawn). Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
       "client": {
         "file": "packages/api_client/lib/src/dio_event_transport.dart",
         "expression": "'$_base/v1/events'",
