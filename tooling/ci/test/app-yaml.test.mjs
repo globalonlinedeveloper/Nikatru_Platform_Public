@@ -116,6 +116,13 @@ function tree() {
     // lib/core/, so a fixture that carries lib/core/ must carry its rendering,
     // or --check reads it as stale on every case.
     'apps/subscriptiontracker/lib/core/windows_notification_identity.g.dart',
+    // ⏱ 2026-10-02 (SYN-P2): limb 10 holds the identity store's address
+    // columns to the trigger file, and refuses (2) a run with no register.
+    'tooling/legal/identity-address-columns.json',
+    'docs/platform/supabase/sql/identity-address-null-on-write.sql',
+    // ⏱ 2026-10-02 (ruling on review 2 of #1140): limb 10 reads the script that
+    // runs the MFA challenge address sweep.
+    'docs/platform/supabase/boxc/identity-log-retention.sh',
   ]) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
@@ -486,6 +493,155 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /names a network address/);
+    } finally { kill(root); }
+  });
+
+  // ── limb 10 (SYN-P2): the identity store is inside the promise ──────────────
+  const IDENTITY_SQL = 'docs/platform/supabase/sql/identity-address-null-on-write.sql';
+  const IDENTITY_COLUMNS = 'tooling/legal/identity-address-columns.json';
+
+  test('MUTATION: an identity address column with no trigger on its table is refused (limb 10)', () => {
+    // The state of Box C until 2026-10-02: GoTrue wrote auth.sessions.ip on
+    // every sign-in while every notice said no network address is stored.
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace(/CREATE TRIGGER nikatru_address_null_on_write\n {2}BEFORE INSERT OR UPDATE ON auth\.sessions\n[^\n]*\n/, '');
+      assert.notEqual(cut, sql, 'the mutation must remove the sessions trigger');
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /no BEFORE INSERT OR UPDATE trigger on auth\.sessions/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: a trigger on INSERT alone is refused — a refresh would write the address back (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace('BEFORE INSERT OR UPDATE ON auth.sessions', 'BEFORE INSERT ON auth.sessions');
+      assert.notEqual(cut, sql);
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /auth\.sessions\.ip keeps the address/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: a trigger whose function leaves the column untouched is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace("NEW.ip_address := '';", 'NEW.payload := NEW.payload;');
+      assert.notEqual(cut, sql);
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /never sets NEW\.ip_address := ''/);
+    } finally { kill(root); }
+  });
+
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 3 — GoTrue reads the MFA
+  // challenge address back on verify (mfa.go), so an every-write trigger there
+  // fails every MFA verify. ⏱ Ruling on review 2, item 3: the limb grades a
+  // trigger by its table, timing and function, so no spelling slips past it;
+  // `CREATE OR REPLACE TRIGGER` and a quoted table name both passed before.
+  const withStatement = (sql, stmt) => sql.replace('COMMIT;', `${stmt}\n\nCOMMIT;`);
+  const refusesEveryWriteTrigger = (stmt) => {
+    const root = tree();
+    try {
+      put(root, IDENTITY_SQL, withStatement(get(root, IDENTITY_SQL), stmt));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /a trigger on auth\.mfa_challenges \(BEFORE INSERT OR UPDATE, .*that is not its declared on-verify trigger/);
+    } finally { kill(root); }
+  };
+  test('MUTATION: an every-write trigger on auth.mfa_challenges by CREATE TRIGGER is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: an every-write trigger on auth.mfa_challenges by CREATE OR REPLACE TRIGGER (PG14+), another name, is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE OR REPLACE TRIGGER zz_other\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: an every-write trigger on a quoted "auth"."mfa_challenges" is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER zz_quoted BEFORE INSERT OR UPDATE ON "auth"."mfa_challenges" FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: the on-verify function attached on INSERT too is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER zz_insert BEFORE INSERT OR UPDATE ON auth.mfa_challenges FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_blank_on_verify();');
+  });
+
+  test('MUTATION: any other statement naming auth.mfa_challenges is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      put(root, IDENTITY_SQL, withStatement(get(root, IDENTITY_SQL), "ALTER TABLE auth.mfa_challenges ALTER COLUMN ip_address SET DEFAULT '0.0.0.0';"));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /a statement names auth\.mfa_challenges, whose ip_address is EXEMPT/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the on-verify trigger removed — a verified challenge keeps the address (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace(/CREATE TRIGGER nikatru_mfa_ip_blank_on_verify\n[^\n]*\n[^\n]*\n/, '');
+      assert.notEqual(cut, sql, 'the mutation must remove the on-verify trigger');
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /0 on-verify trigger\(s\) on auth\.mfa_challenges/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the on-verify function blanking a PENDING challenge (no verified_at guard) is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace("  IF NEW.verified_at IS NOT NULL THEN\n    NEW.ip_address := '0.0.0.0';\n  END IF;", "  NEW.ip_address := '0.0.0.0';");
+      assert.notEqual(cut, sql);
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /mfa_ip_blank_on_verify\(\) is not exactly the declared body/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the sweep no longer run by the retention script (only named in its comments) is refused (limb 10)', () => {
+    const root = tree();
+    const SCRIPT = 'docs/platform/supabase/boxc/identity-log-retention.sh';
+    try {
+      const text = get(root, SCRIPT);
+      const cut = text.replace("'SELECT nikatru_privacy.mfa_challenge_ip_sweep()'", "'SELECT 1'");
+      assert.notEqual(cut, text);
+      put(root, SCRIPT, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /never calls nikatru_privacy\.mfa_challenge_ip_sweep\(\)/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the MFA challenge address moved back into `columns` is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const doc = JSON.parse(get(root, IDENTITY_COLUMNS));
+      put(root, IDENTITY_COLUMNS, JSON.stringify({
+        ...doc,
+        columns: [...doc.columns, { table: 'auth.mfa_challenges', column: 'ip_address', emptiedTo: "'0.0.0.0'::inet" }],
+        exempt: [],
+      }, null, 2));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /auth\.mfa_challenges\.ip_address is in `columns`/);
+    } finally { kill(root); }
+  });
+
+  test('COVERAGE LOST: an identity column list with nothing in it exits 2 (limb 10)', () => {
+    const root = tree();
+    try {
+      const doc = JSON.parse(get(root, IDENTITY_COLUMNS));
+      put(root, IDENTITY_COLUMNS, JSON.stringify({ ...doc, columns: [] }, null, 2));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 10 graded no column/);
     } finally { kill(root); }
   });
 
@@ -2827,12 +2983,12 @@ describe('limb 9 — every provider the app’s configuration triggers is declar
     putJson(root, PROVIDER_REGISTER, reg);
   };
 
-  test('POSITIVE CONTROL — the shipped tree declares all ten providers its configuration triggers', () => {
+  test('POSITIVE CONTROL — the shipped tree declares all eleven providers its configuration triggers', () => {
     const root = tree();
     try {
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
-      assert.match(out, /limb 9 — 1 app\(s\) graded: 10 required provider\(s\), each declared among 10 processor\(s\), and no `never` provider declared/);
+      assert.match(out, /limb 9 — 1 app\(s\) graded: 11 required provider\(s\), each declared among 11 processor\(s\), and no `never` provider declared/);
     } finally { kill(root); }
   });
 

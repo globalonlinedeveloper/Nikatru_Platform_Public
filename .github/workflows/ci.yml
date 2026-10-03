@@ -14,7 +14,9 @@ on:
   pull_request:
     # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
     # The other three are GitHub's defaults, listed because `types:` replaces them.
-    types: [opened, synchronize, reopened, edited]
+    # `ready_for_review` because a DRAFT runs nothing (docs/ci/README.md §1.1): marking it
+    # ready is the event that gives it its one full run (assert-green-means-ran A10).
+    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,10 +32,12 @@ permissions:
 jobs:
   # why: the workers lane, as ONE constituent of ci-gate (ADR 095). lane-workers.yml runs
   # only as a call; its detect job reads tooling/ci/lane-map.json and its lane-verdict job
-  # refuses a skip detect did not license. No `if:` (green-means-ran A6), and no
+  # refuses a skip detect did not license. Its one `if:` is the draft predicate, which
+  # ci-gate shares (green-means-ran A6/A10: a draft PR runs nothing, gate included), and no
   # `timeout-minutes` — GitHub rejects one on a call; every callee job bounds itself.
   lane-workers:
     name: lane-workers
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/lane-workers.yml
     # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
     # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
@@ -52,6 +56,7 @@ jobs:
     # .github/workflows, ops-register against tooling/ops), so "only prose changed"
     # does not imply "this cannot go red".
     name: Guards — the guards can still fail (shard ${{ matrix.shard }})
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -164,6 +169,7 @@ jobs:
     # index, the lane map, the PR's rows. The suite that proves each guard can fail
     # is guard-tests, sharded beside this job rather than in front of it.
     name: Guards — the guards can still fail
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -264,6 +270,7 @@ jobs:
 
   guards-platform:
     name: Guards — platform, data and ops
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # why: security-events: read is for assert-alert-disposition.mjs limb C, which reads
@@ -537,6 +544,7 @@ jobs:
 
   guards-legal:
     name: Guards — privacy, legal and money
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -677,6 +685,7 @@ jobs:
 
   guards-store:
     name: Guards — store, release and versioning
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -890,6 +899,7 @@ jobs:
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -939,6 +949,18 @@ jobs:
       - name: No hardcoded user-facing strings in the brick
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-hardcoded-strings.mjs
+      # why: one locale register (tooling/i18n/locales.json) — every ARB root, native manifest, picker and CI list reads it (O-LOCALES-HAND-TYPED-IN-12-PLACES).
+      - name: Every surface that names the languages reads the one locale register
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-locale-register.mjs
+      # why: no RTL locale ships yet, so a hard-wired left/right is invisible to every test that runs today (lane i18n-pipeline).
+      - name: No shipped screen hard-wires left and right (RTL readiness)
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-rtl-directional.mjs
+      # why: the ARB/ICU placeholder-safety step — every shipped translation (ARBs and the server e-mail copy) keeps English's placeholders and plural/select shape (lane i18n-pipeline).
+      - name: Every translation keeps English's placeholders and ICU shape
+        if: ${{ !cancelled() }}
+        run: node tooling/i18n/translation-qa.mjs --all
       - name: The stop-a-charge copy never claims we cancel or names a debit time
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-stop-copy.mjs
@@ -1017,6 +1039,7 @@ jobs:
     # the vendor action — gitleaks-action v2+ is a commercial licence for org
     # accounts (09-selfhost-build-release.md §4.2).
     name: Security — secret and workflow scanners
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25 # why: the scanners (~1 min) plus the CodeQL PR rule's 12-minute step bound, with headroom
     # why: security-events: read is for assert-codeql-pr-no-new-high.mjs, which reads this
@@ -1178,6 +1201,15 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      # why: the recurring CodeQL shapes (file-system-race, missing-regexp-anchor, incomplete-sanitization and its
+      # multi-character, url-substring and hostname variants, insecure-temporary-file, an unused import) on this PR's
+      # changed lines, in about a second, before the CodeQL rule below waits minutes to say the same (lane codeql-lite).
+      # Lanes run it before the push through affected-guards.mjs; here it is the same check, against the PR's own base.
+      - name: This pull request's changed lines carry none of the recurring CodeQL shapes (codeql-lite)
+        if: ${{ !cancelled() }}
+        env:
+          CODEQL_LITE_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
+        run: node tooling/ci/assert-codeql-lite.mjs
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
       # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
       # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
@@ -1218,6 +1250,7 @@ jobs:
     # a job id here is a two-file change with a required-check consequence, and
     # the name below is where the widened scope is said out loud instead.
     name: Design tokens (build + drift, all three outputs)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1295,6 +1328,7 @@ jobs:
 
   site-shared:
     name: Shared site build
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1331,6 +1365,7 @@ jobs:
 
   content-gate:
     name: Content pipeline (recipe -> pack -> sign -> gate)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1381,6 +1416,7 @@ jobs:
 
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     # why: 25, not 15. Since O-BRICK-STAMPS-WEB-ONLY (D30) each of the three stamps runs `flutter create`
     # and the launcher icons, and the job installs the Linux toolchain and compiles the probe for linux.
@@ -1616,12 +1652,13 @@ jobs:
         run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
       # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
       # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
-      # reads services/, so the Worker lanes below see the tree they saw before.
+      # reads services/, so the Worker lanes below see the tree they saw before: by an EXIT trap, so a red plan
+      # check removes it too (fix-brick-stamp-outside-repo), and gitignored in case the shell itself dies.
       - name: A scratch service stamps from the Worker template, and the plan reads it as a service
         run: |
+          trap 'rm -rf services/probesvc-api' EXIT
           node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
           node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
-          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
@@ -1819,6 +1856,7 @@ jobs:
 
   sites:
     name: Static sites (functions parse + required files)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1899,6 +1937,7 @@ jobs:
     # in one and ignored in the other, so between them they test every member by
     # construction, and each refuses to run over zero members.
     name: Workspace gate (melos analyze + test) · ${{ matrix.part }}
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -1951,12 +1990,12 @@ jobs:
           # Missing files fail HERE, under `set -e`, rather than being hashed as
           # an empty set — "pub get produced nothing" and "the rebuild matched"
           # must not share an exit code.
-          # ⏱ T20 (XP-06): _hi is the third locale; a locale missing from
-          # this list is a generated file nothing compares.
-          sha256sum packages/design_system/lib/src/l10n/chassis_localizations.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_en.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_ta.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_hi.dart \
+          # The file list is the LOCALE REGISTER's (tooling/i18n/locales.json):
+          # one generated file per supported locale. A typed list here once had to
+          # be hand-extended for Hindi; a locale missing from it is a generated
+          # file nothing compares (assert-locale-register L4/L5).
+          files=$(node tooling/i18n/locales.mjs --files chassis_localizations dart)
+          (cd packages/design_system/lib/src/l10n && sha256sum $files) \
             > "$RUNNER_TEMP/chassis-l10n-before.sha256"
       - name: Delete the generated chassis localisations so gen-l10n has to produce them
         run: rm -f packages/design_system/lib/src/l10n/chassis_localizations*.dart
@@ -1964,12 +2003,13 @@ jobs:
         run: |
           set -euo pipefail
           (cd packages/design_system && flutter gen-l10n)
-          for f in chassis_localizations.dart chassis_localizations_en.dart chassis_localizations_ta.dart chassis_localizations_hi.dart; do
+          files=$(node tooling/i18n/locales.mjs --files chassis_localizations dart)
+          for f in $files; do
             test -s "packages/design_system/lib/src/l10n/$f"
           done
           # The half with a failing input: `sha256sum -c` fails on a file that
           # came back different and on a file that did not come back at all.
-          sha256sum -c "$RUNNER_TEMP/chassis-l10n-before.sha256"
+          (cd packages/design_system/lib/src/l10n && sha256sum -c "$RUNNER_TEMP/chassis-l10n-before.sha256")
           # Tamil parity, from gen-l10n's own diagnostic. The ENFORCEMENT half is
           # packages/design_system/test/chassis_l10n_parity_test.dart, which names
           # the keys; this is the cheap early read of the same fact.
@@ -2066,6 +2106,7 @@ jobs:
     # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
     # fan out over its `apps` output, so every app-shaped job here iterates one set.
     name: Derive the app set from the pub workspace
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -2566,11 +2607,13 @@ jobs:
 
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when
-  # any of them is. No `if:` (green-means-ran A6), and no `timeout-minutes` — GitHub
+  # any of them is. Its one `if:` is the draft predicate ci-gate shares (green-means-ran
+  # A6/A10), and no `timeout-minutes` — GitHub
   # rejects one on a call; every callee job bounds itself (workflow-hardening limb 4).
   # docs/ci/extensions-ci.md.
   extensions:
     name: extensions
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/extensions-ci.yml
     # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
     # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
@@ -2584,6 +2627,9 @@ jobs:
     # this file and must treat skipped as not-green — a skipped required check
     # satisfies branch protection, which is how a lane goes dark under a tick.
     # tooling/ci/assert-green-means-ran.mjs asserts all of that by name.
+    # why: always() so a red lane is read, never skipped past. The draft conjunct is the ONE
+    # extension: a draft PR cannot merge, and every lane it needs is skipped by that predicate,
+    # so the gate skips with them instead of reading them skipped (assert-green-means-ran A1/A10).
     name: ci-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2609,7 +2655,7 @@ jobs:
       - web-artifacts
       - linux-artifacts
       - extensions
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     steps:
       - name: Require all lanes green
         run: |

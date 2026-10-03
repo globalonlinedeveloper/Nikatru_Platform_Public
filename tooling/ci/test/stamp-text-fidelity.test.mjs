@@ -41,6 +41,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadRegister, supportedCodes, arbSuffix } from '../../i18n/locales.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-stamp-text-fidelity.mjs');
@@ -158,7 +159,7 @@ function tree({
       2,
     )}\n`,
   );
-  for (const arb of ['app_en.arb', 'app_ta.arb']) {
+  for (const arb of supportedCodes(loadRegister()).map((c) => `app_${arbSuffix(c)}.arb`)) {
     write(`apps/${app}/lib/l10n/${arb}`, `{\n  "appTitle": "${j(name)}"\n}\n`);
   }
   write(

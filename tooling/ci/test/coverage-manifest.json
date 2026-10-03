@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    12,
+    13,
 
   "agent-docs.test.mjs":
     21,
@@ -66,7 +66,7 @@
     104,
 
   "app-yaml.test.mjs":
-    180,
+    193,
 
   "appimage-signing.test.mjs":
     77,
@@ -177,7 +177,7 @@
     9,
 
   "box-config-drift.test.mjs":
-    19,
+    32,
 
   "boxes.test.mjs":
     50,
@@ -255,7 +255,7 @@
     55,
 
   "channel-register.test.mjs":
-    376,
+    380,
 
   "channel-surface.test.mjs":
     7,
@@ -292,6 +292,9 @@
 
   "code-scanning-age.test.mjs":
     15,
+
+  "codeql-lite.test.mjs":
+    51,
 
   "codeql-pr-no-new-high.test.mjs":
     22,
@@ -510,7 +513,7 @@
     20,
 
   "green-means-ran.test.mjs":
-    49,
+    59,
 
   "guard-coverage.test.mjs":
     84,
@@ -559,6 +562,12 @@
 
   "iap-review-screenshots.test.mjs":
     16,
+
+  "identity-address-sql.test.mjs":
+    5,
+
+  "identity-log-retention.test.mjs":
+    6,
 
   "identity-one-deleter.test.mjs":
     8,
@@ -625,6 +634,9 @@
 
   "local-chromedriver.test.mjs":
     12,
+
+  "locale-register.test.mjs":
+    35,
 
   "lockfile-discipline.test.mjs":
     9,
@@ -781,6 +793,9 @@
 
   "platform-register.test.mjs":
     120,
+
+  "play-data-safety.test.mjs":
+    37,
 
   "play-declarations.test.mjs":
     186,
@@ -956,6 +971,9 @@
   "rollup-lossless.test.mjs":
     52,
 
+  "rtl-directional.test.mjs":
+    7,
+
   "run-page-anchor.test.mjs":
     67,
 
@@ -999,7 +1017,7 @@
     37,
 
   "session-revocation.test.mjs":
-    18,
+    25,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1085,6 +1103,9 @@
   "stamp-properties.test.mjs":
     32,
 
+  "stamp-sandbox.test.mjs":
+    29,
+
   "stamp-shared-snap.test.mjs":
     4,
 
@@ -1165,6 +1186,9 @@
 
   "text-reductions.test.mjs":
     46,
+
+  "translation-qa.test.mjs":
+    10,
 
   "triage-failed-runs.test.mjs":
     115,

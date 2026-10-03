@@ -630,6 +630,43 @@
       "rail": "play-billing",
       "pages": ["privacy.html", "terms.html"],
       "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. Google Play Billing ([ADR 039] D2). It resolves to the `google-play` row (requiredWhen mobileIapRail play-billing), role store_billing, sellerIs `provider`. refund.html is not listed, for the reason given on the apple-iap row."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Network addresses",
+      "type": "descriptive",
+      "why": "A section heading (2026-10-02, SYN-P2). The paragraph beneath it is held by the `7 days` row (the request-log cut), assert-app-yaml limb 10 (the identity store empties every address column on write: docs/platform/supabase/sql/identity-address-null-on-write.sql against tooling/legal/identity-address-columns.json) and the `We do not collect or store your IP address` row (the analytics route never reads the header). ⏱ 2026-10-02 · ruling on review 2 of #1140, item 1: MFA stays on, so the paragraph says a pending sign-in verification briefly holds the address until it is verified (an on-verify trigger) or swept within a day of its 5-minute expiry (limb 10 holds both to identity-address-columns.json `exempt`; tooling/ci/test/identity-address-sql.test.mjs applies them to a real PostgreSQL). ⚠️ The copies made before 2026-10-02 the paragraph names (open sessions, the identity dumps, the hosted fallback) are measured facts in the hostinger row's `transits.ip_address`, and no guard here can see them age out."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "7 days",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": [
+          "docs/platform/supabase/boxc/identity-log-retention.sh"
+        ],
+        "pattern": "RETAIN_DAYS=7\\n",
+        "why": "The request logs of the sign-in service (GoTrue and envoy on Box C) are cut daily and deleted at RETAIN_DAYS. ⚠️ This asserts the script in the tree says 7; the copy installed on the box is held to it only by its sha12 in the PR that installed it (902d41cd4412, 2026-10-02), and a later edit on the box is invisible here. ⏱ 2026-10-02 · review 1 of #1140: the script is now WATCHED (ops register duty.supabase-identity-log-retention, a heartbeat withheld on any failed step) and its revision's sha12 is aacf07ad23e8 (ruling on review 2: it also runs the MFA challenge address sweep), to replace the installed copy as a lead step."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Google Workspace",
+      "type": "provider",
+      "providers": [
+        "google-workspace"
+      ],
+      "note": "⏱ 2026-10-02 · SYN-P1, rv2-business 001. Google held the support mailbox (Workspace) and the backups (Drive) and was in no notice and no register row. Named in the 2026-10-02 version; the provider row carries what each holds."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Google Drive",
+      "type": "provider",
+      "providers": [
+        "google-workspace"
+      ],
+      "note": "⏱ 2026-10-02 · SYN-P1, rv2-business 001. Google held the support mailbox (Workspace) and the backups (Drive) and was in no notice and no register row. Named in the 2026-10-02 version; the provider row carries what each holds."
     }
   ]
 }

@@ -3,7 +3,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show FocusableTap, TapRole;
 
 import '../../core/app_config.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../shared/widgets.dart' show openExternalUrl;
 
 /// The two tick boxes every sign-up surface must carry, and the one place their
