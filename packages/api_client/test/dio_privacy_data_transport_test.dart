@@ -7,7 +7,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:test/test.dart';
 
 // Lane dpdp-rights: the client of GET /v1/account/export and
-// GET|PUT|DELETE /v1/account/nominee (services/platform/src/routes/account-data.ts).
+// GET|PUT|DELETE /v1/account/nominee (services/platform/src/routes/account-export.ts, account-nominee.ts).
 
 class _FakeAdapter implements HttpClientAdapter {
   _FakeAdapter(this.body, {this.status = 200});
@@ -140,5 +140,20 @@ void main() {
     ).readNominee(accessToken: 'tok');
     expect(r, isA<core.Ok<core.PrivacyNominee?>>());
     expect((r as core.Ok<core.PrivacyNominee?>).value, isNull);
+  });
+
+  test('DELETE is read by its status: 204 removed, a 429 is not', () async {
+    expect(
+      (await _transport(
+        _FakeAdapter('', status: 204),
+      ).removeNominee(accessToken: 'tok')).isOk,
+      isTrue,
+    );
+    expect(
+      (await _transport(
+        _FakeAdapter('{"error":"rate_limited"}', status: 429),
+      ).removeNominee(accessToken: 'tok')).isOk,
+      isFalse,
+    );
   });
 }

@@ -5,7 +5,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 /// dio-backed [core.PrivacyDataTransport] — the client for the platform
 /// Worker's DPDP routes (lane dpdp-rights, Do 3 and Do 4;
-/// `services/platform/src/routes/account-data.ts`):
+/// `services/platform/src/routes/account-export.ts, account-nominee.ts`):
 ///
 /// - `GET {platformBaseUrl}/v1/account/export` — everything held server-side
 ///   about the signed-in account, one JSON file;
@@ -138,11 +138,17 @@ class DioPrivacyDataTransport implements core.PrivacyDataTransport {
       return const core.Result<void>.err(_noSession);
     }
     try {
-      await _dio.delete<dynamic>(
+      final Response<dynamic> res = await _dio.delete<dynamic>(
         '$_base/v1/account/nominee',
-        options: _options(accessToken!),
+        options: _options(
+          accessToken!,
+        ).copyWith(validateStatus: (int? s) => s != null),
       );
-      return const core.Result<void>.ok(null);
+      return core.PrivacyNominee.removedForStatus(res.statusCode ?? 0)
+          ? const core.Result<void>.ok(null)
+          : core.Result<void>.err(
+              core.Failure('nominee remove refused: ${res.statusCode}'),
+            );
     } catch (e) {
       return core.Result<void>.err(
         core.Failure('nominee remove failed', cause: e),

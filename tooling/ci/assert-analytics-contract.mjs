@@ -909,6 +909,80 @@ const WIRE_CONTRACTS = [
       'NO APP CLIENT, BY CONSTRUCTION — the caller is tooling/feedback/move.mjs on the lead\'s laptop, with FEEDBACK_OPS_SECRET. It posts `{id, to, pr?, version?, duplicateOf?}` and prints the `{id, from, to, at}` answer or the refusal word; both sides are pinned outside Dart, by services/platform/test/feedback-triage.test.ts and tooling/ci/test/feedback-triage.test.mjs.',
     absentFromDart: '/v1/ops/',
   },
+  // ⏱ 2026-10-03 · lane dpdp-rights — the DPDP access export and the nominee
+  // (services/platform/src/routes/account-export.ts, account-nominee.ts), called by
+  // packages/api_client DioPrivacyDataTransport from the "Your privacy rights" screen.
+  {
+    id: 'account-export',
+    kind: 'body',
+    server: 'services/platform/src/routes/account-export.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_privacy_data_transport.dart',
+      member: 'Future<core.Result<String>> exportData(',
+      reader: 'j',
+    },
+    requiredBoth: ['schema'],
+    clientOnly: {},
+    serverOnly: {
+      generatedAt: 'when the file was made; the client saves the file as the server sent it and reads only `schema`.',
+      subject: 'the account the export is about, for the person reading the file.',
+      install: 'the install id whose pseudonymous rows were included, or null.',
+      note: 'a sentence for the person reading the file.',
+      stores: 'the data itself, `<db>.<table>` -> rows; saved whole, never interpreted by the app.',
+    },
+  },
+  {
+    id: 'account-nominee-get',
+    kind: 'body',
+    server: 'services/platform/src/routes/account-nominee.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_privacy_data_transport.dart',
+      member: 'Future<core.Result<core.PrivacyNominee?>> readNominee(',
+      reader: 'data',
+    },
+    requiredBoth: ['nominee'],
+    clientOnly: {},
+    serverOnly: {},
+  },
+  {
+    id: 'account-nominee-put',
+    kind: 'body',
+    server: 'services/platform/src/routes/account-nominee.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_privacy_data_transport.dart',
+      member: 'Future<core.Result<core.PrivacyNominee>> writeNominee(',
+      reader: 'data',
+    },
+    requiredBoth: ['nominee'],
+    clientOnly: {},
+    serverOnly: {},
+  },
+  {
+    id: 'account-nominee-delete',
+    kind: 'status',
+    servers: ['services/platform/src/routes/account-nominee.ts'],
+    client: {
+      file: 'packages/core/lib/src/privacy_data_transport.dart',
+      member: 'static bool removedForStatus(',
+    },
+    mustMap: [429],
+    bodyIsNotTheContract:
+      'DioPrivacyDataTransport.removeNominee reads only the status: success is a 204 with no body and every refusal is `{error}` beside a literal status, so the STATUS SET is the contract.',
+  },
+  {
+    id: 'feedback-verify-get',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is a person following the one-time link the verification mail of a signed-out DPDP rights request carries. It answers an HTML page whose one button POSTs to the same URL; it changes nothing by itself.',
+    absentFromDart: '/v1/feedback/verify',
+  },
+  {
+    id: 'feedback-verify-post',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is the button on the GET page. It reads the status (200, or 404 for a token it does not know), not a body; services/platform/test/privacy-requests.test.ts pins both.',
+    absentFromDart: '/v1/feedback/verify',
+  },
   // ⏱ 2026-10-01 · PB-27 — a box's config-hash report (services/platform/src/routes/box-manifest.ts).
   {
     id: 'box-manifest',

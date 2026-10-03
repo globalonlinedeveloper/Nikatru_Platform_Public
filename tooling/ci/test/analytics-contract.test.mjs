@@ -306,6 +306,12 @@ const LIMB5_FILES = [
   // the one transport that reads its answer.
   'services/platform/src/routes/feedback.ts',
   'packages/api_client/lib/src/dio_feedback_transport.dart',
+  // ⏱ 2026-10-03 · lane dpdp-rights: the export and nominee body pins and the
+  // nominee-delete status pin — the two routes, the transport, core's mapping.
+  'services/platform/src/routes/account-export.ts',
+  'services/platform/src/routes/account-nominee.ts',
+  'packages/api_client/lib/src/dio_privacy_data_transport.dart',
+  'packages/core/lib/src/privacy_data_transport.dart',
 ];
 
 const realFiles = () =>
@@ -795,7 +801,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-02 (AB-A4-01): + POST /v1/sessions/revoke-all is a body pin now that log-out-all calls it.
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 23 -> 24 pinned, 16 -> 15 gaps.
     // ⏱ 2026-10-03 · club-rt-support stack: AB-A4-01 (revoke-all pin) + PB-27 (box-manifest gap) on one tree — 40 routes, 25 pinned, 15 gaps.
-    assert.match(r.out, /51 shared route\(s\) from tooling\/platform-register\.json: 28 pinned, 23 printed gap/); // ⏱ 2026-10-03 club-rt-rights stack (#1201 + #1191 + #1176 on one tree): re-measured off the guard. // ⏱ 2026-10-03 club-rt-support merged over main (club-st-singles: +2 routes, +2 pinned): 44 -> 46 routes, 26 -> 28 pinned. ⏱ 2026-10-03 (feedback-intake/-triage): 40 -> 44 routes, feedback-submit a body pin, the unsubscribe pair and the ops move gaps. ⏱ 2026-10-01 (PB-27): 39 -> 40 routes, POST /v1/ops/box-manifest. ⏱ 2026-10-02 (AB-A4-01): revoke-all became a body pin. ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.out, /57 shared route\(s\) from tooling\/platform-register\.json: 32 pinned, 25 printed gap/); // ⏱ 2026-10-03 lane dpdp-rights: +6 routes — account-export, account-nominee-get/-put (body pins), account-nominee-delete (status pin), feedback-verify-get/-post (printed gaps). // ⏱ 2026-10-03 club-rt-rights stack (#1201 + #1191 + #1176 on one tree): re-measured off the guard. // ⏱ 2026-10-03 club-rt-support merged over main (club-st-singles: +2 routes, +2 pinned): 44 -> 46 routes, 26 -> 28 pinned. ⏱ 2026-10-03 (feedback-intake/-triage): 40 -> 44 routes, feedback-submit a body pin, the unsubscribe pair and the ops move gaps. ⏱ 2026-10-01 (PB-27): 39 -> 40 routes, POST /v1/ops/box-manifest. ⏱ 2026-10-02 (AB-A4-01): revoke-all became a body pin. ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -1303,7 +1309,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-10-02 · merged with ST-SETTINGS on one tree: 22 -> 23 pinned, 16 -> 15 gaps.
     // ⏱ 2026-10-01 (PB-27): 15 -> 16 gaps, POST /v1/ops/box-manifest (a box's cron, no app client).
     // ⏱ 2026-10-03 · club-rt-support stack: revoke-all pin + box-manifest gap on one tree — 24 pinned, 15 gaps.
-    assert.match(r.out, /27 pinned, 23 printed gap/); // ⏱ 2026-10-03 club-rt-rights stack (#1201 + #1191 + #1176 on one tree): re-measured off the guard. // ⏱ 2026-10-03 club-rt-support merged over main: +2 pinned (apple-code, identity-change). ⏱ 2026-10-03 (feedback-intake/-triage): 24 -> 25 pinned (feedback-submit), 15 -> 18 gaps (the unsubscribe pair, the ops move). ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    assert.match(r.out, /31 pinned, 25 printed gap/); // ⏱ 2026-10-03 lane dpdp-rights: +6 routes — account-export, account-nominee-get/-put (body pins), account-nominee-delete (status pin), feedback-verify-get/-post (printed gaps). // ⏱ 2026-10-03 club-rt-rights stack (#1201 + #1191 + #1176 on one tree): re-measured off the guard. // ⏱ 2026-10-03 club-rt-support merged over main: +2 pinned (apple-code, identity-change). ⏱ 2026-10-03 (feedback-intake/-triage): 24 -> 25 pinned (feedback-submit), 15 -> 18 gaps (the unsubscribe pair, the ops move). ⏱ 2026-10-01 (st-money-ready): POST /v1/checkout became a body pin. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import inventory from '../../../tooling/legal/data-inventory.json';
-import accountData, { WITHHELD } from '../src/routes/account-data';
+import accountExport, { WITHHELD } from '../src/routes/account-export';
+import accountNominee from '../src/routes/account-nominee';
 import { eraseTargets, erasureTargets } from '../../_shared/src/erasure';
 import { memoryRateLimiter } from '../../_shared/src/ports/fakes/ratelimit';
 import type { AppEnv } from '../src/types';
@@ -59,7 +60,8 @@ function routes(userId: string) {
     c.set('requestId', 'test-export');
     await next();
   });
-  a.route('/v1', accountData);
+  a.route('/v1', accountExport);
+  a.route('/v1', accountNominee);
   return a;
 }
 

@@ -5895,7 +5895,7 @@
       "id": "retention.d1.platform_db.privacy_nominees",
       "kind": "retention",
       "store": "d1:platform_db:privacy_nominees",
-      "what": "⏱ 2026-10-03 · lane dpdp-rights. At most one nominee per account (DPDP Act s.14): a name and an e-mail address. Written only by PUT /v1/account/nominee (services/platform/src/routes/account-data.ts), removed by DELETE.",
+      "what": "⏱ 2026-10-03 · lane dpdp-rights. At most one nominee per account (DPDP Act s.14): a name and an e-mail address. Written only by PUT /v1/account/nominee (services/platform/src/routes/account-nominee.ts), removed by DELETE.",
       "rule": "keep",
       "keepWhy": "A LIVE CHOICE, at most one row per account (PRIMARY KEY user_id). Deleting it by age would silently cancel a nomination the person relies on. It carries `user_id`, so it leaves with the account through the derived erasure sweep (tooling/legal/data-inventory.json `table:platform_db.privacy_nominees`, erasure `purge`).",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",

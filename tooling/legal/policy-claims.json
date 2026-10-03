@@ -179,9 +179,9 @@
       "assert": {
         "kind": "present",
         "files": [
-          "services/platform/src/routes/account-data.ts"
+          "services/platform/src/routes/account-nominee.ts"
         ],
-        "pattern": "accountData\\.put\\('/account/nominee'",
+        "pattern": "accountNominee\\.put\\('/account/nominee'",
         "why": "The nomination the paragraph describes is PUT /v1/account/nominee (a name and an address, nothing more), erased with the account (services/platform/test/account-data.test.ts)."
       }
     },

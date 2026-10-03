@@ -619,7 +619,7 @@
       "method": "GET",
       "path": "/v1/account/export",
       "auth": "required",
-      "owningFile": "services/platform/src/routes/account-data.ts",
+      "owningFile": "services/platform/src/routes/account-export.ts",
       "purpose": "⏱ 2026-10-03 · lane dpdp-rights (O-SERVER-DATA-EXPORT-MISSING). The DPDP ACCESS request answered at once: every row of every table carrying `user_id` in platform_db and in every app database the Worker binds (APP_TARGETS), read through the SAME schema-derived walk the erasure uses (services/_shared/src/erasure.ts exportUserRows), plus the install's consent records and usage statistics when the app names its `anon_id`. One JSON file (`schema: nikatru.data-export/1`), credential-shaped columns WITHHELD. Per-person burst breaker EVENTS_LIMITER keyed `privacy:<sub>`. tooling/legal/data-inventory.json names this file as every personal-data store's reader.",
       "client": {
         "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
@@ -632,7 +632,7 @@
       "method": "GET",
       "path": "/v1/account/nominee",
       "auth": "required",
-      "owningFile": "services/platform/src/routes/account-data.ts",
+      "owningFile": "services/platform/src/routes/account-nominee.ts",
       "purpose": "⏱ 2026-10-03 · lane dpdp-rights (DPDP Act s.14). The one nominee the account holder named: `{ nominee: { name, email, updatedAt } | null }` from platform_db.privacy_nominees. EVENTS_LIMITER keyed `privacy:<sub>`.",
       "client": {
         "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
@@ -645,7 +645,7 @@
       "method": "PUT",
       "path": "/v1/account/nominee",
       "auth": "required",
-      "owningFile": "services/platform/src/routes/account-data.ts",
+      "owningFile": "services/platform/src/routes/account-nominee.ts",
       "purpose": "⏱ 2026-10-03 · lane dpdp-rights (DPDP Act s.14). Sets or replaces the nominee: `{ name, email }` and no other key (422), body bounded at 1 KiB, upserted on PRIMARY KEY user_id. EVENTS_LIMITER keyed `privacy:<sub>`.",
       "client": {
         "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
@@ -658,7 +658,7 @@
       "method": "DELETE",
       "path": "/v1/account/nominee",
       "auth": "required",
-      "owningFile": "services/platform/src/routes/account-data.ts",
+      "owningFile": "services/platform/src/routes/account-nominee.ts",
       "purpose": "⏱ 2026-10-03 · lane dpdp-rights. Removes the nominee (204). EVENTS_LIMITER keyed `privacy:<sub>`. Account deletion removes it too, through the derived erasure walk.",
       "client": {
         "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",

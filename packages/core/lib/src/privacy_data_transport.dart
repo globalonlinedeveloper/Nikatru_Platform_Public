@@ -5,7 +5,7 @@ import 'result.dart';
 /// an e-mail address, nothing more. Lane dpdp-rights, Do 4.
 ///
 /// Mirrors the platform Worker's `GET|PUT /v1/account/nominee` answer
-/// (`services/platform/src/routes/account-data.ts`).
+/// (`services/platform/src/routes/account-export.ts, account-nominee.ts`).
 class PrivacyNominee {
   const PrivacyNominee({required this.name, required this.email});
 
@@ -35,6 +35,26 @@ class PrivacyNominee {
     final Object? email = j['email'];
     if (name is! String || email is! String) return null;
     return PrivacyNominee(name: name, email: email);
+  }
+
+  /// What a `DELETE /v1/account/nominee` status means: removed, or not. 204 is
+  /// the one success; every refusal the route can answer is mapped, so a new
+  /// status is a build failure (tooling/ci/assert-analytics-contract.mjs pins
+  /// this set against the route's literal statuses), never a silent "removed".
+  static bool removedForStatus(int status) {
+    switch (status) {
+      case 204:
+        return true;
+      case 400:
+      case 401:
+      case 413:
+      case 422:
+      case 429:
+      case 503:
+        return false;
+      default:
+        return false;
+    }
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
