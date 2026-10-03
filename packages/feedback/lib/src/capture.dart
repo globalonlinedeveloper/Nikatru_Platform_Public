@@ -47,18 +47,33 @@ class FeedbackShot {
   final double pixelRatio;
 }
 
+/// The render object of the widget keyed [key]: through the key itself for a
+/// [GlobalKey], else by walking the element tree from the root — so an app whose
+/// root boundary carries a plain [Key] (the shipping app's store-capture frame)
+/// is captured without touching its app root.
+RenderObject? boundaryRenderObject(Key key) {
+  if (key is GlobalKey) return key.currentContext?.findRenderObject();
+  RenderObject? found;
+  void visit(Element e) {
+    if (found != null) return;
+    if (e.widget.key == key) {
+      found = e.renderObject;
+      return;
+    }
+    e.visitChildren(visit);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(visit);
+  return found;
+}
+
 /// Captures the screen under [boundaryKey] (default design_system's
-/// [ScreenCapture.boundaryKey], which the chassis app root mounts)
-/// with its redaction rectangles, or null when nothing is mounted there. The
-/// returned [FeedbackShot.image] is NOT yet redacted: [renderShot] paints the
-/// locked rectangles over it, and is the only way out of this package.
-Future<FeedbackShot?> captureScreen({
-  GlobalKey? boundaryKey,
-  double pixelRatio = 1,
-}) async {
-  final RenderObject? ro = (boundaryKey ?? ScreenCapture.boundaryKey)
-      .currentContext
-      ?.findRenderObject();
+/// [ScreenCapture.boundaryKey], which the chassis app root mounts) with its
+/// redaction rectangles, or null when nothing is mounted there. The returned
+/// [FeedbackShot.image] is NOT yet redacted: [renderShot] paints the locked
+/// rectangles over it, and is the only way out of this package.
+Future<FeedbackShot?> captureScreen({Key? boundaryKey, double pixelRatio = 1}) async {
+  final RenderObject? ro = boundaryRenderObject(boundaryKey ?? ScreenCapture.boundaryKey);
   if (ro is! RenderRepaintBoundary || !ro.hasSize) return null;
   final ui.Image image = await ro.toImage(pixelRatio: pixelRatio);
   final List<Rect> locked = redactionRects(ro)

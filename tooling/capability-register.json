@@ -733,6 +733,13 @@
         "dependency": "purchases_flutter"
       },
       "detail": "StoreKit on iOS and macOS and the Play Billing Library on Android, behind one Dart call — the platform difference is real and somebody has to absorb it once. It is a SIBLING of packages/purchases rather than a dependency OF it, and that is the measured part rather than a preference: Subly and every stamped app depend on nikatru_purchases, so declaring purchases_flutter there would link the native IAP payload into every app in the portfolio, and assert-play-declarations limb D (dependency-set EQUALITY) plus the Apple binaryInventory would then demand a sworn purchase-history row from every app at once. [ADR 078] (LOCKED 2026-09-11, amending [ADR 059] decision 10's \"Shape A for v1\") makes Android, iOS and the Mac App Store sell in-app at v1, so the reason is no longer \"mobile is free\": it is that an app which has not opted in must not link the IAP payload or swear the row UNTIL it does. An app opts IN by depending on this package and declaring billing.mobileIap in its app.yaml; assert-app-yaml limb 6 holds those two together in both directions. [ADR 067] decision 7 / [ADR 039] D5."
+    },
+    "packages/feedback": {
+      "reason": "codegen",
+      "evidence": {
+        "buildFile": "packages/feedback/l10n.yaml"
+      },
+      "detail": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT). A build step, not a name: the package's strings are its OWN ARB set (packages/feedback/lib/l10n/feedback_<code>.arb, one per SUPPORTED code of tooling/i18n/locales.json), compiled into lib/src/l10n/feedback_strings.g.dart by `node tooling/i18n/locales.mjs --write`; tooling/ci/assert-locale-register.mjs finds the set through l10n.yaml (L2: a supported code with no ARB is red) and fails a table the ARBs do not render. It cannot be gen-l10n, because gen-l10n would make the package declare `intl`, which assert-package-boundaries reads as an adapter seam (packages/design_system/l10n.yaml). It is a package rather than chassis_screens code because every app, the brick, and lane help-search's \"still stuck? ask us\" open the same sheet, and its capture and outbox are testable without any app."
     }
   },
   "demandGatedModules": {
@@ -1317,6 +1324,18 @@
         "extensions/core/tokens.json"
       ],
       "consumersNote": "PATHS, NOT consumerRoots, and that is why `package` is null on this row: direction (a) of check 4 is skipped for a package with no pub name, so these are the three COMMITTED OUTPUTS the emitter writes rather than three pubspecs that depend on it. Direction (c) of check 4, added 2026-09-05, VERIFIES them as paths — each must be a non-empty file on disk, and this note must exist. That limb was added because the row's first version was not checked at all: substituting one fabricated path for all three left assert-capability-register at exit 0 with no mention of the row, which is a worse state than the `unconsumedReason` waiver it replaced, since the waiver at least printed on every passing run. Was `[]` with an unconsumedReason until 2026-09-05; [ADR 067] decision 1 moved the DTCG source to contracts/tokens/dtcg/ and added the Dart and JSON emitters, so the waiver was removed rather than left to describe a tree that had changed. Each output is gated three ways: ci.yml's `site-tokens` lane deletes all three, rebuilds, and diffs each on its own line; tooling/ci/assert-palette-consistent.mjs holds all three equal to the DTCG source without needing an install; and this row's paths are checked here. The Dart output has three live Dart readers inside packages/design_system — app_text.dart's six named styles, build_app_theme.dart's app-wide textTheme and brand_lockup.dart's publisher footer — and is exported from nikatru_design_system.dart so an app can reach it."
+    },
+    {
+      "id": "feedback",
+      "capability": "\"Report a problem\" (lane feedback-intake): the one feedback page every app opens from the chassis Help section — a category, a required description, optional steps, an optional screenshot captured under the app root with every text field and every design_system `Sensitive` widget painted over before it leaves the device, markup (blur, highlight, draw), privacy-minimal diagnostics, opt-in scrubbed logs, the two contact consents and an exact preview of the payload. Reports go through core's DurableOutbox under their idempotency key, so an offline report is sent once, later. Its strings are its own ARB set, compiled from the locale register by tooling/i18n/locales.mjs.",
+      "owner": "packages/feedback",
+      "package": "nikatru_feedback",
+      "seams": [],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "apps/subscriptiontracker"
+      ],
+      "noSeamReason": "A page and its wiring, not a contract: the one seam it sends through, FeedbackTransport, is core's (packages/core/lib/src/feedback_transport.dart, beside ContentReportTransport), implemented by packages/api_client's DioFeedbackTransport; this package can see no provider container and no plugin, so there is nothing here for a second seam to abstract."
     }
   ],
   "cloneTells": {

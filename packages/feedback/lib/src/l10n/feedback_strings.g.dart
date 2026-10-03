@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart' show Locale;
 
 /// The locale codes this table carries: the register's supported set, read
 /// when the table was rendered.
+// locale-list: rendered FROM the register by tooling/i18n/locales.mjs, not typed.
 const List<String> kFeedbackLocaleCodes = <String>['en', 'ta', 'hi'];
 
 /// The "Report a problem" strings in one locale.
@@ -78,7 +79,8 @@ class FeedbackStrings {
 
   String get sending => _m['sending']!;
 
-  String sentBody(String id) => _m['sentBody']!.replaceAll('{id}', id);
+  String sentBody(String id) =>
+      _m['sentBody']!.replaceAll('{id}', id);
 
   String get stepsLabel => _m['stepsLabel']!;
 }
@@ -108,14 +110,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupUndo': 'Undo',
     'notifyConsent': 'Tell me when it is fixed',
     'previewTitle': 'Exactly what will be sent',
-    'queuedBody':
-        'You are offline. Your report is saved on this device and will be sent once, when you are back online.',
-    'refusedBody':
-        'Your report could not be sent. You can email support instead.',
+    'queuedBody': 'You are offline. Your report is saved on this device and will be sent once, when you are back online.',
+    'refusedBody': 'Your report could not be sent. You can email support instead.',
     'replyConsent': 'You may reply to me',
     'reportProblem': 'Report a problem',
-    'screenshotBlurNote':
-        'Text fields and private details are blurred before anything is sent. You can blur more, but you cannot remove the blur.',
+    'screenshotBlurNote': 'Text fields and private details are blurred before anything is sent. You can blur more, but you cannot remove the blur.',
     'send': 'Send report',
     'sending': 'Sending…',
     'sentBody': 'Thank you. Your report number is {id}.',
@@ -136,8 +135,7 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'descriptionLabel': 'என்ன நடந்தது?',
     'descriptionRequired': 'சிக்கலை விவரிக்கவும்.',
     'emailSupport': 'அதற்குப் பதிலாக ஆதரவுக்கு மின்னஞ்சல் அனுப்பு',
-    'includeLogs':
-        'சமீபத்திய செயலிப் பதிவுகளைச் சேர்க்கவும் (தனிப்பட்ட விவரங்கள் நீக்கப்பட்டவை)',
+    'includeLogs': 'சமீபத்திய செயலிப் பதிவுகளைச் சேர்க்கவும் (தனிப்பட்ட விவரங்கள் நீக்கப்பட்டவை)',
     'markupBlur': 'மங்கலாக்கு',
     'markupDone': 'முடிந்தது',
     'markupDraw': 'வரை',
@@ -146,14 +144,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupUndo': 'செயல்தவிர்',
     'notifyConsent': 'சரிசெய்யப்பட்டதும் எனக்குத் தெரிவிக்கவும்',
     'previewTitle': 'சரியாக அனுப்பப்படுவது இதுதான்',
-    'queuedBody':
-        'நீங்கள் இணைப்பில் இல்லை. உங்கள் புகார் இந்தச் சாதனத்தில் சேமிக்கப்பட்டுள்ளது, மீண்டும் இணைப்பில் வந்ததும் ஒருமுறை அனுப்பப்படும்.',
-    'refusedBody':
-        'உங்கள் புகாரை அனுப்ப முடியவில்லை. அதற்குப் பதிலாக ஆதரவுக்கு மின்னஞ்சல் அனுப்பலாம்.',
+    'queuedBody': 'நீங்கள் இணைப்பில் இல்லை. உங்கள் புகார் இந்தச் சாதனத்தில் சேமிக்கப்பட்டுள்ளது, மீண்டும் இணைப்பில் வந்ததும் ஒருமுறை அனுப்பப்படும்.',
+    'refusedBody': 'உங்கள் புகாரை அனுப்ப முடியவில்லை. அதற்குப் பதிலாக ஆதரவுக்கு மின்னஞ்சல் அனுப்பலாம்.',
     'replyConsent': 'நீங்கள் எனக்குப் பதிலளிக்கலாம்',
     'reportProblem': 'சிக்கலைப் புகாரளி',
-    'screenshotBlurNote':
-        'எதையும் அனுப்பும் முன் உரைப் புலங்களும் தனிப்பட்ட விவரங்களும் மங்கலாக்கப்படும். நீங்கள் மேலும் மங்கலாக்கலாம், ஆனால் மங்கலை நீக்க முடியாது.',
+    'screenshotBlurNote': 'எதையும் அனுப்பும் முன் உரைப் புலங்களும் தனிப்பட்ட விவரங்களும் மங்கலாக்கப்படும். நீங்கள் மேலும் மங்கலாக்கலாம், ஆனால் மங்கலை நீக்க முடியாது.',
     'send': 'புகாரை அனுப்பு',
     'sending': 'அனுப்பப்படுகிறது…',
     'sentBody': 'நன்றி. உங்கள் புகார் எண் {id}.',
@@ -183,14 +178,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupUndo': 'पूर्ववत करें',
     'notifyConsent': 'ठीक होने पर मुझे बताएँ',
     'previewTitle': 'ठीक यही भेजा जाएगा',
-    'queuedBody':
-        'आप ऑफ़लाइन हैं। आपकी रिपोर्ट इस डिवाइस पर सहेजी गई है और ऑनलाइन होने पर एक बार भेजी जाएगी।',
-    'refusedBody':
-        'आपकी रिपोर्ट नहीं भेजी जा सकी। आप इसके बजाय सहायता को ईमेल कर सकते हैं।',
+    'queuedBody': 'आप ऑफ़लाइन हैं। आपकी रिपोर्ट इस डिवाइस पर सहेजी गई है और ऑनलाइन होने पर एक बार भेजी जाएगी।',
+    'refusedBody': 'आपकी रिपोर्ट नहीं भेजी जा सकी। आप इसके बजाय सहायता को ईमेल कर सकते हैं।',
     'replyConsent': 'आप मुझे जवाब दे सकते हैं',
     'reportProblem': 'समस्या की रिपोर्ट करें',
-    'screenshotBlurNote':
-        'कुछ भी भेजने से पहले टेक्स्ट फ़ील्ड और निजी जानकारी धुंधली कर दी जाती है। आप और धुंधला कर सकते हैं, पर धुंधलापन हटा नहीं सकते।',
+    'screenshotBlurNote': 'कुछ भी भेजने से पहले टेक्स्ट फ़ील्ड और निजी जानकारी धुंधली कर दी जाती है। आप और धुंधला कर सकते हैं, पर धुंधलापन हटा नहीं सकते।',
     'send': 'रिपोर्ट भेजें',
     'sending': 'भेजा जा रहा है…',
     'sentBody': 'धन्यवाद। आपकी रिपोर्ट संख्या {id} है।',

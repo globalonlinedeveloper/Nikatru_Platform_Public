@@ -294,8 +294,6 @@
   "settingsAboutSection": "इस ऐप के बारे में",
   "rateApp": "{appName} को रेट करें",
   "rateAppUnavailable": "इस बिल्ड से स्टोर नहीं खुल सका।",
-  "sendFeedback": "फ़ीडबैक भेजें",
-  "feedbackMailSubject": "{appName} फ़ीडबैक",
   "overBudgetTitle": "आप अपने मासिक बजट से ऊपर हैं",
   "overBudgetBody": "आपकी सदस्यताओं का औसत अब {spent} प्रति माह है, जो आपके {budget} के बजट से ऊपर है।",
   "categoryStreaming": "स्ट्रीमिंग",

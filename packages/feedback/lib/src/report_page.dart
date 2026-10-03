@@ -69,10 +69,14 @@ class FeedbackHost {
   /// hides the logs box altogether.
   final List<String> Function()? readLogs;
 
-  /// The root boundary the screenshot is taken from, when the app mounts its
-  /// own rather than design_system's ScreenCaptureBoundary.
-  final GlobalKey? boundaryKey;
+  /// The key of the root boundary the screenshot is taken from, when the app
+  /// mounts its own rather than design_system's ScreenCaptureBoundary.
+  final Key? boundaryKey;
 }
+
+/// The words of the "Report a problem" row, in [context]'s locale.
+String reportProblemLabelOf(BuildContext context) =>
+    FeedbackStrings.of(Localizations.localeOf(context)).reportProblem;
 
 /// Captures the current screen (redaction rectangles found BEFORE the page
 /// opens over it), then opens the report page. [initialDescription] and
@@ -83,7 +87,7 @@ Future<void> openReportProblem(
   FeedbackHost host, {
   String initialDescription = '',
   FeedbackCategory category = FeedbackCategory.bug,
-  GlobalKey? boundaryKey,
+  Key? boundaryKey,
 }) async {
   final double ratio = MediaQuery.devicePixelRatioOf(
     context,

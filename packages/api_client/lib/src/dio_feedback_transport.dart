@@ -17,8 +17,11 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 /// Every answer is reduced to [core.FeedbackSendResult]: 201/200 sent; no
 /// answer, 5xx, 503 (`intake_closed`) and 429 retry later (the outbox keeps the
 /// report, and the Retry-After is passed on); any other 4xx refused.
+/// The feedback intake's one host (services/feedback/wrangler.jsonc `routes`).
+const String kFeedbackIntakeUrl = 'https://feedback.nikatru.com';
+
 class DioFeedbackTransport implements core.FeedbackTransport {
-  DioFeedbackTransport({required String feedbackBaseUrl, Dio? httpClient})
+  DioFeedbackTransport({String feedbackBaseUrl = kFeedbackIntakeUrl, Dio? httpClient})
     : _base = feedbackBaseUrl,
       _dio = httpClient ?? Dio();
 

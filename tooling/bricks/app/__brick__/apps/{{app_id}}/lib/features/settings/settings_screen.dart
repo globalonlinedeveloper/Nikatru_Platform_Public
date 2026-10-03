@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:nikatru_feedback/nikatru_feedback.dart'
+    show openReportProblem, reportProblemLabelOf;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 import '../../core/app_config.dart';
@@ -120,6 +122,10 @@ class SettingsScreen extends ConsumerWidget {
       onOpenRefundPolicy: () => _openUrl(AppConfig.refundUrl),
       supportEmail: AppConfig.supportEmail,
       onContactSupport: _contactSupport,
+      // Lane feedback-intake: packages/feedback's sheet; the mail stays above.
+      onReportProblem: () =>
+          openReportProblem(context, ref.read(feedbackHostProvider)),
+      reportProblemLabel: reportProblemLabelOf(context),
       // O-PLAY-AI-CONTENT-REPORTING: only in an app that generates AI content.
       onReportContent: AppConfig.generatesAiContent
           ? () => showReportContentDialog(context, ref)

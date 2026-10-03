@@ -310,6 +310,7 @@ import 'package:flutter/widgets.dart' show Locale;
 
 /// The locale codes this table carries: the register's supported set, read
 /// when the table was rendered.
+// locale-list: rendered FROM the register by tooling/i18n/locales.mjs, not typed.
 const List<String> kFeedbackLocaleCodes = <String>[${codes.map((c) => `'${c}'`).join(', ')}];
 
 /// The "Report a problem" strings in one locale.

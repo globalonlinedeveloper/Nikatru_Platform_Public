@@ -106,7 +106,7 @@ class FeedbackDiagnostics {
   /// The wire form: no null value, and no `logs` key without the opt-in.
   Map<String, Object?> toJson() => <String, Object?>{
     'appVersion': app.appVersion,
-    'build': app.build,
+    if (app.build.isNotEmpty) 'build': app.build,
     'channel': app.channel,
     'platform': app.platform,
     if (app.osVersion != null) 'osVersion': app.osVersion,

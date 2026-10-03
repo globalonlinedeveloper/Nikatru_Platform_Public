@@ -5,6 +5,7 @@
 library;
 
 export 'src/capture.dart';
+export 'src/host.dart';
 export 'src/l10n/feedback_strings.g.dart';
 export 'src/markup_editor.dart' show MarkupEditorPage, MarkupKeys, ShotPreview;
 export 'src/outbox.dart';

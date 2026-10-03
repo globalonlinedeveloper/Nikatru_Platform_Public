@@ -161,4 +161,20 @@ void main() {
       );
     },
   );
+
+  testWidgets('an app root whose boundary carries a plain Key is captured too (the shipping app)', (WidgetTester tester) async {
+    const Key frame = Key('store-frame');
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (BuildContext context, Widget? child) => RepaintBoundary(key: frame, child: child),
+        home: Scaffold(body: TextField(controller: TextEditingController(text: 'private'))),
+      ),
+    );
+    await tester.runAsync(() async {
+      final FeedbackShot? shot = await captureScreen(boundaryKey: frame);
+      expect(shot, isNotNull);
+      expect(shot!.locked, hasLength(1));
+    });
+    expect(await captureScreen(boundaryKey: const Key('absent')), isNull);
+  });
 }
