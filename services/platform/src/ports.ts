@@ -61,6 +61,8 @@
 //     hand-off, the session list and revoke, the account read and delete, and the
 //     keep-alive. No other module builds an identity-provider URL (assert-ports
 //     limb 4). The fake (ports/fakes/identity.ts) is never selected here.
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: which rail SELLS on web is `checkoutRailFor(market)`
+// below, from the rendered CHECKOUT_RAIL_BY_MARKET — a buyer-declared market, never a header.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiLimits, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
 import { AI_MODEL_MAX_OUTPUT_TOKENS } from '../../_shared/src/ports/ai';

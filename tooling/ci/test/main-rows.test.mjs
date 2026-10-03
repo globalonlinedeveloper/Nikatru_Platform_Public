@@ -18,7 +18,11 @@
 //   M5  a Renovate squash passes only through its own `Rows:` line, which
 //       renovate.json prBodyNotes writes into the PR body it squashes with
 //   M6  the wiring: ci.yml guard-meta runs it on push to main only, through a
-//       STEP-level `if:`, with fetch-depth: 0, and ci-gate still counts skipped red
+//       STEP-level `if:`, with fetch-depth: 0, and ci-gate still counts skipped red.
+//       The ONE job-level `if:` guard-meta may carry is #1192's draft predicate,
+//       and only while ci-gate skips on it too (assert-green-means-ran A6): a
+//       draft then skips both, and every other run starts both. Any other `if:`,
+//       or the draft one without ci-gate's, is red (two red controls).
 //
 // Every repository is built with `git init` in a temp directory.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +34,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { judgeHistory, parseLog, PR_SUBJECT, ROWS_LINE } from '../assert-main-rows.mjs';
+import { parseWorkflow } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -222,6 +227,24 @@ describe('M5 — Renovate passes only through its own line', () => {
 });
 
 // ── M6 ───────────────────────────────────────────────────────────────────────
+// THE DRAFT PREDICATE, byte for byte as assert-green-means-ran.mjs declares it
+// (DRAFT_SKIP_IF / DRAFT_GATE_IF, ⏱ 2026-10-03, not exported: that file is a script).
+const DRAFT_SKIP_IF = 'github.event.pull_request.draft != true';
+const DRAFT_GATE_IF = `always() && ${DRAFT_SKIP_IF}`;
+const CI_YML_REL = join('.github', 'workflows', 'ci.yml');
+
+/** null when guard-meta's job-level `if:` is absent, or is exactly DRAFT_SKIP_IF while
+ *  ci-gate's is exactly DRAFT_GATE_IF (A6's one admitted lane `if:`); else the problem. */
+function guardMetaIfProblem(wf) {
+  assert.ok(wf && wf.jobs.has('guard-meta') && wf.jobs.has('ci-gate'), 'ci.yml has no guard-meta or ci-gate');
+  const gm = wf.jobs.get('guard-meta').jobIf?.cond ?? null;
+  const gate = wf.jobs.get('ci-gate').jobIf?.cond ?? null;
+  if (gm === null) return null;
+  if (gm !== DRAFT_SKIP_IF) return `a job-level if: on guard-meta (\`${gm}\`) would read as skipped in ci-gate`;
+  if (gate !== DRAFT_GATE_IF) return `guard-meta skips drafts but ci-gate does not skip on it (its if: is ${gate === null ? 'absent' : `\`${gate}\``})`;
+  return null;
+}
+
 describe('M6 — the wiring in ci.yml', () => {
   const yml = () => readFileSync(CI_YML, 'utf8');
   const job = (src, name) => {
@@ -238,11 +261,34 @@ describe('M6 — the wiring in ci.yml', () => {
     const step = gm.slice(gm.lastIndexOf('- name:', at), at);
     assert.match(step, /if: \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && github\.ref == 'refs\/heads\/main'/);
     assert.match(gm, /fetch-depth: 0/);
-    // ⏱ 2026-10-03 · merge of main (#1192) into club/rt-ports: the ONE job-level `if:` allowed is the
-    // draft predicate every ci.yml job now shares with ci-gate (assert-green-means-ran A10). It is
-    // true on a push to main (no pull request, so no draft), the one event this step runs on.
-    const jobIfs = [...gm.slice(0, gm.indexOf('steps:')).matchAll(/\n {4}if: (.*)/g)].map((m) => m[1].trim());
-    assert.ok(jobIfs.every((c) => c === 'github.event.pull_request.draft != true'), `a job-level if: on guard-meta other than the draft predicate would read as skipped in ci-gate: ${jobIfs.join(' | ')}`);
+    assert.equal(guardMetaIfProblem(parseWorkflow(REPO, CI_YML_REL)), null);
+  });
+
+  test('red controls: guard-meta gated on main, or on the draft predicate ci-gate does not share, is refused', () => {
+    const src = yml();
+    const gmAt = src.indexOf('\n  guard-meta:\n');
+    const gateAt = src.indexOf('\n  ci-gate:\n');
+    assert.ok(gmAt > 0 && gateAt > gmAt, 'ci.yml has no guard-meta before ci-gate');
+    // Rewrite one job's job-level `if:` (drop whatever it carries, then insert
+    // `cond` after its `runs-on:`), and judge the result with the same parser.
+    const withIf = (text, name, cond) => {
+      const start = text.indexOf(`\n  ${name}:\n`);
+      const next = text.slice(start + 1).search(/\n {2}[a-z0-9-]+:\n/);
+      const end = next === -1 ? text.length : start + 1 + next;
+      let body = text.slice(start, end).replace(/\n {4}if:[^\n]*/, '');
+      if (cond !== null) body = body.replace(/(\n {4}runs-on:[^\n]*)/, `$1\n    if: ${cond}`);
+      return text.slice(0, start) + body + text.slice(end);
+    };
+    const judge = (text) => {
+      mkdirSync(join(TMP, 'wf', '.github', 'workflows'), { recursive: true });
+      writeFileSync(join(TMP, 'wf', CI_YML_REL), text);
+      return guardMetaIfProblem(parseWorkflow(join(TMP, 'wf'), CI_YML_REL));
+    };
+    const drafted = withIf(withIf(src, 'ci-gate', DRAFT_GATE_IF), 'guard-meta', DRAFT_SKIP_IF);
+    assert.equal(judge(drafted), null, 'green control: the draft pair (#1192) must pass');
+    assert.equal(judge(withIf(src, 'guard-meta', null)), null, 'green control: no job-level if: must pass');
+    assert.match(judge(withIf(drafted, 'guard-meta', "github.ref == 'refs/heads/main'")) ?? '', /would read as skipped/);
+    assert.match(judge(withIf(drafted, 'ci-gate', 'always()')) ?? '', /ci-gate does not skip on it/);
   });
 
   test('ci-gate still needs guard-meta, runs always and counts skipped red', () => {

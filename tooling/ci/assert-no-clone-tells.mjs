@@ -152,7 +152,12 @@ const REQUIRED_COVERAGE = [
     // the same 80 -> 100 from both sides. Re-measured on the merged tree with
     // `find packages/*/lib -name '*.dart'`: core 90, tree 287 - design_system
     // 53 = 234, so 100 still sits between them. Again after merging main's
-    // #1165: core 91, tree 291 - design_system 56 = 235. Unchanged.
+    // #1165: core 91, tree 291 - design_system 56 = 235. Unchanged. And after
+    // merging main at 04c2f22b: core 91, tree 292 - 56 = 236. Unchanged.
+    // ⏱ 2026-10-03 · the merged tree (club apply-platform + main + #1176): floor
+    // stays 100. Measured with `find packages/*/lib -name '*.dart'`: core 89,
+    // design_system 56, tree 290; 100 still clears core alone and sits below
+    // 290 - 56 = 234. Unchanged.
     floor: 100,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },
