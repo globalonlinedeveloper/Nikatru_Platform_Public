@@ -12,11 +12,13 @@
 // Every case runs against the REAL migrations on a real SQL engine, and every
 // refusal also asserts that NO ROW was written.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import subscriptions, {
+  MAX_PAGE,
   MAX_SUBSCRIPTIONS_PER_USER,
   PAYMENT_BODY_MAX_BYTES,
   SUBSCRIPTION_BODY_MAX_BYTES,
+  UNPAGED_LIST_MAX,
 } from '../src/routes/subscriptions';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -143,8 +145,40 @@ describe('rv2-services-030 — one ISO 4217 table, and price_minor is price', ()
     }
   });
 
-  it('KRW written the two-decimal way (won × 100) is refused — the 100× mail defect', async () => {
-    expect((await post({ name: 'x', price: 14900, currency: 'KRW', price_minor: 1490000 })).status).toBe(400);
+  // ⏱ 2026-10-03 · PR #1174 lead ruling 1(b), Scenario B. This case used to
+  // assert a 400, and that 400 dead-lettered every installed build's KRW edit.
+  it('🔴 a pre-PR build’s KRW body (won × 100) is a 201, STORED at the ISO scale (14900)', async () => {
+    const res = await post({ name: 'x', price: 14900, currency: 'KRW', price_minor: 1490000 });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as Row).price_minor).toBe(14900);
+    expect(db.rows('SELECT price, price_minor FROM subscriptions')).toEqual([{ price: 14900, price_minor: 14900 }]);
+  });
+
+  it('🔴 a pre-PR build’s KRW PATCH is normalised too, and its price_change row is written at the ISO scale', async () => {
+    const id = ((await (await post({ name: 'x', price: 9900, currency: 'KRW', price_minor: 9900 })).json()) as Row).id as string;
+    const res = await subs(U, `/v1/subscriptions/${id}`, {
+      method: 'PATCH',
+      body: { price: 14900, currency: 'KRW', price_minor: 1490000 },
+    });
+    expect(res.status).toBe(200);
+    expect(db.rows('SELECT price_minor FROM subscriptions')).toEqual([{ price_minor: 14900 }]);
+    expect(db.rows('SELECT old_price_minor, new_price_minor FROM price_change')).toEqual([
+      { old_price_minor: 9900, new_price_minor: 14900 },
+    ]);
+  });
+
+  it('the legacy scale is accepted for the 24 changed codes only: BHD 2.5 → 250 is stored 2500; USD/JPY/KWD gain nothing', async () => {
+    const bhd = await post({ name: 'x', price: 2.5, currency: 'BHD', price_minor: 250 });
+    expect(bhd.status).toBe(201);
+    expect(((await bhd.json()) as Row).price_minor).toBe(2500);
+    // JPY and KWD kept their scale, and USD is 2 under both: no second meaning.
+    expect((await post({ name: 'x', price: 649, currency: 'JPY', price_minor: 64900 })).status).toBe(400);
+    expect((await post({ name: 'x', price: 2.5, currency: 'KWD', price_minor: 250 })).status).toBe(400);
+    expect((await post({ name: 'x', price: 19.99, currency: 'USD', price_minor: 19990 })).status).toBe(400);
+  });
+
+  it('🔴 a KRW price_minor that is neither scale is still a 400 (149000 for ₩14,900)', async () => {
+    expect((await post({ name: 'x', price: 14900, currency: 'KRW', price_minor: 149000 })).status).toBe(400);
     expect(count()).toBe(0);
   });
 
@@ -152,7 +186,7 @@ describe('rv2-services-030 — one ISO 4217 table, and price_minor is price', ()
     const id = ((await (await post({ name: 'x' })).json()) as Row).id as string;
     const res = await subs(U, `/v1/subscriptions/${id}`, {
       method: 'PATCH',
-      body: { price: 2.5, currency: 'BHD', price_minor: 250 },
+      body: { price: 2.5, currency: 'BHD', price_minor: 25 },
     });
     expect(res.status).toBe(400);
     const pay = await subs(U, `/v1/subscriptions/${id}/payments`, {
@@ -220,14 +254,47 @@ describe('rv2-services-008 — GET / is bounded, and pages by keyset', () => {
     expect(list.map((r) => r.price)).toEqual([4, 3, 2, 1, 0]);
   });
 
-  it('the unpaged list holds a full account: the LIMIT is the cap, so it never truncates', async () => {
-    fill(MAX_SUBSCRIPTIONS_PER_USER);
-    expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(MAX_SUBSCRIPTIONS_PER_USER);
+  // ⏱ 2026-10-03 · PR #1174 lead ruling 2, review finding 3: the unpaged cap is
+  // 5000, NOT the 500 row cap, because rows from before the cap may exceed it.
+  it('the unpaged cap is 5000 and the paged maximum is still the row cap (500)', () => {
+    expect(UNPAGED_LIST_MAX).toBe(5000);
+    expect(MAX_PAGE).toBe(MAX_SUBSCRIPTIONS_PER_USER);
   });
 
-  it('🔴 the unpaged list is BOUNDED: an account over the cap (rows from before it) reads at most the cap', async () => {
-    fill(MAX_SUBSCRIPTIONS_PER_USER + 3);
-    expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(MAX_SUBSCRIPTIONS_PER_USER);
+  it('🔴 an account over the row cap (rows from before it) reads ALL its rows unpaged, with no warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fill(MAX_SUBSCRIPTIONS_PER_USER + 3);
+      expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(MAX_SUBSCRIPTIONS_PER_USER + 3);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('🔴 the unpaged list is BOUNDED at 5000, and a cut list logs ONE structured warning with no user id', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fill(UNPAGED_LIST_MAX + 2);
+      expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(UNPAGED_LIST_MAX);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const logged = String(warn.mock.calls[0][0]);
+      expect(JSON.parse(logged)).toMatchObject({ event: 'subscriptions_list_truncated', cap: UNPAGED_LIST_MAX });
+      expect(logged).not.toContain(U);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('exactly 5000 rows is not a cut: all served, no warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fill(UNPAGED_LIST_MAX);
+      expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(UNPAGED_LIST_MAX);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('?limit pages the WHOLE list exactly once, in list order, NULL prices last', async () => {

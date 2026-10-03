@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
+import 'package:subscriptiontracker/data/models/price_change.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 
 /// `intl` separates a LETTER-ended currency symbol from its number with a
@@ -195,18 +196,69 @@ void main() {
         expect(back.price, const Money(1549, 'INR'));
       },
     );
-    test('the exact integer column WINS over the legacy decimal one', () {
+    test('the exact integer column is read when it IS the decimal one', () {
       final Subscription back = Subscription.fromJson(<String, dynamic>{
         'id': '9',
         'name': 'X',
         'category': 'Other',
-        'price': 0.01,
+        'price': 15.49,
         'price_minor': 1549,
         'currency': 'usd',
         'cycle': 'monthly',
         'next_renewal': '2026-08-01',
       });
       expect(back.price, const Money(1549, 'USD'));
+    });
+    // ⏱ 2026-10-03 · PR #1174 lead ruling 1(a), review finding 2, Scenario A:
+    // a row a pre-#1174 build stored with KRW at two minor digits. Read with
+    // the ISO table (KRW 0) the exact column says ₩1,490,000; the REAL says
+    // ₩14,900, and the REAL is right under both scales.
+    test('🔴 a KRW row price=14900, price_minor=1490000 reads as ₩14,900', () {
+      final Subscription back = Subscription.fromJson(<String, dynamic>{
+        'id': '9',
+        'name': 'X',
+        'category': 'Other',
+        'price': 14900,
+        'price_minor': 1490000,
+        'currency': 'KRW',
+        'cycle': 'monthly',
+        'next_renewal': '2026-08-01',
+      });
+      expect(back.price, const Money(14900, 'KRW'));
+    });
+    test('🔴 the price history\'s old price is read the same way', () {
+      expect(
+        Subscription.readPreviousPrice(<Map<String, dynamic>>[
+          <String, dynamic>{
+            'old_price': 2.5,
+            'old_price_minor': 250,
+            'old_currency': 'BHD',
+          },
+        ]),
+        const Money(2500, 'BHD'),
+      );
+    });
+    test('🔴 a price_change row at the legacy scale reads both sides right', () {
+      final PriceChange change = PriceChange.fromJson(<String, dynamic>{
+        'changed_at': '2026-09-01T00:00:00Z',
+        'old_price': 9900,
+        'old_price_minor': 990000,
+        'old_currency': 'KRW',
+        'new_price': 19.99,
+        'new_price_minor': 1999,
+        'new_currency': 'USD',
+      }, fallbackCurrencyCode: 'USD');
+      expect(change.from, const Money(9900, 'KRW'));
+      expect(change.to, const Money(1999, 'USD'));
+    });
+    test('with no decimal beside it, the exact column is all there is', () {
+      expect(
+        Subscription.readPrice(<String, dynamic>{
+          'price_minor': 1490000,
+          'currency': 'KRW',
+        }),
+        const Money(1490000, 'KRW'),
+      );
     });
     test(
       'the wire keeps its decimal price — nothing silently changed type',

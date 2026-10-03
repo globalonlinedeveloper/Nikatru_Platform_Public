@@ -184,6 +184,21 @@ describe('lastKnownGoodNeedsWrite — a fetched set always replaces the LKG', ()
     expect(lastKnownGoodNeedsWrite(A, A)).toBe(false);
   });
 
+  // PR #1174 review nit 6: the KEY SET is compared, not the response text.
+  it('🔴 the same keys in another order, member order or whitespace spend no write', () => {
+    const two = { keys: [{ kid: 'k1', kty: 'EC', x: 'a', y: 'b' }, { kid: 'k2', kty: 'EC', x: 'c', y: 'd' }] };
+    const stored = JSON.stringify(two);
+    const reordered = JSON.stringify({ keys: [{ y: 'd', x: 'c', kty: 'EC', kid: 'k2' }, two.keys[0]] });
+    expect(lastKnownGoodNeedsWrite(reordered, stored)).toBe(false);
+    expect(lastKnownGoodNeedsWrite(JSON.stringify(two, null, 2), stored)).toBe(false);
+  });
+
+  it('a changed key member under the same kid IS a change, and a corrupt stored copy loses', () => {
+    const stored = JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC', x: 'a', y: 'b' }] });
+    expect(lastKnownGoodNeedsWrite(JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC', x: 'z', y: 'b' }] }), stored)).toBe(true);
+    expect(lastKnownGoodNeedsWrite(A, '<html>')).toBe(true);
+  });
+
   it('an EMPTY published set still replaces the LKG — a stale set must not outlive its successor', () => {
     expect(lastKnownGoodNeedsWrite('{"keys":[]}', A)).toBe(true);
     // …and the read path then refuses it, so the outage path fails closed.

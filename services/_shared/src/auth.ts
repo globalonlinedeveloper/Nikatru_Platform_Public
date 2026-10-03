@@ -229,16 +229,47 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
  * on the read, so the outage path fails closed). A body that is NOT a key-set
  * document (an HTML error page answered 200, a truncated read) is not a set and
  * leaves the stored copy alone.
+ *
+ * ⏱ 2026-10-03 · PR #1174 review nit 6. "Differs" is the parsed KEY SET, not
+ * the response text: the same keys served in another order or with other
+ * whitespace would otherwise spend a KV write on every warm, against the Free
+ * plan's 1,000 writes/day. A stored copy that is absent or not a key set always
+ * loses to a fetched one.
  */
 export function lastKnownGoodNeedsWrite(fetched: string, stored: string | null): boolean {
+  const next = canonicalKeySet(fetched);
+  if (next === null) return false;
+  return stored === null || next !== canonicalKeySet(stored);
+}
+
+/**
+ * A key-set document's keys as one order- and whitespace-free string (each key
+ * JSON with its members sorted, the list sorted), or null when [text] is not a
+ * JSON object with a `keys` array.
+ */
+function canonicalKeySet(text: string): string | null {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fetched) as unknown;
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-    if (!Array.isArray((parsed as { keys?: unknown }).keys)) return false;
+    parsed = JSON.parse(text);
   } catch {
-    return false;
+    return null;
   }
-  return fetched !== stored;
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const keys = (parsed as { keys?: unknown }).keys;
+  if (!Array.isArray(keys)) return null;
+  return JSON.stringify(keys.map(canonicalJson).sort());
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
