@@ -21,6 +21,12 @@ import { describe, it, expect } from 'vitest';
 // re-export (`export * from` / `export { x } from`) declares nothing and passes:
 // that is the shape this limb wants.
 //
+// ⚠️ ITS DECLARED SCOPE IS SAME-NAME COPIES ONLY (review of #1152, nit 3). It
+// compares NAMES, not bodies: a copy of `remoteJwks` renamed `getRemoteJWKS`,
+// `jwks` or `warmCache` declares no kit name and passes. Catching a renamed copy
+// would need a body comparison this limb does not make; a green here says no
+// carrier re-declares a kit export under the kit's own name, and nothing more.
+//
 // ⚠️ KNOWN_DUPLICATES ARE THE DUPLICATES THAT PREDATE THIS LIMB, NAMED, NOT
 // FORGIVEN. Each row is checked in BOTH directions: a row whose declaration is
 // gone is stale and fails, so the list can only shrink. A new copy is never a new
