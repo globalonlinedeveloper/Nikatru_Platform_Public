@@ -25,6 +25,15 @@
 // the new file WITHOUT --write-verification-metadata, and
 // tooling/ci/assert-signing-inputs-pinned.mjs runs:
 //   R5  those steps precede the upload.
+// ⏱ 2026-10-03 (lead, on #1185): main went red on a53ec299 (#1190) over an
+// artefact a regeneration had not seen, so the regeneration must cover EVERY
+// Android build lane CI runs, the pr lane and the release lane alike:
+//   R6  the regenerate job's ANDROID_BUILD_LANES (<target>/<channel>/<lane>) EQUALS
+//       the set of Android tooling/ci/flutter-release-build.mjs calls in every
+//       other workflow of the tree; each target's Gradle task (apk ->
+//       assembleRelease, appbundle -> bundleRelease) is run by both a
+//       --write-verification-metadata step and the strict re-run; and a step reads
+//       the list before the first generation, so the run itself maps every lane.
 //
 // Each rule is read off the REAL workflow (the green control), then off a copy
 // with that one rule broken, which must be named — so no assertion here is one
@@ -34,11 +43,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dispatchInputs, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
+import {
+  BUILD_TARGET_PLATFORM,
+  composerCallArgs,
+  dispatchInputs,
+  jobEnv,
+  parseAllWorkflows,
+  parseWorkflow,
+  shellSegments,
+  workflowSteps,
+} from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const REL = '.github/workflows/regen-gradle-verify.yml';
@@ -61,8 +79,65 @@ function cacheOff(key, raw) {
   return /-disabled$/i.test(key) ? v === 'true' : v === '' || v === 'false';
 }
 
-/** Every rule this test holds the workflow to, as finding strings (empty = clean). */
-function findings(root) {
+/** The one Gradle task `flutter build <target> --release` runs, per Android target. */
+const GRADLE_TASK = new Map([
+  ['apk', 'assembleRelease'],
+  ['appbundle', 'bundleRelease'],
+]);
+
+/** Every Android build lane the workflows under `root` run, as `<target>/<channel>/<lane>`:
+ *  each tooling/ci/flutter-release-build.mjs call whose target builds android, read
+ *  through the census's own parse of a call (composerCallArgs), app ignored. */
+function androidLanes(root) {
+  const lanes = new Set();
+  for (const wf of parseAllWorkflows(root)) {
+    if (wf.rel === REL) continue;
+    for (const job of wf.jobs.values()) {
+      for (const l of job.logical) {
+        for (const seg of shellSegments(l.text)) {
+          const call = composerCallArgs(seg, `${wf.rel}:${l.n}`);
+          if (call !== null && BUILD_TARGET_PLATFORM.get(call.target) === 'android') lanes.add(`${call.target}/${call.channel}/${call.lane}`);
+        }
+      }
+    }
+  }
+  return lanes;
+}
+
+/** R6 over one job: its declared lanes against `lanes`, and each lane's task run. */
+function laneFindings(job, steps, lanes) {
+  const out = [];
+  const declared = jobEnv(job).get('ANDROID_BUILD_LANES');
+  if (declared === undefined) return [`R6 (${job.name}): uploads the file and declares no ANDROID_BUILD_LANES`];
+  const list = new Set(String(declared.value).trim().split(/\s+/).filter((t) => t !== ''));
+  if (lanes.size === 0) out.push('R6: no Android flutter-release-build.mjs call was read in .github/workflows, so the lane set was not compared');
+  for (const l of lanes) if (!list.has(l)) out.push(`R6 (${job.name}): CI runs the Android lane ${l}, which ANDROID_BUILD_LANES does not list`);
+  for (const l of list) if (!lanes.has(l)) out.push(`R6 (${job.name}): ANDROID_BUILD_LANES lists ${l}, which no workflow runs`);
+  const runs = steps.map((s) => (s.run?.text ?? '').trim());
+  const generating = runs.map((t, i) => [i, t]).filter(([, t]) => /--write-verification-metadata\b/.test(t));
+  const strict = runs.filter((t) => /^\.\/gradlew --no-daemon (?!.*--write-verification-metadata)/.test(t));
+  for (const l of list) {
+    const target = l.split('/')[0];
+    const task = GRADLE_TASK.get(target);
+    if (task === undefined) {
+      out.push(`R6 (${job.name}): lane ${l} builds ${target}, which has no Gradle task this test knows`);
+      continue;
+    }
+    const has = (t) => new RegExp(`(?:^|\\s)${task}(?=\\s|$)`).test(t);
+    if (!generating.some(([, t]) => has(t))) out.push(`R6 (${job.name}): no --write-verification-metadata step runs ${task} (lane ${l})`);
+    if (!strict.some(has)) out.push(`R6 (${job.name}): the strict re-run does not run ${task} (lane ${l})`);
+  }
+  const mapper = runs.findIndex((t) => /\$\{?ANDROID_BUILD_LANES\b/.test(t));
+  const firstGeneration = generating.length === 0 ? -1 : generating[0][0];
+  if (mapper === -1 || (firstGeneration !== -1 && mapper > firstGeneration)) {
+    out.push(`R6 (${job.name}): no step reads ANDROID_BUILD_LANES before the first generation`);
+  }
+  return out;
+}
+
+/** Every rule this test holds the workflow to, as finding strings (empty = clean).
+ *  `lanesRoot` is the tree whose other workflows R6 reads the Android lanes from. */
+function findings(root, lanesRoot = REPO) {
   const wf = parseWorkflow(root, REL);
   if (!wf) return [`${REL} is not on disk`];
   const out = [];
@@ -120,6 +195,7 @@ function findings(root) {
     if (strict === -1 || strict > upload) out.push(`R5 (${job.name}): verification is not put back to strict before the upload`);
     if (builds.length !== 1 || builds.some((i) => i < strict || i > upload)) out.push(`R5 (${job.name}): no strict re-run of bundleDebug assembleDebug bundleRelease assembleRelease sits between strict and the upload`);
     if (pinned === -1 || pinned > upload || pinned < strict) out.push(`R5 (${job.name}): assert-signing-inputs-pinned does not run before the upload`);
+    out.push(...laneFindings(job, steps, androidLanes(lanesRoot)));
     uploads += 1;
   }
   if (uploads === 0) out.push('R5: no job uploads the file');
@@ -212,6 +288,48 @@ describe('regen-gradle-verify.yml — branch scope only, no cache, main refused,
   test('R3 control: a setup-* action with its cache set off is NOT named', () => {
     const dir = mutated('setup-gradle-off', withStep('      - uses: gradle/actions/setup-gradle@0000000000000000000000000000000000000003 # a fixture pin\n        timeout-minutes: 5\n        with:\n          cache-disabled: true\n'));
     assert.deepEqual(findings(dir), []);
+  });
+
+  test('R6 control: the real tree runs Android lanes, and both the pr and the release lane are among them', () => {
+    const lanes = androidLanes(REPO);
+    assert.ok([...lanes].some((l) => l.endsWith('/pr')), `no pr lane read: ${JSON.stringify([...lanes])}`);
+    assert.ok([...lanes].some((l) => l.endsWith('/release')), `no release lane read: ${JSON.stringify([...lanes])}`);
+  });
+
+  test('R6: a lane dropped from ANDROID_BUILD_LANES is named', () => {
+    const dir = mutated('lane-dropped', (s) => s.replace(' appbundle/android-play/release ', ' '));
+    named(findings(dir), 'R6');
+  });
+
+  test('R6: a lane ANDROID_BUILD_LANES lists that no workflow runs is named', () => {
+    const dir = mutated('lane-extra', (s) => s.replace('ANDROID_BUILD_LANES: apk/', 'ANDROID_BUILD_LANES: appbundle/apps-gov-in/pr apk/'));
+    named(findings(dir), 'R6');
+  });
+
+  test('R6: a new Android lane in ci.yml that the regeneration does not list is named', () => {
+    const call = 'node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play --lane pr';
+    /** Every workflow of the real tree copied under `name`, ci.yml through `edit`. */
+    const copy = (name, edit) => {
+      const lanesRoot = join(ROOT, name);
+      mkdirSync(join(lanesRoot, '.github', 'workflows'), { recursive: true });
+      const wfDir = join(REPO, '.github', 'workflows');
+      for (const f of readdirSync(wfDir).filter((n) => /\.ya?ml$/.test(n))) {
+        const body = readFileSync(join(wfDir, f), 'utf8');
+        writeFileSync(join(lanesRoot, '.github', 'workflows', f), f === 'ci.yml' ? edit(body) : body);
+      }
+      return lanesRoot;
+    };
+    assert.deepEqual(findings(REPO, copy('ci-copy', (b) => b)), [], 'the unedited copy must be green, or the red below proves nothing');
+    const edited = copy('ci-new-lane', (b) => {
+      assert.ok(b.includes(call), 'the ci.yml mutation no longer matches: rewrite it');
+      return b.replace(call, `${call} && node tooling/ci/flutter-release-build.mjs \${{ matrix.app }} appbundle apps-gov-in --lane pr`);
+    });
+    named(findings(REPO, edited), 'R6');
+  });
+
+  test('R6: the step that maps each lane to a Gradle task removed is named', () => {
+    const dir = mutated('no-lane-mapper', (s) => s.replace('for lane in $ANDROID_BUILD_LANES; do', 'for lane in apk/android-play/pr; do'));
+    named(findings(dir), 'R6');
   });
 
   test('R4: the main refusal removed is named', () => {

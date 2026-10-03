@@ -92,6 +92,14 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: EVERY Android build lane CI runs, as <target>/<channel>/<lane> of each
+      # tooling/ci/flutter-release-build.mjs call in .github/workflows: ci.yml's
+      # `--lane pr` builds AND the release lane (build-platforms.yml, submit-play.yml).
+      # Main went red on a53ec299 (#1190) over an artefact a regeneration had not
+      # seen. tooling/ci/test/regen-gradle-verify-workflow.test.mjs (R6) holds this
+      # list EQUAL to the calls in the tree, and each target's Gradle task present in
+      # the generate and the strict steps below.
+      ANDROID_BUILD_LANES: apk/android-play/pr appbundle/android-play/pr apk/apps-gov-in/pr apk/android-play/release appbundle/android-play/release apk/apps-gov-in/release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 5
@@ -110,6 +118,28 @@ jobs:
           fi
           sha="$(git rev-parse HEAD)"
           echo "sha8=${sha:0:8}" >> "$GITHUB_OUTPUT"
+
+      # why: each lane above is one `flutter build apk|appbundle --release`, and
+      # Flutter runs ONE Gradle task per target: assembleRelease for an apk,
+      # bundleRelease for an appbundle. The lanes differ in dart-defines and in
+      # signing, not in what Gradle resolves. A target with no task here stops the
+      # run before anything is generated, rather than regenerating without it.
+      - name: Every Android build lane CI runs maps to a release task below
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          for lane in $ANDROID_BUILD_LANES; do
+            target="${lane%%/*}"
+            case "$target" in
+              apk) task=assembleRelease ;;
+              appbundle) task=bundleRelease ;;
+              *)
+                echo "::error title=Unmapped Android lane::$lane builds $target, which no Gradle task below covers: add it here and to the generate and strict steps."
+                exit 1
+                ;;
+            esac
+            echo "$lane -> $task"
+          done
 
       # why: the SAME JDK, Flutter (tooling/versions.json, through the same composite
       # action) and runner image as ci.yml android-artifacts, so Gradle resolves the
@@ -226,7 +256,8 @@ jobs:
       # floor), and this job must run before the gate is green. The android-play and
       # apps-gov-in builds differ only in dart-defines and obfuscation flags, not in
       # anything Gradle resolves, so these four tasks, strict, over the release
-      # registrant written above, cover every configuration those builds resolve;
+      # registrant written above, cover every configuration those builds resolve —
+      # and the release lane's (ANDROID_BUILD_LANES, above), which differ the same way;
       # ci.yml android-artifacts stays the flag-for-flag proof on the pull request.
       - name: STRICT re-run of the four tasks against the new file
         timeout-minutes: 25
