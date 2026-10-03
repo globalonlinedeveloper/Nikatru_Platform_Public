@@ -1445,6 +1445,7 @@ jobs:
           rm -f catalog/apps-landing.json
           node tooling/sites/generate-landing-payload.mjs
           node tooling/sites/gen-auth-mail.mjs
+          node tooling/sites/gen-accessibility-statement.mjs
           node tooling/sites/generate-discovery.mjs
           node tooling/sites/generate-well-known.mjs
           node tooling/sites/generate-personal-site.mjs
@@ -1816,7 +1817,8 @@ jobs:
   sites:
     name: Static sites (functions parse + required files)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # why 20: the a11y scan (lane a11y-statement) adds a Playwright install and 15 pages x 4 views.
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -1838,6 +1840,39 @@ jobs:
       # centre, so it may carry no e-mail address, no report id and no quoted report text.
       - name: Known issues carry no personal data
         run: node tooling/ci/assert-known-issues.mjs
+      # why: lane a11y-statement (O-A11Y-STATEMENT-UNPUBLISHED). /accessibility publishes exactly the
+      # gaps tooling/a11y/exceptions.json holds, both ways; the page itself is regen.mjs's to compare.
+      - name: The accessibility statement publishes exactly the register's gaps
+        run: node tooling/ci/assert-a11y-statement.mjs
+      # why: lane a11y-statement (O-WEB-A11Y-SCAN-MISSING). axe-core is pinned in _playwright/'s
+      # lockfile and injected from the local install, so no request leaves the runner.
+      - name: Install the fleet Playwright and axe-core (lockfile), and Playwright's Chromium
+        working-directory: _playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      # why: every indexable page x light/dark x 375/1280. A serious or critical violation not in
+      # tooling/a11y/exceptions.json fails; a register row nothing fired on is STALE and fails.
+      - name: Every indexable page passes the accessibility scan, or its gap is registered
+        run: node tooling/a11y/scan.mjs
+      # why: the scan's three red controls, every run. Each must exit exactly 1: an unlabeled button,
+      # a sticky nav taller than its scroll padding (SC 2.4.11), and the real apps hub judged by a
+      # register with its real exception deleted.
+      - name: RED CONTROL — the scan fails an unlabeled button, a covering sticky nav and a deleted register row
+        shell: bash
+        run: |
+          node -e "const d=require('./tooling/a11y/exceptions.json');d.exceptions=d.exceptions.filter(r=>r.id!=='A11Y-EX-APPS-DARK-LINK-CONTRAST');require('fs').writeFileSync(process.env.RUNNER_TEMP+'/a11y-minus.json',JSON.stringify(d))"
+          for args in \
+            "--site tooling/a11y/fixtures --page tooling/a11y/fixtures/unlabeled-button.html" \
+            "--site tooling/a11y/fixtures --page tooling/a11y/fixtures/sticky-nav.html" \
+            "--page sites/nikatru/apps/index.html --register $RUNNER_TEMP/a11y-minus.json"; do
+            code=0
+            node tooling/a11y/scan.mjs $args || code=$?
+            echo "scan $args -> exit $code"
+            if [ "$code" -ne 1 ]; then echo "::error::the a11y scan exited $code, not 1, on its red control ($args)"; exit 1; fi
+          done
       - name: The published catalogue satisfies its contract
         run: node tooling/ci/assert-catalog-contract.mjs
       - name: Delete the feed so the generator has to produce it
@@ -2444,6 +2479,16 @@ jobs:
       # every interactive node named. Exit 2 is COVERAGE LOST, deliberately not a pass.
       - name: The built bundle exposes a named accessibility tree in a real browser
         run: node tooling/smoke/web-a11y-tree.mjs apps/${{ matrix.app }}/build/web
+      # why: lane a11y-statement (O-WEB-A11Y-SCAN-MISSING). The tree check above names every node;
+      # this runs axe-core (pinned in _playwright/'s lockfile) over the same booted bundle at 375 and
+      # 1280 px with semantics on, judged by tooling/a11y/exceptions.json like the site scan. The
+      # runner's own Chrome is the browser, as for the step above; nothing is downloaded but npm ci.
+      - name: Install the fleet Playwright and axe-core (lockfile)
+        working-directory: _playwright
+        run: npm ci --no-audit --no-fund
+      - name: The built bundle passes the accessibility scan, or its gap is registered
+        shell: bash
+        run: A11Y_CHROME="$(command -v google-chrome)" node tooling/a11y/scan.mjs --flutter apps/${{ matrix.app }}/build/web
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs

@@ -122,6 +122,14 @@
      header — so the two limbs never have to be traded off against each other. */
   html{scroll-padding-top:var(--focus-scroll-margin,84px)}
   :target{scroll-margin-top:var(--focus-scroll-margin,84px)}
+  /* ⏱ 2026-10-03 · lane a11y-statement (SC 2.4.11). On a 375px phone the nav
+     wraps to 145px, over the 84px padding above, so every in-page target landed
+     about 61px UNDER it (the 2026-10-02 audit, §2i). Below 720px the nav is not
+     sticky at all, so nothing can cover a target and the padding is zero. No JS.
+     !important because a page may declare its own sticky nav AFTER this region
+     (the apps/ pages do); a late page rule must not re-cover the target.
+     tooling/a11y/scan.mjs's focus-not-obscured-sticky rule reds without this. */
+  @media(max-width:720px){nav{position:static!important}html{scroll-padding-top:0}:target{scroll-margin-top:0}}
   /* /CHROME:a11y-css */
   /* CHROME:footer-css */
   footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
@@ -197,7 +205,7 @@
 
 <!-- CHROME:footer -->
 <footer>
-  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/about">About</a> &middot; <a href="/support">Support</a> &middot; <a href="/contact">Contact</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/shipping">Shipping</a> &middot; <a href="/delete-account">Delete account</a><br><br>
+  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/about">About</a> &middot; <a href="/support">Support</a> &middot; <a href="/contact">Contact</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/shipping">Shipping</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/accessibility">Accessibility</a><br><br>
   <span class="foot-em">Nikatru&trade;</span> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
   Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><span class="foot-em">Rajasekar Selvam</span></a><br>
   &copy; 2026 Nikatru. All rights reserved.

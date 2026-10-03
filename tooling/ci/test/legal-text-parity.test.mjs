@@ -365,6 +365,8 @@ const REAL = {
   // ⏱ 2026-09-25 (EXT-4, Q2) — what the renderer reads to decide whether its
   // `when=pro` paragraphs are published: the gate module and the two facts.
   gate: 'contracts/legal/pro-gate.mjs',
+  // ⏱ 2026-10-03 · lane a11y-statement — the served copy's skip link and nav, imported by the renderer.
+  chrome: 'contracts/legal/fullshot-chrome.mjs',
   tool: 'extensions/Extension/Full_Screen_Shot/tool.json',
   offerings: 'services/platform/src/app-config-data.json',
 };
@@ -468,6 +470,22 @@ describe('assert-legal-text-parity — assertion 3: the published BYTES are the 
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /sites\/nikatru\/fullshot\/privacy\.html is not what contracts\/legal\/render-fullshot-privacy\.mjs renders from contracts\/legal\/fullshot-privacy\.md — BYTES, not words/);
     assert.doesNotMatch(r.out, /PUBLISH DIFFERENT TEXT/, 'the visible text did not change, so assertions 1 and 2 must stay quiet');
+  });
+
+  test('the served copy carries the site skip link, nav and <main>; the store copy carries no site chrome', () => {
+    const site = readFileSync(join(REPO, REAL.site), 'utf8');
+    const ext = readFileSync(join(REPO, REAL.ext), 'utf8');
+    assert.match(site, /<body>\n<a class="skip-link" href="#main">Skip to content<\/a>\n<nav aria-label="Site">/);
+    assert.match(site, /<main id="main">/);
+    assert.match(site, /prefers-color-scheme: dark/);
+    assert.doesNotMatch(ext, /skip-link" href|<nav /);
+    assert.match(ext, /<main id="main">/);
+  });
+
+  test('🔴 a word slipped into the served nav is policy text the Markdown lacks', () => {
+    const r = runReal({ site: (t) => t.replace('Nikatru home</a>', 'Nikatru home</a> We sell your data') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PUBLISH DIFFERENT TEXT/);
   });
 
   test('FAILS on byte drift in the STORE copy too', () => {

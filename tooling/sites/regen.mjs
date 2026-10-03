@@ -64,6 +64,8 @@ export const ORDER = Object.freeze([
   Object.freeze({ id: 'apps-data', script: 'tooling/sites/generate-apps-data.mjs', kind: 'check' }),
   Object.freeze({ id: 'landing-payload', script: 'tooling/sites/generate-landing-payload.mjs', kind: 'check' }),
   Object.freeze({ id: 'auth-mail', script: 'tooling/sites/gen-auth-mail.mjs', kind: 'check' }),
+  // ⏱ 2026-10-03 · lane a11y-statement: /accessibility from tooling/a11y/exceptions.json.
+  Object.freeze({ id: 'a11y-statement', script: 'tooling/sites/gen-accessibility-statement.mjs', kind: 'check' }),
   Object.freeze({ id: 'discovery', script: 'tooling/sites/generate-discovery.mjs', kind: 'git-dated' }),
   Object.freeze({ id: 'well-known', script: 'tooling/sites/generate-well-known.mjs', kind: 'plan' }),
   // The founder's site has no build step (Cloudflare Pages serves the root as committed), so

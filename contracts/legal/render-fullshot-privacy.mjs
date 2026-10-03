@@ -55,6 +55,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { fullshotPro, dropGated } from './pro-gate.mjs';
+import { FULLSHOT_SITE_NAV, FULLSHOT_SKIP_LINK } from './fullshot-chrome.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -71,27 +72,37 @@ const toStdout = process.argv.includes('--stdout');
 const GATE = fullshotPro(ROOT, { toolJson: argAfter('--tool'), appConfig: argAfter('--app-config') });
 
 /** The shared CSS. One string, so the two files cannot disagree about it. */
-const STYLE_BODY = `  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2563EB; }
+const STYLE_BODY = `  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2563EB;
+          --strong:#0B1220; --text:#1E293B; --card:#FFFFFF; --soft:#F6F8FC; --primary:#2563EB; }
+  @media (prefers-color-scheme: dark) {
+    :root { --strong:#F1F5F9; --text:#C7D2E3; --card:#111C33; --soft:#0E1830; --muted:#93A1BC; --line:#22304D; --primary:#6E9BFF; }
+  }
   * { box-sizing: border-box; }
   body { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px;
          font: 16px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-         color: var(--ink); background: #fff; }
+         color: var(--strong); background: var(--card); }
   h1 { font-size: 30px; margin: 0 0 4px; }
   h2 { font-size: 20px; margin: 34px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
   h3 { font-size: 16px; margin: 20px 0 4px; }
-  p, li { color: var(--ink); }
+  p, li { color: var(--strong); }
   .meta { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
-  .lead { font-size: 17px; color: #333; }
+  .lead { font-size: 17px; color: var(--text); }
   ul { padding-left: 22px; }
   li { margin: 5px 0; }
-  code { background: #f4f4f6; padding: 1px 5px; border-radius: 4px; font-size: 14px; }
-  .callout { background: #f0f6ff; border: 1px solid #cfe0fb; border-radius: 8px;
+  code { background: var(--soft); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .callout { background: var(--soft); border: 1px solid var(--line); border-radius: 8px;
              padding: 14px 16px; margin: 16px 0; }
-  .tag { display:inline-block; background:#e8f0fe; color:var(--accent);
+  .tag { display:inline-block; background:var(--card); color:var(--primary);
          border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; }
   footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 14px; }
-  a { color: var(--accent); }`;
+  a { color: var(--primary); }
+  nav { margin: 0 0 24px; font-size: 14px; }
+  nav a { display: inline-block; padding: 4px 0; }
+  :focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 6px; }
+  .skip-link { position: absolute; left: -9999px; top: 0; background: var(--primary); color: var(--card);
+               padding: 10px 18px; border-radius: 0 0 8px 0; text-decoration: none; font-weight: 600; }
+  .skip-link:focus { left: 0; }`;
 
 /** The two published copies, and the head each one needs. */
 const TARGETS = [
@@ -105,6 +116,9 @@ const TARGETS = [
     // regeneration stripped them and `--check` exited 1 on the correct page. The
     // store copy is a file inside a zip that Cloudflare never serves: no markers.
     emailOff: true,
+    // ⏱ 2026-10-03 · lane a11y-statement: a served page gets the site's skip
+    // link and a nav landmark (fullshot-chrome.mjs); the zip copy has no site.
+    siteChrome: true,
     head: [
       '<link rel="canonical" href="https://nikatru.com/fullshot/privacy">',
       '<meta name="description" content="How FullShot handles your data: everything is processed locally on your device and nothing is transmitted.">',
@@ -387,6 +401,13 @@ function protectMailto(line) {
   return out;
 }
 
+/** The rendered body with everything before its <footer> wrapped in <main>. */
+function inMain(lines) {
+  const f = lines.indexOf('<footer>');
+  if (f === -1) throw new Error('the rendered body has no <footer> line to close <main> before');
+  return ['<main id="main">', ...lines.slice(0, f), '</main>', ...lines.slice(f)];
+}
+
 function render(target) {
   const out = [
     '<!DOCTYPE html>',
@@ -402,8 +423,11 @@ function render(target) {
     '</style>',
     '</head>',
     '<body>',
+    ...(target.siteChrome ? [FULLSHOT_SKIP_LINK, FULLSHOT_SITE_NAV] : []),
     '',
-    ...(target.emailOff ? body().map(protectMailto) : body()),
+    // The document is the page's <main> (SC 1.3.1, landmarks); its own
+    // publisher footer stays outside it, as the contentinfo landmark.
+    ...inMain(target.emailOff ? body().map(protectMailto) : body()),
     '',
     '</body>',
     '</html>',
