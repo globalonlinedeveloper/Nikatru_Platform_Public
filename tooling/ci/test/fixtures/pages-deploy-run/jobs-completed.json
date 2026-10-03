@@ -1,0 +1,33 @@
+{
+  "_recorded": "Recorded 2026-10-02 from the GitHub REST API (CI run 37020790032, head fcf77f1e), trimmed to the fields check-pages-deployments.mjs reads. GET actions/runs/37020790032/jobs?filter=latest — the deploy-web jobs only; total_count re-stated for that subset (the run had 86).",
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 110912655871,
+      "run_id": 37020790032,
+      "name": "deploy-web / Derive the app set from the pub workspace",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-02T15:48:30Z",
+      "completed_at": "2026-10-02T15:48:39Z"
+    },
+    {
+      "id": 110912657100,
+      "run_id": 37020790032,
+      "name": "deploy-web / Deploy the apex site to Cloudflare Pages (nikatru-apex)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-02T15:48:29Z",
+      "completed_at": "2026-10-02T15:49:25Z"
+    },
+    {
+      "id": 110912751528,
+      "run_id": 37020790032,
+      "name": "deploy-web / Build & deploy web to Cloudflare Pages (subscriptiontracker)",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-10-02T15:48:44Z",
+      "completed_at": "2026-10-02T15:51:50Z"
+    }
+  ]
+}
