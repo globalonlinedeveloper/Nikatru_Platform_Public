@@ -2543,7 +2543,7 @@ describe('assert-version-consistency', () => {
     `name: X\njobs:\n  j:\n    steps:\n` +
     Array.from({ length: 5 }, () => `      - uses: x\n        with:\n          flutter-version: ${flutter}\n`).join('') +
     Array.from({ length: 5 }, () => `      - uses: y\n        with:\n          node-version: ${node}\n`).join('') +
-    // `ciMelos: null` drops ci.yml's activate line, the RC5 mutation.
+    // `ciMelos: null` drops the activate line, the RC5 mutation (lane-apps.yml's since 2026-10-01).
     (ciMelos === null ? '' : `      - run: dart pub global activate melos ${ciMelos}\n`) +
     `      - run: dart pub global activate mason_cli ${mason}\n` +
     extra;
@@ -2641,7 +2641,8 @@ describe('assert-version-consistency', () => {
     } = opts;
     const files = {
       'tooling/versions.json': JSON.stringify(DECL),
-      '.github/workflows/ci.yml': wf(wfOpts),
+      // lane-apps.yml: the workflow that activates melos since workspace-gate left ci.yml (ADR 095).
+      '.github/workflows/lane-apps.yml': wf(wfOpts),
       // `null` is fixture()'s "this file is ABSENT" — the only way to reach the
       // guard's required-target refusals.
       'pubspec.yaml': manifestBody === undefined ? rootManifest(melosPin) : manifestBody,
@@ -2678,7 +2679,7 @@ describe('assert-version-consistency', () => {
   test('FAILS on a drifted Flutter version, naming file, line and both values', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-flutter', { flutter: '3.40.0' })] });
     assert.equal(code, 1);
-    assert.match(out, /ci\.yml:\d+/);
+    assert.match(out, /lane-apps\.yml:\d+/);
     assert.match(out, /"3\.40\.0".*"3\.44\.7"/);
   });
 
@@ -3056,7 +3057,7 @@ describe('assert-version-consistency', () => {
     const dir = build('vc-uses-missing', { extra: '      - uses: ./.github/actions/gone\n' });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — \.github[\\/]workflows[\\/]ci\.yml:\d+ uses \.\/\.github\/actions\/gone, which names no file in this tree \(missing\)/);
+    assert.match(out, /COVERAGE LOST — \.github[\\/]workflows[\\/]lane-apps\.yml:\d+ uses \.\/\.github\/actions\/gone, which names no file in this tree \(missing\)/);
   });
 
   test('REFUSES (exit 2) on a REMOTE reusable-workflow call: its pins are not in this tree', () => {
@@ -3157,10 +3158,10 @@ describe('assert-version-consistency', () => {
   });
 
   // ── the melos inventory: ci.yml's activate is an entry, and so are comments ─
-  test("COVERAGE LOST when ci.yml stops activating melos — the pin CI installs before `melos run gate`", () => {
+  test("COVERAGE LOST when lane-apps.yml stops activating melos — the pin CI installs before `melos run gate`", () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-ci-melos-gone', { ciMelos: null })] });
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — \.github[\\/]workflows[\\/]ci\.yml yielded 0 `melos` reference\(s\), expected at least 1/);
+    assert.match(out, /COVERAGE LOST — \.github[\\/]workflows[\\/]lane-apps\.yml yielded 0 `melos` reference\(s\), expected at least 1/);
   });
 
   test('FAILS when a root pubspec comment quotes a melos version the declaration does not name', () => {

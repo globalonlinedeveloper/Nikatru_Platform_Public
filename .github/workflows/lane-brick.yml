@@ -1,0 +1,503 @@
+name: Lane — brick
+
+# The brick lane of ci.yml, as a callee (ADR 095). It runs ONLY as a call: ci.yml's
+# `lane-brick` job calls it with no `if:` on every push to main and every pull
+# request, and ci-gate needs that job, so a red job here is a red required check.
+# `detect` decides from tooling/ci/lane-map.json whether this change touches the
+# lane; `app-brick` runs only when detect says affected=true, which it always says
+# on a push to main (main is never narrowed); `lane-verdict` refuses every skip
+# detect did not license. The lane's globs are DERIVED from what app-brick reads
+# (tooling/ci/assert-lane-inputs.mjs --write), and that guard (guard-meta) fails
+# when a glob misses an input. docs/ci/README.md §3 has the lane map.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# why: no `concurrency:` key. The caller's group governs the run, and a callee group
+# equal to the caller's would cancel the call from inside it.
+
+jobs:
+  detect:
+    # why: fetch-depth 0, so `git diff <base>...<head>` has the merge base. It fails
+    # open: a push, a non-PR event, an unmapped path or an unreadable diff all say
+    # affected=true (tooling/ci/lane-detect.mjs).
+    name: detect (brick)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      affected: ${{ steps.detect.outputs.affected }}
+      reason: ${{ steps.detect.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - id: detect
+        name: Does this change touch the brick lane
+        run: node tooling/ci/lane-detect.mjs --lane brick
+
+  ff-detect:
+    # why: FF-2 — starts only once `detect` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · detect
+    needs: detect
+    if: failure() && needs.detect.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: detect is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: detect
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  app-brick:
+    name: App brick (stamp both variants + analyze + validate the clone contract)
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    runs-on: ubuntu-24.04
+    # why: 25, not 15. Since O-BRICK-STAMPS-WEB-ONLY (D30) each of the three stamps runs `flutter create`
+    # and the launcher icons, and the job installs the Linux toolchain and compiles the probe for linux.
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-flutter
+      - uses: ./.github/actions/setup-node
+      - name: Install mason_cli
+        run: dart pub global activate mason_cli 0.1.4
+
+      - name: No shipped app carries Flutter's default launcher icon
+        run: |
+          flutter --version
+          node --single-threaded tooling/ci/assert-launcher-icons.mjs
+
+      # why: O-NEW-APP-IS-NOT-ONE-COMMAND. Every stamp in this job runs the one
+      # command, which runs `mason get` first and exits 1 when its post-conditions
+      # (regen.mjs --check, tag-owner.mjs --check, gen-app-licence-rows.mjs --check)
+      # fail. stamp-app.test.mjs fails on a workflow that stamps with raw mason
+      # instead. Since NP12B-R2 the command also runs `flutter pub get` at the repo
+      # root and writes the new app's licence rows from that resolution.
+      - name: Stamp the default (client-only) app
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_vars.json --overwrite
+      - name: Stamped app carries ITS brand assets, not Flutter's
+        run: |
+          SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
+          node --single-threaded tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30). The stamp writes android, ios, macos, windows and linux and brands
+      # them (tooling/kit/stamp-native.mjs, then the launcher icons). The guard that graded app #1 alone above now
+      # grades the probe's native icons, splash and Linux packaging too: the log must count 2 apps with a launch screen.
+      - name: The stamped probe's native platforms carry ITS icons and splash, not Flutter's
+        run: |
+          set +e
+          node --single-threaded tooling/ci/assert-launcher-icons.mjs > "$RUNNER_TEMP/launcher-stamped.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/launcher-stamped.log"
+          echo "assert-launcher-icons exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-launcher-icons exited $code on the stamped probe"; exit 1; fi
+          if ! grep -qF '2 app(s) ship a platform with a launch screen' "$RUNNER_TEMP/launcher-stamped.log"; then echo "::error::limb 8 did not grade the stamped probe's splash beside app #1's"; exit 1; fi
+      # why: O-NEW-APP-IS-NOT-ONE-COMMAND, the probe. stamp-app.mjs's own
+      # post-condition is regen.mjs --check, which compares only what ORDER lists:
+      # drop a generator from ORDER and the stamp stops writing its output AND the
+      # check stops comparing it, so the stamp step stays green. This step
+      # re-derives the surface WITHOUT reading ORDER, naming each generator in the
+      # sites job's form, and any byte it changes is a stamp that left the tree
+      # stale. regen-chain.test.mjs holds this list and ORDER equal, both ways.
+      # `git add -A` stages the stamp in the runner's throwaway index, so the diff
+      # is only what the generators changed; `git reset -q` then puts the index
+      # back, so the `git checkout --` reverts below still restore HEAD.
+      - name: A stamp leaves the site surface and the tag filter clean
+        run: |
+          git add -A
+          node tooling/app-yaml/render.mjs
+          node tooling/app-yaml/render-privacy.mjs
+          rm -f sites/_shared/_data/apps.json
+          node tooling/sites/generate-apps-data.mjs
+          rm -f catalog/apps-landing.json
+          node tooling/sites/generate-landing-payload.mjs
+          node tooling/sites/gen-auth-mail.mjs
+          node tooling/sites/generate-discovery.mjs
+          node tooling/sites/generate-well-known.mjs
+          node tooling/sites/generate-personal-site.mjs
+          node tooling/ci/tag-owner.mjs --write
+          git diff --stat
+          git diff --exit-code
+          git reset -q
+      - name: Stamped text is the spec's, its release id is its own, and blank hosts were DERIVED
+        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
+      - name: A freshly stamped app carries a COMPLETE, spec-derived store listing
+        run: node tooling/ci/assert-store-metadata.mjs
+      # why: O-BRICK-STAMPS-NO-PRIVACY-DECLARATION. The brick stamps privacy.yaml
+      # `state: pending`; the log must count app #1 and the probe as `1 declared, 1 pending`.
+      - name: Every app declares privacy, the stamped probe as pending
+        run: node tooling/ci/assert-app-yaml.mjs
+      # why: the row's red control, every run. Without its privacy.yaml the probe
+      # must be refused (exit exactly 1, naming the file), and restored it must pass.
+      - name: RED CONTROL — the probe without its privacy.yaml is refused, naming it
+        run: |
+          cp apps/probe/privacy.yaml "$RUNNER_TEMP/probe-privacy.yaml"
+          rm apps/probe/privacy.yaml
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/privacy-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/privacy-red.log"
+          echo "assert-app-yaml exit: $code"
+          cp "$RUNNER_TEMP/probe-privacy.yaml" apps/probe/privacy.yaml
+          if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with apps/probe/privacy.yaml deleted; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe/privacy.yaml does not exist' "$RUNNER_TEMP/privacy-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/privacy.yaml"; exit 1; fi
+          node tooling/ci/assert-app-yaml.mjs
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. The brick stamps its five sworn files at
+      # "sworn": false; the log must count app #1 sworn and the probe preview ("5 sworn, 5 preview: probe").
+      - name: The stamped probe's sworn declarations are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-sworn-store-files.mjs
+      # why: the row's red control, every run. The probe's data-safety.json flipped to "sworn": true with
+      # nothing answered must be refused on the floor (exit exactly 1, FLOOR in the log); restored, it passes.
+      # The flip is a .mjs under $RUNNER_TEMP, so no regex rides in a shell string.
+      - name: RED CONTROL — the probe's data-safety.json sworn but unanswered is refused on the floor
+        run: |
+          cp apps/probe/store/android-play/data-safety.json "$RUNNER_TEMP/probe-data-safety.json"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const j = JSON.parse(readFileSync(p, 'utf8')); j.sworn = true; writeFileSync(p, JSON.stringify(j, null, 2) + '\n');" > "$RUNNER_TEMP/flip-sworn.mjs"
+          node "$RUNNER_TEMP/flip-sworn.mjs" apps/probe/store/android-play/data-safety.json
+          set +e
+          node tooling/ci/assert-sworn-store-files.mjs > "$RUNNER_TEMP/sworn-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/sworn-red.log"
+          echo "assert-sworn-store-files exit: $code"
+          cp "$RUNNER_TEMP/probe-data-safety.json" apps/probe/store/android-play/data-safety.json
+          if [ "$code" -ne 1 ]; then echo "::error::assert-sworn-store-files exited $code with the probe's data-safety.json sworn but unanswered; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'FLOOR — apps/probe/store/android-play/data-safety.json' "$RUNNER_TEMP/sworn-red.log"; then echo "::error::assert-sworn-store-files exited 1 without the FLOOR finding on apps/probe/store/android-play/data-safety.json"; exit 1; fi
+          node tooling/ci/assert-sworn-store-files.mjs
+      # why: O-GUARDS-READ-A-HAND-LISTED-APP-SET (8b). Here the workspace holds exactly app #1 and the probe (the
+      # backend stamp below makes it 3), so each of the seven app-set guards must exit 0 with apps=2 in its log.
+      # The check is a .mjs under $RUNNER_TEMP that counts the apps=2 lines itself, never a grep -c.
+      - name: The seven app-set guards grade the stamped probe (apps=2)
+        run: |
+          echo "import { spawnSync } from 'node:child_process'; const guards = ['assert-seams-wired', 'assert-signup-consent-shape', 'assert-package-boundaries', 'assert-analytics-contract', 'assert-capability-register', 'assert-discovery-surface', 'assert-mechanism-claims']; let bad = 0; for (const g of guards) { const r = spawnSync(process.execPath, ['tooling/ci/' + g + '.mjs'], { encoding: 'utf8' }); const out = (r.stdout || '') + (r.stderr || ''); const hits = out.split(String.fromCharCode(10)).filter((l) => /apps=2(?![0-9])/.test(l)); console.log(g + ': exit ' + r.status + ', ' + hits.length + ' apps=2 line(s)'); for (const l of hits) console.log('  ' + l.trim().slice(0, 300)); if (r.status !== 0 || hits.length === 0) { bad += 1; console.log(out); } } if (bad > 0) { console.log('::error::' + bad + ' of ' + guards.length + ' app-set guard(s) did not exit 0 with apps=2'); process.exit(1); } console.log('all ' + guards.length + ' app-set guards exit 0 with apps=2');" > "$RUNNER_TEMP/app-set-probe.mjs"
+          node "$RUNNER_TEMP/app-set-probe.mjs"
+      # why: the row's red control, every run. With the probe's review seam removed (its ReviewPromptController
+      # declaration and its one .requestReview( call renamed away; a copy under $RUNNER_TEMP), assert-seams-wired
+      # must exit exactly 2 naming apps/probe; restored, it passes. The edit is a .mjs under $RUNNER_TEMP.
+      - name: RED CONTROL — the probe without its review seam is COVERAGE LOST, naming apps/probe
+        run: |
+          cp apps/probe/lib/state/providers.dart "$RUNNER_TEMP/probe-providers.dart"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const t = readFileSync(p, 'utf8'); const n = t.replace('class ReviewPromptController ', 'class ReviewSeamRemovedForTheRedControl ').replace('.requestReview(', '.reviewSeamRemovedForTheRedControl('); if (n === t || n.includes('class ReviewPromptController ') || n.includes('.requestReview(')) { console.error('the review seam (its declaration and its one call) was not found once in ' + p); process.exit(3); } writeFileSync(p, n);" > "$RUNNER_TEMP/remove-review-seam.mjs"
+          node "$RUNNER_TEMP/remove-review-seam.mjs" apps/probe/lib/state/providers.dart
+          set +e
+          node tooling/ci/assert-seams-wired.mjs > "$RUNNER_TEMP/seams-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/seams-red.log"
+          echo "assert-seams-wired exit: $code"
+          cp "$RUNNER_TEMP/probe-providers.dart" apps/probe/lib/state/providers.dart
+          if [ "$code" -ne 2 ]; then echo "::error::assert-seams-wired exited $code with the probe's review seam removed; the red control requires exactly 2"; exit 1; fi
+          if ! grep -qF 'apps/probe' "$RUNNER_TEMP/seams-red.log"; then echo "::error::assert-seams-wired exited 2 without naming apps/probe"; exit 1; fi
+          node tooling/ci/assert-seams-wired.mjs
+      # why: O-SCREENSHOT-DRIVER-IS-ONE-APPS (10b), the row's red control, every run. The brick stamps its capture
+      # boards; without apps/probe/integration_test/store_screenshots_test.dart the capture precheck must exit exactly 1
+      # naming it, and restored, 0. A .mjs under $RUNNER_TEMP moves the file out and back.
+      - name: RED CONTROL — the probe without its capture boards fails the capture precheck, naming the file
+        run: |
+          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
+          node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/store_screenshots_test.dart "$RUNNER_TEMP/probe-boards.dart" tooling/store/capture-precheck.mjs --app probe --channel android-play
+      # why: O-BRICK-STAMPS-NO-E2E-SUITE (10b), the row's red control, every run. The brick stamps the e2e suite;
+      # without apps/probe/integration_test/app_test.dart the leg guard must exit exactly 2 naming it, and restored, 0.
+      # ⏱ 2026-10-02 (club apply-ci, CI red 2): 1 -> 2. The probe now has its own `apps.probe` register entry
+      # (stamp-shared.mjs), so its suite is a NAMED suite, and a named suite that is gone is COVERAGE LOST — the
+      # same verdict and sentence e2e-legs.test.mjs pins for app #1 ("the named E2E … does not exist").
+      - name: RED CONTROL — the probe without its e2e suite fails the leg guard, naming the file
+        run: |
+          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 2) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 2'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 2 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
+          node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/app_test.dart "$RUNNER_TEMP/probe-app-test.dart" tooling/ci/assert-e2e-legs.mjs
+      # why: O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). The brick declares billing.mobileIap `state: pending` and wires
+      # the store bridge through StoreBridgeWiring; the log must count app #1 live and the probe pending, both wired.
+      - name: The stamped probe declares mobile IAP pending and wires its store bridge
+        run: |
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/iap-green.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/iap-green.log"
+          echo "assert-app-yaml exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-app-yaml exited $code on the stamped probe"; exit 1; fi
+          if ! grep -qF '2 app(s) declare mobile IAP (1 live, 1 pending), each wired through StoreBridgeWiring (2 of 2)' "$RUNNER_TEMP/iap-green.log"; then echo "::error::limb 6 did not count app #1 live and the probe pending, both wired"; exit 1; fi
+      # why: the row's red control, every run. The probe's two wiring lines set back to a literal null must be
+      # refused (exit exactly 1, naming apps/probe/lib/state/money_providers.dart); restored, it passes. The edit
+      # is a .mjs under $RUNNER_TEMP, so no pattern rides in a shell string.
+      - name: RED CONTROL — the probe's store bridge set back to null is refused, naming the file
+        run: |
+          cp apps/probe/lib/state/money_providers.dart "$RUNNER_TEMP/probe-money-providers.dart"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const t = readFileSync(p, 'utf8'); const n = t.replace('iapBridge: wiring.bridge,', 'iapBridge: null,').replace('iapBridgeConfig: wiring.config,', 'iapBridgeConfig: null,'); if (n === t) { console.error('the two wiring lines were not found in ' + p); process.exit(3); } writeFileSync(p, n);" > "$RUNNER_TEMP/null-bridge.mjs"
+          node "$RUNNER_TEMP/null-bridge.mjs" apps/probe/lib/state/money_providers.dart
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/iap-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/iap-red.log"
+          echo "assert-app-yaml exit: $code"
+          cp "$RUNNER_TEMP/probe-money-providers.dart" apps/probe/lib/state/money_providers.dart
+          if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with the probe's store bridge set to null; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe/lib/state/money_providers.dart:' "$RUNNER_TEMP/iap-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/lib/state/money_providers.dart"; exit 1; fi
+          node tooling/ci/assert-app-yaml.mjs
+      # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
+      # probe is DONE, OWNER or AFTER-LIVE except the two agent steps a stamp cannot take: its name clearance (the
+      # probe dials the stores) and its price row (nothing writes apps.<id> in app-config-data.json, and an absent
+      # row is an undecided price, never "free": rv2-newproduct-002). --expect-next exits 1 on any other NEXT set,
+      # a missing one included.
+      - name: The new-product plan reads the stamped probe, and only its name clearance and price row are the agent's
+        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance,price row"
+      - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          grep -q '"slug": "probe"' catalog/apps.json
+          cp catalog/apps.json "$RUNNER_TEMP/apps-after-1.json"
+          cp pubspec.yaml "$RUNNER_TEMP/pubspec-after-1.yaml"
+          cp tooling/legal/asset-register.json "$RUNNER_TEMP/asset-register-after-1.json"
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_vars.json --overwrite
+          diff -u "$RUNNER_TEMP/apps-after-1.json" catalog/apps.json
+          diff -u "$RUNNER_TEMP/pubspec-after-1.yaml" pubspec.yaml
+          diff -u "$RUNNER_TEMP/asset-register-after-1.json" tooling/legal/asset-register.json
+          git checkout -- catalog/apps.json sites/_shared/_data/apps.json
+      - name: Default stamp claims NO Worker, NO D1 and NO R2
+        run: node tooling/ci/assert-clone-contract.mjs --client probe
+      # why: a red here used to name the file and never the change, and CI's
+      # formatter is newer than a laptop's, so the change could not be reproduced
+      # (2026-09-23, PR 888: `Changed .../paywall_screen.dart`, nothing more).
+      # Formatting a copy and diffing it fails on exactly the same trees and prints
+      # the lines the brick must carry.
+      - name: Stamped app is dart format-clean
+        run: |
+          cp -r apps/probe "$RUNNER_TEMP/probe-as-stamped"
+          dart format apps/probe
+          diff -ru "$RUNNER_TEMP/probe-as-stamped" apps/probe
+      - name: Stamp the opt-in backend app
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json --overwrite
+      # why: rv2-newproduct-008. The backend probe passes through the readout too, so its backend reader's
+      # placeholder path is proven on a real stamp, not only on the fixture: APP_DB is the all-zeros placeholder
+      # (provision-backend's step), and with no register row yet its Worker names no crash-sink secret (the same
+      # step writes the row). Its name clearance and price row are the agent's, as for the client probe.
+      - name: The new-product plan reads the stamped backend probe, and only its provision steps are added
+        run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
+      # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
+      # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
+      # reads services/, so the Worker lanes below see the tree they saw before.
+      - name: A scratch service stamps from the Worker template, and the plan reads it as a service
+        run: |
+          node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
+          node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
+          rm -rf services/probesvc-api
+      - name: Stamped backend app is dart format-clean
+        run: |
+          cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
+          dart format apps/probeapi
+          diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
+      # why: O-APP-ID-FORM-UNVALIDATED (a). pre_gen applies contracts/app-id and
+      # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
+      # the id the old snake_case rule let through. Exit code alone is not the
+      # proof: the log must carry the contract's message, and no app may exist.
+      # It calls mason itself, not stamp-app.mjs: that command refuses this id
+      # before mason runs, so pre_gen would never be asked. stamp-app.test.mjs
+      # admits a raw mason stamp only over a vars file the contract refuses.
+      - name: A bad app id is refused before anything is written
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          set +e
+          mason make app -c tooling/bricks/app/_probe_bad_id_vars.json -o . --on-conflict overwrite > "$RUNNER_TEMP/bad-id-stamp.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/bad-id-stamp.log"
+          echo "mason exit: $code"
+          if [ "$code" -eq 0 ]; then echo "::error::mason stamped app_id habit_tracker; pre_gen did not refuse it"; exit 1; fi
+          if ! grep -q 'app_id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code and its log never names app_id"; exit 1; fi
+          if ! grep -q 'contracts/app-id' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code without the contracts/app-id message"; exit 1; fi
+          if ! grep -qF 'got "habit_tracker", which contains "_"' "$RUNNER_TEMP/bad-id-stamp.log"; then echo "::error::mason exited $code, but not on the underscore in habit_tracker"; exit 1; fi
+          if [ -e apps/habit_tracker ]; then echo "::error::apps/habit_tracker exists after a refused stamp"; exit 1; fi
+      # why: A STAMPED WORKER MUST BE TESTABLE ON DAY ONE, and until 2026-09-12 it
+      # was not: the template shipped no vitest, no `test` script and no test
+      # directory, so the first thing an owner could not do with a fresh backend was
+      # run its tests. This step is what makes that claim checkable rather than
+      # declared - it installs the stamped Worker and runs the suite it inherits,
+      # which is the chassis's own (services/_shared/test/**) plus the wiring test
+      # the template owns. A failure here means a fresh stamp is born broken.
+      # `npm ci`, not `npm install` (rv2-security-020): the brick stamps its own
+      # package-lock.json, and `npm install` may re-resolve past it, so this job
+      # tested versions a real stamp's lane (lane-workers.yml, `npm ci`) never
+      # ships. assert-lockfile-discipline.mjs grades this directory against the
+      # brick's lockfile through tooling/ci/stamp-produced-dirs.json.
+      - name: A stamped Worker typechecks and passes the suite it inherits
+        working-directory: services/probeapi-api
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+      # why: O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The stamped Worker is a fan-out leaf; limb 6 alone, because the full run fails limb 4 on a stamp not yet in APP_ERASURE_ENDPOINTS.
+      - name: The stamped Worker is not an identity deleter
+        run: node tooling/ci/assert-erasure-reach.mjs --stamped services/probeapi-api
+      - name: The app spec is one validated input contract
+        run: node tooling/ci/assert-input-contract.mjs
+      - name: A stamped app claims only platforms it is built for
+        run: node tooling/ci/assert-stamp-platforms.mjs
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), limb N3's red control, every run. With apps/probe/linux moved out, the
+      # probe is a workspace app build-platforms.yml would build for linux with no folder: assert-stamp-platforms
+      # must exit exactly 1 naming apps/probe; restored, 0.
+      - name: RED CONTROL — the probe without its linux/ folder is refused, naming apps/probe
+        run: |
+          mv apps/probe/linux "$RUNNER_TEMP/probe-linux"
+          set +e
+          node tooling/ci/assert-stamp-platforms.mjs > "$RUNNER_TEMP/native-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/native-red.log"
+          echo "assert-stamp-platforms exit: $code"
+          mv "$RUNNER_TEMP/probe-linux" apps/probe/linux
+          if [ "$code" -ne 1 ]; then echo "::error::assert-stamp-platforms exited $code with apps/probe/linux removed; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe is in the workspace app set and has no `linux/` folder' "$RUNNER_TEMP/native-red.log"; then echo "::error::assert-stamp-platforms exited 1 without naming apps/probe's missing linux/"; exit 1; fi
+          node tooling/ci/assert-stamp-platforms.mjs
+      - name: Stamped app asserts its own chassis properties
+        run: node tooling/ci/assert-stamp-properties.mjs
+      - name: The stamped app carries a done-record, and its DoD items really run
+        run: node tooling/ci/assert-app-dod.mjs . --require-stamped
+      - name: Analyze + test the stamped app
+        working-directory: apps/probe
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: A fresh stamp really builds for web
+        working-directory: apps/probe
+        run: flutter build web --pwa-strategy=none --no-web-resources-cdn
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), the native probe build. Without it a stamp is proven native by file
+      # presence alone. Linux because this runner compiles it; build-platforms.yml compiles all five native
+      # targets for every workspace app. assert-stamp-platforms.mjs N2 fails a ci.yml without this step.
+      - name: Linux build deps for the native probe build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: A fresh stamp really builds natively (linux)
+        working-directory: apps/probe
+        run: flutter build linux --debug
+      # 🔴 A STAMPED APP MUST SATISFY THE DEPLOY'S FONTS STEP ON THE DAY IT IS
+      # STAMPED. deploy-web.yml builds every app with --no-web-resources-cdn and
+      # then runs tooling/web/self-host-fallback-fonts.mjs, which REFUSES a bundle
+      # whose flutter_bootstrap.js does not pass fontFallbackBaseUrl. The template
+      # carried no web/flutter_bootstrap.js until 2026-09-12, so Flutter generated
+      # a default one and the next stamped app's FIRST deploy would have stopped
+      # there — after the app existed, was published in the catalogue and was
+      # expected to be live. Nothing in the tree noticed, because the node test
+      # that checks apps/*/web runs on an unstamped checkout.
+      # `--check` is the same grading with the network half removed, so this lane
+      # cannot be turned red by a font CDN having a bad minute.
+      - name: A fresh stamp satisfies the deploy's self-hosted fallback fonts step
+        run: node tooling/web/self-host-fallback-fonts.mjs --check apps/probe/build/web
+      # why --app probe: a fresh stamp is graded in its OWN scope. An `app:<id>` row of
+      # another app never satisfies it, so a package asset the template starts shipping
+      # fails here with the row derived from this bundle, not one copied from app #1.
+      - name: Every asset the build actually shipped has a licence row
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets --app probe
+      # why: LEAD RULING NP12B-R2 (ONE PIPELINE). The stamp WROTE the rows the step above read: stamp-app.mjs runs
+      # `flutter pub get` at the repo root and then gen-app-licence-rows.mjs --write. Here --check grades every app's
+      # rows against the resolved workspace (app #1's hand-written five, the probe's and the backend probe's): a
+      # shipped package file with no row, a row for a file no longer shipped, or a licence the package's LICENSE does
+      # not read is exit 1, before any app's own web build meets it. The repo root is passed as
+      # `${{ github.workspace }}` on purpose: the subject (stamped apps on a resolved workspace) exists only here, so
+      # guard-sweep and the pre-push smoke file this call NEEDS-CI instead of running it on an unresolved checkout,
+      # where it is COVERAGE LOST (exit 2) by design.
+      - name: Every package file each app ships has the licence row its stamp wrote
+        run: node tooling/ci/gen-app-licence-rows.mjs "${{ github.workspace }}" --check
+      # why: the rows' red control, every run. With the probe's purchases_js_hybrid_mappings.js row taken out of the
+      # register (a .mjs under $RUNNER_TEMP, so no pattern rides in a shell string), the bundle walk AND the generator's
+      # --check must each exit exactly 1 naming the file; restored, both exit 0.
+      - name: RED CONTROL — the probe's generated licence row removed, the bundle walk and the generator both refuse the file
+        run: |
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const reg = 'tooling/legal/asset-register.json'; const file = 'packages/purchases_flutter/assets/web/purchases_js_hybrid_mappings.js'; const green = readFileSync(reg, 'utf8'); const j = JSON.parse(green); const kept = j.appScopedAssets.filter((r) => !(r.scope === 'app:probe' && r.bundlePath === file)); if (kept.length !== j.appScopedAssets.length - 1) { console.log('::error::the register carries no app:probe row for ' + file + '; the stamp did not write it'); process.exit(1); } j.appScopedAssets = kept; writeFileSync(reg, JSON.stringify(j, null, 2) + String.fromCharCode(10)); const cmds = [['tooling/ci/assert-licence-register.mjs', '.', '--bundle', 'apps/probe/build/web/assets', '--app', 'probe'], ['tooling/ci/gen-app-licence-rows.mjs', '--check', '--app', 'probe']]; let bad = 0; for (const c of cmds) { const r = spawnSync(process.execPath, c, { encoding: 'utf8' }); const out = (r.stdout || '') + (r.stderr || ''); console.log(out); console.log(c[0] + ' exit with the row removed: ' + r.status); if (r.status !== 1 || !out.includes(file)) { console.log('::error::' + c[0] + ' exited ' + r.status + ' with the row removed; the red control requires exactly 1, naming ' + file); bad += 1; } } writeFileSync(reg, green); for (const c of cmds) { const r = spawnSync(process.execPath, c, { encoding: 'utf8' }); console.log(c[0] + ' exit restored: ' + r.status); if (r.status !== 0) { console.log((r.stdout || '') + (r.stderr || '')); console.log('::error::restored, ' + c[0] + ' exited ' + r.status); bad += 1; } } if (bad > 0) process.exit(1);" > "$RUNNER_TEMP/licence-row-red.mjs"
+          node "$RUNNER_TEMP/licence-row-red.mjs"
+
+      - name: Backend stamp has a Worker + APP_DB but still no per-app R2
+        run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
+      - name: The provisioner's config surgery still targets APP_DB, not the shared binding
+        run: node tooling/scripts/provision-backend.mjs probeapi --self-check
+      - name: Backend stamp derived its own web origin, API host and release id
+        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_backend_vars.json --service services/probeapi-api
+      - name: Revert the catalogue — both probes are throwaway
+        run: git checkout -- catalog/apps.json sites/_shared/_data/apps.json
+      - name: Analyze the stamped backend app
+        working-directory: apps/probeapi
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: The WHOLE workspace still resolves from the root with stamped apps on it
+        run: flutter pub get
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. Here, not beside the sworn step above: limb 4
+      # reads app #1's .flutter-plugins-dependencies, which only the resolve just above writes. The log
+      # must count app #1 sworn and both web-only probes preview, each owing no Apple-native manifest.
+      - name: The stamped probes' Apple audits are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-apple-privacy-manifest.mjs
+      - name: Revert the root pubspec + lockfile — both probes are throwaway
+        run: git checkout -- pubspec.yaml pubspec.lock
+      - name: Typecheck + dry-run the stamped service
+        working-directory: services/probeapi-api
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit
+          npx wrangler deploy --dry-run
+
+  ff-app-brick:
+    # why: FF-2 — starts only once `app-brick` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · app-brick
+    needs: app-brick
+    if: failure() && needs.app-brick.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: app-brick is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: app-brick
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  lane-verdict:
+    # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs
+    # all skipped concludes success. This job needs every other job, runs always(),
+    # and is red on failure, cancelled, a detect that did not succeed, or a skip
+    # detect did not license (assert-green-means-ran A8 asserts the shape). A skip
+    # under affected=false is the one "not needed", and it reads green here.
+    name: lane-verdict
+    needs: [detect, app-brick]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Every need is green, or skipped under detect's affected=false
+        env:
+          LANE_NEEDS: ${{ toJSON(needs) }}
+        run: node tooling/ci/lane-verdict.mjs

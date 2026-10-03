@@ -5531,12 +5531,16 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // ⏱ 2026-10-02: five. duty.workflow.land.yml (O-MERGES-DEPEND-ON-THE-LAPTOP) declares `workflow_dispatch`
     // and carries NO recordQuery on purpose: a transient read failure of the lander would otherwise redden
     // every PR's ci-gate until its next slot. It is excluded with that reason printed, not silently.
-    assert.equal(census.excluded.length, 5, 'the committed register has exactly five unadmitted trigger rows');
+    // ⏱ 2026-10-03: seven. duty.workflow.lane-apps.yml and duty.workflow.lane-brick.yml, the
+    // apps and brick lanes moved into callees (ADR 095), are excluded for the same reason as lane-workers.yml.
+    assert.equal(census.excluded.length, 7, 'the committed register has exactly seven unadmitted trigger rows');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.land\.yml — .* carries no `mechanism\.recordQuery`/.test(l)), 'land.yml is excluded for want of a recordQuery, and says so');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-apps\.yml/.test(l)), 'the apps lane callee is excluded by derivation');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-brick\.yml/.test(l)), 'the brick lane callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`|is the GATE workflow|carries no `mechanism\.recordQuery`/.test(l)), 'every exclusion must carry the derived reason');
     // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): ci.yml declares `workflow_dispatch` for land.yml's
     // post-merge start, and stays out because it is the gate workflow, said as such at the line.

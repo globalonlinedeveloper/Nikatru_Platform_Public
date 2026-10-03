@@ -21,9 +21,9 @@
   },
   "apiCalls": 51,
   "perRef": {
-    ".github/workflows/ci.yml#app-brick": {
+    ".github/workflows/ci.yml#lane-brick": {
       "catches": 0,
-      "firstSeen": "2026-07-18",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/app-yaml/render-privacy.mjs": {
@@ -1389,6 +1389,11 @@
         "basis": "exposure",
         "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/assert-lane-inputs.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
     },
     "tooling/ci/assert-launch-smoke.mjs": {
       "catches": 0,

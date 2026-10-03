@@ -4,7 +4,7 @@
     {
       "dir": "services/probeapi-api",
       "template": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
-      "stampedBy": "ci.yml app-brick: node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json",
+      "stampedBy": "lane-brick.yml app-brick: node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json",
       "why": "The backend probe's Worker, stamped from the app brick seconds before its install and thrown away with the runner; mason substitutes only the package name in the lockfile, so the brick's lock is the one npm ci reads."
     }
   ]

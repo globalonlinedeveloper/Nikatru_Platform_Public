@@ -630,7 +630,7 @@ export const CITATIONS_LEG = 'sworn store citations (re-checked AFTER format)';
 export const STAMP_LEG = 'stamped probe (mason + dart format + app DoD)';
 export const CONTENT_LEG = 'content pipeline (its suites, then validate + build the example pack)';
 export const EXTENSIONS_LEG = "extensions (extensions-ci.yml's node-only checks)";
-export const DRYRUN_LEG = 'store submission dry runs (every app prepare derives)';
+export const DRYRUN_LEG = 'store submission dry runs (every app lane-apps.yml derives)';
 export const SECURITY_LEG = 'secret and workflow scanners (gitleaks / zizmor from PATH)';
 
 /** Each ci-gate need this run REPRODUCES: the legs that run its substance, and
@@ -645,11 +645,18 @@ export const CI_GATE_LEGS = {
   'guards-chassis': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
   'content-gate': { legs: [CONTENT_LEG, SWEEP_LEG], ciOnly: 'nothing' },
   sites: { legs: [SWEEP_LEG], ciOnly: 'the delete-regenerate-diff steps for the feed and the render payload, and regen --check' },
-  prepare: { legs: [DRYRUN_LEG], ciOnly: 'nothing' },
-  'app-dryrun': { legs: [DRYRUN_LEG], ciOnly: 'nothing' },
+  // ⏱ 2026-10-01 (ADR 095): ci-gate needs the two lane CALL jobs; their jobs run in the callees.
+  'lane-apps': {
+    legs: [DRYRUN_LEG],
+    ciOnly:
+      "detect's PR diff, then workspace-gate (melos run analyze + melos run test over the whole Flutter workspace, flutter gen-l10n and a Chrome " +
+      '`dart test -p chrome` — Flutter and a browser; its format step is the format-drift leg and its node guards run in the sweep), and the ' +
+      'release Android (Android SDK and a JVM, which the Windows host cannot run: docs/environment.md), web (a `flutter build web` per app and a ' +
+      'boot of the bundle) and Linux (apt build packages, WSL only) builds',
+  },
   extensions: { legs: [EXTENSIONS_LEG], ciOnly: 'the per-tool gates / sims / package matrix, the templates probe and Playwright tier, the hang-guard test, the catalogue publish-and-diff and the e2e proof-freshness check' },
   'security-scan': { legs: [SECURITY_LEG], ciOnly: "OSV-Scanner and Trivy, and the pinned scanner versions (this run uses PATH's)" },
-  'app-brick': { legs: [STAMP_LEG], ciOnly: 'flutter analyze / test / build web of both stamps, the backend stamp, its Worker (npm, tsc, wrangler) and the RED CONTROL mutations' },
+  'lane-brick': { legs: [STAMP_LEG], ciOnly: "detect's PR diff, then app-brick's flutter analyze / test / build web of both stamps, the backend stamp, its Worker (npm, tsc, wrangler) and the RED CONTROL mutations" },
 };
 
 /** Each ci-gate need this run does NOT reproduce, and why. A reason is a fact
@@ -659,10 +666,6 @@ export const NOT_REPRODUCIBLE = {
   'lane-workers': "each Worker's own `npm ci` (a network install into services/<worker>), then tsc, its suite and two `wrangler deploy --dry-run`s — this script installs nothing",
   'site-tokens': '`npm ci` into packages/tokens (a network install), then a build that rewrites three tracked files — this script installs nothing',
   'site-shared': '`npm ci` into sites/_shared (a network install), then the site build — this script installs nothing',
-  'workspace-gate': 'melos run analyze + melos run test over the whole Flutter workspace, flutter gen-l10n and a Chrome `dart test -p chrome` — Flutter and a browser; its format step is the format-drift leg and its node guards run in the sweep',
-  'android-artifacts': 'a release Android build needs the Android SDK and a JVM, and the Windows host cannot run the JVM (docs/environment.md: a JVM defect, not Gradle)',
-  'web-artifacts': 'a release `flutter build web` per app, then a boot of the bundle — the Flutter toolchain building artifacts, not a check',
-  'linux-artifacts': 'a release Linux build needs apt build packages (clang, cmake, GTK) and builds in WSL, never on the Windows host (docs/environment.md)',
 };
 
 /** The coverage table, judged against ci-gate's REAL needs (ciGateNeeds().needs).
@@ -730,7 +733,7 @@ export function onPath(bin, env = process.env) {
 /** The node-only commands a leg runs, as ci.yml's steps run them: `cwd` is the
  *  step's working directory, `subject` the file or directory (under cwd) that
  *  must exist — a missing one FAILS the leg, never skips it. `{TMP}` is a fresh
- *  temp directory; `{app}` is each app prepare derives; `{SPAWN_CEILING}` is the
+ *  temp directory; `{app}` is each app lane-apps.yml's detect derives; `{SPAWN_CEILING}` is the
  *  preload as an absolute file URL under the root, as setup-node exports it to CI
  *  (a relative `--import` resolves against the cwd: spawn-ceiling-cwd.test.mjs). */
 export const LEG_COMMANDS = {
@@ -754,7 +757,7 @@ export const LEG_COMMANDS = {
     { cwd: 'extensions', subject: 'scripts/test/selftest.node.js', args: ['--single-threaded', 'scripts/test/selftest.node.js'] },
     { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
   ],
-  // prepare's one step, then app-dryrun's contract suite and its five dry runs, per app.
+  // lane-apps.yml detect's app-set step, then app-dryrun's contract suite and its five dry runs, per app.
   [DRYRUN_LEG]: [
     { cwd: '.', subject: 'tooling/ci/assert-release-lane-generic.mjs', args: ['tooling/ci/assert-release-lane-generic.mjs', '--emit-apps'], emitsApps: true },
     { cwd: '.', subject: 'tooling/release/test', args: ['--import', '{SPAWN_CEILING}', '--test-timeout=600000', '--test', 'tooling/release/test/*.test.mjs'] },
@@ -1150,7 +1153,7 @@ step(
 );
 step(
   DRYRUN_LEG,
-  "prepare derives the app set and app-dryrun walks five store submission paths per app, node-only and sending nothing.",
+  "lane-apps.yml's detect derives the app set and app-dryrun walks five store submission paths per app, node-only and sending nothing.",
   () => commandLeg(LEG_COMMANDS[DRYRUN_LEG]),
 );
 step(
@@ -1191,7 +1194,7 @@ step(
 const CI_FORMAT_GATED = ['apps/'];
 step(
   FORMAT_LEG,
-  'ci.yml format-gates the stamped apps (leg 5) and every app under apps/ (workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
+  'CI format-gates the stamped apps (leg 5, lane-brick.yml) and every app under apps/ (lane-apps.yml workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
   () => {
     const files = run('git', ['ls-files', '*.dart']).out.split(/\r?\n/).filter(Boolean)
       // The brick template is not parseable Dart — it carries mustache in

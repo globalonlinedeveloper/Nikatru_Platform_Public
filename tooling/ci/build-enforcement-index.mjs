@@ -27,7 +27,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
-import { parseAllActions, parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseAllActions, parseAllWorkflows, resolveLocalCalls, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 export const INDEX_REL = 'tooling/enforcement-index.json';
 export const KINDS = new Set(['guard', 'script', 'lane', 'human', 'test', 'cross-repo', 'none']);
@@ -247,6 +247,34 @@ export function laneOfInvokers(invokedBy, laneByWorkflow) {
   return LANE_UNREADABLE;
 }
 
+/**
+ * ⏱ 2026-10-01 [ADR 095] — AN INHERITED LANE IS READ FROM ITS CALLER, when the
+ * caller says it unconditionally. A `workflow_call`-only file's lane is its
+ * caller's, and the caller IS readable: workflow-scan's resolveLocalCalls, the one
+ * resolver, names every job that calls it. A call job with NO job-level `if:` runs
+ * on every event its own workflow runs on, so the callee inherits that workflow's
+ * lane (the strongest, when several call it). A call job WITH an `if:` (a post-gate
+ * deploy) stays INHERITED: this reader does not evaluate conditions, and calling a
+ * conditional call automatic would launder the claim this section exists to test.
+ * lane-workers, lane-apps, lane-brick and extensions-ci are ci.yml's unconditional
+ * calls, which is how their guards read as automatic.
+ */
+export function resolveInheritedLanes(workflows, laneByWorkflow) {
+  const rank = [LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH];
+  const found = new Map();
+  for (const wf of workflows) {
+    const callerLane = laneByWorkflow.get(wf.rel);
+    if (!rank.includes(callerLane)) continue;
+    for (const c of resolveLocalCalls(wf, workflows).calls) {
+      if ((wf.jobs.get(c.job)?.jobIf ?? null) !== null) continue;
+      const prev = found.get(c.callee.rel);
+      if (prev === undefined || rank.indexOf(callerLane) < rank.indexOf(prev)) found.set(c.callee.rel, callerLane);
+    }
+  }
+  for (const [rel, lane] of found) if (laneByWorkflow.get(rel) === LANE_INHERITED) laneByWorkflow.set(rel, lane);
+  return laneByWorkflow;
+}
+
 // The trigger reader gets the same treatment as the citation reader: a reader
 // that quietly stops reading reports every workflow as automatic — the exact
 // false green this whole section was added to remove.
@@ -345,6 +373,7 @@ export async function buildEnforcementIndex(root, opts = {}) {
   // Every workflow's lane, keyed by the same `wf.rel` an edge carries, so a row
   // that names `<workflow>#<job>` can be resolved back to "what makes it run".
   const laneByWorkflow = new Map(workflows.map((w) => [w.rel, laneOf(readTriggers(w))]));
+  resolveInheritedLanes(workflows, laneByWorkflow);
   for (const [rel, lane] of [...laneByWorkflow].sort()) {
     if (lane !== LANE_UNREADABLE) continue;
     notes.push(

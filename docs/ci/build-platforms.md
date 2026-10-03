@@ -1572,7 +1572,7 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
   `linux_web_android`'s flags: `--obfuscate --split-debug-info`, the same `RELEASE_CHANNEL` stamps
   and the same define names. Three things differ:
   - `APP_VERSION` ends in `+pr`, not the commit. That is legal only because
-    `tooling/channel-register.json` lists `ci.yml#android-artifacts` in `releaseBuildsNeverShipped`,
+    `tooling/channel-register.json` lists `lane-apps.yml#android-artifacts` in `releaseBuildsNeverShipped`,
     which `assert-app-versioning.mjs`, the channel census and the obfuscation guard read. The
     obfuscation guard waives a failing COUPLING or SINK for those builds, prints each waiver, and
     still grades FLOOR: every one of them must carry `--obfuscate`.

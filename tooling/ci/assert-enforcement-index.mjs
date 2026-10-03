@@ -97,7 +97,7 @@ import { listDir } from './tree-walk.mjs';
 import { parseAllActions, parseAllWorkflows, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import {
   INDEX_REL, KINDS, STATES, CoverageLost, buildEnforcementIndex, serialiseIndex,
-  readTriggers, laneOf, laneOfInvokers,
+  readTriggers, laneOf, laneOfInvokers, resolveInheritedLanes,
   LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED, LANE_UNREADABLE,
 } from './build-enforcement-index.mjs';
 import { YIELD_REL, SYNC_COMMAND, checkYield } from '../ops/guard-yield.mjs';
@@ -466,7 +466,8 @@ if (wiredRows.length > 0 && edges === 0) {
 // commit. The lane is derived HERE from the workflows this guard parsed
 // itself, using the shared reader, so the generator cannot define the question
 // away; what the generator supplies is the reading, not the verdict.
-const laneByWorkflow = new Map(parsed.map((w) => [w.rel, laneOf(readTriggers(w))]));
+// A callee reads its caller's lane, through the generator's one rule (resolveInheritedLanes).
+const laneByWorkflow = resolveInheritedLanes(parsed, new Map(parsed.map((w) => [w.rel, laneOf(readTriggers(w))])));
 const byLane = new Map([LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED, LANE_UNREADABLE].map((l) => [l, []]));
 // Only kinds whose `invokedBy` names workflow jobs. A `human` ref is a review
 // row and a HELD row has no edges at all — neither has a lane, and asking

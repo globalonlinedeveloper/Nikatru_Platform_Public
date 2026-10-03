@@ -135,7 +135,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, workflowEvents } from './workflow-scan.mjs';
+import { parseWorkflow, workflowEvents, resolveLocalCalls } from './workflow-scan.mjs';
 import { stripDartComments, blankDartStrings } from './dart-source.mjs';
 import { proposalChangedFiles } from './assert-ops-register.mjs';
 
@@ -457,6 +457,16 @@ const workflows = listDir(wfDir)
      filter below stays a lookup rather than a second read inside a nested loop. */
   .map((wf) => ({ wf, events: workflowEvents(wf) }));
 
+// ⏱ 2026-10-01 [ADR 095] — a lane CALLEE's jobs run inside ci.yml's run, as the
+// children of a ci.yml call job, and that call job's result is red when any of them
+// is. So a hit in a callee is gated exactly when the ci.yml job that CALLS it is in
+// ci-gate's needs — app-brick's guards run in lane-brick.yml, called by `lane-brick`.
+// Read through resolveLocalCalls, the one resolver; a call it cannot follow gates nothing.
+const gatedCallees = new Map(); // callee rel → the ci.yml call job in ci-gate's needs
+for (const c of resolveLocalCalls(ci, workflows.map((e) => e.wf)).calls) {
+  if (gateNeeds.has(c.job)) gatedCallees.set(c.callee.rel, c.job);
+}
+
 const guardDir = join(ROOT, 'tooling', 'ci');
 const guardFiles = new Set(existsSync(guardDir) ? listDir(guardDir).filter((f) => f.endsWith('.mjs')) : []);
 if (guardFiles.size === 0) {
@@ -508,7 +518,11 @@ for (const item of items) {
       );
       continue;
     }
-    const gated = hits.filter((h) => h.events.has('push') && (h.wf.rel !== '.github/workflows/ci.yml' || gateNeeds.has(h.job)));
+    const gated = hits.filter(
+      (h) =>
+        (h.events.has('push') && (h.wf.rel !== '.github/workflows/ci.yml' || gateNeeds.has(h.job))) ||
+        (ciEvents.has('push') && gatedCallees.has(h.wf.rel)),
+    );
     if (gated.length === 0) {
       fail(
         `${where}: guard "${item.check}" is invoked (${hits.map((h) => `${h.wf.rel}:${h.job}`).join(', ')}) ` +

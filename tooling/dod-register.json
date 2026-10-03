@@ -182,8 +182,8 @@
       "id": "H",
       "title": "Proven — the app analyzes clean and its own suite passes",
       "enforcedBy": "lane",
-      "check": "app-brick",
-      "why": "the lane stamps a fresh app, resolves it, analyzes it and runs its tests on every push. The per-feature effect proof is assert-app-dod.mjs's `features` block; the golden matrix, the >=80% number and E2E-per-environment are all recorded cuts below"
+      "check": "lane-brick",
+      "why": "the lane stamps a fresh app, resolves it, analyzes it and runs its tests on every push. Re-keyed 2026-10-01 from `app-brick`: that job is lane-brick.yml's now, and ci.yml's `lane-brick` call job is the lane ci-gate needs (ADR 095); a pull request runs it whenever a path it reads changes, and every push to main runs it. The per-feature effect proof is assert-app-dod.mjs's `features` block; the golden matrix, the >=80% number and E2E-per-environment are all recorded cuts below"
     }
   ],
   "cuts": [

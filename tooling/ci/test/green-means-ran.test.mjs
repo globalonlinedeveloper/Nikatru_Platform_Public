@@ -110,8 +110,9 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('giving a gate constituent a job-level `if:` fails — that is what makes it report skipped', () => {
-    const root = mutant([['ci.yml', '  app-brick:\n    name:', "  app-brick:\n    if: github.event_name != 'pull_request'\n    name:"]]);
-    caught(run(root), /lane "app-brick" carries a job-level `if: github\.event_name != 'pull_request'`, and "ci-gate" aggregates it/);
+    // ⏱ 2026-10-01 — `sites`, not app-brick: app-brick runs in lane-brick.yml now (ADR 095).
+    const root = mutant([['ci.yml', '  sites:\n    name:', "  sites:\n    if: github.event_name != 'pull_request'\n    name:"]]);
+    caught(run(root), /lane "sites" carries a job-level `if: github\.event_name != 'pull_request'`, and "ci-gate" aggregates it/);
   });
 
   test('removing `if: always()` from the aggregate fails — a skipped required check satisfies branch protection', () => {
@@ -585,10 +586,25 @@ describe('§A8 — every called-only workflow ends in one always-run verdict job
   });
 
   test("RC4: dropping lane-workers from ci-gate's needs fails A2, and A7 with it", () => {
-    const root = mutant([['ci.yml', '      - lane-workers\n      - guard-meta\n', '      - guard-meta\n']]);
+    const root = mutant([['ci.yml', '      - lane-workers\n      - lane-apps\n', '      - lane-apps\n']]);
     const r = run(root);
     caught(r, /job "ci-gate" does not `need` "lane-workers"/);
     assert.match(r.out, /lane-workers\.yml can be started only by `workflow_call`, and no constituent of an aggregator/);
+  });
+
+  // ⏱ 2026-10-01 (ADR 095) — the apps and brick lanes are callees on the same terms.
+  test("RC4b: dropping lane-apps or lane-brick from ci-gate's needs fails A2, and A7 with it", () => {
+    for (const [lane, next] of [['lane-apps', 'lane-brick'], ['lane-brick', 'guard-meta']]) {
+      const root = mutant([['ci.yml', `      - ${lane}\n      - ${next}\n`, `      - ${next}\n`]]);
+      const r = run(root);
+      caught(r, new RegExp(`job "ci-gate" does not \`need\` "${lane}"`));
+      assert.match(r.out, new RegExp(`${lane}\\.yml can be started only by \`workflow_call\`, and no constituent of an aggregator`));
+    }
+  });
+
+  test("RC8: lane-apps.yml's verdict that does not need android-artifacts fails A8 — that job could skip under a green verdict", () => {
+    const root = mutant([['lane-apps.yml', '    needs: [detect, workspace-gate, app-dryrun, android-artifacts, web-artifacts, linux-artifacts]\n', '    needs: [detect, workspace-gate, app-dryrun, web-artifacts, linux-artifacts]\n']]);
+    caught(run(root), /lane-apps\.yml: verdict job "lane-verdict" does not `need` "android-artifacts"/);
   });
 
   test('RC6: an `if:` on the lane-workers call job fails A6 — the rule is unchanged for a lane callee', () => {

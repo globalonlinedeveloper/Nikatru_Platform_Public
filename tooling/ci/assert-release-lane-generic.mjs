@@ -495,6 +495,31 @@ const CLASSIFIED_ELSEWHERE = new Map([
   ],
 
   [
+    // ⏱ 2026-10-01 — ci.yml's app jobs (workspace-gate, prepare, app-dryrun and the
+    // three PR built-artifact jobs) moved into this callee (ADR 095). `workflow_call` only.
+    'lane-apps.yml',
+    "is ci.yml's apps lane, not a release lane: it is started only by `workflow_call`, from ci.yml's " +
+      '`lane-apps` job on every push and pull request, and it ships nothing — its builds are the PR ' +
+      'built-artifact proofs tooling/channel-register.json lists in releaseBuildsNeverShipped. Its jobs ARE ' +
+      "graded, as the gate's own, under limbs D, D-all and A′ (the header's THE GATE paragraph), which is " +
+      'where its matrix over the workspace app set (`fromJSON(needs.detect.outputs.apps)`, the --emit-apps ' +
+      'emitter) is held generic; grading it again under limb A as a release lane would count one file ' +
+      'twice. The owning stage is stage 14 ops, through the duty row `duty.workflow.lane-apps.yml` in ' +
+      'tooling/ops/register.json. [ADR 095].',
+  ],
+
+  [
+    // ⏱ 2026-10-01 — ci.yml's app-brick moved into this callee (ADR 095). `workflow_call` only.
+    'lane-brick.yml',
+    "is ci.yml's brick lane: it stamps the throwaway probes from tooling/bricks/app and builds them, and " +
+      "it is started only by `workflow_call`, from ci.yml's `lane-brick` job on every push and pull request. " +
+      'It ships nothing and names no workspace app (the probes are stamped and discarded in the job), so ' +
+      'limb A has nothing to compare; its job IS read as the gate\'s own under limbs D, D-all and A′. The ' +
+      'owning stage is stage 14 ops, through the duty row `duty.workflow.lane-brick.yml` in ' +
+      'tooling/ops/register.json. [ADR 095].',
+  ],
+
+  [
     'ops-watch.yml',
     'reads a D1 table and files an issue. It builds nothing, ships nothing and names no app; [14]O-4 owns ' +
       'it. Grading it would add a workflow to the denominator that can never move the answer.',

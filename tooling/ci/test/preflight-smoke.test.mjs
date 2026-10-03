@@ -220,7 +220,8 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     put(root, 'tooling/scripts/spawn-ceiling.mjs', 'export {};\n');
     put(root, 'tooling/ci/test/fixture.test.mjs', "import { test } from 'node:test';\ntest('fixture', () => {});\n");
     // Every LEG_COMMANDS subject, as a stand-in that exits 0 (a directory gets one
-    // passing test file); prepare's stand-in prints an app list, as the real one does.
+    // passing test file); the emitter's stand-in prints an app list, as the real one does
+    // (lane-apps' detect runs it since 2026-10-01; this fixture ci.yml keys it by the need).
     const ok = "console.log('ok'); process.exit(0);\n";
     const guardSteps = { 'guard-meta': ['node tooling/ci/a-guard.mjs', 'node tooling/ci/assert-sworn-store-files.mjs'] };
     for (const cmds of Object.values(LEG_COMMANDS)) {
@@ -228,7 +229,7 @@ describe('the full run closes with the generated line, not "CI should agree."', 
         const rel = c.cwd === '.' ? c.subject : `${c.cwd}/${c.subject}`;
         if (!/\.(mjs|js)$/.test(rel)) put(root, `${rel}/fixture.test.mjs`, "import { test } from 'node:test';\ntest('fixture', () => {});\n");
         else put(root, rel, c.emitsApps ? "console.log('[\"fixture\"]'); process.exit(0);\n" : ok);
-        if (c.emitsApps) guardSteps.prepare = [`node ${rel} --emit-apps`];
+        if (c.emitsApps) guardSteps['lane-apps'] = [`node ${rel} --emit-apps`];
       }
     }
     for (const sc of SECURITY_SCANNERS) {
@@ -275,12 +276,12 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     const last = lines.pop();
     const n = Object.keys(CI_GATE_LEGS).length + Object.keys(NOT_REPRODUCIBLE).length;
     assert.match(last, new RegExp(`^⬜ NOT CI-GATE — ci-gate needs ${n} job\\(s\\) in \\.github\\/workflows\\/ci\\.yml\\. .* Besides guards this run ran ${8 + sec} other leg\\(s\\);`));
-    // 🔴 The coverage line is MEASURED: --fast skipped the stamp, so app-brick is
+    // 🔴 The coverage line is MEASURED: --fast skipped the stamp, so lane-brick is
     // not run this time; security-scan is too unless a scanner is on PATH.
     const nr = Object.keys(NOT_REPRODUCIBLE).length;
     const here = Object.keys(CI_GATE_LEGS).length - 2 + sec;
     assert.match(out, new RegExp(`^⬜ CI-GATE COVERAGE — ci-gate needs ${n} · run here ${here} · not run this time ${2 - sec} · not reproducible ${nr}$`, 'm'));
-    assert.match(out, /^ {3}not run this time: .*app-brick — stamped probe \(mason \+ dart format \+ app DoD\): --fast skips it/m);
+    assert.match(out, /^ {3}not run this time: .*lane-brick — stamped probe \(mason \+ dart format \+ app DoD\): --fast skips it/m);
     assert.equal(lines.filter((l) => l.startsWith('   not reproducible: ')).length, nr);
   });
 });

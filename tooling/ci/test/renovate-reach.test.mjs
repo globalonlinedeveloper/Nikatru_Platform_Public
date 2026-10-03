@@ -38,7 +38,7 @@ const BRICK_PKG = BRICK_LOCK.replace(/package-lock\.json$/, 'package.json');
 // The brick lockfile is not a version-guard target, so it joins the copy by name.
 const COPY_SET = [...new Set([...collectTargets(REPO).map((p) => p.replace(/\\/g, '/')), VERSIONS, RENOVATE, BRICK_LOCK])];
 const WORKFLOWS = COPY_SET.filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p));
-const CI_YML = WORKFLOWS.find((p) => /\/ci\.yml$/.test(p));
+const BRICK_YML = WORKFLOWS.find((p) => /\/lane-brick\.yml$/.test(p));
 
 let TMP;
 before(() => {
@@ -95,7 +95,8 @@ test('T1 green control: the real target set gives exit 0 and the summary line', 
   assert.match(r.out, /^ok {2}brick lockfile — packages\[""\] carries the package's name and all \d+ of its dependency range\(s\)$/m);
 });
 
-test('T2 the ci.yml mason_cli customManager deleted: exit 1 naming ci.yml', () => {
+// ⏱ 2026-10-01: the second mason_cli copy is lane-brick.yml's, where app-brick moved (ADR 095).
+test('T2 the lane-brick.yml mason_cli customManager deleted: exit 1 naming lane-brick.yml', () => {
   const root = scratch();
   editJson(root, RENOVATE, (c) => {
     const n = c.customManagers.length;
@@ -106,7 +107,7 @@ test('T2 the ci.yml mason_cli customManager deleted: exit 1 naming ci.yml', () =
   });
   const r = reach(root);
   assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.err, /^ {4}\.github\/workflows\/ci\.yml:\d+ mason_cli — /m);
+  assert.match(r.err, /^ {4}\.github\/workflows\/lane-brick\.yml:\d+ mason_cli — /m);
 });
 
 test('T3 the melos group rule deleted: exit 1 naming pubspec.yaml', () => {
@@ -203,7 +204,7 @@ test('T9 every workflow wranglerVersion requoted while wrangler stays grouped: e
 
 test('T10 a drifted literal before any mutation: exit 2, nothing can be attributed', () => {
   const root = scratch();
-  replaceIn(root, CI_YML, /(dart pub global activate mason_cli )[0-9][^\s'"#]*/, (_, head) => `${head}0.0.1`);
+  replaceIn(root, BRICK_YML, /(dart pub global activate mason_cli )[0-9][^\s'"#]*/, (_, head) => `${head}0.0.1`);
   const r = reach(root);
   assert.equal(r.code, 2, r.out + r.err);
   assert.match(r.err, /^✗ COVERAGE LOST — the version guard is not green on the unmutated tree \(.+\), so no site can be attributed to a bump\.$/m);

@@ -1,0 +1,722 @@
+name: Lane — apps
+
+# The apps lane of ci.yml, as a callee (ADR 095). It runs ONLY as a call: ci.yml's
+# `lane-apps` job calls it with no `if:` on every push to main and every pull
+# request, and ci-gate needs that job, so a red job here is a red required check.
+# `detect` decides from tooling/ci/lane-map.json whether this change touches the
+# lane and emits the workspace app set; every work job runs only when detect says
+# affected=true, which it always says on a push to main (main is never narrowed);
+# `lane-verdict` refuses every skip detect did not license. The lane's globs are
+# DERIVED from what these jobs read (tooling/ci/assert-lane-inputs.mjs --write), and
+# that guard (guard-meta) fails when a glob misses an input.
+# docs/ci/README.md §3 has the lane map.
+
+on:
+  workflow_call:
+    # why: NAMED, NOT INHERITED. The one secret the lane reads is the PUBLIC RevenueCat
+    # SDK key storeKeyDefine requires of an android-play stamp (android-artifacts).
+    # NOT required: a fork PR has no secrets, and the builds below are exempt there.
+    secrets:
+      REVENUECAT_PUBLIC_KEY_GOOGLE:
+        required: false
+
+permissions:
+  contents: read
+
+# why: no `concurrency:` key. The caller's group governs the run, and a callee group
+# equal to the caller's would cancel the call from inside it.
+
+jobs:
+  detect:
+    # why: fetch-depth 0, so `git diff <base>...<head>` has the merge base. It fails
+    # open: a push, a non-PR event, an unmapped path or an unreadable diff all say
+    # affected=true (tooling/ci/lane-detect.mjs).
+    name: detect (apps)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      affected: ${{ steps.detect.outputs.affected }}
+      reason: ${{ steps.detect.outputs.reason }}
+      apps: ${{ steps.workspace.outputs.apps }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - id: detect
+        name: Does this change touch the apps lane
+        run: node tooling/ci/lane-detect.mjs --lane apps
+      # why: the ONE app-set emitter of this lane (it was ci.yml's `prepare` job), so
+      # every app-shaped job below iterates one set, and the PR lane builds the apps
+      # the release lane builds: build-platforms.yml `prepare` runs the same emitter.
+      # It runs whatever detect said, so the set is read, and refused when empty, on
+      # every run, and the matrices below never read the output of a skipped job.
+      - name: The matrix comes from the workspace, never from this file
+        id: workspace
+        run: |
+          set -euo pipefail
+          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+
+  ff-detect:
+    # why: FF-2 — starts only once `detect` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · detect
+    needs: detect
+    if: failure() && needs.detect.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: detect is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: detect
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  workspace-gate:
+    # why: three legs, one job id (lane-verdict's need). One job measured
+    # 10.0 min: melos run test 393 s, inside which the app's own flutter test ran
+    # 273 s and started at second 111 behind four packages; dart test -p chrome
+    # 101 s; analyze 61 s (Private research/session-2026-10-01/ci-speed). Every leg
+    # resolves and runs the cheap drift and format checks below, so no check
+    # carries a step-level if:. The two flutter legs filter by ONE glob, scoped
+    # in one and ignored in the other, so between them they test every member by
+    # construction, and each refuses to run over zero members.
+    name: Workspace gate (melos analyze + test) · ${{ matrix.part }}
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        part: [analyze, packages, apps]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Assert workspace coverage
+        run: node tooling/ci/assert-workspace-coverage.mjs
+      - uses: ./.github/actions/setup-flutter
+      - name: Activate melos
+        run: dart pub global activate melos 8.9.0
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      # why: the chassis strings are gen-l10n output over
+      # packages/design_system/lib/src/l10n/chassis_*.arb ([ADR 067] decision 2),
+      # and the triplet is GITIGNORED — the same rule apps/*/lib/l10n follows,
+      # for the reason .gitignore records: gen-l10n emits blanket
+      # `ignore_for_file: type=lint` headers and assert-no-gate-weakening walks
+      # `git ls-files`, so committing them was measured at FAIL, 5 problem(s).
+      #
+      # 🔴 `git diff` CANNOT BE THIS GATE, AND SHIPPING IT AS ONE WAS THE DEFECT.
+      # The first version of this step ran a plain tracked-byte diff over
+      # `packages/design_system/lib` and called that the drift check. (Spelled out
+      # rather than quoted, deliberately: `green-means-ran.test.mjs` DERIVES how many
+      # drift lanes exist by counting that exact command string across every workflow
+      # file, so a comment quoting it invents a lane the guard cannot find — measured,
+      # CI red at 8 counted against 7 reported.) The triplet is
+      # UNTRACKED, so `git diff` cannot see it: measured by writing `BROKEN
+      # GENERATOR OUTPUT` over all three files and running the step verbatim —
+      # EXIT 0, with `git status --ignored=matching` showing all three as `!!`. A
+      # gate whose only demonstrated property is that it passes is worse than no
+      # gate, because the next reader stops looking.
+      #
+      # What replaces it compares the BUILD PRODUCT to itself across a rebuild:
+      # hash what `flutter pub get` produced from the committed .arb files, delete
+      # it, regenerate, hash again. That has a failing input — flip one byte of one
+      # generated file, or change one .arb value without the arb being what the
+      # generator reads, and the hashes differ — and it still asserts the three
+      # things that can go silently wrong: the generator runs, it produces every
+      # file, and what it produces is what the workspace resolved.
+      - name: Record what the workspace resolved for the chassis localisations
+        run: |
+          set -euo pipefail
+          # Missing files fail HERE, under `set -e`, rather than being hashed as
+          # an empty set — "pub get produced nothing" and "the rebuild matched"
+          # must not share an exit code.
+          # ⏱ T20 (XP-06): _hi is the third locale; a locale missing from
+          # this list is a generated file nothing compares.
+          sha256sum packages/design_system/lib/src/l10n/chassis_localizations.dart \
+                    packages/design_system/lib/src/l10n/chassis_localizations_en.dart \
+                    packages/design_system/lib/src/l10n/chassis_localizations_ta.dart \
+                    packages/design_system/lib/src/l10n/chassis_localizations_hi.dart \
+            > "$RUNNER_TEMP/chassis-l10n-before.sha256"
+      - name: Delete the generated chassis localisations so gen-l10n has to produce them
+        run: rm -f packages/design_system/lib/src/l10n/chassis_localizations*.dart
+      - name: chassis l10n regenerates from the arb, byte for byte
+        run: |
+          set -euo pipefail
+          (cd packages/design_system && flutter gen-l10n)
+          for f in chassis_localizations.dart chassis_localizations_en.dart chassis_localizations_ta.dart chassis_localizations_hi.dart; do
+            test -s "packages/design_system/lib/src/l10n/$f"
+          done
+          # The half with a failing input: `sha256sum -c` fails on a file that
+          # came back different and on a file that did not come back at all.
+          sha256sum -c "$RUNNER_TEMP/chassis-l10n-before.sha256"
+          # Tamil parity, from gen-l10n's own diagnostic. The ENFORCEMENT half is
+          # packages/design_system/test/chassis_l10n_parity_test.dart, which names
+          # the keys; this is the cheap early read of the same fact.
+          test "$(cat packages/design_system/chassis-l10n-untranslated.json)" = '{}'
+      # why: this one is about TRACKED bytes and says so. `flutter gen-l10n`
+      # REWRITES `packages/design_system/analysis_options.yaml` as a side effect,
+      # adding an `analyzer: exclude: build/**` block — measured on the runner, run
+      # 34028952850 — which is why the path is `lib` and not the package root. Its
+      # failing input is a generator pointed at a tracked source file: set
+      # `output-localization-file: chassis_l10n_x.dart` and gen-l10n overwrites the
+      # hand-written extension, which this step catches and the hash check above
+      # does not. It is NOT the generated-output drift check; that is the step
+      # above.
+      - name: gen-l10n overwrote no TRACKED source file under the package
+        run: git diff --exit-code -- packages/design_system/lib
+      # why: PR 889 went red here with only "Changed <file>", and the laptop's
+      # Flutter is not the pinned one, so the diff could not be reproduced there.
+      # The GATE is dart's own --set-exit-if-changed; only on a failure does it
+      # format in place and print the .dart lines CI wants. Not a git-diff gate:
+      # Flutter 3.47 rewrites the app's analysis_options.yaml as a side effect
+      # (measured on run 35814243238), so a whole-tree diff reds on a file nobody
+      # edited, and assert-green-means-ran reads such a diff as a drift check.
+      # The subject is apps/, the directory every workspace app lives in, so app #2
+      # is format-gated with no edit here (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
+      - name: The shipping app is dart format-clean
+        run: |
+          if dart format --output=none --set-exit-if-changed apps/; then exit 0; fi
+          dart format apps/ > /dev/null
+          git --no-pager diff -- 'apps/*.dart'
+          exit 1
+      - name: The Apple privacy manifests still describe the binaries that ship
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-apple-privacy-manifest.mjs
+      # why: bp does not run on a PR; this holds its PROVE step and uploads to the register's Apple artifact paths.
+      - name: The Apple prover reads the archives at the paths bp writes and uploads
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-artifact-signed-apple.mjs --static
+      - name: melos run analyze
+        if: matrix.part == 'analyze'
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          melos run analyze
+      # why: melos run test is `melos exec --no-flutter -- dart test && melos exec
+      # --flutter -- flutter test` (pubspec.yaml melos.scripts.test). The legs run
+      # those two halves with the same flags; only the flutter half is split, by
+      # MEMBERS_GLOB scoped (packages) and ignored (apps).
+      # --parsable, because plain `melos list` prints a warning to STDOUT on an empty
+      # set, so the zero-member refusal could never fire (#1111 review 1, finding 2).
+      - name: melos run test (this leg's half)
+        env:
+          PART: ${{ matrix.part }}
+          MEMBERS_GLOB: 'nikatru_*'
+        run: |
+          set -euo pipefail
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          case "$PART" in
+            analyze)  melos exec --fail-fast --dir-exists=test --no-flutter -- dart test; exit 0 ;;
+            packages) filter="--scope=$MEMBERS_GLOB" ;;
+            apps)     filter="--ignore=$MEMBERS_GLOB" ;;
+            *) echo "::error::unknown workspace-gate leg '$PART'"; exit 1 ;;
+          esac
+          members="$(melos list --parsable --flutter --dir-exists=test "$filter")"
+          echo "$members"
+          if [ -z "$members" ]; then echo "::error::leg '$PART' ($filter) matched no Flutter member with tests, so it would test nothing"; exit 1; fi
+          melos exec --fail-fast --dir-exists=test --flutter "$filter" -- flutter test
+      - name: Web arm in a real browser (dart test -p chrome)
+        if: matrix.part == 'analyze'
+        working-directory: packages/core
+        run: |
+          set -euo pipefail
+          export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
+          echo "Chrome: $CHROME_EXECUTABLE"
+          dart test -p chrome
+
+  ff-workspace-gate:
+    # why: FF-2 — starts only once `workspace-gate` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · workspace-gate
+    needs: workspace-gate
+    if: failure() && needs.workspace-gate.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: workspace-gate is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: workspace-gate
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  app-dryrun:
+    # why: the five store submission dry runs, one leg per app. They ran in
+    # guards-store with one app's id written into each `--app`, so app #2's
+    # submission paths were walked by nothing (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
+    # Its one job-level `if:` is detect's affected (green-means-ran A8: lane-verdict
+    # licenses that skip and no other). fail-fast ON (FF-2, assert-failfast-coverage
+    # C8): a red leg keeps its failure and cancels its siblings, then ff-app-dryrun cancels
+    # the run. assert-release-lane-generic grades this file for a literal app id.
+    name: Store submission dry runs
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      # why: every store submitter (tooling/ports/channels.json) against the one dry-run
+      # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
+      - name: Every store submitter passes the dry-run contract, with no network
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
+      - name: The Microsoft Store submission path still walks (dry run)
+        run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — iOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — macOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Snap Store submission path still walks (dry run)
+        run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Google Play submission path still walks (dry run)
+        run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+
+  ff-app-dryrun:
+    # why: FF-2 — starts only once `app-dryrun` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · app-dryrun
+    needs: app-dryrun
+    if: failure() && needs.app-dryrun.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: app-dryrun is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: app-dryrun
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  android-artifacts:
+    name: Android artifacts (built, inspected, discarded)
+    runs-on: ubuntu-24.04
+    # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      # why: O-PR-LANE-GRADLE-CACHE. The first assembleRelease measured 404.8 s cold
+      # (run 36808572305) and the next two 57 s and 102.5 s: the Gradle distribution,
+      # every dependency and every plugin compile. HERE ONLY, never in setup-flutter,
+      # which build-platforms.yml's release builds also run (built-artifact-pr-lane
+      # pins that). RESTORE on every event, SAVE only on a push to main (the last
+      # step of this job): a 2.68 GB entry per PR ref evicted the Flutter SDK and pub
+      # caches every Flutter job restores (#1111 review 1). The primary key hashes the
+      # Gradle files alone; anything else, pubspec.lock included, restores by prefix,
+      # and Gradle's local build cache reuses a task's output only for byte-identical
+      # inputs, so the artifacts the guards below read are the ones a cold build makes.
+      - name: Restore the Gradle caches (dependencies, wrapper, task outputs)
+        id: gradle-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
+          restore-keys: |
+            gradle-android-artifacts-${{ runner.os }}-
+      - name: Turn on Gradle's local build cache for this runner only
+        run: |
+          mkdir -p ~/.gradle
+          echo 'org.gradle.caching=true' >> ~/.gradle/gradle.properties
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (play-billing)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app ${{ matrix.app }} --rail play-billing >> "$GITHUB_OUTPUT"
+      # why: RC-CI (O-BRICK-SELLS-NOTHING-IN-A-STORE) — the one line that OBSERVES the store key on a PR run: the
+      # name the app declares (the resolver's output) is the static secret the builds below read, and it is set.
+      # It prints the NAME and "non-empty", never the value. A fork PR has no secrets and is exempt, as the
+      # builds below already are.
+      - name: The app's store SDK key resolves by name (prints the name only)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          RC_KEY_NAME: ${{ steps.rc-key.outputs.name }}
+        run: |
+          if [ "$RC_KEY_NAME" != REVENUECAT_PUBLIC_KEY_GOOGLE ]; then
+            echo "::error::the app declares $RC_KEY_NAME for play-billing, and this lane reads secrets.REVENUECAT_PUBLIC_KEY_GOOGLE"
+            exit 1
+          fi
+          if [ -z "$RC_KEY" ]; then
+            echo "::error::the repository secret REVENUECAT_PUBLIC_KEY_GOOGLE is unset or empty"
+            exit 1
+          fi
+          echo "$RC_KEY_NAME non-empty"
+      # why: build-platforms.yml linux_web_android's three Android builds, flag for flag;
+      # built-artifact-pr-lane.test.mjs holds the copies equal. APP_VERSION ends in +pr,
+      # not the commit, and that is legal ONLY because tooling/channel-register.json lists
+      # this job in releaseBuildsNeverShipped. No signing secret is in reach, so Gradle
+      # signs with its debug fallback. The one secret is the PUBLIC RevenueCat SDK key
+      # that storeKeyDefine requires of an android-play stamp; the rest stay empty.
+      - name: Build android (apk — sideloadable build proof)
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk android-play --lane pr
+      - name: Build android (aab — the Google Play artifact)
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play --lane pr
+      # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
+      - name: Set the Play .apk aside (Flutter writes every .apk to one path)
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          rm -rf build/android-play-apk-aside
+          mkdir -p build/android-play-apk-aside
+          mv build/app/outputs/flutter-apk/app-release.apk build/android-play-apk-aside/
+          if [ -f build/app/outputs/flutter-apk/app-release.apk.sha1 ]; then mv build/app/outputs/flutter-apk/app-release.apk.sha1 build/android-play-apk-aside/; fi
+      # why: no env block — main's step env points Gradle at the apps.gov.in key; here no key
+      # exists, so this build is debug-signed too. RELEASE_CHANNEL=apps-gov-in sells nothing.
+      - name: Build android (apk — apps.gov.in, its own key, sells nothing)
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk apps-gov-in --lane pr
+      - name: Take the apps.gov.in .apk out, and put the Play .apk back
+        id: agi_apk
+        working-directory: apps/${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+          BUILD_NAME: ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          file="${APP}-apps-gov-in-${BUILD_NAME}.apk"
+          mkdir -p build/apps-gov-in
+          mv build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"
+          rm -f build/app/outputs/flutter-apk/app-release.apk.sha1
+          mv build/android-play-apk-aside/* build/app/outputs/flutter-apk/
+          rmdir build/android-play-apk-aside
+          if cmp -s build/app/outputs/flutter-apk/app-release.apk "build/apps-gov-in/${file}"; then
+            echo "::error title=apps.gov.in apk::the restored Play .apk is byte-identical to the apps.gov.in one"
+            exit 1
+          fi
+          echo "apk=apps/${APP}/build/apps-gov-in/${file}" >> "$GITHUB_OUTPUT"
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform android-artifacts
+      - name: Every native library is aligned for a 16 KB memory page
+        run: >
+          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
+          apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: the Data safety form swears to the merged permission set, and only the
+      # built .aab carries it. Read from the .aab, cross-checked against the Play .apk
+      # restored above, then compared by limb M. O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN.
+      - name: Dump the .aab's merged permissions, cross-checked against the Play .apk
+        run: >
+          node tooling/ci/dump-aab-permissions.mjs
+          --aab apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          --apk apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --out ${{ runner.temp }}/android-permissions.json
+          --run-id ${{ github.run_id }}
+          --commit ${{ github.sha }}
+          --artifact ci-android-${{ matrix.app }}
+      - name: The Data safety merged set equals this build's .aab
+        run: >
+          node tooling/ci/assert-play-declarations.mjs
+          --merged-dump ${{ runner.temp }}/android-permissions.json
+          --app ${{ matrix.app }}
+      # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
+      # exists only inside it. docs/ci/build-platforms.md §vapt.
+      - name: The built .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --app ${{ matrix.app }}
+      - name: The apps.gov.in .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+      # why debug: no key is in reach, so the .apk is debug-signed, and --posture debug
+      # is the posture that REQUIRES the debug signer; the permission, form and minSdk
+      # checks run in every posture.
+      - name: The apps.gov.in .apk — its signer against the pin, its minSdk against the form
+        id: agi_verify
+        run: >
+          node tooling/ci/assert-apps-gov-in-apk.mjs
+          --apk ${{ steps.agi_apk.outputs.apk }}
+          --app ${{ matrix.app }}
+          --posture debug
+      # why: main writes the one entry every PR restores; a PR never writes one.
+      - name: Save the Gradle caches (a run of main only, on a key miss)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
+      # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
+      # A debug-signed PR build is discarded, and release-provenance gives a gate
+      # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
+
+  ff-android-artifacts:
+    # why: FF-2 — starts only once `android-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · android-artifacts
+    needs: android-artifacts
+    if: failure() && needs.android-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: android-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: android-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  # why: the web bundle users LOAD, built on every PR. Its twin is deploy-web.yml
+  # `deploy-web`'s build, not build-platforms.yml's discarded web build, which lacks
+  # --source-maps, --no-web-resources-cdn and --base-href (apps triage D-07).
+  # Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  # why the fonts are FETCHED (lead ruling FWA-1, 2026-09-27): the smoke must boot the bundle
+  # that ships, and that bundle holds build/web/fallback-fonts/. With only `--check`, which
+  # places nothing, main run 36308023692 on a074a7bd failed the smoke on a 404 for
+  # /subscriptiontracker/fallback-fonts/notosanssymbols2/v24/I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2,
+  # which nikatru.com serves 200 (382716 bytes). #1004's own PR run passed: whether a first
+  # frame asks for a fallback font depends on timing and content, so that gap was flaky.
+  web-artifacts:
+    name: Web artifacts (built, booted, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; deploy-web.yml's build-to-smoke span is its measure.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the base href comes from the catalogue row the deploy reads (ADR 075),
+      # through the same emitter deploy-web.yml runs; it reads the catalogue only.
+      - name: Resolve this app's base href from the catalogue
+        id: base
+        run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: deploy-web.yml's build, composed by the same flutter-release-build.mjs call with
+      # `--lane pr` (assert-channel-register 6b-v refuses a hand-typed release build);
+      # built-artifact-pr-lane.test.mjs holds the two equal. `--lane pr` blanks the backend
+      # and crash-sink defines, as in android-artifacts, and ends APP_VERSION in +pr, which is
+      # legal ONLY because tooling/channel-register.json lists this job in
+      # releaseBuildsNeverShipped. TURNSTILE_SITE_KEY is a public repository variable.
+      - name: Build web (release, no service worker)
+        env:
+          BASE_HREF: ${{ steps.base.outputs.base_href }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web --lane pr
+      - uses: ./.github/actions/setup-node
+      # why: deploy-web.yml's own step, the same script with the same arguments, so the
+      # smoke below boots the fallback-fonts/ tree the deploy serves (FWA-1). It reaches only
+      # the public fonts.gstatic.com, through the script's bounded retry, and needs no secret;
+      # built-artifact-pr-lane.test.mjs holds the two steps equal.
+      - name: Self-host the engine's fallback fonts, pinned by sha256
+        run: node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web
+      # why: `--check` stays after it as the grading, lane-brick.yml app-brick's precedent.
+      - name: The bundle satisfies the deploy's self-hosted fallback fonts step
+        run: node tooling/web/self-host-fallback-fonts.mjs --check apps/${{ matrix.app }}/build/web
+      # why --app: a pub package ships its own assets into this app's bundle, so every
+      # file resolves to a shared row or an `app:<id>` row for THIS app, and each
+      # app-scoped row's licence is read from its package's LICENSE through the
+      # package_config.json "Resolve the workspace" wrote (lead ruling PRL-R1).
+      - name: Every asset the build actually shipped has a licence row
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/${{ matrix.app }}/build/web/assets --app ${{ matrix.app }}
+      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame.
+      # No --connect origin is passed: the build's URL-valued defines are empty here, so
+      # there is no origin to probe; deploy-web.yml probes each one with its real value.
+      - name: Launch the built bundle once
+        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+      # why: SYN-X1 C-16. Every a11y test runs on the Dart VM, where enableWebSemantics() is
+      # dead code (kIsWeb is false), so nothing else loads the SHIPPED bundle and reads the
+      # tree a screen reader reads. This boots it as the smoke above does and grades Chrome's
+      # own computed AX tree: flt-semantics present, no "Enable accessibility" placeholder,
+      # every interactive node named. Exit 2 is COVERAGE LOST, deliberately not a pass.
+      - name: The built bundle exposes a named accessibility tree in a real browser
+        run: node tooling/smoke/web-a11y-tree.mjs apps/${{ matrix.app }}/build/web
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform web-artifacts
+      # why: nothing here leaves the runner — no upload, no source maps sent, no
+      # GlitchTip release, no deploy. The bundle and its .map files are discarded with
+      # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
+      # are never SERVED, and nothing is served here).
+
+  ff-web-artifacts:
+    # why: FF-2 — starts only once `web-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · web-artifacts
+    needs: web-artifacts
+    if: failure() && needs.web-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: web-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: web-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
+  # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
+  # included. Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  linux-artifacts:
+    name: Linux artifacts (built, inspected, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; one Linux build plus the recipe emit and its check.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    needs: detect
+    if: needs.detect.outputs.affected == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: build-platforms.yml linux_web_android's Build linux, composed by the same
+      # flutter-release-build.mjs call with `--lane pr`; built-artifact-pr-lane.test.mjs holds
+      # the two equal. The symbols --split-debug-info writes are discarded with the runner,
+      # which is what the releaseBuildsNeverShipped entry for this job says; APP_VERSION ends
+      # in +pr and the secret defines are blanked, as in android-artifacts.
+      - name: Build linux
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage --lane pr
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app ${{ matrix.app }}
+          --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      - name: The generated recipe is complete and still derived from the tree
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+          --app ${{ matrix.app }}
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform linux-artifacts
+      # why: nothing here leaves the runner — no AppImage signing key, no symbols upload,
+      # no upload-artifact. The bundle and its symbols are discarded with the runner.
+
+  ff-linux-artifacts:
+    # why: FF-2 — starts only once `linux-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · linux-artifacts
+    needs: linux-artifacts
+    if: failure() && needs.linux-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: linux-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: linux-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  lane-verdict:
+    # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs
+    # all skipped concludes success. This job needs every other job, runs always(),
+    # and is red on failure, cancelled, a detect that did not succeed, or a skip
+    # detect did not license (assert-green-means-ran A8 asserts the shape). A skip
+    # under affected=false is the one "not needed", and it reads green here.
+    name: lane-verdict
+    needs: [detect, workspace-gate, app-dryrun, android-artifacts, web-artifacts, linux-artifacts]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Every need is green, or skipped under detect's affected=false
+        env:
+          LANE_NEEDS: ${{ toJSON(needs) }}
+        run: node tooling/ci/lane-verdict.mjs

@@ -67,7 +67,7 @@ describe('the coverage table against the REAL ci.yml', () => {
   });
 
   test('every leg command reproduces a step a workflow runs, and its subject exists', () => {
-    const runs = ['.github/workflows/ci.yml', '.github/workflows/extensions-ci.yml']
+    const runs = ['.github/workflows/ci.yml', '.github/workflows/extensions-ci.yml', '.github/workflows/lane-apps.yml', '.github/workflows/lane-brick.yml']
       .flatMap((rel) => [...parseWorkflow(REPO, rel).jobs.values()])
       .flatMap((job) => workflowSteps(job).map((s) => s.run?.text ?? ''))
       .join('\n');

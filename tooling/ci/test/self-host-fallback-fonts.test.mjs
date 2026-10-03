@@ -396,8 +396,9 @@ describe('the APP BRICK stamps a bootstrap that satisfies the deploy', () => {
     assert.throws(() => codeqlPathsIgnore('paths-ignore: [apps/*/web/flutter_bootstrap.js]\n'), /block list/);
   });
 
-  test('ci.yml grades the STAMPED probe with the deploy step itself, on a bundle built the deploy way', () => {
-    const wf = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+  // ⏱ 2026-10-01: app-brick runs in lane-brick.yml, called by ci.yml's lane-brick (ADR 095).
+  test('lane-brick.yml grades the STAMPED probe with the deploy step itself, on a bundle built the deploy way', () => {
+    const wf = readFileSync(join(REPO, '.github', 'workflows', 'lane-brick.yml'), 'utf8');
     const lines = wf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
     const build = lines.indexOf('flutter build web --pwa-strategy=none --no-web-resources-cdn');
     const check = lines.indexOf('node tooling/web/self-host-fallback-fonts.mjs --check apps/probe/build/web');

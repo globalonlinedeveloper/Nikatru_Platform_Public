@@ -2607,8 +2607,9 @@ let releaseCensus;
     // ⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b) — the stamp probe's red control.
     // Its `--channel android-play` is an argument to capture-precheck.mjs, run with the
     // probe's store_screenshots_test.dart moved away and then restored; it builds nothing.
+    // ⏱ 2026-10-01 — re-keyed: app-brick moved into lane-brick.yml (ADR 095), unchanged.
     {
-      workflow: '.github/workflows/ci.yml',
+      workflow: '.github/workflows/lane-brick.yml',
       job: 'app-brick',
       channel: 'android-play',
       why:

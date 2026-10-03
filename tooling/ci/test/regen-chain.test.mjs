@@ -11,7 +11,7 @@
 //   · a generator's exit 2 (COVERAGE LOST) is the chain's exit 2, named;
 //   · a stale landing payload is named by --check, and discovery's skip is a
 //     line of its own, never a silent omission;
-//   · ci.yml's stamp probe names the same generators as ORDER, both ways. The
+//   · lane-brick.yml's stamp probe names the same generators as ORDER, both ways. The
 //     probe re-derives the site surface by naming each generator itself, so
 //     that dropping one from ORDER turns it red; this case is what keeps its
 //     list and ORDER from parting silently.
@@ -64,7 +64,8 @@ const SITE_FEED = 'sites/_shared/_data/apps.json';
 const LANDING = 'catalog/apps-landing.json';
 const APP_YAML = 'apps/subscriptiontracker/app.yaml';
 
-const CI_YML = '.github/workflows/ci.yml';
+// lane-brick.yml: app-brick and its stamp probe moved out of ci.yml on 2026-10-01 (ADR 095).
+const CI_YML = '.github/workflows/lane-brick.yml';
 const PROBE_STEP = 'A stamp leaves the site surface and the tag filter clean';
 /** The probe step runs it too, and it is not a site generator: it writes the
  *  release lanes' `tags:` filters, so ORDER never lists it. */
@@ -249,7 +250,7 @@ describe('regen.mjs — one ordered chain over the site surface', () => {
     assert.match(r.out, /^skip discovery — git-dated/m);
   });
 
-  test('the ci.yml probe step names every ORDER script, and ORDER names every generator the probe step runs', () => {
+  test('the lane-brick.yml probe step names every ORDER script, and ORDER names every generator the probe step runs', () => {
     const body = stepBody(readFileSync(join(REPO, ...CI_YML.split('/')), 'utf8'), PROBE_STEP);
     assert.ok(body !== null, `${CI_YML} has no step named "${PROBE_STEP}"; the stamp probe is gone or renamed`);
     const probe = new Set(nodeScripts(body).filter((s) => s !== TAG_OWNER));
