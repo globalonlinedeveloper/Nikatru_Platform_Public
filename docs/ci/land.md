@@ -99,3 +99,17 @@ The row O-MERGES-DEPEND-ON-THE-LAPTOP closes at step 3, not at this merge.
 - Whether a `workflow_run` fires for a CI run that this token dispatched is not measured. The
   design does not depend on it: `main-healthy.yml` may not post for such a run, and the
   lander reads the run itself, on its 10-minute floor.
+
+## The autopilot additions (2026-10-02)
+
+- **Review gate** (O-REVIEWS-DEPEND-ON-THE-LAPTOP). `land-hold` waits. A PR labelled
+  `needs-review` (set by `review-gate.yml`) waits until the NEWEST verdict review by the repository
+  OWNER — a COMMENT review whose first line is `VERDICT: APPROVE` or `VERDICT: CHANGES`, posted by
+  `tooling/autopilot/post-verdict.mjs` — is an APPROVE on the current head, with `review:approve`.
+  A non-owner's verdict-shaped review counts for nothing either way.
+- **Fix-first** (O-FREEZE-FIX-NEEDS-THE-LAPTOP). The `land-freeze` issue carries each new failing
+  job's first failing step and log tail. While it is open, only a PR labelled `fix-first` whose body
+  says `Fixes-freeze: #<it>` may land (every other rule still applies), and a later run closes the
+  issue once main's newest ci.yml run at the head has every named job green and no red that was
+  not already red on the parent. The fixer routine's instructions are
+  `docs/autopilot/fixer.prompt.md`.

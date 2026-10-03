@@ -405,6 +405,55 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
     assert.match(r.stdout, /PROMOTE ME/);
   });
 
+  // ── O-TAMIL-NOTICE-REVIEW: a translation that exists is a comparison that can FAIL ──
+  // The English fixture body is the live page's ('The policy text.': no <b>, no link, no 18),
+  // so limb 1 stays green and only the translation varies.
+  const twoVersions = (taSnap) => [
+    ['2026-07-26', 'en', snapshot('2026-07-26')],
+    ['2026-08-01', 'en', snapshot('2026-08-01')],
+    ...(taSnap ? [['2026-08-01', 'ta', taSnap]] : []),
+  ];
+  const tamil = (version, body) => snapshot(version, { body }).replace('lang="en"', 'lang="ta"');
+
+  test('a translation in DIFFERENT WORDS with the same structure passes', () => {
+    // The control: different visible text is what a translation IS, so text is never compared.
+    const r = run(repo({ snapshots: twoVersions(tamil('2026-08-01', 'கொள்கையின் உரை.')) }));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /2 notice\(s\) at version 2026-08-01/);
+  });
+
+  test('a translation whose emphasised claims, links or age floor DRIFT from the English FAILS', () => {
+    const ta = 'நீங்கள் <b>18</b> வயது நிரம்பியவர். <a href="/contact">தொடர்பு</a>.';
+    const r = run(repo({ snapshots: twoVersions(tamil('2026-08-01', ta)) }));
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /ta\/privacy\.html does not have the structure of the English notice/);
+    assert.match(r.stderr, /<b> 1 vs en 0/);
+    assert.match(r.stderr, /age floor 18 1 vs en 0/);
+    assert.match(r.stderr, /links \[\/contact\] vs en \[\]/);
+  });
+
+  test('a translation that LOST a paragraph FAILS', () => {
+    const ta = tamil('2026-08-01', 'கொள்கையின் உரை.').replace(/<p>கொள்கையின் உரை\.<\/p>/, '');
+    const r = run(repo({ snapshots: twoVersions(ta) }));
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /<p> 1 vs en 2/);
+  });
+
+  test('a translation LEFT BEHIND by an English version bump PRINTS (failing it is the lead\'s call)', () => {
+    // ta had a notice at 2026-07-26; the English moved to 2026-08-01 and ta did not follow.
+    const root = repo({
+      snapshots: [
+        ['2026-07-26', 'en', snapshot('2026-07-26')],
+        ['2026-07-26', 'ta', snapshot('2026-07-26')],
+        ['2026-08-01', 'en', snapshot('2026-08-01')],
+      ],
+    });
+    const r = run(root);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /TRANSLATION BEHIND: .*2026-08-01\/ta\/privacy\.html is missing, but ta has had a notice before \(2026-07-26\)/);
+    assert.doesNotMatch(r.stdout, /NO NOTICE IN ta/);
+  });
+
   test('a tree that has lost its locale declarations is COVERAGE LOST', () => {
     const root = repo({ locales: [] });
     const r = run(root);

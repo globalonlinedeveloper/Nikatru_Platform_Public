@@ -226,7 +226,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Usage:  node tooling/ci/assert-ops-register.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, extname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -242,6 +242,7 @@ import { appWorkerMatrix } from './worker-set.mjs';
 // alone, and V8 parses `2026-02-31` as 3 March, so an impossible date passed
 // (the PR 913 review, L2, 2026-09-24).
 import { isIsoDate } from '../app-yaml/schema-validate.mjs';
+import { outageGrade, laptopState, parseBeat, readBeatApi, stateLine } from '../autopilot/heartbeat.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
@@ -694,7 +695,7 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
  *  happened. Returns `coverageLost` separately from `errors` because the two
  *  mean different things: an error is a duty that is failing, coverage lost is
  *  this limb no longer being able to tell. */
-export function evaluateRunRecords(reg, probes, nowMs) {
+export function evaluateRunRecords(reg, probes, nowMs, laptop = null) {
   const errors = [];
   const prints = [];
   const decl = reg._recordReaders;
@@ -1018,9 +1019,33 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // own counter would put the word FAILING next to a smaller number every time a
   // row was gated — the count, not the exit code, is what a reader scans.
   const gatedFailLines = [];
+  // ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. A `duty.laptop.*` row graded FAILING
+  // while the laptop heartbeat PROVES an outage (`laptop`, from heartbeat.mjs) is
+  // DEGRADED when its staleness began inside the outage (`outageGrade`): printed as a
+  // warning, never a problem. With no `laptop` argument, or a state of unknown, fresh
+  // or drill-stale, nothing below changes — today's grading, byte for byte.
+  const degraded = [];
   for (const r of scheduled) {
     if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
     const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
+    if (c.verdict === 'fail' && !c.gated && laptop && String(r.id).startsWith('duty.laptop.')) {
+      const p = probes.get(r.id);
+      const days = cadenceDays(r.cadence);
+      const windowMs = days * 86_400_000 * effectiveMultiplier(r, multiplier);
+      // Only the plain "newest success is outside its window" case: a missing
+      // mechanism, a dark reader, a held failure or no success at all stay red.
+      const plainStale = p && !p.unreadable && !p.missing && Number.isFinite(p.lastSuccessMs) &&
+        nowMs - p.lastSuccessMs > windowMs && r.mechanism.recordQuery.lastObserved?.verdict !== 'fail';
+      const o = plainStale
+        ? outageGrade({ rowId: r.id, cadenceMs: days * 86_400_000, windowMs, lastSuccessMs: p.lastSuccessMs, laptop, nowMs })
+        : { degraded: false };
+      if (o.degraded) {
+        tally.degraded = (tally.degraded ?? 0) + 1;
+        degraded.push(o.line);
+        prints.push(`[14]O-3 — DEGRADED, NOT RED (laptop outage): ${o.line}. ${c.line}`);
+        continue;
+      }
+    }
     tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
     if (c.verdict === 'fail') {
       (c.gated ? gatedFailLines : errors).push(c.line);
@@ -1053,6 +1078,7 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // costs exactly what a false alarm costs, so the format is part of the guard.
   prints.push(
     `[14]O-3 — scheduled=${scheduled.length} · queried_ok=${tally.pass} · failing=${tally.fail} ` +
+      (tally.degraded ? `· degraded=${tally.degraded} (laptop outage: printed, not a problem) ` : '') +
       `(owner-gated=${gatedFailLines.length}: printed, not blocking) · ` +
       `unreadable=${tally.unreadable}/ceiling ${readCap} · unreachable=${tally.unreachable}/ceiling ${cap} ` +
       `— [queried_ok is duties whose record WAS read and is inside its window; unreadable is duties this ` +
@@ -1069,7 +1095,7 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
   for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
 
-  return { errors, prints, live, measurement, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
+  return { errors, prints, live, measurement, degraded, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3288,6 +3314,29 @@ export function checkLiveVerdictScopes(reg, topology) {
       continue;
     }
     prints.push(`PAGE-ONLY · ${id} — a red live verdict blocks only in ${sc.page} and PRINTS in every other host. ${sc.why}`);
+  }
+  return { errors, prints };
+}
+
+/** ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. PURE. Every `duty.laptop.*` row on a
+ *  CLOCK names its outage home: `outage: { cloudTwin, laptopOnly }` — where its
+ *  portable half runs while the laptop is off, and what waits for the laptop. The
+ *  outage rule (`outageGrade` in tooling/autopilot/heartbeat.mjs) grades such a row
+ *  DEGRADED during a proven outage, and a degraded duty that names no home for its
+ *  work is a duty nobody does. On-demand (attended) laptop rows have no outage.
+ *  Returns `{ errors, prints }`. */
+export function checkLaptopOutageHomes(reg) {
+  const errors = [];
+  const prints = [];
+  for (const r of reg?.rows ?? []) {
+    const id = String(r?.id ?? '');
+    if (r?.kind !== 'duty' || !id.startsWith('duty.laptop.') || !TIME_CADENCE.test(String(r?.cadence ?? ''))) continue;
+    const o = r?.outage;
+    if (!o || typeof o !== 'object' || !nonEmpty(o.cloudTwin) || !nonEmpty(o.laptopOnly)) {
+      errors.push(`${id}: a scheduled laptop duty with no \`outage: { cloudTwin, laptopOnly }\`. While the laptop is off this row reads DEGRADED (O-LAPTOP-OUTAGE-READS-AS-RED), so it must say where its portable half runs and what waits for the laptop.`);
+      continue;
+    }
+    prints.push(`outage home — ${id}: cloud twin ${o.cloudTwin}; laptop-only ${o.laptopOnly}`);
   }
   return { errors, prints };
 }
@@ -6046,6 +6095,9 @@ async function main() {
   const scopes = checkLiveVerdictScopes(reg, topology);
   errors.push(...scopes.errors);
   prints.push(...scopes.prints);
+  const homes = checkLaptopOutageHomes(reg);
+  errors.push(...homes.errors);
+  prints.push(...homes.prints);
   // ⏱ 2026-09-29 (A-2) — a lane a guard names is run by a schedule (see
   // `checkNamedLanes`). STRUCTURAL. An empty guard set is COVERAGE LOST.
   // A fixture ROOT with no tooling/ci has no guard to hold; THIS checkout
@@ -6076,8 +6128,23 @@ async function main() {
   // everything structural should already have decided by the time a socket opens.
   const jobsCache = new Map();
   const recordProbes = readPlan.read ? await probeRunRecords(reg, ROOT, parsedByFile, jobsCache) : LIVE_READS_NOT_MADE;
-  const rec = evaluateRunRecords(reg, recordProbes, now);
+  let rec = evaluateRunRecords(reg, recordProbes, now);
+  // ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. The heartbeat is read only when a
+  // laptop duty is failing, so a healthy run makes no extra request. An unreadable
+  // beat is `unknown`, which grades exactly as before.
+  if ((rec.live ?? []).some((v) => String(v.id).startsWith('duty.laptop.'))) {
+    const got = await readBeatApi({ repo: process.env.GITHUB_REPOSITORY || DEFAULT_REPO, token: ghToken() });
+    const laptop = laptopState(parseBeat(got.text), now);
+    prints.push(`[14]O-3 — laptop heartbeat: ${stateLine(laptop)}${got.text === null ? ` — ${got.why}` : ''}`);
+    rec = evaluateRunRecords(reg, recordProbes, now, laptop);
+  }
   if (rec.coverageLost) coverageLost(rec.coverageLost);
+  for (const d of rec.degraded ?? []) {
+    console.log(`::warning title=Laptop outage — duty degraded, not red::${d}`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${d}\n`); } catch { /* the summary is a courtesy; the warning above is the record */ }
+    }
+  }
   prints.push(...(rec.prints ?? []));
 
   // [14]O-3b asks a DIFFERENT question of the same record — not "is the newest
