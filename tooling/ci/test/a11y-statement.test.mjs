@@ -64,7 +64,13 @@ test('the page says plainly that no Apple screen-reader pass has been done', () 
 });
 
 test('the page claims no conformance, only the standard worked to', () => {
-  assert.ok(!/\bconforms?\b|\bfully (accessible|compliant)\b/i.test(PAGE.replace(/<!--[\s\S]*?-->/g, '')));
+  let text = PAGE;
+  let prev;
+  do {
+    prev = text;
+    text = text.replace(/<!--[\s\S]*?-->/g, ''); // to a fixed point: a removal cannot splice a new comment
+  } while (text !== prev);
+  assert.ok(!/\bconforms?\b|\bfully (accessible|compliant)\b/i.test(text));
 });
 
 test('the page links the report form with its accessibility category', () => {

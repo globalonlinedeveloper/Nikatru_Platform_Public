@@ -256,7 +256,8 @@ function inline(text, problems, where) {
     else {
       const url = m[3];
       if (!(url.startsWith('/') || /^https:\/\/(?:[a-z0-9-]+\.)?nikatru\.com(?:\/|$)/.test(url))) problems.push(`${where}: a link off nikatru.com (${url})`);
-      out += `<a href="${esc(url.startsWith(ORIGIN) ? url.slice(ORIGIN.length) || '/' : url)}">${esc(m[2])}</a>`;
+      const own = URL.canParse(url) ? new URL(url) : null; // a relative or malformed link is kept as written
+      out += `<a href="${esc(own?.origin === ORIGIN ? `${own.pathname}${own.search}${own.hash}` : url)}">${esc(m[2])}</a>`;
     }
     rest = rest.slice(m.index + m[0].length);
   }
@@ -777,7 +778,12 @@ export function main(argv, log = console.log) {
   const stale = [];
   for (const [rel, want] of p.files) {
     const file = abs(root, rel);
-    const have = existsSync(file) ? readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : null;
+    let have = null;
+    try {
+      have = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
     if (have === want) continue;
     if (check) stale.push(rel);
     else {

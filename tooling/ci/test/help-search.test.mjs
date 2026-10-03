@@ -10,7 +10,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   CONFORMANCE,
-  DART_INDEX_REL,
   EXTENSION_BUNDLES,
   PRICE,
   articlesFor,

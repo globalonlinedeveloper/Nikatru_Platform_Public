@@ -34,7 +34,7 @@
 // stale row) · 2 COVERAGE LOST (no page scanned, the browser or axe could not
 // be loaded, a page did not load).
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -95,11 +95,16 @@ export function serveStatic(dir) {
     const candidates = p.endsWith('/') ? [`${p}index.html`] : [p, `${p}.html`, `${p}/index.html`];
     for (const c of candidates) {
       const abs = path.join(dir, ...c.split('/').filter(Boolean));
-      if (existsSync(abs) && statSync(abs).isFile()) {
-        res.writeHead(200, { 'content-type': MIME[path.extname(abs).toLowerCase()] ?? 'application/octet-stream' });
-        res.end(readFileSync(abs));
-        return;
+      let body;
+      try {
+        body = readFileSync(abs); // read once: a missing path or a directory is the next candidate
+      } catch (err) {
+        if (err.code === 'ENOENT' || err.code === 'EISDIR' || err.code === 'ENOTDIR') continue;
+        throw err;
       }
+      res.writeHead(200, { 'content-type': MIME[path.extname(abs).toLowerCase()] ?? 'application/octet-stream' });
+      res.end(body);
+      return;
     }
     res.writeHead(404, { 'content-type': 'text/plain' });
     res.end('not found');
