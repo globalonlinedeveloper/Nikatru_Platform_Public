@@ -8,7 +8,7 @@
 // Run:  node --test "tooling/ci/test/autopilot-land-gate.test.mjs"
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { decidePr, reviewVerdict, reviewRequired, verdictOf, unionFreezeChecks, plan, report, mainWatch, stripAnsi, freezeLogSection, freezeJobs, freezeCloseVerdict, LAND_LABEL, HOLD_LABEL, NEEDS_REVIEW_LABEL, APPROVE_LABEL, FIX_FIRST_LABEL, FREEZE_LOG_CAP } from '../land-next.mjs';
+import { decidePr, readSnapshot, reviewVerdict, reviewRequired, verdictOf, unionFreezeChecks, plan, report, mainWatch, stripAnsi, freezeLogSection, freezeJobs, freezeCloseVerdict, LAND_LABEL, HOLD_LABEL, NEEDS_REVIEW_LABEL, APPROVE_LABEL, FIX_FIRST_LABEL, FREEZE_LOG_CAP } from '../land-next.mjs';
 
 const R = 'o/r';
 const sha = (c) => c.repeat(40);
@@ -225,6 +225,12 @@ describe('fix-first: the freeze closes itself when main is green again', () => {
     assert.equal(freezeCloseVerdict({ freeze: cq, check: unionFreezeChecks([ci, check({ 'Analyze (javascript)': 'success', x: 'failure' }, { runId: 13, conclusion: 'failure', baseline: null })]) }).close, false, 'a part with no baseline keeps its reds new');
     assert.equal(unionFreezeChecks([]), null);
   });
+  test('🔴 a union with one part still in_progress is NOT completed (whatever the other part says)', () => {
+    const u = unionFreezeChecks([check({ 'Analyze (javascript)': 'success' }, { runId: 13 }), check({}, { runId: 12, status: 'in_progress', conclusion: null })]);
+    assert.notEqual(u.status, 'completed');
+    assert.equal(u.status, 'in_progress');
+    assert.equal(freezeCloseVerdict({ freeze: { number: 51, body: '<!-- land-freeze-jobs ["Analyze (javascript)"] -->' }, check: u }).close, false, 'ci.yml in flight keeps a CodeQL-named freeze open');
+  });
   test('the plan closes it (one write) before any merge', () => {
     const p = plan({
       repo: R, now: '2026-10-02T09:00:00Z', main: { sha: sha('a'), parentSha: sha('b'), committedAt: '2026-10-02T08:00:00Z' },
@@ -234,5 +240,72 @@ describe('fix-first: the freeze closes itself when main is green again', () => {
     });
     assert.equal(p.act.kind, 'close-freeze');
     assert.equal(p.act.issue, 50);
+  });
+});
+
+// readSnapshot's WIRING, over a stubbed `fetch` (review of #1171 round 2, finding 2): the pure
+// halves above are held; these hold the reads that feed them.
+describe('readSnapshot (stubbed fetch)', () => {
+  const MAIN = sha('a');
+  const PARENT = sha('b');
+  const PR_HEAD = sha('e');
+  const DOCS_HEAD = sha('f');
+  const run = (id, wf, over = {}) => ({ id, path: `.github/workflows/${wf}`, event: 'push', head_branch: 'main', head_sha: MAIN, status: 'completed', conclusion: 'success', html_url: `https://x/${id}`, ...over });
+  const routes = (over = {}) => [
+    [/^\/commits\/main$/, () => ({ sha: MAIN, parents: [{ sha: PARENT }], commit: { committer: { date: '2026-10-02T08:00:00Z' } } })],
+    [new RegExp(`^/actions/runs\\?head_sha=${MAIN}&`), () => ({ workflow_runs: over.mainRuns ?? [run(21, 'ci.yml'), run(22, 'codeql.yml')] })],
+    [/^\/issues\?labels=land-freeze&state=all&/, () => [{ number: 51, state: 'open', title: 'land-freeze: CodeQL', body: '<!-- land-freeze-jobs ["Analyze (javascript)"] -->' }]],
+    [/^\/actions\/runs\/21\/jobs\?/, () => ({ jobs: [{ name: 'web', conclusion: 'success' }] })],
+    [/^\/actions\/runs\/22\/jobs\?/, () => ({ jobs: [{ name: 'Analyze (javascript)', conclusion: 'success' }] })],
+    [/^\/pulls\?state=open&base=main&/, () => [
+      { number: 7, title: 'token crypto', state: 'open', draft: false, labels: [{ name: LAND_LABEL }], base: { ref: 'main' }, head: { sha: PR_HEAD, ref: 'feat/x', repo: { full_name: R } } },
+      { number: 8, title: 'docs', state: 'open', draft: false, labels: [{ name: LAND_LABEL }], base: { ref: 'main' }, head: { sha: DOCS_HEAD, ref: 'docs/x', repo: { full_name: R } } },
+    ]],
+    [/^\/pulls\/[78]$/, () => ({ mergeable: true, mergeable_state: 'clean' })],
+    [/^\/issues\/[78]\/events\?/, () => []],
+    [/^\/commits\/[0-9a-f]{40}\/check-runs\?/, () => ({ check_runs: [] })],
+    [/^\/actions\/runs\?head_sha=[ef]{40}&/, () => ({ workflow_runs: [] })],
+    [/^\/pulls\/7\/files\?/, () => [{ filename: 'services/platform/src/lib/token-crypto.ts' }]],
+    [/^\/pulls\/8\/files\?/, () => [{ filename: 'docs/ci/README.md' }]],
+    [/^\/compare\//, () => ({ ahead_by: 0, files: [] })],
+    [/^\/pulls\/[78]\/reviews\?/, () => [{ id: 9, author_association: 'OWNER', body: 'VERDICT: APPROVE', commit_id: PR_HEAD, submitted_at: '2026-10-02T09:00:00Z', state: 'COMMENTED' }]],
+  ];
+  const withFetch = async (table, fn) => {
+    const asked = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const path = String(url).replace(/^https?:\/\/[^/]+\/repos\/o\/r/, '');
+      asked.push(path);
+      const hit = table.find(([re]) => re.test(path));
+      const body = hit ? hit[1]() : { message: 'Not Found' };
+      return { ok: Boolean(hit), status: hit ? 200 : 404, headers: new Headers(), json: async () => body, text: async () => JSON.stringify(body) };
+    };
+    try {
+      return await fn(asked);
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  test('🔴 an open freeze naming an `Analyze …` job reads codeql.yml’s run too: freezeCheck holds the CodeQL job', async () => {
+    await withFetch(routes(), async (asked) => {
+      const snap = await readSnapshot({ repo: R, token: 't', now: new Date('2026-10-02T09:00:00Z') });
+      assert.ok(snap.freezeCheck, 'a freeze is open, so the close input was read');
+      assert.ok(snap.freezeCheck.jobs.some((j) => j.name === 'Analyze (javascript)'), `freezeCheck.jobs: ${JSON.stringify(snap.freezeCheck.jobs)}`);
+      assert.ok(asked.some((p) => p.startsWith('/actions/runs/22/jobs')), 'the codeql.yml run’s jobs were read');
+      assert.equal(snap.freezeCheck.status, 'completed');
+      assert.equal(freezeCloseVerdict({ freeze: snap.freezes[0], check: snap.freezeCheck }).close, true);
+    });
+  });
+  test('🔴 an UNLABELLED PR whose files are review-classed has its reviews read (the label is not the only input)', async () => {
+    await withFetch(routes(), async (asked) => {
+      const snap = await readSnapshot({ repo: R, token: 't', now: new Date('2026-10-02T09:00:00Z') });
+      const p7 = snap.prs.find((p) => p.number === 7);
+      assert.ok(!p7.labels.includes(NEEDS_REVIEW_LABEL), 'the fixture is unlabelled');
+      assert.ok(asked.some((p) => p.startsWith('/pulls/7/reviews')), 'its reviews were fetched');
+      assert.equal(p7.reviews.length, 1);
+      assert.equal(p7.reviews[0].body, 'VERDICT: APPROVE');
+      assert.ok(!asked.some((p) => p.startsWith('/pulls/8/reviews')), 'a docs-only PR costs no reviews read');
+      assert.deepEqual(snap.prs.find((p) => p.number === 8).reviews, []);
+    });
   });
 });
