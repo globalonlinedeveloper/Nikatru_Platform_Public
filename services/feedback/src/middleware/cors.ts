@@ -14,4 +14,6 @@ export * from '../../../_shared/src/cors';
 export const corsMiddleware = cors({
   scope: 'every-app',
   methods: ['GET', 'POST', 'OPTIONS'],
+  // The triage tool's status moves (routes/ops.ts): a browser has no business there.
+  refuseBrowsersOn: ['/v1/ops/'],
 });

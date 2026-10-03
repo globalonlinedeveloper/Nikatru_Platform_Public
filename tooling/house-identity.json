@@ -31,6 +31,10 @@
       "reminders": {
         "value": "Nikatru reminders <reminders@mail.nikatru.com>",
         "why": "[ADR 029] §2: a reminder to a USER is a different type of mail from an owner alert, so it has its own local-part and display name (services/platform/src/lib/reminders.ts); was REMINDER_FROM."
+      },
+      "feedback": {
+        "value": "Nikatru support <support@mail.nikatru.com>",
+        "why": "[ADR 029] §2, the reminders row's reasoning: mail to a USER about their OWN problem report (the receipt and the one \"fixed in version X\" notice, services/feedback/src/lib/notify.ts) is a third type, so it has its own local-part and display name on the verified subdomain (trap auth-06). Lane feedback-triage, 2026-10-03; held for the club's independent review."
       }
     }
   },

@@ -22,7 +22,7 @@ describe('FeedbackInternal', () => {
       CTX as never,
     );
     const { id } = (await res.json()) as { id: string };
-    const entry = new FeedbackInternal(CTX, h.env);
+    const entry = new FeedbackInternal(CTX as never, h.env);
     const shot = await entry.screenshot(id);
     expect(shot?.contentType).toBe('image/png');
     expect(new Uint8Array(shot!.bytes).slice(1, 4)).toEqual(new TextEncoder().encode('PNG'));

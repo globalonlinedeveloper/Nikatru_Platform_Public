@@ -219,7 +219,9 @@ describe('🔴 [Do 5] the screenshot: stripped, private, never served by a route
       expect(res.headers.get('content-type') ?? '').not.toMatch(/^image\//);
     }
     const reads = app.routes.filter((r) => r.method === 'GET' || r.method === 'ALL').map((r) => r.path);
-    expect(reads.filter((p) => p !== '/*' && p !== '*')).toEqual(['/v1/health']);
+    // The one GET under /v1/feedback is the unsubscribe page (lane feedback-triage),
+    // which reads a token's address and serves a button, never an object.
+    expect(reads.filter((p) => p !== '/*' && p !== '*')).toEqual(['/v1/health', '/v1/feedback/unsubscribe']);
   });
 });
 

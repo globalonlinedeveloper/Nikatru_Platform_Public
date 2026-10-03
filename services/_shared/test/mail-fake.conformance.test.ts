@@ -7,7 +7,7 @@ import { createFakeMail, type FakeMailTransport } from '../src/ports/fakes/mail'
 import type { MailSenders } from '../src/ports/mail';
 import { CONFORMANCE_RECIPIENT, runMailConformance, type MailHarness } from './conformance/mail';
 
-const SENDERS: MailSenders = { reports: 'Fixture reports <reports@fixture.test>', reminders: 'Fixture reminders <reminders@fixture.test>' };
+const SENDERS: MailSenders = { reports: 'Fixture reports <reports@fixture.test>', reminders: 'Fixture reminders <reminders@fixture.test>', feedback: 'Fixture support <support@fixture.test>' };
 
 function harness(script: (f: FakeMailTransport) => void = () => {}): MailHarness {
   const f = createFakeMail(SENDERS);

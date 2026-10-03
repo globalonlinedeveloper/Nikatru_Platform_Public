@@ -41,7 +41,7 @@
 
 /** Every stream a Worker sends on. `auth` mail is GoTrue's SMTP on Box C and
  *  never passes through this port (tooling/ports/mail.json, the `smtp` row). */
-export const MAIL_STREAMS = ['reports', 'reminders'] as const;
+export const MAIL_STREAMS = ['reports', 'reminders', 'feedback'] as const;
 export type MailStream = (typeof MAIL_STREAMS)[number];
 
 /** What an adapter can do beyond a single send. Declared, never assumed. */

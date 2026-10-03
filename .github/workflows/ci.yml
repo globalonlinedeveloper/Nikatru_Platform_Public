@@ -1834,6 +1834,10 @@ jobs:
         run: |
           sites=$(node tooling/ci/site-set.mjs --emit)
           node tooling/ci/check-site-integrity.mjs . $sites
+      # why: lane feedback-triage (O-FEEDBACK-TRIAGE-UNSPECIFIED). A known issue is published by the help
+      # centre, so it may carry no e-mail address, no report id and no quoted report text.
+      - name: Known issues carry no personal data
+        run: node tooling/ci/assert-known-issues.mjs
       - name: The published catalogue satisfies its contract
         run: node tooling/ci/assert-catalog-contract.mjs
       - name: Delete the feed so the generator has to produce it

@@ -92,10 +92,15 @@ export function windowLimiter(db: SqlDb, options: WindowLimiterOptions): RateLim
 /** Delete every window (counts AND salt) that has ended: an hour window
  *  (scope 0) older than `hourBefore`, the day window (scope 1) older than `dayBefore`. */
 export async function pruneWindows(db: SqlDb, hourBefore: number, dayBefore: number): Promise<number> {
-  const ended = '(window_start % 1000 = 0 AND window_start < ?) OR (window_start % 1000 = 1 AND window_start < ?)';
+  // Spelled out twice, never a shared `${…}` fragment: a fixed statement text is
+  // what the SQL inventory (assert-d1-sql-inventory R3) can read as static.
   const res = await db.batch([
-    db.prepare(`DELETE FROM feedback_rate_windows WHERE ${ended}`).bind(hourBefore, dayBefore),
-    db.prepare(`DELETE FROM feedback_rate_salts WHERE ${ended}`).bind(hourBefore, dayBefore),
+    db
+      .prepare('DELETE FROM feedback_rate_windows WHERE (window_start % 1000 = 0 AND window_start < ?) OR (window_start % 1000 = 1 AND window_start < ?)')
+      .bind(hourBefore, dayBefore),
+    db
+      .prepare('DELETE FROM feedback_rate_salts WHERE (window_start % 1000 = 0 AND window_start < ?) OR (window_start % 1000 = 1 AND window_start < ?)')
+      .bind(hourBefore, dayBefore),
   ]);
   return res.reduce((n, r) => n + Number(r.meta?.changes ?? 0), 0);
 }

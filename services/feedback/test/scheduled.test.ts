@@ -45,6 +45,7 @@ describe('🔴 [Do 7] 90-day retention, enforced in code', () => {
     ]);
     const beats = h.db.rows('SELECT target, ok FROM cron_heartbeat WHERE job = ? ORDER BY target', FEEDBACK_CRON_JOB);
     expect(beats).toEqual([
+      { target: 'notices', ok: 1 },
       { target: 'orphans', ok: 1 },
       { target: 'purge', ok: 1 },
       { target: 'windows', ok: 1 },

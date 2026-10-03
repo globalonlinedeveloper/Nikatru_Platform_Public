@@ -210,8 +210,9 @@ export function parseReport(body: unknown): Parsed {
   let contactEmail: string | null = null;
   if (body.contactEmail !== undefined && body.contactEmail !== null && body.contactEmail !== '') {
     if (typeof body.contactEmail !== 'string' || !EMAIL.test(body.contactEmail.trim())) return bad('invalid', 'contactEmail');
-    // Kept ONLY with "you may reply to me" ticked; otherwise it is dropped here.
-    contactEmail = reply ? body.contactEmail.trim().toLowerCase() : null;
+    // Kept ONLY with a box ticked that needs it — "you may reply to me" or
+    // "tell me when it is fixed"; otherwise it is dropped here.
+    contactEmail = reply || notifyFixed ? body.contactEmail.trim().toLowerCase() : null;
   }
 
   return {

@@ -96,6 +96,12 @@
       "from": "mail.from.reminders",
       "why": "The renewal digest (services/platform/src/lib/reminders.ts). Its own key when RESEND_REMINDERS_API_KEY is set; until then the reports key, under the digest's own small daily cap (MAX_REMINDER_MAILS_PER_DAY), which lane train-st-reminder-delivery owns and this registry never raises."
     },
+    "feedback": {
+      "adapter": "resend",
+      "secrets": ["RESEND_API_KEY"],
+      "from": "mail.from.feedback",
+      "why": "The feedback Worker's two consented mails about a person's own problem report: the receipt (\"you may reply to me\" ticked) and the one \"fixed in version X\" notice (\"tell me when it is fixed\" ticked), services/feedback/src/lib/notify.ts. On the reports key, under the notice cron's own per-run cap (MAX_NOTICES_PER_RUN), because the auth+alerts quota is shared with password resets."
+    },
     "auth": {
       "adapter": "smtp",
       "secrets": [],

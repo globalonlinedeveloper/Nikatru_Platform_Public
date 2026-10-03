@@ -5790,6 +5790,28 @@
       "source": "unverified",
       "unverifiedWhy": "Drafted 2026-09-26 before the shield exists, re-fitted 2026-09-27 (SHIELD-R3): neither step has run against a deployed shield or an applied zone rule. The row that opens the shield (O-BOXES-UNSHIELDED-FROM-SPIKES) closes on this step green on a scheduled run, both routes bound, and one measured refusal per class.",
       "note": "⏱ 2026-10-02 · THE LOST-REQUEST SIGNATURE, AND ITS RATE (club-identity-boxc). A 52x from edge-shield on auth-api.nikatru.com with NO line in Box C's supabase-auth or supabase-envoy log for that second is a request lost between Cloudflare and the tunnel, not a GoTrue fault. Measured: 2 in the 24 h to 2026-10-01 15:15Z (2026-09-30 15:30:59Z POST /auth/v1/logout after 14.8 s; 2026-10-01 15:00:51Z POST /auth/v1/admin/generate_link after 12.9 s, which reddened main's E2E #36880654202), and on the platform Worker's own same-zone path (which bypasses this shield: 52 of 55 platform account deletions in the 7 days to 2026-10-01 left no shield row) 1 identity read lost of 55 (E2E live #204, 08:51Z). Since 2026-10-02 the shield retries a 520/522 once for GET/HEAD (never GET /verify or /callback, which spend a one-time code; no 524, which arrives past the 30 s budget: review 1 of #1140), POST /logout and POST /admin/generate_link (services/edge-shield/src/index.ts passThrough, event `shield_origin_retry`), the platform retries its identity read once (services/platform/src/lib/platform-erasure.ts readAccount), and the E2E mint retries once (tooling/e2e/magic_link.mjs). Read the rate as count(shield_origin_retry) per day in the edge-shield Worker's observability; a rate that climbs is the tunnel, and its runbook is Private/runbooks/boxes/boxc.md."
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations and wrangler configs, so a store cannot leave the domain by having no rule.",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.feedback_mail_suppressed",
+      "store": "d1:platform_db:feedback_mail_suppressed",
+      "what": "⏱ 2026-10-03 · lane feedback-triage. The unsubscribe list of the feedback mail stream: SHA-256 of each address that pressed \"unsubscribe\" (services/feedback/src/lib/notify.ts).",
+      "rule": "keep",
+      "keepWhy": "A suppression is a standing \"stop\": removing it would re-enable the mail the person asked to end. It holds a hash, never an address (tooling/legal/data-inventory.json `table:platform_db.feedback_mail_suppressed`).",
+      "response": "n/a",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0025_feedback.sql",
+        "record": "the table itself",
+        "failingValue": "rows older than a declared period — not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
     }
   ]
 }

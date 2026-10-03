@@ -867,7 +867,7 @@
       "kind": "d1-table",
       "name": "feedback_reports",
       "personalData": true,
-      "holds": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT). One row per \"Report a problem\" report from an app, nikatru.com or an extension: the reporter's Supabase `sub` when signed in (NULL otherwise), the app, the surface, a category from a closed set, the description and optional steps the person typed (PII-masked before storage: e-mail addresses, phone numbers, card-like and UPI-id-like strings), the diagnostics the client showed in its preview (app version, build, channel, platform, OS version, device CLASS, locale, text scale, theme, recent error CODES, the crash event id only with crash-reporting consent, and log lines only on opt-in), the contact address ONLY when \"you may reply to me\" was ticked, the \"tell me when it is fixed\" flag, the private screenshot's key, a status and the purge time. No network address and no device model or identifier: the route refuses any key it does not know.",
+      "holds": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT). One row per \"Report a problem\" report from an app, nikatru.com or an extension: the reporter's Supabase `sub` when signed in (NULL otherwise), the app, the surface, a category from a closed set, the description and optional steps the person typed (PII-masked before storage: e-mail addresses, phone numbers, card-like and UPI-id-like strings), the diagnostics the client showed in its preview (app version, build, channel, platform, OS version, device CLASS, locale, text scale, theme, recent error CODES, the crash event id only with crash-reporting consent, and log lines only on opt-in), the contact address ONLY when \"you may reply to me\" or \"tell me when it is fixed\" was ticked, both flags, the private screenshot's key, the triage lifecycle (status, its timestamped history, a duplicate-of id, the fix PR number, the fixed version; lane feedback-triage), when the receipt and the one \"fixed in\" notice were claimed, the hash of that notice's unsubscribe token, and the purge time. No network address and no device model or identifier: the route refuses any key it does not know.",
       "retention": {
         "kind": "swept",
         "periodDays": 90,
@@ -1293,6 +1293,29 @@
         "quote": "salted, one-way fingerprint"
       },
       "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address."
+    },
+    {
+      "id": "table:platform_db.feedback_mail_suppressed",
+      "kind": "d1-table",
+      "name": "feedback_mail_suppressed",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane feedback-triage (O-FEEDBACK-NOTIFY-FIXED-UNBUILT). One row per address that pressed \"unsubscribe\" on a feedback mail (the receipt or the \"fixed in\" notice): SHA-256 of the lower-cased address and the time. Never the address itself; nothing else.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A suppression is a person's standing \"stop\": deleting it would let the feedback Worker mail them again, which is the one thing they asked for not to happen. It holds only a hash, and it is read only to refuse a send (services/feedback/src/lib/notify.ts `isSuppressed`)."
+      },
+      "erasure": {
+        "kind": "pseudonymous",
+        "reason": "No column names an account: the row is a hash of an address, deliberately not keyed on `user_id`, so an account deletion leaves it and the stop outlives the account. Erasing it would re-enable mail to the person who asked for none."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0025_feedback.sql",
+        "services/feedback/src/lib/notify.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "each mail has an unsubscribe link"
+      }
     }
   ]
 }

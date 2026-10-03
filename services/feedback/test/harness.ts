@@ -101,3 +101,25 @@ export function multipart(report: Record<string, unknown>, image?: Uint8Array, t
   if (image) form.set('screenshot', new Blob([image], { type }), 'screen.png');
   return form;
 }
+
+// ── one Workers-runtime API Node's WebCrypto does not have ───────────────────
+// `crypto.subtle.timingSafeEqual` is a Cloudflare Workers extension, and the ops
+// route's secret comparison (src/routes/ops.ts) uses it. Without this shim the
+// route THROWS in Node and a refused move and a crash both read as a 500.
+// Ported from services/platform/test/harness.ts; what it restores is PRESENCE,
+// constant-time-ness is the deployed runtime's.
+{
+  const subtle = (
+    globalThis as unknown as { crypto?: { subtle?: { timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean } } }
+  ).crypto?.subtle;
+  if (subtle && typeof subtle.timingSafeEqual !== 'function') {
+    subtle.timingSafeEqual = (a, b) => {
+      const x = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+      const y = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+      if (x.byteLength !== y.byteLength) throw new TypeError('timingSafeEqual: inputs must have the same length');
+      let diff = 0;
+      for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+      return diff === 0;
+    };
+  }
+}

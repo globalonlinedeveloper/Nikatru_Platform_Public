@@ -42,6 +42,8 @@ import {
 } from '../lib/limits';
 import { parseReport, type Report } from '../lib/report';
 import { windowLimiter } from '../lib/window-limiter';
+import { sendReceipt, suppress, tokenAddress } from '../lib/notify';
+import { mailFor } from '../ports';
 import type { AppEnv, Env } from '../types';
 
 const feedback = new Hono<AppEnv>();
@@ -134,9 +136,11 @@ export function purgeAtOf(createdAtMs: number): string {
   return new Date(createdAtMs + FEEDBACK_RETENTION_DAYS * DAY_MS).toISOString();
 }
 
-/** The row's contact: the account's address or the typed one, ONLY on "you may reply". */
+/** The row's contact: the account's address or the typed one, ONLY when a box
+ *  that needs one was ticked — "you may reply to me" (the receipt, a reply) or
+ *  "tell me when it is fixed" (the one notice, lib/notify.ts). */
 function contactOf(report: Report, who: Who): string | null {
-  if (!report.reply) return null;
+  if (!report.reply && !report.notifyFixed) return null;
   if (who.kind === 'user') return who.email;
   return report.contactEmail;
 }
@@ -226,7 +230,59 @@ feedback.post('/', async (c) => {
     throw err;
   }
   console.log(`[feedback] rid=${rid} stored ${id} app=${report.appId} surface=${report.surface} category=${report.category} at=${nowIso()}`);
+  // The receipt (lane feedback-triage, Do 5): only with "you may reply to me"
+  // ticked, after the answer, never holding it. sendReceipt re-reads the row.
+  if (report.reply) {
+    c.executionCtx.waitUntil(
+      sendReceipt(c.env.PLATFORM_DB, mailFor(c.env), id, nowIso()).then(
+        (r) => console.log(`[feedback-mail] rid=${rid} receipt ${r}`),
+        (err: unknown) => console.log(`[feedback-mail] rid=${rid} receipt error ${err instanceof Error ? err.name : typeof err}`),
+      ),
+    );
+  }
   return c.json({ id, status: 'new' }, 201);
+});
+
+// ── ONE-CLICK UNSUBSCRIBE (lane feedback-triage, Do 4) ──────────────────────
+// GET shows one button and changes nothing: a mail scanner fetching links must
+// not unsubscribe anybody. POST (the button, or a mail client's RFC 8058
+// one-click) adds the address's hash to `feedback_mail_suppressed`, after which
+// this Worker never mails it again. The token is in the URL, so no referrer,
+// no cache, no index.
+const privateHeaders = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' };
+const page = (title: string, body: string) =>
+  `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+  `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head>` +
+  `<body><main><h1>${title}</h1>${body}</main></body></html>`;
+
+feedback.get('/unsubscribe', async (c) => {
+  const edge = await strictEdgeCeiling(c.env.FEEDBACK_EDGE_LIMITER, c, 'FEEDBACK_EDGE_LIMITER');
+  if (edge !== 'within') return c.text('rate limited', 429, privateHeaders);
+  const token = c.req.query('t');
+  if ((await tokenAddress(c.env.PLATFORM_DB, token)) === null) {
+    return c.html(page('Link not recognised', '<p>This unsubscribe link is not valid any more.</p>'), 404, privateHeaders);
+  }
+  return c.html(
+    page(
+      'Stop mail about your reports',
+      '<p>Stop every mail about your problem reports, the receipts and the "fixed in" notices?</p>' +
+        `<form method="post" action="/v1/feedback/unsubscribe?t=${token}"><button type="submit">Stop these emails</button></form>`,
+    ),
+    200,
+    privateHeaders,
+  );
+});
+
+feedback.post('/unsubscribe', async (c) => {
+  const edge = await strictEdgeCeiling(c.env.FEEDBACK_EDGE_LIMITER, c, 'FEEDBACK_EDGE_LIMITER');
+  if (edge !== 'within') return c.text('rate limited', 429, privateHeaders);
+  const address = await tokenAddress(c.env.PLATFORM_DB, c.req.query('t'));
+  if (address === null) return c.text('This unsubscribe link is not valid any more.', 404, privateHeaders);
+  await suppress(c.env.PLATFORM_DB, address, nowIso());
+  if ((c.req.header('content-type') ?? '').startsWith('application/x-www-form-urlencoded') && c.req.header('Origin') === undefined) {
+    return c.text('Unsubscribed.', 200, privateHeaders);
+  }
+  return c.html(page('Unsubscribed', '<p>You will get no more mail about your problem reports.</p>'), 200, privateHeaders);
 });
 
 export default feedback;

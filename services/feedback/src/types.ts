@@ -38,6 +38,13 @@ export interface Env {
    *  support mail. The lead flips it after the first deploy (PR body, lead steps). */
   INTAKE_OPEN?: string;
   SUPABASE_JWT_SECRET?: string;
+  /** The `feedback` mail stream's key (tooling/ports/mail.json), the reports
+   *  key the platform Worker holds. Absent ⇒ no receipt and no notice is sent;
+   *  every report is still stored. `wrangler secret put RESEND_API_KEY`. */
+  RESEND_API_KEY?: string;
+  /** The bearer of POST /v1/ops/feedback/move, held by the lead's laptop for
+   *  tooling/feedback/move.mjs. Absent ⇒ the route answers 503. */
+  FEEDBACK_OPS_SECRET?: string;
   /** The crash sink's DSN, a `--var` at deploy time; absent ⇒ no report. */
   GLITCHTIP_DSN?: string;
   /** The deployed commit, `--var RELEASE:<sha>`. */

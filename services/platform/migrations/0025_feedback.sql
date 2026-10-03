@@ -33,12 +33,27 @@
 --                    channel, platform, OS version, device class, locale, text
 --                    scale, theme, the last error CODES, the crash event id (only
 --                    with crash-reporting consent), and `logs` only on opt-in.
---   contact_email    ONLY when "you may reply to me" was ticked: the account's
---                    address, or the one typed while signed out. NULL otherwise.
+--   contact_email    ONLY when "you may reply to me" or "tell me when it is
+--                    fixed" was ticked: the account's address, or the one typed
+--                    while signed out. NULL otherwise.
 --   notify_fixed     1 when "tell me when it is fixed" was ticked.
 --   screenshot_key   the private bucket key, or NULL.
 --   purge_at         created_at + 90 days; the feedback Worker's cron deletes
 --                    the row and its screenshot at this instant.
+--   status           the lifecycle (lane feedback-triage), services/feedback/src/lib/lifecycle.ts:
+--                    new -> triaged -> duplicate | known | in-fix -> fixed -> notified,
+--                    plus wontfix and spam. Moved ONLY by POST /v1/ops/feedback/move
+--                    (the triage tool) and, fixed -> notified, by the Worker's cron.
+--   status_at,       when the status last moved, and every move as JSON
+--   status_history   [{"from","to","at","by"}]; deleted with the row.
+--   duplicate_of     the FB- id a `duplicate` points at.
+--   fix_pr           the fix PR's number (`in-fix`); its commits carry
+--                    `Fixes-Report: FB-<id>` trailers.
+--   fixed_version    the release that carries the fix (`fixed`).
+--   receipt_at,      when the one receipt / the one "fixed in" notice was
+--   notified_at      CLAIMED (claim-then-send: a lost answer never mails twice).
+--   unsubscribe_hash SHA-256 of the one-click unsubscribe token the notice
+--                    carried; the token itself is never stored.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS feedback_reports (
@@ -58,12 +73,33 @@ CREATE TABLE IF NOT EXISTS feedback_reports (
   screenshot_key   TEXT,
   status           TEXT NOT NULL DEFAULT 'new',
   created_at       TEXT NOT NULL,
-  purge_at         TEXT NOT NULL
+  purge_at         TEXT NOT NULL,
+  status_at        TEXT,
+  status_history   TEXT,
+  duplicate_of     TEXT,
+  fix_pr           INTEGER,
+  fixed_version    TEXT,
+  receipt_at       TEXT,
+  notified_at      TEXT,
+  unsubscribe_hash TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_reports_idem ON feedback_reports (idempotency_key);
 -- The nightly purge reads this.
 CREATE INDEX IF NOT EXISTS idx_feedback_reports_purge ON feedback_reports (purge_at);
+
+-- The notice cron reads the reports waiting for their "fixed in" mail.
+CREATE INDEX IF NOT EXISTS idx_feedback_reports_status ON feedback_reports (status);
+CREATE INDEX IF NOT EXISTS idx_feedback_reports_unsubscribe ON feedback_reports (unsubscribe_hash);
+
+-- Addresses that pressed "unsubscribe" on a feedback mail (lane feedback-triage):
+-- SHA-256 of the lower-cased address, never the address. No `user_id`, so the
+-- erasure walk leaves it: a suppression outlives the reports, which is its whole
+-- point — an address that said stop is never mailed by this Worker again.
+CREATE TABLE IF NOT EXISTS feedback_mail_suppressed (
+  address_hash TEXT PRIMARY KEY NOT NULL,
+  created_at   TEXT NOT NULL
+);
 
 -- The anonymised stub a purged report leaves for counts: no text, no account,
 -- no contact, no screenshot, no date finer than the day. One row per

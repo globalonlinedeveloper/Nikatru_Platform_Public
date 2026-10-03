@@ -225,6 +225,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       // ⏱ 2026-10-03 · migration 0025 — the "Report a problem" intake (lane
       // feedback-intake), written by services/feedback.
       'feedback_counts',
+      // ⏱ 2026-10-03 · lane feedback-triage: the unsubscribe list.
+      'feedback_mail_suppressed',
       'feedback_rate_salts',
       'feedback_rate_windows',
       'feedback_reports',

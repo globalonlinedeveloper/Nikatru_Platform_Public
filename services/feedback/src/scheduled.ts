@@ -2,7 +2,7 @@
 // scheduled.ts — the feedback Worker's nightly cron (lane feedback-intake, Do 7
 // and 8).
 //
-// THREE LIMBS, each in its own try so one failing does not stop the others, and
+// FOUR LIMBS, each in its own try so one failing does not stop the others, and
 // each writing one `cron_heartbeat` row (job `feedback_purge`, platform_db's
 // table every cron limb writes) so a purge that stops is a red row, not a store
 // that quietly grows:
@@ -17,10 +17,17 @@
 //             platform's erasure walk deletes the rows (`user_id`, 0025's header),
 //             and the next night this limb deletes what they pointed at.
 //   windows   the rate-limit windows and their salts, once ended.
+//   notices   (lane feedback-triage, Do 4) every report at `fixed` whose reporter
+//             ticked "tell me when it is fixed": ONE localised mail each, then
+//             `notified` (lib/notify.ts runNotices, claim-then-send). Runs FIRST,
+//             so a report fixed on its last day is told before its purge.
 // ─────────────────────────────────────────────────────────────────────────────
 import { allRows, run } from './lib/d1';
 import { DAY_MS, HOUR_MS, ORPHAN_PAGE, PURGE_BATCH, PURGE_MAX_PASSES } from './lib/limits';
 import { pruneWindows } from './lib/window-limiter';
+import { runNotices } from './lib/notify';
+import { mailFor } from './ports';
+import type { MailTransport } from '../../_shared/src/ports/mail';
 import type { Env } from './types';
 
 export const FEEDBACK_CRON_JOB = 'feedback_purge';
@@ -57,16 +64,18 @@ export async function purgeExpired(env: Env, nowMs: number): Promise<{ purged: n
       // Two set statements in ONE transaction, never one per row: a Worker
       // invocation is held to D1's per-invocation query ceiling. The id set is
       // the rows just read, so the count and the delete name the same reports.
-      const ids = rows.map((r) => r.id);
-      const inIds = `id IN (${ids.map(() => '?').join(', ')})`;
+      // The id set is ONE bound JSON array (`json_each(?)`), never a hand-built
+      // `IN (?, ?, …)` list: the statement text is fixed, whatever the batch size.
+      const ids = JSON.stringify(rows.map((r) => r.id));
       await env.PLATFORM_DB.batch([
         env.PLATFORM_DB.prepare(
           'INSERT INTO feedback_counts (day, app_id, app_version, category, status, n) ' +
-            `SELECT substr(created_at, 1, 10), app_id, COALESCE(app_version, ''), category, status, COUNT(*) FROM feedback_reports WHERE ${inIds} ` +
-            'GROUP BY substr(created_at, 1, 10), app_id, COALESCE(app_version, \'\'), category, status ' +
+            "SELECT substr(created_at, 1, 10), app_id, COALESCE(app_version, ''), category, status, COUNT(*) FROM feedback_reports " +
+            'WHERE id IN (SELECT value FROM json_each(?)) ' +
+            "GROUP BY substr(created_at, 1, 10), app_id, COALESCE(app_version, ''), category, status " +
             'ON CONFLICT (day, app_id, app_version, category, status) DO UPDATE SET n = n + excluded.n',
-        ).bind(...ids),
-        env.PLATFORM_DB.prepare(`DELETE FROM feedback_reports WHERE ${inIds}`).bind(...ids),
+        ).bind(ids),
+        env.PLATFORM_DB.prepare('DELETE FROM feedback_reports WHERE id IN (SELECT value FROM json_each(?))').bind(ids),
       ]);
     }
     purged += rows.length;
@@ -80,7 +89,7 @@ export async function sweepOrphans(env: Env): Promise<number> {
   let deleted = 0;
   let cursor: string | undefined;
   do {
-    // ORPHAN_PAGE keys a page: D1 binds at most 100 parameters to one statement.
+    // ORPHAN_PAGE keys a page: one bounded read per page of the bucket listing.
     const page = await env.SCREENSHOTS.list({ prefix: 'shots/', cursor, limit: ORPHAN_PAGE });
     const keys = page.objects.map((o) => o.key);
     if (keys.length > 0) {
@@ -88,8 +97,8 @@ export async function sweepOrphans(env: Env): Promise<number> {
         (
           await allRows<{ screenshot_key: string }>(
             env.PLATFORM_DB.prepare(
-              `SELECT screenshot_key FROM feedback_reports WHERE screenshot_key IN (${keys.map(() => '?').join(', ')})`,
-            ).bind(...keys),
+              'SELECT screenshot_key FROM feedback_reports WHERE screenshot_key IN (SELECT value FROM json_each(?))',
+            ).bind(JSON.stringify(keys)),
           )
         ).map((r) => r.screenshot_key),
       );
@@ -121,7 +130,24 @@ async function heartbeat(env: Env, target: string, ok: boolean, detail: string, 
 }
 
 /** The cron's one entry. Never throws: each limb's failure is its heartbeat row. */
-export async function runFeedbackCron(env: Env, nowMs: number = Date.now()): Promise<void> {
+export async function runFeedbackCron(
+  env: Env,
+  nowMs: number = Date.now(),
+  deps: { mail?: MailTransport | null } = {},
+): Promise<void> {
+  try {
+    const mail = deps.mail !== undefined ? deps.mail : mailFor(env);
+    const n = await runNotices(env.PLATFORM_DB, mail, new Date(nowMs).toISOString());
+    await heartbeat(
+      env,
+      'notices',
+      n.failed === 0,
+      n.configured ? `sent=${n.sent} suppressed=${n.suppressed} failed=${n.failed}` : 'not configured (RESEND_API_KEY unset): nothing sent',
+      nowMs,
+    );
+  } catch (err) {
+    await heartbeat(env, 'notices', false, String(err), nowMs);
+  }
   try {
     const { purged, capped } = await purgeExpired(env, nowMs);
     await heartbeat(env, 'purge', true, `purged=${purged}${capped ? ' capped=1' : ''}`, nowMs);

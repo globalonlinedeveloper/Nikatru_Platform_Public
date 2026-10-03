@@ -27,7 +27,12 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ORIGIN = 'https://app.example.test';
-const endpoints = mountedEndpoints(app.routes);
+// ⏱ 2026-10-03 · lane feedback-triage: `/v1/ops/` (the status moves) refuses
+// every browser, so it is preflighted by the test below, not by the loop.
+const NO_CORS = '/v1/ops/';
+const all = mountedEndpoints(app.routes);
+const endpoints = all.filter((e) => !e.path.startsWith(NO_CORS));
+const noCorsEndpoints = all.filter((e) => e.path.startsWith(NO_CORS));
 const env = { ALLOWED_ORIGINS: ORIGIN } as AppEnv['Bindings'];
 const through: RequestThroughApp = (path, init) => app.request(path, init, env);
 
@@ -41,6 +46,16 @@ describe('preflight allows every method a MOUNTED route answers', () => {
 
   it('every mounted route is preflight-approved for its own method, from a listed origin', async () => {
     expect(await refusedPreflights(through, endpoints, ORIGIN)).toEqual([]);
+  });
+
+  it('🔴 /v1/ops/ answers a browser 403, preflight or not, even from a listed origin', async () => {
+    expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: '/v1/ops/feedback/move' });
+    for (const e of noCorsEndpoints) {
+      const pre = await through(e.path, { method: 'OPTIONS', headers: { Origin: ORIGIN, 'Access-Control-Request-Method': e.method } });
+      expect(pre.status, e.path).toBe(403);
+      const res = await through(e.path, { method: e.method, headers: { Origin: ORIGIN } });
+      expect(res.status, e.path).toBe(403);
+    }
   });
 
   it('an origin that is not listed gets no approval', async () => {

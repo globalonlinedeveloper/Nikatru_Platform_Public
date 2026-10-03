@@ -26,6 +26,7 @@ import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { requestId } from './lib/request-id';
 import feedback from './routes/feedback';
+import ops from './routes/ops';
 import { runFeedbackCron } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -100,6 +101,7 @@ app.get('/v1/health', async (c) => {
 // The intake. Its auth is per request (authed or anonymous, routes/feedback.ts),
 // so no group middleware stands in front of it.
 app.route('/v1/feedback', feedback);
+app.route('/v1/ops/feedback', ops);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
