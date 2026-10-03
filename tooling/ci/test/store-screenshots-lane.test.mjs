@@ -1695,9 +1695,32 @@ describe('store-screenshots.yml: every capture job finishes its capture before i
     assert.deepEqual(real.census, JOBS);
   });
 
+  test('⏱ 2026-10-03 the Play job re-derives the site copies (tooling/site-shots.json) and carries them in both uploads and the pull request', () => {
+    // check-site-integrity.mjs fails a site copy whose Play frame moved, so a Play
+    // re-capture that does not bring the copies with it turns ci.yml `sites` red.
+    const steps = workflowSteps(lane.jobs.get('capture'));
+    const site = steps.filter((s) => runs(s, /(?:^|\s)node\s+tooling\/sites\/derive-site-shots\.mjs(?!\s+--check)(?=\s|$)/));
+    assert.equal(site.length, 1, 'the Play job has no single step that re-derives the site copies');
+    assert.equal(site[0].id, 'site');
+    assert.equal(site[0].cond, null, 'the site derivation is gated; a dry run must carry the copies too');
+    const check = steps.findIndex((s) => runs(s, /(?:^|\s)node\s+tooling\/sites\/derive-site-shots\.mjs\s+--check(?=\s|$)/));
+    const derived = steps.findIndex((s) => runs(s, DERIVED_CALL));
+    const pr = steps.findIndex((s) => s.run && shellSegments(s.run.text).some((x) => PR_WRITE.test(x)));
+    assert.ok(derived < site[0].index && site[0].index < check && check < pr, 'not: derived-sets check, then the site derivation, then its --check, then the pull request');
+    assert.match(steps[pr].env.get('SHOTS')?.value ?? '', /\$\{\{ steps\.site\.outputs\.paths \}\}/);
+    const uploads = steps.filter((s) => s.uses && UPLOAD_ACTION.test(s.uses) && !NON_SUCCESS_IF.test(s.cond ?? ''));
+    assert.equal(uploads.length, 2);
+    for (const u of uploads) {
+      const p = u.with.get('path')?.value ?? '';
+      for (const want of ['sites/nikatru/apps/shots/', 'sites/nikatru/apps/*.html', 'tooling/site-shots.json']) {
+        assert.ok(p.includes(want), `the upload at :${u.first} does not carry ${want}`);
+      }
+    }
+  });
+
   test('🔴 the Play pull request without the finish step\'s paths in SHOTS is named', () => {
     const pr = stepNamed('capture', /^Propose the set/);
-    const at = lineOf(/^ {10}SHOTS: .*\$\{\{ steps\.finish\.outputs\.paths \}\}$/, pr.first);
+    const at = lineOf(/^ {10}SHOTS: .*\$\{\{ steps\.finish\.outputs\.paths \}\}( \$\{\{ steps\.site\.outputs\.paths \}\})?$/, pr.first);
     assert.ok(at > pr.first && at <= pr.last, 'the Play pull request carries no SHOTS line with the finish output to remove');
     const lines = yml.split('\n');
     lines[at - 1] = lines[at - 1].replace(' ${{ steps.finish.outputs.paths }}', '');
