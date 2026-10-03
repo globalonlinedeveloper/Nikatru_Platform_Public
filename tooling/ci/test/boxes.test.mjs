@@ -442,6 +442,11 @@ console.error('unsupported ' + cmd); process.exit(9);
     r = run(DRILL, ['zexport', '--to', tmp('s-'), '--root', estate(), '--rclone-bin', join(shimDir, 'no-such-rclone')], { Z_REMOTE: 'x' });
     assert.equal(r.code, 2, r.out);
     assert.match(r.first, /is not installed here/);
+    // review of #1160, nit 3: a SCRIPT tool (.cjs) that is missing is "not installed",
+    // not node's loader text — the script form spawns node, so there is no ENOENT.
+    r = run(DRILL, ['zexport', '--to', tmp('s-'), '--root', estate(), '--rclone-bin', join(shimDir, 'no-such-rclone.cjs')], { Z_REMOTE: 'x' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /no-such-rclone\.cjs is not installed here \(--rclone-bin\)/);
     for (const set of ['boxb-restic', 'restic-third-copy', 'glitchtip-pg', 'supabase-auth-pg']) {
       const real = run(DRILL, [set, '--to', tmp('s-')]);
       assert.equal(real.code, 2, real.out);
