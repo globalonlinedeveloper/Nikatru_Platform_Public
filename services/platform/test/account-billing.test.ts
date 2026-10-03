@@ -22,6 +22,7 @@ const USER = 'user-billing';
 let signingKey: CryptoKey;
 let publicJwk: JWK;
 let paddleCalls: Array<{ url: string; body: string }> = [];
+let razorpayCalls: Array<{ url: string; body: string }> = [];
 let paddleStatus = 200;
 let identityDeletes = 0;
 let appPurges = 0;
@@ -45,6 +46,11 @@ beforeAll(async () => {
         { status: paddleStatus, headers: { 'Content-Type': 'application/json' } },
       );
     }
+    // ⏱ 2026-10-01 · fix-india-rail-tax-data: Razorpay has a cancel executor now (razorpay-rail.ts).
+    if (url.startsWith('https://api.razorpay.com/')) {
+      razorpayCalls.push({ url, body: String(init?.body ?? '') });
+      return new Response(JSON.stringify({ id: 'sub_RZPlive01', entity: 'subscription', status: 'active', current_end: 1824681600 }), { status: 200 });
+    }
     if (url.includes('/auth/v1/admin/users/') && (init?.method ?? 'GET') === 'GET') {
       return new Response(JSON.stringify({ email: null }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
@@ -62,6 +68,7 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
   paddleCalls = [];
+  razorpayCalls = [];
   paddleStatus = 200;
   identityDeletes = 0;
   appPurges = 0;
@@ -82,7 +89,7 @@ const passwordUser = () =>
     .sign(signingKey);
 
 /** ⚠️ `null` means NO key; an `undefined` argument is swallowed by the default. */
-function harness(paddleApiKey: string | null = LIVE_KEY) {
+function harness(paddleApiKey: string | null = LIVE_KEY, razorpayKeys: Record<string, string> = {}) {
   const db = realPlatformDb();
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -100,6 +107,7 @@ function harness(paddleApiKey: string | null = LIVE_KEY) {
     API_VERSION: 'v1',
     MONEY_ENVIRONMENT: 'live',
     PADDLE_API_KEY: paddleApiKey ?? undefined,
+    ...razorpayKeys,
   } as unknown as AppEnv['Bindings'];
   return {
     db,
@@ -163,15 +171,32 @@ describe('AB-A5-02 · deleting a paying account stops its billing first', () => 
     expect(identityDeletes).toBe(0);
   });
 
-  it('a live RAZORPAY subscription (no executor, MF-9) refuses with a sentence naming what to do', async () => {
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: MF-9's "no executor" closed in code — razorpay-rail.ts
+  // declares `cancel` (POST /v1/subscriptions/<id>/cancel, cancel_at_cycle_end). The deletion still
+  // FAILS CLOSED when this deploy holds no Razorpay key: nothing is erased, nothing is sent.
+  it('a live RAZORPAY subscription on a deploy with no Razorpay key refuses (fail closed), sends nothing, erases nothing', async () => {
     const h = harness();
-    seedLive(h.db, 'razorpay', 'sub_rzp_live');
+    seedLive(h.db, 'razorpay', 'sub_RZPlive01');
 
     const res = await h.del();
 
     expect(res.status).toBe(503);
-    expect(((await res.json()) as { message: string }).message).toMatch(/Cancel it first/);
+    expect(((await res.json()) as { message: string }).message).toMatch(/could not stop your subscription billing/);
+    expect(razorpayCalls).toHaveLength(0);
     expect(identityDeletes).toBe(0);
+  });
+
+  it('a live RAZORPAY subscription is cancelled at the cycle end BEFORE the erasure when the key pair is set', async () => {
+    const h = harness(LIVE_KEY, { RAZORPAY_KEY_ID: `rzp_live_${'k'.repeat(14)}`, RAZORPAY_KEY_SECRET: 'fixture-secret' });
+    seedLive(h.db, 'razorpay', 'sub_RZPlive01');
+
+    const res = await h.del();
+
+    expect(res.status).toBe(200);
+    expect(razorpayCalls).toHaveLength(1);
+    expect(razorpayCalls[0].url).toBe('https://api.razorpay.com/v1/subscriptions/sub_RZPlive01/cancel');
+    expect(JSON.parse(razorpayCalls[0].body)).toEqual({ cancel_at_cycle_end: 1 });
+    expect(identityDeletes).toBe(1);
   });
 
   it('a STORE subscription does not block: the store bills its own account, and nothing is sent to Paddle', async () => {

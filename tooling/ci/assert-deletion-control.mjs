@@ -92,6 +92,16 @@
 //      own `showDialog`. Neither of the other two dialogs sets it.
 //   4. AND IT MUST RE-AUTHENTICATE. Deletion is irreversible, so a borrowed or
 //      unattended device must not be enough to destroy an account.
+//      ⏱ 2026-10-01 · AB-A5-01: AND BY A PROOF THE ACCOUNT CAN GIVE, GRADED PER
+//      TARGET. This limb was `signInWithEmail(` appearing anywhere, which held
+//      while an email account with Apple or Google LINKED was sent to the
+//      captcha-gated password grant — refused on every native build. Now the
+//      flow must branch on core `deletionReauthOf` (the password grant only
+//      under `DeletionReauth.password`, the dialog's field only off the same
+//      rule), the rule itself must route a linked account to its provider, and
+//      every catalog target × account kind must be graded `ships` or `waits`
+//      in tooling/e2e-leg-register.json `deletionReauth` — a provider path
+//      ships on a native target only where its OAuth-return leg runs.
 //   5. AND IT MUST NOT COLLAPSE THE OUTCOMES. `DELETE /v1/account` answers 501
 //      (nothing was deleted) and 502 (the rows are gone and the login still
 //      works). A `catch (_)` printing one message tells a user whose data is
@@ -498,6 +508,79 @@ const balancedFrom = (src, open) => {
 const PLATFORM_HOST = /\bkPlatformBaseUrl\b|\bAppConfig\.platformBaseUrl\b/;
 const APP_WORKER_HOST = /\bapiBaseUrl\b/;
 
+// ── limb 4's subjects: the decision, and the per-target register ────────────
+// ⏱ 2026-10-01 · AB-A5-01. Limb 4 was `settings.includes('signInWithEmail(')`,
+// which stayed green while the dialog sent an email account with Apple or
+// Google LINKED to the captcha-gated password grant — refused on every native
+// build, and with no attested path at all on a desktop one. So it now reads
+// WHICH proof each kind of account gives, from the one rule that decides it,
+// and grades that per target against tooling/e2e-leg-register.json.
+const DECISION_FILE = 'packages/core/lib/src/auth/account_deletion.dart';
+const REGISTER_REL = 'tooling/e2e-leg-register.json';
+const CHANNELS_REL = 'tooling/channel-register.json';
+/** What `deletionReauthOf` answers for each kind of account — the rule the
+ *  code is held to below and every register cell is held to after it. */
+const REAUTH_RULE = Object.freeze({ password: 'password', linked: 'provider', passwordless: 'provider' });
+
+/**
+ * The condition of the `if (…) {` whose THEN-block holds offset [at] in [src],
+ * or null. Walks back over `if (` openings; the first whose balanced condition
+ * closes before [at], is followed by `{`, and whose block is still open at [at]
+ * is the one guarding it.
+ */
+const guardingCondition = (src, at) => {
+  for (let i = src.lastIndexOf('if (', at); i !== -1 && at - i < 4000; i = src.lastIndexOf('if (', i - 1)) {
+    const cond = balancedFrom(src, i + 3);
+    const end = i + 3 + cond.length;
+    if (end > at || !/^\s*\{/.test(src.slice(end))) continue;
+    let depth = 0;
+    for (let j = src.indexOf('{', end); j < at; j++) {
+      if (src[j] === '{') depth++;
+      else if (src[j] === '}') depth--;
+    }
+    if (depth > 0) return cond;
+  }
+  return null;
+};
+
+/** Limb 4 over one root's settings text: the re-auth is DECIDED by the rule. */
+const reauthProblems = (settings) => {
+  const out = [];
+  if (!/\bdeletionReauthOf\(/.test(settings)) {
+    out.push('does not decide its re-authentication by core `deletionReauthOf(`, the one rule that knows a LINKED account');
+  }
+  if (!settings.includes('confirmIdentityWithProvider(')) {
+    out.push('has no provider re-authentication (`confirmIdentityWithProvider(`): an Apple or Google account has no path at all');
+  }
+  const grants = [...settings.matchAll(/\bsignInWithEmail\(/g)];
+  if (grants.length === 0) {
+    out.push('has no password re-authentication (`signInWithEmail(`): a password account would delete with nothing typed');
+  }
+  for (const m of grants) {
+    const cond = guardingCondition(settings, m.index);
+    if (!cond || !/\bdeletionReauthOf\(/.test(cond) || !/\bDeletionReauth\.password\b/.test(cond)) {
+      out.push(
+        `sends the password grant under ${cond ? `\`if ${cond.replace(/\s+/g, ' ')}\`` : 'no condition at all'}, not under ` +
+          '`deletionReauthOf(…) == DeletionReauth.password` — the forced password path a LINKED account cannot pass natively ' +
+          '(AB-A5-01)',
+      );
+    }
+  }
+  const flags = [...settings.matchAll(/\bpasswordless\s*=\s*([^;]+);/g)];
+  if (flags.length === 0) {
+    out.push('sets no `passwordless =` flag for its dialog, so what the dialog asks for is not read off the rule');
+  }
+  for (const f of flags) {
+    if (!/\bdeletionReauthOf\(/.test(f[1]) || !/\bDeletionReauth\.provider\b/.test(f[1])) {
+      out.push(
+        `shows its dialog by \`passwordless = ${f[1].replace(/\s+/g, ' ').trim()}\`, not by ` +
+          '`deletionReauthOf(…) == DeletionReauth.provider` — a linked account is then shown a password field the flow never reads',
+      );
+    }
+  }
+  return out;
+};
+
 /** Which of [CONFIRMATION_PROPERTIES] `src` does NOT satisfy. */
 const missingProperties = (src) =>
   CONFIRMATION_PROPERTIES.filter((p) =>
@@ -684,10 +767,13 @@ for (const root of roots) {
         'confirmation at all. Tapping the barrier must not close the one dialog that destroys an account.',
     );
   }
-  if (!settings.includes('signInWithEmail(')) {
+  // 4 — it RE-AUTHENTICATES, by the rule that knows which proof each account
+  // can give (AB-A5-01; graded per target after this loop).
+  for (const p of reauthProblems(settings)) {
     problems.push(
-      `${root}: the deletion flow in ${SETTINGS_DIR}/ does not RE-AUTHENTICATE. Deletion is irreversible, ` +
-        'so a borrowed or unattended device must not be enough to destroy an account.',
+      `${root}: the deletion flow in ${SETTINGS_DIR}/ does not RE-AUTHENTICATE by a proof the account can give — it ${p}. ` +
+        'Deletion is irreversible, so a borrowed or unattended ' +
+        'device must not be enough to destroy an account — and the proof asked for must be one this account can give.',
     );
   }
 
@@ -781,6 +867,144 @@ if (withAccounts === 0) {
     'Every assertion in this guard is gated on that judgement, so a pass here would mean the scan stopped',
     'recognising an account surface — not that no app has one.',
   ]);
+}
+
+// ── limb 4, the decision itself and its grade per target (AB-A5-01) ─────────
+// The rule lives in ONE function, so it is read where it lives: a decision that
+// stops sending a linked account to its provider is the same defect as a screen
+// that bypasses it, one file over.
+// Read, not stat-then-read: one call answers "is it there" and "what does it say".
+let decisionText = null;
+try {
+  decisionText = readFileSync(join(ROOT, DECISION_FILE), 'utf8');
+} catch {
+  decisionText = null;
+}
+if (decisionText === null) {
+  coverageLost([
+    `${DECISION_FILE} does not exist.`,
+    'It holds `deletionReauthOf`, the rule limb 4 grades every target against. A rule this scan cannot read is a',
+    're-authentication it has not checked, on every target at once.',
+  ]);
+}
+const decisionSrc = stripSourceComments(decisionText, '.dart');
+const decision = /\bDeletionReauth\s+deletionReauthOf\s*\(\s*AuthUser\s+\w+\s*\)\s*=>([^;]+);/.exec(decisionSrc);
+if (!decision) {
+  coverageLost([
+    `${DECISION_FILE} declares no \`DeletionReauth deletionReauthOf(AuthUser …) => …;\`.`,
+    'Limb 4 reads the rule from that one expression; a rule that moved or changed shape is not one it has checked.',
+  ]);
+}
+const ruleSet = decision[1].includes('kReauthProviders')
+  ? (/\bkReauthProviders\s*=\s*[^;]+;/.exec(decisionSrc)?.[0] ?? '')
+  : decision[1];
+const ruleGaps = [
+  [/\bhasPasswordIdentity\b/.test(decision[1]), 'reads no `hasPasswordIdentity` (a password-less account)'],
+  [/\boauthProviders\b/.test(decision[1]), 'reads no `oauthProviders` (a LINKED account)'],
+  [/'apple'/.test(ruleSet) && /'google'/.test(ruleSet), "does not name both 'apple' and 'google' as identities that re-prove at their provider"],
+  [/\bDeletionReauth\.provider\b/.test(decision[1]) && /\bDeletionReauth\.password\b/.test(decision[1]), 'does not answer both `provider` and `password`'],
+].filter(([ok]) => !ok);
+for (const [, why] of ruleGaps) {
+  problems.push(
+    `${DECISION_FILE}: \`deletionReauthOf\` ${why}. The rule is: an account with an Apple or Google identity, linked ` +
+      'or not, or with no password, re-proves at its provider; only a password-only account types its password. A ' +
+      'linked account sent to the password grant cannot delete itself on a native build (AB-A5-01).',
+  );
+}
+
+let register;
+let catalog;
+try {
+  register = JSON.parse(readFileSync(join(ROOT, REGISTER_REL), 'utf8'));
+  catalog = JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).channels;
+} catch (e) {
+  coverageLost([
+    `${REGISTER_REL} or ${CHANNELS_REL} could not be read (${e.message}).`,
+    'The first says what each target re-proves an account with; the second is the catalog of targets. Without',
+    'both there is no target axis, and a grade over no targets prints ok over nothing.',
+  ]);
+}
+const reauthTargets = [
+  ...new Set(
+    (Array.isArray(catalog) ? catalog : [])
+      .filter((c) => c && c.surface === 'app')
+      .flatMap((c) => (Array.isArray(c.platforms) ? c.platforms : [])),
+  ),
+].sort();
+if (reauthTargets.length === 0) {
+  coverageLost([`${CHANNELS_REL} names no platform on any \`surface: app\` channel, so re-auth was graded on no target.`]);
+}
+const DR = register?.deletionReauth?.targets;
+const oauthLegs = register?.nativeTargets?.oauthReturn?.targets ?? {};
+const oauthRuns = register?.nativeTargets?.oauthReturn?.proofRuns ?? {};
+const ungraded = [];
+for (const t of reauthTargets) {
+  for (const kind of Object.keys(REAUTH_RULE)) {
+    const cell = DR?.[t]?.[kind];
+    if (!cell || (cell.status !== 'ships' && cell.status !== 'waits')) ungraded.push(`${t}/${kind}`);
+  }
+}
+if (ungraded.length) {
+  coverageLost([
+    `${ungraded.length} target/account cell(s) of ${REGISTER_REL} deletionReauth.targets say neither "ships" nor "waits":`,
+    `  ${ungraded.join(', ')}`,
+    `The targets are every platform of a \`surface: app\` channel in ${CHANNELS_REL} (${reauthTargets.join(', ')}); the`,
+    `accounts are ${Object.keys(REAUTH_RULE).join(', ')}. A cell nobody graded is a deletion nobody checked there.`,
+  ]);
+}
+for (const t of Object.keys(DR)) {
+  if (!reauthTargets.includes(t)) {
+    problems.push(`${REGISTER_REL} deletionReauth grades "${t}", which no \`surface: app\` channel of ${CHANNELS_REL} ships to.`);
+  }
+}
+const grades = [];
+const waits = [];
+for (const t of reauthTargets) {
+  const row = [];
+  for (const [kind, via] of Object.entries(REAUTH_RULE)) {
+    const cell = DR[t][kind];
+    if (cell.via !== via) {
+      problems.push(
+        `${REGISTER_REL} deletionReauth ${t}/${kind} re-proves via "${cell.via}", and \`deletionReauthOf\` answers ` +
+          `"${via}" for ${kind} — the register would grade a path the dialog never takes.`,
+      );
+    }
+    if (cell.status === 'waits') {
+      if (typeof cell.waitsFor !== 'string' || cell.waitsFor.trim() === '') {
+        problems.push(`${REGISTER_REL} deletionReauth ${t}/${kind} waits, and names no \`waitsFor\`: a wait nobody can trace is an excuse.`);
+      }
+      waits.push(`${t}/${kind}`);
+    } else {
+      // ⏱ 2026-10-02 · limb 4b (#1142 review item 1, lead ruling): `ships` is a claim a RUN makes. A cell graded
+      // ships with no recorded run is a guard printing "clean" over a path nobody watched work.
+      if (!Number.isInteger(cell.proofRun) || cell.proofRun <= 0) {
+        problems.push(
+          `${REGISTER_REL} deletionReauth ${t}/${kind} says "ships" and records no \`proofRun\` (the id of the CI run that ` +
+            'proves that path on that target). Feature parity is locked: grade it "waits", with the run it waits for.',
+        );
+      }
+      if (via === 'provider' && t !== 'web') {
+        if (oauthLegs[t]?.status !== 'leg') {
+          problems.push(
+            `${REGISTER_REL} deletionReauth ${t}/${kind} ships via the provider, and nativeTargets.oauthReturn runs no leg on ` +
+              `${t}. A provider re-auth lands through the OAuth return; one no build has been watched taking on ${t} does not ship there.`,
+          );
+        } else if (cell.proofRun !== oauthRuns[t]) {
+          problems.push(
+            `${REGISTER_REL} deletionReauth ${t}/${kind} ships via the provider on run ${JSON.stringify(cell.proofRun ?? null)}, ` +
+              `and nativeTargets.oauthReturn.proofRuns.${t} records ${JSON.stringify(oauthRuns[t] ?? null)}. A provider re-auth ` +
+              `ships on ${t} only on the green run of its OAuth-return leg.`,
+          );
+        }
+      }
+    }
+    row.push(`${kind}=${via}·${cell.status}`);
+  }
+  grades.push(`${t}[${row.join(' ')}]`);
+}
+notes.push(`⬜ deletion re-auth per target (${REGISTER_REL} deletionReauth): ${grades.join(' ')}`);
+if (waits.length) {
+  notes.push(`⬜ ${waits.length} target/account cell(s) WAIT, each for the proof its row names: ${waits.join(', ')}`);
 }
 
 if (problems.length) {
