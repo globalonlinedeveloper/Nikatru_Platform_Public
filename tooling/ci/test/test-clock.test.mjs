@@ -39,6 +39,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { ANCHOR_VAR, anchoredOffset, parseTestNow, shiftedDate, TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
+import { githubEnvWrites, parseResolvedWorkflows, workflowSteps } from '../workflow-scan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PRELOAD = join(ROOT, 'tooling', 'scripts', 'test-clock.mjs');
@@ -169,20 +170,33 @@ describe('the test-time clock (tooling/scripts/test-clock.mjs)', () => {
     assert.equal(anchoredOffset({ [TEST_NOW_VAR]: '2030-01-01T00:00:00Z', [ANCHOR_VAR]: `${TARGET}|1234` }), null, 'another instant\'s anchor is not this run\'s');
   });
 
-  test('C7 the time-travel workflow puts both variables on the tooling suite', () => {
+  test('C7 the time-travel workflow puts both variables on the tooling suites', () => {
     const wf = readFileSync(join(ROOT, '.github', 'workflows', 'time-travel.yml'), 'utf8');
     assert.match(wf, /NIKATRU_TEST_NOW: \$\{\{ matrix\.instant \}\}/, 'the workflow no longer sets NIKATRU_TEST_NOW');
     // ⏱ 2026-10-02 · the preload is an absolute file URL in $TEST_CLOCK (#1160's
-    // spawn-ceiling-cwd rule refuses a relative --import), exported from this path.
+    // spawn-ceiling-cwd rule refuses a relative --import), written to GITHUB_ENV in
+    // the tooling job from this path, and both suites export and load it.
+    const { workflows } = parseResolvedWorkflows(ROOT);
+    const job = workflows.find((w) => w.rel === '.github/workflows/time-travel.yml')?.jobs.get('tooling');
+    assert.ok(job, 'time-travel.yml has no tooling job');
+    const steps = workflowSteps(job);
+    const writes = githubEnvWrites(job).filter((w) => w.name === 'TEST_CLOCK');
+    assert.equal(writes.length, 1, 'the tooling job no longer writes TEST_CLOCK to GITHUB_ENV');
     assert.match(
-      wf,
-      /resolve\(process\.env\.GITHUB_WORKSPACE, 'tooling\/scripts\/test-clock\.mjs'\)\)\.href"\)"[\s\S]*?echo "TEST_CLOCK=\$clock" >> "\$GITHUB_ENV"/,
-      'the workflow no longer exports tooling/scripts/test-clock.mjs as TEST_CLOCK',
+      steps[writes[0].stepIndex].run.text,
+      /pathToFileURL\(require\('path'\)\.resolve\(process\.env\.GITHUB_WORKSPACE, 'tooling\/scripts\/test-clock\.mjs'\)\)\.href/,
+      'TEST_CLOCK is no longer the file URL of tooling/scripts/test-clock.mjs',
     );
-    assert.match(
-      wf,
-      /export NODE_OPTIONS="--import=\$TEST_CLOCK"\n\s*node [^\n]*--import "\$TEST_CLOCK" [^\n]* --test "tooling\/ci\/test\/\*\.test\.mjs"/,
-      'the tooling suite no longer preloads $TEST_CLOCK in NODE_OPTIONS and on its own command line',
-    );
+    for (const glob of ['tooling/ci/test/*.test.mjs', 'tooling/content_pipeline/test/*.test.mjs']) {
+      const step = steps.find((st) => st.run?.text.includes(`--test "${glob}"`));
+      assert.ok(step, `the tooling job no longer runs --test "${glob}"`);
+      assert.ok(step.index > writes[0].stepIndex, `the ${glob} suite runs before TEST_CLOCK is written`);
+      assert.equal(step.env.get('NIKATRU_TEST_NOW')?.value, '${{ matrix.instant }}', `the ${glob} suite lost NIKATRU_TEST_NOW`);
+      assert.equal(step.env.has('NODE_OPTIONS'), false, `the ${glob} suite sets NODE_OPTIONS in step env, which is not shell-expanded`);
+      const [exp, run] = step.run.text.split(' ; ');
+      assert.equal(exp, 'export NODE_OPTIONS="--import=$TEST_CLOCK"', `the ${glob} suite no longer exports NODE_OPTIONS before its runner`);
+      assert.match(run ?? '', /^node (?:--import "\$[A-Z_]+" )*--import "\$TEST_CLOCK" /, `the ${glob} suite's runner no longer loads $TEST_CLOCK`);
+    }
+    assert.match(wf, / --test "tooling\/ci\/test\/\*\.test\.mjs"/, 'the tooling suite is not the one ci.yml runs');
   });
 });
