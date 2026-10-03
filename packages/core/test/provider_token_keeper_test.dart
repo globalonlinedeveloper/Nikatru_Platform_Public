@@ -100,7 +100,7 @@ void main() {
         'sendAuthorizationCode the code, once', () async {
       final List<String> codes = <String>[];
       final List<String> tokens = <String>[];
-      final _SessionAuth auth = _SessionAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerAuthorizationCode: 'c.native-code',
@@ -113,9 +113,9 @@ void main() {
             codes.add('$p:$c'),
       );
       addTearDown(sub.cancel);
-      auth.users.add(_signedIn);
+      auth.emit(_signedIn);
       await Future<void>.delayed(Duration.zero);
-      auth.users.add(_signedIn);
+      auth.emit(_signedIn);
       await Future<void>.delayed(Duration.zero);
       expect(codes, <String>['apple:c.native-code']);
       expect(tokens, isEmpty);
@@ -125,7 +125,7 @@ void main() {
         () async {
       final List<String> codes = <String>[];
       final List<String> tokens = <String>[];
-      final _SessionAuth auth = _SessionAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerRefreshToken: 'apple-refresh-1',
@@ -139,7 +139,7 @@ void main() {
             codes.add('$p:$c'),
       );
       addTearDown(sub.cancel);
-      auth.users.add(_signedIn);
+      auth.emit(_signedIn);
       await Future<void>.delayed(Duration.zero);
       expect(tokens, <String>['apple:apple-refresh-1']);
       expect(codes, isEmpty);
@@ -147,7 +147,7 @@ void main() {
 
     test('without sendAuthorizationCode a code is never offered', () async {
       final List<String> tokens = <String>[];
-      final _SessionAuth auth = _SessionAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerAuthorizationCode: 'c.native-code',
@@ -158,7 +158,7 @@ void main() {
         send: (String p, String t) async => tokens.add('$p:$t'),
       );
       addTearDown(sub.cancel);
-      auth.users.add(_signedIn);
+      auth.emit(_signedIn);
       await Future<void>.delayed(Duration.zero);
       expect(tokens, isEmpty);
     });

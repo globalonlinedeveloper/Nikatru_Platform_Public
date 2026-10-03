@@ -351,7 +351,12 @@ if (codehost === undefined) {
   }
   const web = 'https://github.com';
   const names = [org, ...(typeof reg.movingTo === 'string' && reg.movingTo ? [reg.movingTo] : [])];
-  const nameRe = new RegExp(names.map((n) => n.replace(/[-]/g, '\\-')).join('|'), 'gi');
+  // movingTo is held to org's own shape, and every name is escaped whole (CodeQL
+  // js/incomplete-sanitization on #1182: escaping `-` alone left a backslash live).
+  if (!names.every((n) => /^[A-Za-z0-9-]{2,}$/.test(n))) {
+    coverageLost([`✗ COVERAGE LOST — ${regRel} movingTo is not an org name ([A-Za-z0-9-]{2,}); the literal limb cannot be built from it.`]);
+  }
+  const nameRe = new RegExp(names.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|'), 'gi');
   const hostGlobs = (Array.isArray(codehost.globs) ? codehost.globs : []).map(toRe);
   const hostExcluded = Array.isArray(codehost.excludedPaths) ? codehost.excludedPaths : [];
   const isHostExcluded = (rel) => hostExcluded.some((e) => (e.endsWith('/') ? rel.startsWith(e) : rel === e));

@@ -4,6 +4,7 @@ import 'account_deletion.dart';
 import 'auth_event.dart';
 import 'auth_models.dart';
 import 'auth_repository.dart';
+import 'sign_in_methods.dart';
 
 /// THE auth port's fake: a whole [AuthRepository] with no network, whose
 /// failures are SWITCHES a test sets, and which passes the same conformance
@@ -262,6 +263,30 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> linkGoogleIdentity() async {
     throw AuthFailure('Linking another sign-in method is not available here.');
+  }
+
+  // ⏱ 2026-10-03 · merge of main into club/rt-ports: main's SE-04 and EN-21
+  // added these to the seam with refusing defaults; the fake IMPLEMENTS the
+  // seam, so it states them, refusing exactly as the defaults do.
+  @override
+  Future<AuthUser> unlinkIdentity(SignInMethod method) async {
+    throw AuthFailure('Removing a sign-in method is not available here.');
+  }
+
+  @override
+  bool get emailCodeAvailable => false;
+
+  @override
+  Future<void> sendEmailCode(String email, {String? captchaToken}) async {
+    throw AuthFailure('Signing in with a code is not available here.');
+  }
+
+  @override
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    throw AuthFailure('Signing in with a code is not available here.');
   }
 
   /// The token, refreshed first when the session is past its expiry: a refresh

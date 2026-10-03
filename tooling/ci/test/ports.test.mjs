@@ -785,6 +785,16 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /COVERAGE LOST — sites\/nikatru\/js\/identity-client\.js no longer names an identity-provider path/);
     });
   });
+  // ⏱ 2026-10-03 · CodeQL js/incomplete-multi-character-sanitization on #1182: an HTML
+  // comment hides a path, but a broken comment marker never hides the text after it.
+  it('🔴 site HTML: a path inside a comment is not a call; one after a malformed `<!<!-- -->--` is', () => {
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!-- the old form posted to /auth/v1/otp -->\n`, (r) => assert.equal(r.code, 0, r.out));
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!<!-- -->-- <a href="/auth/v1/verify">x</a> -->\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /the site file `sites\/nikatru\/app\/connect\.html` names an identity-provider path/);
+    });
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!-- unterminated <a href="/auth/v1/verify">x</a>\n`, (r) => assert.equal(r.code, 1, r.out));
+  });
   it('limb 4 URL half: a URL in a COMMENT is not a call; the adapter no longer matching is COVERAGE LOST', () => {
     mutate('services/platform/src/routes/sessions.ts', (s) => `${s}\n// the old call was \`\${base}/auth/v1/user\`\n`, (r) => assert.equal(r.code, 0, r.out));
     mutate('services/platform/src/adapters/identity/gotrue.ts', (s) => s.replaceAll('/auth/v1', '/auth/vX').replaceAll('/rest/v1', '/rest/vX'), (r) => {

@@ -311,6 +311,21 @@ describe('assert-no-dead-repo-names — the code-host limbs (port-codehost)', ()
     assert.equal(run().code, 1);
   });
 
+  // ⏱ 2026-10-03 · CodeQL js/incomplete-sanitization on #1182: the literal limb's
+  // pattern is built from the register, so a `movingTo` that is not an org name
+  // (a backslash, a regex metacharacter) refuses to build it rather than matching wrong.
+  test('a `movingTo` that is not an org name is COVERAGE LOST, never a pattern', () => {
+    seedHost();
+    for (const bad of ['nikatru\\com', 'nik.*', 'a']) {
+      write('tooling/github-org.json', JSON.stringify({ ...ORG, movingTo: bad }));
+      const r = run();
+      assert.equal(r.code, 2, `${bad}: ${r.out ?? ''}`);
+    }
+    // green control: a well-formed movingTo builds the limb.
+    write('tooling/github-org.json', JSON.stringify({ ...ORG, movingTo: 'nikatru-com' }));
+    assert.equal(run().code, 0);
+  });
+
   test('the fixture constant is the ONE test literal: gone is COVERAGE LOST', () => {
     seedHost();
     write('tooling/ci/test/fixtures/recorded-org.mjs', 'export const RECORDED_ORG = process.env.X;\n');

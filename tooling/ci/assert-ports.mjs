@@ -160,6 +160,14 @@ import { listDir } from './tree-walk.mjs';
 import { renderCheck } from '../ports/render.mjs';
 import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
 
+/** HTML comments out in ONE pass, then any `<!--` left over is dropped as a marker
+ *  only, so the text after it is still read (CodeQL js/incomplete-multi-character-
+ *  sanitization on #1182). Never repeated until stable: on `<!<!-- -->-- x -->` a
+ *  second pass would swallow ` x `, which a browser shows, and the limb would read less. */
+function stripHtmlComments(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--/g, '');
+}
+
 export const PORTS_DIR = 'tooling/ports';
 export const SCHEMA_REL = 'tooling/ports/port.schema.json';
 export const NON_PORT_REL = 'tooling/ports/_non-port.json';
@@ -724,7 +732,7 @@ export function evaluate(root) {
       let siteClientMatched = false;
       for (const f of siteFiles) {
         const text = readFileSync(join(root, f), 'utf8');
-        const code = /\.html$/.test(f) ? text.replace(/<!--[\s\S]*?-->/g, '') : stripSourceComments(text, '.js');
+        const code = /\.html$/.test(f) ? stripHtmlComments(text) : stripSourceComments(text, '.js');
         const m = IDENTITY_URL_RE.exec(code);
         if (f === SITE_IDENTITY_CLIENT) { siteClientMatched = Boolean(m); continue; }
         if (m) {
