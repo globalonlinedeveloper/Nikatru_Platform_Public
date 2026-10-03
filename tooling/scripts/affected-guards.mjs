@@ -106,6 +106,7 @@ import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-
 import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
 import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
 import { classifyRed, detachedCheckout, removeCheckout, spawnCeilingUrl } from './preflight.mjs';
+import { GEO_HOME, workerSourceShapes } from '../ci/assert-ports.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** The guard-tests shard planner, as a workflow names it. */
@@ -681,8 +682,12 @@ export const CONTENT_SUBJECTS = Object.freeze([
     // files, hand tables — and those paths live only in tooling/ports/*.json, which
     // the guard reads as data (the static extraction's blind spot, header above). So
     // the rule reads the same registries, by CONTENT, never a path list kept here.
+    // ⏱ 2026-10-02 · port-storage: limbs 12 and 13 made a SHAPE of Worker source a subject
+    // too — a Cloudflare binding type or a `.cf` read in any services/*/src module — so a
+    // change carrying one selects the guard, by the guard's OWN reduction (workerSourceShapes,
+    // imported, never restated), and so does any change to geo.ts, limb 13's one reader.
     guard: 'tooling/ci/assert-ports.mjs',
-    what: 'tooling/ports/**, services/_shared/src/ports/**, services/*/src/ports.ts and src/generated/ports.ts, and every file a tooling/ports/*.json registry names',
+    what: 'tooling/ports/**, services/_shared/src/ports/**, services/*/src/ports.ts and src/generated/ports.ts, every file a tooling/ports/*.json registry names, services/_shared/src/geo.ts, and any services/*/src module whose text names a Cloudflare binding type or reads `.cf`',
     build(readSource, tree) {
       const regs = (tree?.list ?? []).filter((f) => /^tooling\/ports\/[^/]+\.json$/.test(f) && !f.endsWith('/port.schema.json'));
       if (!regs.length) throw new Error('tooling/ports/ holds no registry — the port guard\'s subjects cannot be read');
@@ -706,10 +711,13 @@ export const CONTENT_SUBJECTS = Object.freeze([
       // register it derives the store-billed rails from), and every Dart lib file — limb 10
       // DERIVES the client adapter set from the classes in packages/*/lib that implement a seam,
       // and refuses an apps/*/lib or packages/*/lib import of the shared fakes.
-      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') ||
+      const workerSource = /^services\/[^/]+\/src\/.+\.m?ts$/;
+      return (path, text) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') ||
         /^services\/[^/]+\/src\/(?:generated\/)?ports\.ts$/.test(path) ||
         path === 'tooling/catalog/fee-register.json' ||
-        /^(?:packages|apps)\/[^/]+\/lib\/.+\.dart$/.test(path);
+        /^(?:packages|apps)\/[^/]+\/lib\/.+\.dart$/.test(path) ||
+        path === GEO_HOME ||
+        (workerSource.test(path) && (({ binding, cf }) => Boolean(binding || cf))(workerSourceShapes(text ?? '')));
     },
   },
 ]);

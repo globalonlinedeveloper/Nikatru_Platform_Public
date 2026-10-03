@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS records (
   -- client editing a row cannot silently destroy a newer client's fields.
   forward_json     TEXT    NOT NULL DEFAULT '{}'
 );
-CREATE INDEX IF NOT EXISTS idx_records_user ON records (user_id);
+-- No `(user_id)` index of its own: both indexes below begin with user_id, so
+-- either answers `WHERE user_id = ?`, and a third would only be written on every
+-- row change. tooling/ci/check-migrations.mjs refuses an index that is a strict
+-- column-prefix of another on the same table (rv2-services-034).
 -- THE pull index: "everything this user changed after seq N", in seq order.
 CREATE INDEX IF NOT EXISTS idx_records_pull ON records (user_id, server_seq);
 -- Bootstrap keyset pagination for a first full download.

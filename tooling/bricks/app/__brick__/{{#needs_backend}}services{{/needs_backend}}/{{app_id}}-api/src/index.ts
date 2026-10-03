@@ -52,11 +52,36 @@ app.use('*', corsMiddleware);
 //                  rests on; when it is unreachable every authenticated route
 //                  401s while the Worker itself is perfectly well.
 //
-// JWKS_CACHE is deliberately NOT probed. middleware/auth.ts warms it best-effort
-// and `jose` fetches the JWKS itself, so a KV failure there costs latency on a
-// cold isolate and nothing else. Reporting it would say `ok:false` for a fault no
-// request can feel, and a check that cries about something harmless is one people
-// stop reading.
+// JWKS_CACHE is deliberately NOT probed — but 🔴 THE REASON THIS TEMPLATE GAVE
+// WAS RETRACTED BY THE WORKER IT WAS EXTRACTED FROM, so read this rather than the
+// sentence it replaced (services/subscriptiontracker-api/src/index.ts carries the
+// same correction).
+//
+// It USED to say: "middleware/auth.ts warms it best-effort and `jose` fetches the
+// JWKS itself, so a KV failure there costs latency on a cold isolate and nothing
+// else." That is WRONG since the stale-JWKS fallback landed in the kit
+// (services/_shared/src/auth.ts): auth READS this cache on the failure
+// path, so when the JWKS endpoint cannot be reached the cached copy is what still
+// verifies tokens. A KV failure is then the difference between surviving an
+// identity-host outage and not — and, because `DELETE /v1/account` sits behind
+// the asymmetric-only `erasureAuth`, between erasure working and erasure stopping.
+//
+// ⚠️ IT IS STILL NOT PROBED, AND THE ARGUMENT IS CONDITIONAL, NOT ABSOLUTE. With
+// the JWKS endpoint healthy — the state `supabase_jwks` below asserts — a KV
+// failure costs only latency on a cold isolate, so reporting it would say
+// `ok:false` for a fault no request can feel, and a check that cries about
+// something harmless is one people stop reading. The cache matters only IN
+// CONJUNCTION WITH the endpoint being down, and that conjunction is already
+// visible: `supabase_jwks` goes unhealthy first. ➡️ If this Worker ever needs to
+// tell "degraded but surviving on the cache" from "healthy", THAT is the reading
+// to add — not a bare KV probe.
+//
+// ⏱ 2026-10-01 — `build` IS IN THE ANSWER, AND THE DEPLOY SMOKE JOINS ON IT
+// (rv2-services-010). It is `c.env.RELEASE` — the commit `deploy-workers.yml`
+// passes as `--var RELEASE:<sha>` — or null when none was passed. Without it the
+// smoke's `--field build` cannot tell "the Worker answered" from "the OLD Worker
+// answered", and tooling/ci/assert-analytics-contract.mjs fails this route in the
+// stamped app's own CI. test/health.test.ts pins the key set.
 //
 // Each read names a REAL TABLE rather than `SELECT 1`, so a database that is
 // reachable but carries no schema — the "wrong D1 bound" deploy — fails too. No
@@ -97,6 +122,7 @@ app.get('/v1/health', async (c) => {
     status: report.status,
     app: c.env.APP_ID,
     version: c.env.API_VERSION,
+    build: c.env.RELEASE ?? null,
     time: nowIso(),
     checks: report.checks,
   });

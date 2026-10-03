@@ -31,11 +31,16 @@
 // to not be used as an accurate accounting system". It bounds the burst per
 // network, not the account-wide daily budget.
 // ─────────────────────────────────────────────────────────────────────────────
+import { requestGeo } from './geo';
+import type { RateLimiter } from './ports/ratelimit';
+
 /** A Cloudflare Rate Limiting binding (`ratelimits` in wrangler.jsonc). Each
- *  carrier's `Env` names its own bindings with a type this one accepts. */
-export interface RateLimiterBinding {
-  limit(opts: { key: string }): Promise<{ success: boolean }>;
-}
+ *  carrier's `Env` names its own bindings with a type this one accepts.
+ *
+ *  ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the
+ *  interface is now the rate-limiter PORT, `RateLimiter` in ports/ratelimit.ts;
+ *  this name is kept so no carrier's import moves. */
+export type RateLimiterBinding = RateLimiter;
 
 /** The subset of the Hono context these helpers need. Keeps them testable. */
 export interface EdgeContext {
@@ -46,11 +51,14 @@ export interface EdgeContext {
  * `edge:<colo>:<asn>` from `request.cf`. A missing/hostile `cf` degrades to the
  * single bucket `edge:-:-` — bounded, never per-request-unique, because a key
  * that varies per request is the same thing as no ceiling at all.
+ *
+ * `request.cf` is read through `requestGeo` (geo.ts), the one module that reads
+ * it; the bounds below are this key's own and stay here.
  */
 export function edgeCeilingKey(c: EdgeContext): string {
-  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
-  const colo = typeof cf?.colo === 'string' && cf.colo.length <= 16 ? cf.colo : '-';
-  const asnRaw = (cf as { asn?: unknown } | undefined)?.asn;
+  const geo = requestGeo(c.req.raw);
+  const colo = typeof geo.colo === 'string' && geo.colo.length <= 16 ? geo.colo : '-';
+  const asnRaw = geo.asn;
   const asn =
     typeof asnRaw === 'number' || (typeof asnRaw === 'string' && asnRaw.length <= 16)
       ? String(asnRaw)
@@ -97,7 +105,7 @@ const reportedAbsent = new Set<string>();
  * only makes the two cases tellable apart after the fact.
  */
 export async function withinRateLimit(
-  limiter: RateLimiterBinding | undefined,
+  limiter: RateLimiter | undefined,
   key: string,
   binding: string,
 ): Promise<boolean> {
@@ -130,7 +138,7 @@ export async function withinRateLimit(
  * silence this parameter exists to end.
  */
 export function withinEdgeCeiling(
-  limiter: RateLimiterBinding | undefined,
+  limiter: RateLimiter | undefined,
   c: EdgeContext,
   binding: string,
 ): Promise<boolean> {
@@ -158,7 +166,7 @@ export type StrictVerdict = 'within' | 'over' | 'unavailable';
  * Neither line carries the key, which may be derived from an account.
  */
 export async function strictRateLimit(
-  limiter: RateLimiterBinding | undefined,
+  limiter: RateLimiter | undefined,
   key: string,
   binding: string,
 ): Promise<StrictVerdict> {
@@ -183,7 +191,7 @@ export async function strictRateLimit(
 
 /** The server-derived ceiling (`edgeCeilingKey`), FAILING CLOSED. See `strictRateLimit`. */
 export function strictEdgeCeiling(
-  limiter: RateLimiterBinding | undefined,
+  limiter: RateLimiter | undefined,
   c: EdgeContext,
   binding: string,
 ): Promise<StrictVerdict> {

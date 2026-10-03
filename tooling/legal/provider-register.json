@@ -144,7 +144,19 @@
       "install",
       "handoff",
       "code",
-      "payments"
+      "payments",
+      "ops",
+      "box-manifest"
+    ],
+    "_box-manifest": [
+      "🟢 `ops` and `box-manifest` ADDED 2026-10-03 (PB-27), AND THIS LIMB CAUGHT THEM. POST",
+      "/v1/ops/box-manifest on services/platform is our own box cron",
+      "(tooling/ops/boxes/post-config-manifest.sh) reporting config HASHES. It is a RESOURCE OF OURS",
+      "and not a provider tell: the bearer is checked against that one box's own secret",
+      "(BOX_SECRET_ENV in services/platform/src/routes/box-manifest.ts), no provider posts to it, it",
+      "moves no money, and a request carrying `Origin` is refused on `/v1/ops/`",
+      "(services/platform/src/middleware/cors.ts). If anything external ever posts here, this entry",
+      "becomes false and a provider row is owed instead."
     ],
     "_payments": [
       "🟢 `payments` ADDED 2026-09-29 (ST-R5, round-2 X06), AND THIS LIMB CAUGHT IT. POST",

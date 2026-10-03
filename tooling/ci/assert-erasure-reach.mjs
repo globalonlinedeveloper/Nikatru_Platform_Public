@@ -882,6 +882,55 @@ function reaches(decls, name, needle, seen = new Set(), seeds = []) {
   }
 }
 
+// ⏱ 2026-10-03 (review of #1152, minor 2) · LIMB 3(c), THE KIT'S erasureAuth.
+// Every carrier's src/middleware/auth.ts became a re-export of the kit
+// (services/_shared/src/auth-middleware.ts), so the loop below reads one line
+// per Worker and cannot see an HS256 fallback added to the kit's `erasureAuth`
+// itself. Read the kit, and hold its `erasureAuth` to reach NONE of the
+// symmetric path's names, transitively within the module. The positive control
+// (it reaches `verifyAsymmetric`) keeps "reaches nothing" from passing on a
+// parse that found an empty body.
+const KIT_AUTH = join(ROOT, 'services', '_shared', 'src', 'auth-middleware.ts');
+const KIT_AUTH_REL = 'services/_shared/src/auth-middleware.ts';
+if (!existsSync(KIT_AUTH)) {
+  coverageLost([
+    `${KIT_AUTH_REL} does not exist, so the erasure boundary every Worker mounts could not be read.`,
+    'Each carrier re-exports erasureAuth from it; without it limb 3 sees only the re-export lines.',
+  ]);
+}
+{
+  // `declarations` slices from one value declaration to the next, so a type
+  // between them (`interface SymmetricFallback { legacyHs256Secret … }` follows
+  // `verifyAsymmetric`) would ride in the slice before it. A type carries no
+  // code: each slice is cut at the first top-level interface or type alias.
+  const kitDecls = new Map(
+    [...declarations(readCode(KIT_AUTH))].map(([n, body]) => [n, body.split(/^(?:export\s+)?(?:interface|type)\s/m)[0]]),
+  );
+  if (!kitDecls.has('erasureAuth') || !reaches(kitDecls, 'erasureAuth', 'verifyAsymmetric')) {
+    coverageLost([
+      `${KIT_AUTH_REL}: no top-level erasureAuth that reaches verifyAsymmetric was parsed.`,
+      'The erasure boundary is judged by walking its declaration; with none found, "it reaches no shared secret"',
+      'is the answer a broken parse gives, and it must not print the same as a safe kit.',
+    ]);
+  }
+  // The symmetric path's three names, one per line: written on one line, the
+  // pair reads to gitleaks' generic-api-key rule as a keyword and its value.
+  const symmetricNames = [
+    'verifySupabaseToken',
+    'legacyHs256Secret',
+    'SUPABASE_JWT_SECRET',
+  ];
+  for (const needle of symmetricNames) {
+    if (reaches(kitDecls, 'erasureAuth', needle)) {
+      problems.push(
+        `${KIT_AUTH_REL}: erasureAuth reaches ${needle} — the erasure boundary every Worker mounts can then fall back ` +
+          'to a shared HS256 secret, and one leaked environment variable mints a deletion for any user. It must ' +
+          'verify through verifyAsymmetric only, with no secret in scope.',
+      );
+    }
+  }
+}
+
 let strictBoundariesChecked = 0;
 for (const [rel, svc] of routeService) {
   const authPath = join(svc.dir, 'src', 'middleware', 'auth.ts');

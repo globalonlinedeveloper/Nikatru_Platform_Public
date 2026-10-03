@@ -6,7 +6,10 @@ name: Land
 # the measurement behind it and the cut-over are in docs/ci/land.md. Only `# why:`
 # lines live here, and docs/ci/README.md carries the rules every workflow obeys.
 
-run-name: "Land (${{ github.event_name }})"
+# why: a CI completion wakes this run, and its own green says only that it ran, so
+# the title names the verdict that woke it (assert-workflow-hardening.mjs limb 16).
+# Path and conclusion only: no expression here reads the run's head.
+run-name: "Land (${{ github.event_name }}${{ github.event_name == 'workflow_run' && format(' after {0} {1}', github.event.workflow_run.path, github.event.workflow_run.conclusion) || '' }})"
 
 on:
   # why: the clock is the floor. Every other trigger below only makes a decision
@@ -15,14 +18,15 @@ on:
     - cron: '*/10 * * * *'
   # zizmor: ignore[dangerous-triggers]
   # why: a CI or E2E run finishing is what turns a PR (or main) from pending into
-  # a verdict, so it wakes the lander. Safe here: no expression reads the
-  # triggering run, the checkout is main, and the only code run is land-next.mjs
-  # from main.
+  # a verdict, so it wakes the lander. Safe here: the one expression that reads
+  # the triggering run is `run-name:`'s path and conclusion (display only, never a
+  # shell, never its head), the checkout is main, and the only code run is
+  # land-next.mjs from main.
   workflow_run:
     workflows: [CI, E2E live]
     types: [completed]
   # zizmor: ignore[dangerous-triggers]
-  # why: `labeled` ONLY, and only to WAKE: the lead's `land-ok` is a decision the
+  # why: `labeled` ONLY, and only to WAKE: the lead's `land-ok:<sha8>` is a decision the
   # queue should see now. The PR's code is never checked out here (the checkout
   # names main) and nothing from the event reaches a `run:`; the job-level `if:`
   # reads the label name and nothing else.
@@ -31,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Print every open PR''s decision and reason, and merge nothing. Untick to act once.'
+        description: 'Print every open PR''s decision and reason, and merge nothing. Untick to act once (refused until vars.LAND_DRY_RUN is false).'
         type: boolean
         default: true
 
@@ -48,8 +52,8 @@ jobs:
   land:
     name: Land the next pull request (one write per run)
     # why: main's own copy only (a dispatch from a branch would run that branch's
-    # lander with write scopes), and a `labeled` wake for `land-ok` only.
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'pull_request_target' || github.event.label.name == 'land-ok')
+    # lander with write scopes), and a `labeled` wake for `land-ok` or `land-ok:<sha8>` only.
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'pull_request_target' || startsWith(github.event.label.name, 'land-ok'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -60,8 +64,8 @@ jobs:
       # why: the `land-freeze` issue, opened when main goes NEWLY red after a merge.
       issues: write
       # why: the post-merge dispatch of ci.yml, codeql.yml and ops-watch.yml on main
-      # (a GITHUB_TOKEN merge starts no run), an E2E dispatch on a PR branch, and the
-      # run and job reads.
+      # (a GITHUB_TOKEN merge starts no run), an E2E or CI dispatch on a PR branch (an
+      # update-branch by this token starts no CI either), and the run and job reads.
       actions: write
       # why: the ci-gate check-runs on each head, read only.
       checks: read
@@ -71,11 +75,13 @@ jobs:
           persist-credentials: false
           ref: main
       - uses: ./.github/actions/setup-node
-      # why: an unattended run is DRY until the repository variable LAND_DRY_RUN is
-      # `false` (the lead's cut-over step); a dispatch takes its own input instead.
-      # land-next.mjs treats anything but the exact string `false` as a dry run.
+      # why: every run is DRY until the repository variable LAND_DRY_RUN is `false`
+      # (the lead's cut-over step). A dispatch's own `dry_run` can only make a run
+      # drier: land-next.mjs REFUSES a `dry_run=false` dispatch while the variable
+      # is not `false`, and treats anything but the exact string `false` as dry.
       - name: Decide, then make at most one write
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          LAND_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.dry_run) || vars.LAND_DRY_RUN || 'true' }}
+          LAND_DRY_RUN: ${{ vars.LAND_DRY_RUN || 'true' }}
+          LAND_DISPATCH_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.dry_run) || '' }}
         run: node tooling/ci/land-next.mjs

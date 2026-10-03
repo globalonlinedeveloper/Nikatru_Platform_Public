@@ -36,6 +36,16 @@
       "firstSeen": "2026-09-06",
       "evidence": []
     },
+    "tooling/autopilot/review-paths.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
+    "tooling/autopilot/watch.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/catalog/render-rail-prices.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",
@@ -3674,6 +3684,11 @@
     "tooling/ops/check-apple-signing-expiry.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ops/check-box-config-drift.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/check-code-scanning-age.mjs": {
