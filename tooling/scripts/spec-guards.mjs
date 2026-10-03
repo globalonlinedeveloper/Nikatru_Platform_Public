@@ -535,6 +535,15 @@ const GUARDS = [
   { name: 'assert-business-facts', speed: 'fast', needsPrivate: false,
     rel: ['tooling/scripts/assert-business-facts.mjs'],
     what: 'every printed business fact is the entity source\'s, the source is the brain\'s, and no fact is typed elsewhere' },
+  /* ⏱ ADDED 2026-10-01 · O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE (rv2-business 009). Its subject is
+     PUBLIC — every tracked file of this repo — but its VALUES are not: the store-account ids it
+     searches for are read from the business brain at run time and written nowhere in this tree,
+     because a list of them here would be the leak. The brain is on this machine and on no CI
+     runner, so the hook is the only place it can run, and `needsPrivate: false` is still true:
+     it needs the brain, not the corpus. Brain absent is its own exit 2. */
+  { name: 'assert-no-account-ids', speed: 'fast', needsPrivate: false,
+    rel: ['tooling/scripts/assert-no-account-ids.mjs'],
+    what: 'no Microsoft seller id, Chrome publisher id or Apple Enrollment ID is written in full in a tracked file' },
 ];
 
 /* The rows typed in this file. The corpus's own rows join them below, once the corpus
