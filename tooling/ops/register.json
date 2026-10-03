@@ -1059,7 +1059,7 @@
         "ok=0 on two consecutive firings mails the owner straight from the Worker (services/platform/src/lib/owner-page.ts,",
         "recipient is the entity support inbox, through the mail port; tooling/ops/alarm-chains.json `ownerPage`), the one page that does not leave from Box B; two",
         "firings is 12 h on the grid where it was 24-48 h nightly. ops_watchdog gained the `ops-watch-freshness` target",
-        "(PB-10): main's newest completed ops-watch run older than 6 h is a FINDING row and the same direct page.",
+        "(PB-10): main's newest completed ops-watch run older than 7 h (6 h until 2026-10-03: one firing interval, no slack) is a FINDING row and the same direct page.",
         "",
         "🔴 `ops_stuck_runs` KEEPS ITS OWN HOURLY CRON `15 * * * *`, added 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY):",
         "the stuck-run check, moved OFF the 6-hourly dispatcher grid, because a run stuck for hours froze the queue",
@@ -1843,7 +1843,7 @@
         "anchor": ".github/workflows/ops-watch.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 6 h and a direct owner page (services/platform/src/lib/owner-page.ts)",
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 7 h (the interval plus one run plus margin, 2026-10-03) and a direct owner page (services/platform/src/lib/owner-page.ts)",
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",

@@ -374,8 +374,8 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
         return json({
           workflow_runs: [
             opsCross === 1
-              ? { id: 60, status: 'in_progress', conclusion: null, created_at: old, updated_at: minutesAgo(7 * 60) }
-              : { id: 60, status: 'completed', conclusion: 'success', created_at: old, updated_at: minutesAgo(7 * 60) },
+              ? { id: 60, status: 'in_progress', conclusion: null, created_at: old, updated_at: minutesAgo(8 * 60) }
+              : { id: 60, status: 'completed', conclusion: 'success', created_at: old, updated_at: minutesAgo(8 * 60) },
           ],
         });
       }
