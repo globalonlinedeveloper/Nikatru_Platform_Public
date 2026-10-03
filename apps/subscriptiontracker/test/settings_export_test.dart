@@ -216,6 +216,40 @@ void main() {
     expect(plan.accountedFor, plan.rowCount);
   });
 
+  test('the header main already ships keeps its order: new columns are '
+      'appended, never inserted', () {
+    expect(
+      kSubscriptionCsvHeader.take(22),
+      <String>[
+        'id',
+        'name',
+        'category',
+        'price',
+        'currency',
+        'cycle',
+        'next_renewal',
+        'plan',
+        'glyph',
+        'used_pct',
+        'usage_note',
+        'unused',
+        'cycle_every',
+        'cycle_unit',
+        'status',
+        'first_charge_on',
+        'trial_ends_on',
+        'cancelled_on',
+        'deleted_at',
+        'notes',
+        'cancel_url',
+        'tags',
+      ],
+      reason:
+          'a column an earlier export had never moves; new columns are '
+          'appended',
+    );
+  });
+
   test('the column map covers every field of Subscription', () {
     // `price_minor` is the same amount as `price`; the file carries it once,
     // as major units beside its currency code.

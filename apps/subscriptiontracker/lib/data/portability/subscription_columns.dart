@@ -14,6 +14,7 @@ import '../models/subscription.dart';
 
 /// The header row, in file order. The names are `Subscription.toJson()`'s keys,
 /// so the core import engine's synonyms read this file back without a mapping.
+/// APPEND-ONLY: a column an earlier export had never moves; a new one goes last.
 const List<String> kSubscriptionCsvHeader = <String>[
   'id',
   'name',
@@ -34,6 +35,7 @@ const List<String> kSubscriptionCsvHeader = <String>[
   // a spreadsheet filters on a cell, and a JSON array is not one a person
   // reads.
   'tags',
+  ..._kTrialAnswerColumns,
 ];
 
 /// The `tags` cell: the labels joined by `; `, empty for none.
@@ -50,19 +52,23 @@ const List<String> _kModelColumns = <String>[
   'deleted_at',
   'notes',
   'cancel_url',
-  // ⏱ 2026-10-01 · train T11 (0010): what a trial converts to, in minor units
-  // of this row's `currency` — the wire's own exact amount, as `toJson` writes
-  // it — and the user's "Still using?" answer with the server's stamp.
+];
+
+// ⏱ 2026-10-01 · train T11 (0010): what a trial converts to, in minor units
+// of this row's `currency` — the wire's own exact amount, as `toJson` writes
+// it — and the user's "Still using?" answer with the server's stamp. Appended
+// after `tags`, so no column an earlier export had moves.
+const List<String> _kTrialAnswerColumns = <String>[
   'price_after_trial_minor',
   'still_using',
   'still_using_at',
 ];
 
-/// [s]'s [_kModelColumns] cells, read off `toJson()` so the file and the wire
-/// cannot spell a field two ways.
-List<String> _modelCells(Subscription s) {
+/// [s]'s [columns] cells, read off `toJson()` so the file and the wire cannot
+/// spell a field two ways; empty for null.
+List<String> _modelCells(Subscription s, List<String> columns) {
   final Map<String, dynamic> j = s.toJson();
-  return <String>[for (final String k in _kModelColumns) '${j[k] ?? ''}'];
+  return <String>[for (final String k in columns) '${j[k] ?? ''}'];
 }
 
 /// One subscription as one row, in [kSubscriptionCsvHeader] order. Cells are
@@ -82,8 +88,9 @@ List<String> subscriptionCsvRow(Subscription s) {
     '${s.usedPct}',
     s.usageNote,
     '${s.unused}',
-    ..._modelCells(s),
+    ..._modelCells(s, _kModelColumns),
     subscriptionTagsCell(s),
+    ..._modelCells(s, _kTrialAnswerColumns),
   ];
 }
 
