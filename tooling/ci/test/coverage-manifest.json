@@ -33,13 +33,13 @@
     4,
 
   "android-signing.test.mjs":
-    66,
+    68,
 
   "android-target-sdk.test.mjs":
     34,
 
   "android-vapt-manifest.test.mjs":
-    55,
+    57,
 
   "app-address-shape.test.mjs":
     32,
@@ -87,7 +87,7 @@
     19,
 
   "apple-signing.test.mjs":
-    125,
+    127,
 
   "apps-gov-in-apk.test.mjs":
     57,
@@ -191,6 +191,9 @@
   "brick-payment-fakes.test.mjs":
     4,
 
+  "build-provenance.test.mjs":
+    25,
+
   "built-artifact-pr-lane.test.mjs":
     28,
 
@@ -255,7 +258,7 @@
     55,
 
   "channel-register.test.mjs":
-    380,
+    381,
 
   "channel-surface.test.mjs":
     7,
@@ -735,7 +738,7 @@
     26,
 
   "obfuscation-coupled.test.mjs":
-    40,
+    45,
 
   "one-entitlement-reader.test.mjs":
     13,
@@ -795,7 +798,7 @@
     36,
 
   "platform-proof-fresh.test.mjs":
-    91,
+    108,
 
   "platform-register.test.mjs":
     120,
@@ -810,7 +813,7 @@
     61,
 
   "play-submission.test.mjs":
-    112,
+    117,
 
   "policy-archive.test.mjs":
     35,
@@ -924,7 +927,7 @@
     11,
 
   "release-durable.test.mjs":
-    200,
+    204,
 
   "release-grades-legs.test.mjs":
     7,
@@ -933,7 +936,7 @@
     105,
 
   "release-provenance.test.mjs":
-    159,
+    163,
 
   "release-tag-lanes.test.mjs":
     24,
@@ -1035,7 +1038,7 @@
     9,
 
   "signing-seam.test.mjs":
-    40,
+    44,
 
   "signup-consent-shape.test.mjs":
     34,
@@ -1068,7 +1071,7 @@
     46,
 
   "snap-submission.test.mjs":
-    48,
+    50,
 
   "snap-update-row.test.mjs":
     6,
@@ -1136,6 +1139,9 @@
   "store-build-config.test.mjs":
     38,
 
+  "store-bytes-record.test.mjs":
+    23,
+
   "store-capture-board-parity.test.mjs":
     26,
 
@@ -1173,7 +1179,7 @@
     7,
 
   "submit-lanes-take-dry-run-bytes.test.mjs":
-    10,
+    11,
 
   "supabase-templates.test.mjs":
     48,
@@ -1209,7 +1215,7 @@
     26,
 
   "update-coverage.test.mjs":
-    35,
+    41,
 
   "update-exit.test.mjs":
     12,

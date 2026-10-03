@@ -154,6 +154,7 @@ export const EXCEPTIONS = [
   },
   { rel: '.github/workflows/extensions.yml', job: 'cws-token-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-2 may cancel' },
   { rel: '.github/workflows/extensions.yml', job: 'store-key-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-2 may cancel' },
+  { rel: '.github/workflows/extensions.yml', job: 'attest', kind: 'not-on-pull-request', why: 'needs `release`, which runs only on a tag or a lane=release dispatch: never in the one kind of extensions.yml run FF-2 may cancel (O-RELEASES-HAVE-NO-PROVENANCE)' }, // disclosed: (absent from open.json until the next Private pass records it)
 ];
 
 /** A `permissions:` key at `indent` spaces in `lines`, as `{ n, all, scopes }`

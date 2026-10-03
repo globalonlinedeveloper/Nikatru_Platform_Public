@@ -379,6 +379,13 @@ if (SUBMIT) {
   //       cannot tolerate is submitting a package some other run produced: there
   //       is no signature on a .snap to compare (keyKind "none"), so provenance
   //       here is "this job built the bytes it is sending" or it is nothing.
+  //   ⏱ 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT): (b)
+  //       and (c) are ALSO met by the run's own dry-run job, when the submit job
+  //       `needs` it and runs `sha256sum --check` on that job's bytes before the
+  //       submit step. The sha256 is the provenance a signature would have been:
+  //       "a job of THIS run graded and packed these exact bytes". Packing twice
+  //       per dispatch was a second, ungraded snap beside the one the dry run
+  //       validated, which is the defect, not the cure.
   {
     const registerPeek = read(REGISTER);
     let subWorkflowRel = '.github/workflows/submit-snap.yml';
@@ -417,6 +424,21 @@ if (SUBMIT) {
         ]);
       }
       const submitAt = job.logical.find((l) => /submit-snap\.mjs/.test(l.text) && /--submit\b/.test(l.text));
+      // The hand-off: a sha256 check before the submit step, of bytes a job this one `needs` packed.
+      const checkAt = job.logical.find((l) => /sha256sum\s+--check\b/.test(l.text) && l.n < submitAt.n);
+      const producer = checkAt
+        ? (job.needs ?? []).map((n) => wf.jobs.get(n)).find((p) => p && [RECIPE_GUARD, PACK_VERB].every((x) => p.logical.some((l) => l.text.includes(x))))
+        : undefined;
+      if (producer) {
+        const order = [RECIPE_GUARD, PACK_VERB].map((x) => producer.logical.find((l) => l.text.includes(x)).n);
+        if (order[0] > order[1]) {
+          die([
+            `FAIL ${subWorkflowRel} job "${producer.name}" packs at line ${order[1]} BEFORE it grades the recipe at line ${order[0]}.`,
+            '     The bytes the submit job verifies were packed from a recipe nothing had graded yet.',
+          ]);
+        }
+        continue;
+      }
       for (const [needle, why] of [
         [
           RECIPE_GUARD,
@@ -439,7 +461,7 @@ if (SUBMIT) {
         }
       }
     }
-    ok(`PG-5 lane shape — ${subWorkflowRel} gates the submit job on an environment, and grades and packs before it sends`);
+    ok(`PG-5 lane shape — ${subWorkflowRel} gates the submit job on an environment, and grades and packs before it sends (in the job, or in the dry-run job whose sha256 it checks)`);
   }
 
   // ── PG-6 · the environment EXISTS and carries a REQUIRED REVIEWER ──────────

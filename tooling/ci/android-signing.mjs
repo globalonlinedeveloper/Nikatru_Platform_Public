@@ -264,6 +264,8 @@ const { lane, gap, mustSign } = releaseLane({
   rows: [channel],
   gitRef: (process.env.GITHUB_REF ?? '').trim(),
   workflowRef: (process.env.GITHUB_WORKFLOW_REF ?? '').trim(),
+  // (c): the platform proof is a release lane for an armed row (review AA-28).
+  proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
   label: 'Android',
 });
 

@@ -70,12 +70,14 @@ export function decideSecretSet(names, values) {
  *   (a) a TAG push — `gitRef` starting `refs/tags/`;
  *   (b) the rows' DECLARED submission workflow — `workflowRef`'s PATH (the part
  *       before `@`, so a branch name cannot change the answer) ending in one of
- *       `submissionWorkflows`.
+ *       `submissionWorkflows`;
+ *   (c) the PLATFORM PROOF — the same path test against `proofWorkflows`, the
+ *       register's `aggregatingJob.workflow` (⏱ 2026-10-01, review AA-28).
  *
  * `blind` names each limb that could not contribute, so a narrowed derivation is
  * printed rather than hidden. `label` is the adapter's word for its rows.
  */
-export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflows = [], label } = {}) {
+export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflows = [], proofWorkflows = [], label } = {}) {
   if (typeof label !== 'string' || label.trim() === '') throw new TypeError('releaseSignal needs the label its messages name the rows by');
   const reasons = [];
   const blind = [];
@@ -84,6 +86,21 @@ export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflo
   const declared = submissionWorkflows.filter((w) => typeof w === 'string' && w !== '');
 
   if (ref.startsWith('refs/tags/')) reasons.push(`the run is a TAG push (${ref})`);
+
+  // (c) ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): the PLATFORM
+  // PROOF — the register's `aggregatingJob.workflow`, passed by the adapter — on any ref. Its weekly
+  // run is the evidence that every armed channel builds its store artifact; an unsigned build of an
+  // armed row went green there, so the proof certified an artifact no store would take. Matched on
+  // the PATH before `@`, as limb (b) is, so no branch name changes the answer.
+  if (wfRef !== '') {
+    const runningPath = wfRef.split('@')[0];
+    for (const w of new Set(proofWorkflows.filter((x) => typeof x === 'string' && x !== ''))) {
+      if (runningPath.endsWith(`/${w}`) || runningPath === w) {
+        reasons.push(`this is the platform proof (${w}), whose green run says every armed channel built its store artifact`);
+        break;
+      }
+    }
+  }
 
   if (declared.length > 0 && wfRef !== '') {
     const runningPath = wfRef.split('@')[0];
@@ -120,7 +137,7 @@ export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflo
  * Throws on no rows: every adapter exits COVERAGE LOST before this when its row
  * is absent, and a verdict over zero rows is "nothing is armed", a pass.
  */
-export function releaseLane({ rows, gitRef = '', workflowRef = '', label } = {}) {
+export function releaseLane({ rows, gitRef = '', workflowRef = '', proofWorkflows = [], label } = {}) {
   if (!Array.isArray(rows) || rows.length === 0 || rows.some((r) => r === null || typeof r !== 'object')) {
     throw new TypeError('releaseLane needs the register rows the adapter serves — a verdict over none arms nothing');
   }
@@ -128,6 +145,7 @@ export function releaseLane({ rows, gitRef = '', workflowRef = '', label } = {})
     gitRef,
     workflowRef,
     submissionWorkflows: rows.map((r) => r.submission?.workflow).filter((w) => typeof w === 'string'),
+    proofWorkflows,
     label,
   });
   const gap = releaseGapVerdict(rows);

@@ -218,6 +218,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseAllWorkflows, flutterBuilds, flutterReleaseBuilds, gradeDomain, RELEASE_MODES, NOT_RELEASE_BUILD,
+  releaseTrigger, shellSegments,
 } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -698,6 +699,79 @@ for (const [key, why] of sinkExempt) {
   }
 }
 
+// ── LIMB DURABLE — ⏱ 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it), review AA-07) ──
+// The COUPLING limb accepts an `actions/upload-artifact` of the mapping, and every
+// store build's mapping lived exactly there: 90 days, while the store serves the
+// build for years. So a build that LEAVES for a store, or for a Release, must first
+// have its symbols copied to the private R2 release store by
+// tooling/ci/r2-durable-copy.mjs `--kind symbols`:
+//   (a) every job that runs a `tooling/release/submit-*.mjs … --submit` step runs a
+//       copy at an EARLIER line — before the upload, because a step after a store
+//       upload does not run when that upload fails;
+//   (b) every workflow with a release TAG trigger whose jobs obfuscate and that
+//       publishes a GitHub Release runs a copy in a job the publishing job needs,
+//       transitively (build-platforms.yml `durable_symbols` → `release`).
+// RECORDED FAILING CASES: the copy step moved after Play's `--submit` → exit 1;
+// `durable_symbols` dropped from `release`'s needs → exit 1.
+const SUBMIT_STEP = /tooling\/release\/submit-[\w-]+\.mjs\b.*--submit\b/;
+const DURABLE_COPY = /r2-durable-copy\.mjs\b.*--kind\s+symbols\b/;
+const GH_RELEASE = /gh\s+release\s+(?:create|upload)\b/;
+const lineOf = (job, re) => {
+  for (const l of job.logical) if (shellSegments(l.text).some((seg) => re.test(seg))) return l.n;
+  return null;
+};
+let durableSubmitJobs = 0;
+let durableReleaseJobs = 0;
+for (const wf of workflows) {
+  for (const job of wf.jobs.values()) {
+    const submitAt = lineOf(job, SUBMIT_STEP);
+    if (submitAt === null) continue;
+    durableSubmitJobs++;
+    const copyAt = lineOf(job, DURABLE_COPY);
+    if (copyAt === null || copyAt > submitAt) {
+      problems.push(
+        `DURABLE ${wf.rel} job "${job.name}" submits to a store at :${submitAt} and ${copyAt === null ? 'never runs' : `runs only AFTER it (:${copyAt})`} ` +
+          '`tooling/ci/r2-durable-copy.mjs --kind symbols`. The build\'s mapping would outlive the run only as a 90-day artifact, and a copy after the upload ' +
+          'does not run when the upload fails. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS', // disclosed: (absent from open.json until the next Private pass records it)
+      );
+    }
+  }
+  if (releaseTrigger(wf) === null) continue;
+  const obfuscates = [...wf.jobs.values()].some((j) => (buildsByJob.get(`${wf.rel}\0${j.name}`) ?? []).some((b) => OBFUSCATE.test(b.segment)));
+  if (!obfuscates) continue;
+  const upstream = (name, seen = new Set()) => {
+    for (const n of wf.jobs.get(name)?.needs ?? []) if (!seen.has(n)) { seen.add(n); upstream(n, seen); }
+    return seen;
+  };
+  for (const job of wf.jobs.values()) {
+    if (lineOf(job, GH_RELEASE) === null) continue;
+    durableReleaseJobs++;
+    const sources = [job.name, ...upstream(job.name)].filter((n) => wf.jobs.has(n) && lineOf(wf.jobs.get(n), DURABLE_COPY) !== null);
+    if (sources.length === 0) {
+      problems.push(
+        `DURABLE ${wf.rel} job "${job.name}" publishes a GitHub Release from obfuscated builds, and neither it nor any job it needs runs ` +
+          '`tooling/ci/r2-durable-copy.mjs --kind symbols`. The tag\'s mappings — the apps.gov.in .apk a person uploads from that Release among them — ' +
+          'would exist only as 90-day artifacts. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS', // disclosed: (absent from open.json until the next Private pass records it)
+      );
+    }
+  }
+}
+// Both floors on the real tree only: a fixture root carries the one lane its case is about.
+const durableFloors = process.argv[2] === undefined;
+if (durableFloors && durableSubmitJobs === 0) {
+  coverageLost([
+    'LIMB DURABLE found NO job running a `tooling/release/submit-*.mjs … --submit` step.',
+    'submit-play.yml, submit-snap.yml and submit-windows-store.yml each have one; zero means the pattern stopped matching,',
+    'and "the symbols are durable before the store upload" would be asserted of nothing.',
+  ]);
+}
+if (durableFloors && durableReleaseJobs === 0) {
+  coverageLost([
+    'LIMB DURABLE found NO job publishing a GitHub Release in a tag-triggered workflow that obfuscates.',
+    'build-platforms.yml `release` is one; zero means the trigger, the build or the publish reader stopped matching.',
+  ]);
+}
+
 // Printed on EVERY run, pass or fail, before the verdict: a build this guard
 // holds to less than all three limbs is named with its reason every time, and a
 // listed build that needed no waiver is named too — an exemption nobody reads is
@@ -741,6 +815,7 @@ console.log(
     `. SINK: all ${sinkSubjects.length - sinkWaived} of them upload those symbols to ` +
     `the crash sink from a later step of the same job` +
     (sinkExempt.size ? `, except ${sinkExempt.size} declared exemption(s) printed above` : ', with no declared exemption') +
+    `. DURABLE: ${durableSubmitJobs} store-submit job(s) and ${durableReleaseJobs} tag-release job(s) copy the symbols to R2 first` +
     `. ${webReleaseBuilds} web release build(s) are outside the floor ` +
     'because Flutter does not support obfuscation on web' +
     (nonReleaseBuilds.length

@@ -506,11 +506,11 @@ if (existsSync(abs(artifactRel))) {
 } else if (ALLOW_MISSING_ARTIFACT) {
   prints.push(
     `NO SIGNED ARTIFACT — ${artifactRel} is not on disk and --allow-missing-artifact was passed, so the listing and the bundle identifier were validated and the package was not. ` +
-      'The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so there is no signed package to read here.',
+      'The submit-appstore.yml lane never passes this flag: it signs and packages first. Off that lane there may be no signed package to read.',
   );
 } else {
   problems.push(
-    `${artifactRel} does not exist. The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
+    `${artifactRel} does not exist. .github/workflows/submit-appstore.yml signs and packages it immediately before running this dry run (since 2026-10-01, review AA-18), so a run reaching here from that lane means the signed build or the productbuild produced nothing while exiting 0. Pass --allow-missing-artifact only off that lane, to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
   );
 }
 

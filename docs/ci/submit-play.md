@@ -399,7 +399,14 @@ disturbing that. The signature answers "who signed this?"; this answers
 upload, and this is the last point before the upload where the answer is
 a fact about bytes rather than a claim about configuration.
 
-### before step **Dry-run the Google Play submission**
+### before step **Dry-run the Google Play submission (opens and deletes an uncommitted edit)**
+
+⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE (absent from open.json until the next Private pass records it)): `--touch-store`. The
+rehearsal used to shape-check the service-account JSON and send nothing, so a revoked key or a
+lost app grant was found by the first real upload. It now mints a token, opens an edit
+(`edits.insert`), reads its tracks and DELETES it (`edits.delete`); no commit is reachable from
+that path. An absent `PLAY_SERVICE_ACCOUNT_JSON` FAILS it. Without the flag (a laptop, a test) a
+dry run still sends nothing.
 
 ⚠️ PLAY_SERVICE_ACCOUNT_JSON is a PRIVATE KEY. The script parses it to
 check its shape and never prints any part of it, including in the
@@ -407,7 +414,7 @@ failure messages for a malformed value. In `--dry-run` its absence is a
 printed gap; in `--submit` it is a hard stop, because nothing can
 authenticate without it.
 
-### in step **Dry-run the Google Play submission**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
+### in step **Dry-run the Google Play submission (opens and deletes an uncommitted edit)**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
 
 The posture is in the NAME so a downloaded bundle carries its own answer
 to "could this have been uploaded?". On this lane it is always

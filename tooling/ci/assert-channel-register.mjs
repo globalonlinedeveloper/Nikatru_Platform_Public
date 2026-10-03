@@ -1264,6 +1264,16 @@ for (const c of channels) {
             );
           } else {
             submissionsResolved++;
+            // ⏱ 2026-10-03 (review of #1187, finding 4; review AA-18, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT (absent from open.json until the next Private pass records it)): the job
+            // that runs a submission script rehearses it on the BUILT artifact. `--allow-missing-artifact` lets the script
+            // validate a listing with no package on disk, which is how the Apple lane validated nothing signed; the flag
+            // is for a laptop, never a lane. Comment lines are skipped: a `# why:` may name the flag it forbids.
+            const blind = (wf.jobs.get(sub.job) ?? []).filter((l) => !/^\s*#/.test(l) && /--allow-missing-artifact\b/.test(l));
+            if (blind.length) {
+              problems.push(
+                `${where}: job "${sub.job}" in ${sub.workflow} runs with --allow-missing-artifact (${blind[0].trim().slice(0, 120)}). A rehearsal that tolerates a missing package validates a listing and never the bytes the store receives; build and sign the artifact in the lane instead.`,
+              );
+            }
           }
         }
       }
@@ -2588,6 +2598,18 @@ let releaseCensus;
         'the six-platform proof compiles the web bundle in the same job as the Linux and Android ones, and ' +
         'web SHIPS from deploy-web.yml#deploy-web (its lane). This build is the compile proof, not the deploy, ' +
         'so the stamp is correct and the job is not the lane.',
+    },
+    // ⏱ 2026-10-01 — the weekly proof packs the Linux STORE artifact (review AA-04,
+    // O-LINUX-BUILD-STAMPED-AS-APPIMAGE). Its bundle used to be stamped linux-appimage,
+    // a channel ADR 015 defers, while the .snap it now packs is linux-snap's format.
+    {
+      workflow: '.github/workflows/build-platforms.yml',
+      job: 'linux_web_android',
+      channel: 'linux-snap',
+      why:
+        'the six-platform proof compiles the Linux bundle for the Snap Store and PACKS the .snap with the ' +
+        'recipe and the snapcraft track submit-snap.yml uses, uploading nothing. linux-snap SHIPS from ' +
+        'submit-snap.yml (its lane), so the stamp is correct and this job is the proof, not the lane.',
     },
     // ⏱ 2026-09-23 — the store-screenshot capture jobs (O-STORE-SCREENSHOTS). Each
     // builds the app FOR a channel only to photograph it: the frames must show that

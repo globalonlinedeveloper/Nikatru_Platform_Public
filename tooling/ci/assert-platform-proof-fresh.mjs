@@ -136,6 +136,7 @@
 // build inside it. [pipeline 9]R-1 limb B.
 //
 // Usage:  node tooling/ci/assert-platform-proof-fresh.mjs
+//         node tooling/ci/assert-platform-proof-fresh.mjs --store-lanes   (the four store dry runs; see STORE_LANE_DEADLINE)
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -145,6 +146,7 @@ import { parseWorkflow, flutterBuilds, composerCallArgs, shellSegments, WORKFLOW
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
+import { armingOf } from './channel-arming.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -960,7 +962,212 @@ export function gradeRunHistory(read, nowMs) {
   return gradeUnion(read, (runs) => evaluateFreshness(runs, nowMs), newestScheduledGreen);
 }
 
+// ── 🔴 THE STORE LANES' REHEARSALS, GRADED FOR AGE TOO (`--store-lanes`) ────────
+// ⏱ ADDED 2026-10-01 (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)). The four
+// submit-*.yml dry runs were dispatch-only and nothing graded their freshness:
+// the Apple and Windows lanes had run once ever and the Snap lane last passed
+// 2026-08-09, while every row they rehearse was ARMED. The same two pieces as the
+// six-platform proof above: each lane now runs its dry-run job on a weekly
+// `schedule:`, and THIS limb fails when an armed row's submission workflow has no
+// green run inside MAX_AGE_DAYS.
+//
+// THE SUBJECT IS DERIVED, NEVER LISTED: every row tooling/channel-arming.mjs
+// reports ARMED whose `submission.job` is `dry-run`, by its `submission.workflow`.
+// Zero such rows is COVERAGE LOST: an empty subject set is the green-over-nothing
+// shape. A lane with no readable weekly cron, or none at least as fast as the
+// ceiling, fails here before any run is read, for the reason the build-platforms
+// clause gives above.
+//
+// ANY successful run counts, a dispatch as much as a schedule: what this asks is
+// "did the rehearsal pass recently", and the submit job of a confirmed dispatch
+// runs only after the dry-run job passed. (The build-platforms clause above counts
+// only `schedule`, because it is ALSO the evidence that its timer is alive.)
+//
+// ⚠️ A DATED START, LOUDLY. The schedules land with this limb, and today three of
+// the four lanes are past the ceiling, so before STORE_LANE_DEADLINE a stale lane
+// PRINTS ⬜ and from it the same answer FAILS. Two weekly cycles fit before it.
+// Delete the date, not the limb, once every lane has rehearsed on its timer.
+//
+// ⏱ 2026-10-03 (review of #1187, finding 5): A STALE LANE NEVER GATES A PULL
+// REQUEST. A rehearsal goes stale for reasons no PR causes (a store secret not yet
+// set, an outage), and ci.yml runs this on every PR, so from STORE_LANE_DEADLINE a
+// stale lane would have turned EVERY PR's ci-gate red at once. On a `pull_request`
+// run the same verdict PRINTS, owned by STORE_LANE_OWNER and dated; on every other
+// event (main, a dispatch) it fails from the deadline. The event is `--event`, else
+// GITHUB_EVENT_NAME, so the tests pin it with no real clock and no real event.
+//
+// Offline: `--store-lanes --store-runs-file <json> --now <iso>`, where the JSON
+// maps each workflow FILE NAME to a fixture in anchored-run-read's shapes.
+export const STORE_LANE_DEADLINE = '2026-10-21';
+export const STORE_LANE_OWNER = 'O-STORE-DRY-RUNS-HAVE-NO-CADENCE'; // disclosed: (absent from open.json until the next Private pass records it)
+
+/** PURE. Does a stale store lane FAIL this run? Only from the deadline, and never on a pull request. */
+export const storeLaneGates = (nowMs, event) => nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`) && event !== 'pull_request';
+
+/** The armed rows whose submission has a dry-run job, grouped by workflow:
+ *  `[{ workflow, rows: [id] }]`, in register order. Pure. */
+export function storeLaneSubjects(register) {
+  const by = new Map();
+  for (const row of register?.channels ?? []) {
+    if (!armingOf(row).armed) continue;
+    const sub = row?.submission;
+    if (typeof sub?.workflow !== 'string' || sub.job !== 'dry-run') continue;
+    if (!by.has(sub.workflow)) by.set(sub.workflow, []);
+    by.get(sub.workflow).push(row.id);
+  }
+  return [...by].map(([workflow, rows]) => ({ workflow, rows }));
+}
+
+/** One store lane's timer, read from its own file: `{ problem, crons, interval }`. */
+export function storeLaneSchedule(root, workflowRel) {
+  const wf = parseWorkflow(root, workflowRel);
+  if (!wf) return { problem: `${workflowRel} does not exist or could not be parsed, so the rehearsal of the rows it serves has no timer to read.` };
+  if (!wf.jobs.has('dry-run')) return { problem: `${workflowRel} has no \`dry-run\` job, and the register names that job as the rehearsal.` };
+  const header = wf.lines
+    .slice(0, wf.jobsAt === null || wf.jobsAt === -1 ? wf.lines.length : wf.jobsAt)
+    .map((l) => l.text)
+    .join('\n');
+  const crons = /^\s+schedule:\s*$/m.test(header) ? cronExpressions(header) : [];
+  if (crons.length === 0) {
+    return { problem: `${workflowRel} declares no \`schedule:\` cron, so its dry run runs only when somebody dispatches it, and ages unseen in between.` };
+  }
+  const interval = impliedIntervalDays(crons);
+  if (interval === null) return { problem: `${workflowRel} declares a cron this guard cannot read: [${crons.join(', ')}]. Use the 5-field numeric form.` };
+  if (interval >= MAX_AGE_DAYS) {
+    return { problem: `${workflowRel}'s schedule [${crons.join(', ')}] fires only every ${interval} day(s), and the ceiling is ${MAX_AGE_DAYS}: it cannot keep its rehearsal fresh.` };
+  }
+  return { problem: null, crons, interval };
+}
+
+/** The newest green run of one store lane, against the ceiling. Pure. */
+export function evaluateStoreLane(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
+  if (!Array.isArray(runs)) return { ok: false, unreadable: true, reason: 'run list was not an array' };
+  const green = runs.filter((r) => r && r.conclusion === 'success' && !Number.isNaN(Date.parse(r.updated_at ?? '')));
+  if (green.length === 0) return { ok: false, reason: 'no successful run at all' };
+  const newest = green.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a));
+  const ageDays = (nowMs - Date.parse(newest.updated_at)) / 86_400_000;
+  return {
+    ok: ageDays <= maxAgeDays,
+    ageDays,
+    runId: newest.id,
+    event: newest.event ?? '(no event)',
+    reason: ageDays <= maxAgeDays ? null : `the newest green run ${newest.id} (${newest.event ?? 'no event'}) is ${ageDays.toFixed(1)} days old, ceiling ${maxAgeDays}`,
+  };
+}
+
+const newestGreen = (runs) => {
+  const g = (runs ?? []).filter((r) => r && r.conclusion === 'success' && !Number.isNaN(Date.parse(r.updated_at ?? '')));
+  return g.length ? g.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a)) : null;
+};
+
+async function storeLanesMain() {
+  const nowFlag = flag('--now');
+  const nowMs = nowFlag ? Date.parse(nowFlag) : Date.now();
+  if (Number.isNaN(nowMs)) {
+    fail(`--now is not a parseable date: ${nowFlag}`);
+    return;
+  }
+  let register;
+  try {
+    register = JSON.parse(readFileSync(join(ROOT, REGISTER_REL), 'utf8'));
+  } catch (e) {
+    lost(`${REGISTER_REL} could not be read (${e.message}), so the armed store rows have no source.`);
+    return;
+  }
+  const subjects = storeLaneSubjects(register);
+  if (subjects.length === 0) {
+    lost(`COVERAGE LOST — no ARMED row of ${REGISTER_REL} names a submission workflow with a \`dry-run\` job, so this limb would grade nothing and print ok.`);
+    return;
+  }
+  const fixtureFile = flag('--store-runs-file');
+  let fixtures = null;
+  if (fixtureFile) {
+    console.log('!!  OFFLINE FIXTURE MODE — --store-runs-file is set. This must NEVER appear in a real CI log.');
+    try {
+      fixtures = JSON.parse(readFileSync(fixtureFile, 'utf8'));
+    } catch (e) {
+      fail(`could not read fixture ${fixtureFile}: ${e.message}`);
+      return;
+    }
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
+  const event = flag('--event') ?? process.env.GITHUB_EVENT_NAME ?? '';
+  const enforced = storeLaneGates(nowMs, event);
+  const pastDeadline = nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`);
+  let fresh = 0;
+  for (const { workflow, rows } of subjects) {
+    const file = workflow.split('/').pop();
+    const sched = storeLaneSchedule(ROOT, workflow);
+    if (sched.problem) {
+      fail(`store lane ${file} (armed: ${rows.join(', ')}) — ${sched.problem}`);
+      continue;
+    }
+    let read;
+    try {
+      if (fixtures !== null) {
+        if (!(file in fixtures)) throw new Error(`the fixture carries no run history for ${file}`);
+        read = await readStoreLaneHistory({ repo, file, fixture: fixtures[file], nowMs });
+      } else {
+        if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
+        read = await readStoreLaneHistory({ repo, file, token, nowMs });
+      }
+    } catch (e) {
+      lost(`store lane ${file} — its run history could not be read: ${e.message}`);
+      continue;
+    }
+    console.log(`      READ    ${file} :  ${describeRead(read, newestGreen)}`);
+    const verdict = gradeUnion(read, (runs) => evaluateStoreLane(runs, nowMs), newestGreen);
+    if (verdict.stalePageCarried) console.log(verdict.stalePageCarried);
+    if (verdict.unreadable) {
+      lost(`store lane ${file} — run history unreadable: ${verdict.reason}`);
+      continue;
+    }
+    if (verdict.ok) {
+      fresh++;
+      console.log(
+        `ok  store lane ${file} (armed: ${rows.join(', ')}) — newest green run ${verdict.runId} (${verdict.event}) is ${verdict.ageDays.toFixed(1)} day(s) old ` +
+          `(ceiling ${MAX_AGE_DAYS}; schedule [${sched.crons.join(', ')}] every ${sched.interval} day(s))`,
+      );
+      continue;
+    }
+    const line = `store lane ${file} (armed: ${rows.join(', ')}) is not fresh — ${verdict.reason}. Its rows are armed, so the next real submission would run a path nobody has rehearsed since.`;
+    if (enforced) {
+      fail(line);
+      console.error(`      Remedy: fix what keeps its weekly dry run from going green; a dispatch (gh workflow run ${file} -f app=<id>) discharges it once.`);
+    } else if (pastDeadline) {
+      console.log(`⬜  ${line}`);
+      console.log(`      PRINTED, NOT FAILED, on a pull_request run: a stale rehearsal is not this PR's doing. Owner ${STORE_LANE_OWNER}; it FAILS on the main and dispatched runs since ${STORE_LANE_DEADLINE}.`);
+    } else {
+      console.log(`⬜  ${line}`);
+      console.log(`      PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}: the weekly schedule landed with this limb. From that date this line FAILS (never on a pull_request run; owner ${STORE_LANE_OWNER}).`);
+    }
+  }
+  if (!process.exitCode) {
+    console.log(`ok  store lanes — ${subjects.length} armed submission workflow(s) graded, ${fresh} fresh within ${MAX_AGE_DAYS} day(s)`);
+  }
+}
+
+/** The run-history read of one store lane, anchored as the six-platform one is. */
+export async function readStoreLaneHistory({ repo = DEFAULT_REPO, file, token = null, read = null, fixture = undefined, nowMs = Date.now(), retry = {} } = {}) {
+  return anchoredRunRead({
+    workflow: file,
+    url: `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?status=success&per_page=100`,
+    token,
+    read,
+    fixture,
+    nowMs,
+    what: `the successful-run history of ${file} in ${repo}`,
+    label: `${file} runs`,
+    retry,
+  });
+}
+
 async function main() {
+  if (process.argv.includes('--store-lanes')) {
+    await storeLanesMain();
+    return;
+  }
   const coverage = platformProofCoverage();
   if (coverage.problem) {
     // A composition that could not be read judged nothing: exit 2, not 1 (W37-R2).

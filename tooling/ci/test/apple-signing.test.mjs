@@ -1453,6 +1453,31 @@ describe('apple-signing — the endings, run as a process', () => {
   });
 });
 
+// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): the brief's red control,
+// a build-platforms dispatch with the Apple env block removed, run as a process.
+describe('apple-signing — the platform proof over ARMED Apple rows must sign', () => {
+  const PROOF_RUN = { GITHUB_REF: 'refs/heads/feat/x', GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/feat/x' };
+  const withProof = (root) => {
+    const f = join(root, 'tooling', 'channel-register.json');
+    const reg = JSON.parse(readFileSync(f, 'utf8'));
+    reg.aggregatingJob = { workflow: '.github/workflows/build-platforms.yml', job: 'all_platforms' };
+    writeFileSync(f, JSON.stringify(reg));
+    return root;
+  };
+  const ARMED_LANE = { workflow: '.github/workflows/build-platforms.yml', job: 'apple' };
+
+  test('RED CONTROL: a build-platforms dispatch with the Apple env block removed FAILS', () => {
+    const { r } = runPrepare(withProof(makeRoot({ lane: ARMED_LANE })), PROOF_RUN);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /required because this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
+  });
+
+  test('the same run over UNARMED Apple rows stays a legal unsigned build proof', () => {
+    const { r } = runPrepare(withProof(makeRoot()), PROOF_RUN);
+    assert.equal(r.status, 0, out(r));
+  });
+});
+
 describe('apple-signing — a secret that is not what it claims to be', () => {
   test('FAILS when the .p12 base64 does not round-trip', () => {
     const { r } = runPrepare(makeRoot(), { ...FULL(), [ROLE_ENV.p12]: 'this is not base64 !!!' });

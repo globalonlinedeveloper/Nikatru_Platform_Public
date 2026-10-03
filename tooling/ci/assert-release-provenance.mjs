@@ -942,6 +942,8 @@ let submitJobs = 0;
 // trip) is what lets the line below say only what held.
 let submitProblems = 0;
 const unnamedSubmitScripts = [];
+// limb 5's census (see the limb).
+let productionRecordsGraded = 0;
 const submitScriptsChecked = new Set();
 
 // ⏱ 2026-09-25 — A SERVED LANE CAN RUN AS A CALL JOB'S CHILDREN. [ADR 095 §4]
@@ -1125,6 +1127,32 @@ for (const wf of workflows) {
       }
     }
 
+    // ── limb 5: a submission's record names the bytes the store received ────
+    // ⏱ 2026-10-01 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it), review AA-12). The ledger
+    // named the COMMIT a store build came from and never the file the store was
+    // sent: Play re-signs, Microsoft repackages, and "which bytes did the store get"
+    // had no answer once the run's artifacts expired. So every `record-deployment.mjs`
+    // call a `--submit` job makes in `--mode production` passes `--artifact`, which
+    // makes the recorder hash the file itself into `payload.artifact`. Per shell
+    // segment, so a step with two calls (Play's draft/in_review pair) is graded twice.
+    // RECORDED FAILING CASE: `--artifact "$AAB"` deleted from either Play call → exit 1.
+    if (job.submitCalls.length > 0) {
+      for (const l of job.logical) {
+        for (const seg of shellSegments(l.text)) {
+          if (!/record-deployment\.mjs\b/.test(seg) || !/--mode\s+production\b/.test(seg)) continue;
+          productionRecordsGraded++;
+          if (!/(^|\s)--artifact\s+\S/.test(seg)) {
+            submitProblems++;
+            problems.push(
+              `${wf.rel}: job "${job.name}" records a production submission at ${lineAt(wf, l.n)} without \`--artifact\`. ` +
+                'The ledger would name the commit and not the bytes the store received; `--artifact <file> --build-number <n>` makes record-deployment.mjs hash ' +
+                'that file into the Deployment payload ({name, sha256, size, buildNumber}). O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST', // disclosed: (absent from open.json until the next Private pass records it)
+            );
+          }
+        }
+      }
+    }
+
     // ── limb 3: a SERVED channel's lane is held to the same bar ─────────────
     // Derived from the register, so the day a channel is served its lane is
     // covered without anyone remembering to add it here.
@@ -1239,6 +1267,16 @@ if (submitJobs === 0) {
     '`submit` job. A zero means the verb pattern has stopped matching and limb 4 is asserting nothing.',
   ]);
 }
+// limb 5's floor: three submit jobs record a production submission today
+// (submit-play, submit-snap, submit-windows-store). Zero means the record call or
+// its `--mode production` stopped matching, and limb 5 graded nothing.
+// The real tree only: a fixture root names whichever submit shape its case needs.
+if (process.argv[2] === undefined && submitJobs > 0 && productionRecordsGraded === 0) {
+  coverageLost([
+    `${submitJobs} job(s) invoke a \`--submit\` verb and NONE records a \`record-deployment.mjs … --mode production\` call this guard could read.`,
+    'Limb 5 holds each such record to `--artifact`; with none read it asserts nothing about the bytes a store received.',
+  ]);
+}
 // An unreadable call is not an absent one. If the verb was found and the script
 // could not be named or opened, half (b) was never asked — say so rather than
 // counting the job as checked.
@@ -1327,6 +1365,7 @@ ok(
   `limb 2b: ${exemptJobs.length} publishing job(s) excused from ${MARKER_SCRIPT} as proven-sandbox \`--env\` deploys, each still gated` +
     (exemptJobs.length > 0 ? ` (${exemptJobs.join('; ')})` : ''),
 );
+ok(`limb 5: ${productionRecordsGraded} production submission record(s) in \`--submit\` job(s) graded for \`--artifact\``);
 ok(`${servedLanes.length} served-channel lane(s) from ${REGISTER}: ${servedLanes.map((l) => l.key).join(', ') || '(none)'}`);
 
 if (problems.length) {

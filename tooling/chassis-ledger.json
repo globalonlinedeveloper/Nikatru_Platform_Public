@@ -1050,7 +1050,7 @@
     },
     {
       "path": "store/apps-gov-in/README.md",
-      "lines": 68,
+      "lines": 77,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },

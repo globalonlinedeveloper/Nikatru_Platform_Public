@@ -64,6 +64,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-build-provenance.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-channel-register.mjs",
       "property": "refuses-blind",
       "evidence": "and the lane scan resolved NO emitted format for any of",

@@ -52,7 +52,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { matchesPath, pinnedKeys, evaluate, candidatePaths } from '../assert-update-coverage.mjs';
+import { matchesPath, pinnedKeys, evaluate, candidatePaths, unpinnedSnapcraftInstalls } from '../assert-update-coverage.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -510,4 +510,52 @@ describe('assert-update-coverage — the security scanners stay reachable by Ren
       );
     });
   }
+});
+
+// ⏱ 2026-10-01 (review AA-04/AA-23) — a workflow line installing snapcraft is a pin too.
+describe('the snapcraft track is a pin: every install reads tooling/versions.json snapcraft_track', () => {
+  const PINNED =
+    'steps:\n      - run: |\n          track="$(node -p "require(\'./tooling/versions.json\').snapcraft_track")"\n' +
+    '          sudo snap install snapcraft --classic --channel "$track"\n';
+  const files = (text) => new Map([['.github/workflows/submit-snap.yml', text]]);
+  const versions = { snapcraft_track: '9.x/stable' };
+
+  test('GREEN: an install with --channel from a variable, in a workflow that reads the key, passes', () => {
+    assert.deepEqual(unpinnedSnapcraftInstalls({ versions, fileContents: files(PINNED) }), []);
+  });
+
+  test('U15 · RED: an install with no --channel FAILS, naming the line', () => {
+    const e = unpinnedSnapcraftInstalls({ versions, fileContents: files('      - run: sudo snap install snapcraft --classic\n') });
+    assert.equal(e.length, 1, e.join('\n'));
+    assert.match(e[0], /\.github\/workflows\/submit-snap\.yml:1 installs snapcraft UNPINNED/);
+  });
+
+  test('U16 · RED: a LITERAL channel is a second copy of the pin, and FAILS', () => {
+    const e = unpinnedSnapcraftInstalls({ versions, fileContents: files('      - run: sudo snap install snapcraft --classic --channel 9.x/stable # snapcraft_track\n') });
+    assert.equal(e.length, 1, e.join('\n'));
+    assert.match(e[0], /UNPINNED/);
+  });
+
+  test('U17 · RED: an install while versions.json carries no track FAILS', () => {
+    const e = unpinnedSnapcraftInstalls({ versions: {}, fileContents: files(PINNED) });
+    assert.equal(e.length, 1, e.join('\n'));
+    assert.match(e[0], /`snapcraft_track` is null, not a `<major>\.x\/<risk>` track/);
+  });
+
+  test('a commented-out install is not an install, and a non-workflow file is not read', () => {
+    const m = new Map([
+      ['.github/workflows/a.yml', '      # sudo snap install snapcraft --classic\n'],
+      ['docs/x.yml', 'sudo snap install snapcraft --classic\n'],
+    ]);
+    assert.deepEqual(unpinnedSnapcraftInstalls({ versions: {}, fileContents: m }), []);
+  });
+
+  test('THE REAL TREE: every snapcraft install reads the pin', () => {
+    const v = JSON.parse(readFileSync(join(REPO, 'tooling/versions.json'), 'utf8'));
+    const m = new Map();
+    for (const f of ['build-platforms.yml', 'submit-snap.yml']) m.set(`.github/workflows/${f}`, readFileSync(join(REPO, '.github/workflows', f), 'utf8'));
+    assert.deepEqual(unpinnedSnapcraftInstalls({ versions: v, fileContents: m }), []);
+    const installs = [...m.values()].join('\n').match(/snap install snapcraft/g) ?? [];
+    assert.ok(installs.length >= 3, `expected the weekly proof and both snap jobs to install snapcraft, found ${installs.length}`);
+  });
 });

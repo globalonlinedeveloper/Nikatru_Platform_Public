@@ -1471,6 +1471,56 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
 // ─────────────────────────────────────────────────────────────────────────────
 // --sync-listing — the listing tree, pushed through an edit of its own (2026-10-01)
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE (absent from open.json until the next Private pass records it)): the lane's rehearsal touches Play.
+describe('submit-play --dry-run --touch-store — an edit opened, read and deleted, never committed', () => {
+  const DRY_TOUCH = ['--dry-run', '--touch-store', '--app', 'subscriptiontracker', '--allow-missing-artifact'];
+  const SA = () => ({
+    PLAY_SERVICE_ACCOUNT_JSON: JSON.stringify({ type: 'service_account', client_email: 'nikatru-free-api@nikatru-platform.iam.gserviceaccount.com', private_key: KEYS.privateKey }),
+  });
+  const touch = async (env, apiOpts = {}) => {
+    const srv = await api(apiOpts);
+    try {
+      const r = await runAsync(tree(), { args: DRY_TOUCH, env: { PLAY_API_BASE_URL: srv.origin, PLAY_OAUTH_TOKEN_URL: `${srv.origin}/token`, ...env } });
+      return { ...r, calls: srv.calls };
+    } finally {
+      await srv.close();
+    }
+  };
+
+  test('THE RED CONTROL: an ABSENT service account FAILS the rehearsal, before any request', async () => {
+    const { code, out, calls } = await touch({});
+    assert.equal(code, 1, out);
+    assert.match(out, /SERVICE ACCOUNT NOT CONFIGURED — PLAY_SERVICE_ACCOUNT_JSON is absent.*--touch-store rehearses against Play itself/);
+    assert.deepEqual(calls, []);
+  });
+
+  test('GREEN: opens an edit, reads its tracks, DELETES it — and no commit is ever sent', async () => {
+    const { code, out, calls } = await touch(SA());
+    assert.equal(code, 0, out);
+    const edits = `/androidpublisher/v3/applications/${PACKAGE}/edits`;
+    assert.deepEqual(calls, ['POST /token', `POST ${edits}`, `GET ${edits}/${EDIT_ID}/tracks`, `DELETE ${edits}/${EDIT_ID}`]);
+    assert.ok(!calls.some((c) => /:commit|:validate|bundles|PUT /.test(c)), calls.join('\n'));
+    assert.match(out, /DRY RUN OK — an edit was opened, read and deleted uncommitted/);
+  });
+
+  test('a delete Play refuses FAILS the rehearsal: an abandoned edit blocks the next run', async () => {
+    const { code, out } = await touch(SA(), { failDelete: true });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL the store rehearsal failed: edits\.delete/);
+  });
+
+  test('without --touch-store a dry run sends NOTHING, as before', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /DRY RUN OK — nothing was sent to Google/);
+  });
+
+  test('THE LANE passes --touch-store on its dry run', () => {
+    const wf = readFileSync(join(REPO, '.github/workflows/submit-play.yml'), 'utf8');
+    assert.match(wf, /run: node tooling\/release\/submit-play\.mjs --dry-run --touch-store --app "\$APP"/);
+  });
+});
+
 describe('submit-play --sync-listing — the repo listing tree becomes the Play record', () => {
   const listed = { withListingAssets: true };
   const SYNC = ['--sync-listing', '--app', 'subscriptiontracker'];

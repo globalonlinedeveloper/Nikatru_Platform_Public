@@ -812,6 +812,7 @@ function gradeInvocation(wfRoot, inv, ctx) {
         GITHUB_ENV: join(tmp, 'github-env'),
         GITHUB_OUTPUT: join(tmp, 'github-output'),
         GITHUB_STEP_SUMMARY: join(tmp, 'step-summary'),
+        RUNNER_TEMP: tmp,
         ...env,
         EMIT_ARGS_FILE: argsFile,
       },
@@ -832,7 +833,8 @@ function gradeInvocation(wfRoot, inv, ctx) {
     const surface = surfaces[0];
     const dir = join(tmp, 'release');
     mkdirSync(dir);
-    writeFileSync(join(dir, surface === 'app' ? `${app}-v1.0.0-app-release.aab` : `${app}-chromium.zip`), 'fixture bytes');
+    const fixture = surface === 'app' ? `${app}-v1.0.0-app-release.aab` : `${app}-chromium.zip`;
+    writeFileSync(join(dir, fixture), 'fixture bytes');
     const emitter = resolve(cwd, args[scriptAt]);
     // The lane's own arguments, in the lane's own order; only the directory the
     // mode writes into is swapped. A mode given no directory is passed as it

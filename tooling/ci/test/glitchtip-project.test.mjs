@@ -95,8 +95,11 @@ describe('the repaired tree passes', () => {
     // (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), eleven after, and the two gone are
     // exactly the symbol uploads of submit-play.yml#submit and submit-windows-store.yml#submit,
     // whose jobs now ship their dry-run job's bytes (its mapping went up from that job).
+    // ⏱ RE-BASED 11 → 10 on 2026-10-01 (review AA-23), measured on that tree: ten, and the one
+    // gone is exactly the symbol upload of submit-snap.yml#submit, whose job now ships its
+    // dry-run job's .snap (that job's upload carries the mapping).
     const named = r.out.split('\n').filter((l) => /^\s+\S+\.ya?ml:\d+/.test(l));
-    assert.ok(named.length >= 11, `only ${named.length} call site(s) named:\n${r.out}`);
+    assert.ok(named.length >= 10, `only ${named.length} call site(s) named:\n${r.out}`);
   });
 
   test('at least one call site actually reads the declaration in its own step', () => {

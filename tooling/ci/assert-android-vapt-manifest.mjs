@@ -61,6 +61,15 @@
 //                      write permissions. MobSF prints it as "protected by a
 //                      permission which is not defined in the analysed
 //                      application" (row O-VAPT-V5-FOREIGN-PERMISSION)
+//   V7 target API      the BUILT <uses-sdk android:targetSdkVersion> is at or
+//                      above tooling/legal/duty-matrix.json
+//                      `play-target-api-level.enforced.targetSdkAtLeast`
+//                      (⏱ 2026-10-01, review AA-22: the floor was graded on the
+//                      Gradle source by assert-android-target-sdk.mjs and the
+//                      built value was only printed here, so a manifest merge or
+//                      a plugin raising nothing and lowering the target shipped
+//                      unseen). The number is read from the matrix, never typed
+//                      here; a matrix with no integer floor is COVERAGE LOST
 //   V6 logging         not a manifest property, so it is checked where it is
 //                      decided: `avoid_print` stays at severity error in the one
 //                      inherited analysis_options.yaml, and the app's own
@@ -195,6 +204,32 @@ if (!Number.isInteger(targetSdk)) {
   ]);
 }
 const pkg = manifest.attrs.get('package');
+
+// ── V7 target API, against the duty matrix (review AA-22) ────────────────────
+const MATRIX_REL = 'tooling/legal/duty-matrix.json';
+const TARGET_DUTY = 'play-target-api-level';
+let targetFloor;
+try {
+  const matrix = JSON.parse(readFileSync(join(ROOT, MATRIX_REL), 'utf8'));
+  targetFloor = (matrix?.duties ?? []).find((d) => d?.id === TARGET_DUTY)?.enforced?.targetSdkAtLeast;
+} catch (e) {
+  coverageLost([
+    `${MATRIX_REL} could not be read under ${ROOT} (${e.message}).`,
+    `Item V7 compares the built targetSdkVersion with duty \`${TARGET_DUTY}\`; without the matrix it has no floor.`,
+  ]);
+}
+if (!Number.isInteger(targetFloor) || targetFloor <= 0) {
+  coverageLost([
+    `${MATRIX_REL} duty \`${TARGET_DUTY}\` carries no integer \`enforced.targetSdkAtLeast\` (got ${JSON.stringify(targetFloor ?? null)}).`,
+    'Item V7 would compare the built targetSdkVersion with nothing, and every manifest would pass it.',
+  ]);
+}
+if (targetSdk < targetFloor) {
+  problems.push(
+    `V7 target API — the built <uses-sdk android:targetSdkVersion> is ${targetSdk}, and ${MATRIX_REL} \`${TARGET_DUTY}\` ` +
+      `requires at least ${targetFloor}. Play refuses the upload; the Gradle source is not what ships, this manifest is.`,
+  );
+}
 
 // ── the merged manifest's own <permission> declarations, which V5 reads ──────
 // ⏱ 2026-09-23 · A permission this app does not DECLARE can be declared by any
@@ -534,4 +569,4 @@ if (problems.length) {
 }
 
 console.log('');
-console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, each behind a platform or declared-signature permission, or the launcher), V6 logging`);
+console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, each behind a platform or declared-signature permission, or the launcher), V6 logging, V7 target API ${targetSdk} >= ${targetFloor}`);

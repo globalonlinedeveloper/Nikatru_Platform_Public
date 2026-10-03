@@ -66,3 +66,12 @@ template.
   `node tooling/ci/assert-apps-gov-in-media.mjs --write --app {{app_id}}` with a
   copy of the Play store icon.
 - `screenshots/` explains how the 155x290 set is derived.
+
+## Proving where the uploaded `.apk` came from
+
+The `.apk` a GitHub Release attaches for this channel carries a build-provenance
+attestation, signed and then verified by the release run's attest-only job
+(`tooling/ci/verify-provenance.mjs`). Anyone, apps.gov.in's
+reviewers included, can check the uploaded file with
+`gh attestation verify <file>.apk --repo <owner>/<repo>`. The steps are in
+`docs/release/verify-a-download.md`.

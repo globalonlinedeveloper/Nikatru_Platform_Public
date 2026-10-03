@@ -138,6 +138,34 @@ describe('signing-seam · releaseSignal (the ref half)', () => {
   });
 });
 
+// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): limb (c).
+describe('signing-seam · the platform proof is a release lane (limb c)', () => {
+  const PROOF = '.github/workflows/build-platforms.yml';
+  const armed = { id: 'fixture-a', submittable: true, served: false, lane: LANE, submission: { workflow: SUB } };
+  const unarmed = { id: 'fixture-b', submittable: false, served: false, lane: null };
+
+  test('a run of the declared proof workflow, on ANY branch, is a release signal and says why', () => {
+    const s = releaseSignal({ workflowRef: `owner/repo/${PROOF}@refs/heads/feat/x`, submissionWorkflows: [SUB], proofWorkflows: [PROOF], label: 'Fixture' });
+    assert.equal(s.required, true);
+    assert.match(s.reasons[0], /^this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
+  });
+
+  test('RED CONTROL: over an ARMED row the proof must sign; over an unarmed row it need not', () => {
+    const ref = `owner/repo/${PROOF}@refs/heads/main`;
+    assert.equal(releaseLane({ rows: [armed], workflowRef: ref, proofWorkflows: [PROOF], label: 'Fixture' }).mustSign, true);
+    assert.equal(releaseLane({ rows: [unarmed], workflowRef: ref, proofWorkflows: [PROOF], label: 'Fixture' }).mustSign, false);
+  });
+
+  test('without the proof declared the same run is a build proof, as before — the register decides, not the file name', () => {
+    assert.equal(releaseLane({ rows: [armed], workflowRef: `owner/repo/${PROOF}@refs/heads/main`, label: 'Fixture' }).mustSign, false);
+  });
+
+  test('another workflow, or a branch NAMED after the proof, is not the proof', () => {
+    assert.equal(releaseSignal({ workflowRef: 'owner/repo/.github/workflows/ci.yml@refs/heads/main', proofWorkflows: [PROOF], label: 'Fixture' }).required, false);
+    assert.equal(releaseSignal({ workflowRef: `owner/repo/.github/workflows/ci.yml@refs/heads/${PROOF}`, proofWorkflows: [PROOF], label: 'Fixture' }).required, false);
+  });
+});
+
 describe('signing-seam · releaseLane (the ref AND the register)', () => {
   const armedRow = { id: 'fixture-a', submittable: true, served: false, lane: LANE, submission: { workflow: SUB } };
   const unarmedRow = { id: 'fixture-b', submittable: true, served: false, lane: null, submission: { workflow: SUB } };

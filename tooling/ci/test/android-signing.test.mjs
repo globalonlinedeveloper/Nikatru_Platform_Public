@@ -452,6 +452,33 @@ const FULL = () => ({
 const ON_TAG = { GITHUB_REF: 'refs/tags/subscriptiontracker-v1.0.0' };
 const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `globalonlinedeveloper/repo/${SUBMIT_WF}@refs/heads/main` };
 
+// ⏱ 2026-10-01 (review AA-28): the weekly platform proof over an ARMED row must sign.
+describe('android-signing — the platform proof is a release lane for an armed row', () => {
+  const PROOF_RUN = {
+    GITHUB_REF: 'refs/heads/main',
+    GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/main',
+  };
+  const withProof = (root) => {
+    const f = join(root, 'tooling', 'channel-register.json');
+    const reg = JSON.parse(readFileSync(f, 'utf8'));
+    reg.aggregatingJob = { workflow: '.github/workflows/build-platforms.yml', job: 'all_platforms' };
+    writeFileSync(f, JSON.stringify(reg));
+    return root;
+  };
+
+  test('RED CONTROL: a proof run with the key block removed FAILS over the armed android-play row', () => {
+    const { r } = runPrepare(withProof(makeRoot({})), PROOF_RUN);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /required because this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
+    assert.match(out(r), /this is a RELEASE lane/);
+  });
+
+  test('the same proof run over an UNARMED row stays a legal debug build proof', () => {
+    const { r } = runPrepare(withProof(makeRoot({ armed: false })), PROOF_RUN);
+    assert.equal(r.status, 0, out(r));
+  });
+});
+
 describe('android-signing — a release lane is DERIVED, not declared in YAML', () => {
   test('a TAG push requires signing, and says which signal decided it', () => {
     const { r } = runPrepare(makeRoot({}), ON_TAG);

@@ -101,25 +101,37 @@ the id written to `$GITHUB_OUTPUT` as the job's `app` output.
 shell expands (the symbols artifact's `name:` and `path:`) read
 `${{ needs.gate.outputs.app }}` itself.
 
-### above `timeout-minutes: 30`
+### above `timeout-minutes: 45`
 
-30, and the number is headroom over a measurement rather than a neighbour:
-run 32947213393 (2026-08-26) completed this job in 12m04s with all 12
-steps green — iOS build 5m07s, macOS build 4m47s, no other step over 90s.
+⏱ 2026-10-01 (review AA-18): 45, not 30. The job now signs in-lane, so it
+adds a signed archive and export and a `productbuild` to the two compiles that
+run 32947213393 (2026-08-26) measured at 12m04s. No signed run of this job has
+been measured yet; build-platforms.yml's apple job, which does the same work,
+runs under its own 30-minute bound. Re-measure on the first green run.
 
 ### before step **Toolchain under test**
 
 When an Apple build breaks the first question is "what toolchain was
 this?" — unrecoverable after the fact without this.
 
-### before step **Build iOS (unsigned on purpose — this lane must never submit)**
+### before step **Prepare the Apple distribution identity**
 
-UNSIGNED on purpose: this lane builds unsigned by choice until the signing seam
-lands here, and `--submit` refuses (see the header). This proves the app still compiles
-for both Apple platforms; it does not produce a submittable artifact and
-nothing here pretends it does.
-🔴 UNSIGNED IS NOT THE SAME AS UNCONFIGURED, and until 2026-08-04 both
-steps were both. `AppConfig.isBackendLive` compares each define below
+⏱ 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT (absent from open.json until the next Private pass records it)).
+Until this date both builds were UNSIGNED BY CHOICE and both dry runs passed
+`--allow-missing-artifact`, so this lane validated a listing and never a package,
+and the owner's manual first upload had no validated signed .ipa or .pkg to take.
+The lane now signs with `tooling/ci/apple-signing.mjs`, the seam build-platforms.yml's
+apple job uses, packages the .pkg with `productbuild`, PROVES both with
+`assert-artifact-signed-apple.mjs`, drops the flag, and publishes the two files and
+their `SHA256SUMS` as `store-<app>-apple-release-signed`. This workflow is a declared
+submission workflow of both Apple rows, so an absent or partial secret set FAILS
+the run (signing-seam limb b); a non-release posture fails the step after it.
+`--submit` still refuses: nothing here uploads to App Store Connect.
+
+### before step **Build iOS (signed archive + export)**
+
+🔴 SIGNED IS NOT THE SAME AS CONFIGURED, and until 2026-08-04 both
+steps were unconfigured. `AppConfig.isBackendLive` compares each define below
 against a PLACEHOLDER constant, so a build passing none of them resolves
 `MockAuthRepository` and `SeedApiClient` — the artifact this submission
 path validated was the DEMO build, with mock sign-in and seeded data, and
@@ -148,6 +160,9 @@ id (`tooling/apple-provisioning.json`, read by apple-provisioning.mjs
 `APP_STORE_CONNECT_*_APP_ID` secret is ONE record, the first app's, and a
 second app's dry run would otherwise validate against it and pass. Per-app App
 Store records are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's.
+⏱ 2026-10-01 (review AA-18): no `--allow-missing-artifact`. The job signs and
+packages first, so the script reads the .ipa and the .pkg at the row's
+`signing.seam.artifactGlob`, and an absent one FAILS the dry run.
 
 ### before step **Dry-run the App Store submission (macOS)**
 
