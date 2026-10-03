@@ -61,13 +61,13 @@ export const PRO_MONTHLY_ALLOWANCE = 20;
 export const PER_USER_DAILY_CALLS = 40;
 
 /**
- * The most statements any meter batch sends: a pack grant is 3 (the account row,
- * the credit, the grant flip), a release and a revocation 2. FIXED by the code,
+ * The most statements any meter batch sends: a pack grant is 4 (the grant row,
+ * the account row, the credit, the grant flip), a release and a revocation 2. FIXED by the code,
  * not sized by input; test/ai-routes.test.ts drives every one.
  *
  * @ceiling d1.queriesPerInvocation lte
  */
-export const AI_METER_BATCH_STATEMENTS = 3;
+export const AI_METER_BATCH_STATEMENTS = 4;
 
 /** The KV key that, when present, stops every AI call at once (the kill switch). */
 export const AI_KILL_KEY = 'ai:kill';
@@ -106,10 +106,23 @@ export async function aiEnabled(env: Pick<Env, 'AI_ENABLED' | 'CONFIG_KV'>): Pro
   }
 }
 
+/** RevenueCat's `store` for an entitlement granted from its dashboard: nobody paid. */
+const PROMOTIONAL_STORE = 'promotional';
+
+/** A rail's trial: the rail says `trialing`, or its trial has not ended. */
+const inTrial = (status: string | null, trialEnd: string | null, nowMs: number): boolean =>
+  (status ?? '').toLowerCase() === 'trialing' || (trialEnd !== null && Date.parse(trialEnd) > nowMs);
+
 /**
- * The user's plan for this product, through the ONE entitlement reader. `trial`
- * when the granting per-app row is in its trial (the rail says `trialing`, or
- * its trial has not ended): a trial is not a payment, so it buys no AI.
+ * The user's plan for this product, through the ONE entitlement reader.
+ *
+ * 🔴 AI IS PAID ONLY (owner lock): `paid` needs a grant somebody PAID for — an
+ * active per-app row from a rail (a provider is named), not in its trial and not
+ * RevenueCat PROMOTIONAL, or a live bundle grant from a RECEIPT source
+ * (`bundle_sources.requires_receipt = 1`, which excludes `promo_code` and
+ * `owner_comp`) that is not in its trial. Everything else is `trial` (some grant is
+ * a rail's trial) or `free`, and neither buys a call on our key. An unreadable
+ * bundle row is `free`: fail closed.
  */
 export async function planOf(env: Pick<Env, 'PLATFORM_DB' | 'MONEY_ENVIRONMENT'>, userId: string, appId: string, rid: string, nowMs: number): Promise<AiPlan> {
   const read = await readProductEntitlement(
@@ -117,11 +130,33 @@ export async function planOf(env: Pick<Env, 'PLATFORM_DB' | 'MONEY_ENVIRONMENT'>
     { userId, productId: appId, environment: env.MONEY_ENVIRONMENT, rid },
   );
   if (read.kind !== 'ok' || !read.is_pro) return 'free';
-  if (read.granted_via === 'bundle') return 'paid';
-  const inTrial = read.entitlements.some(
-    (e) => e.is_active && (e.provider_status === 'trialing' || (e.trial_end !== null && Date.parse(e.trial_end) > nowMs)),
-  );
-  return inTrial ? 'trial' : 'paid';
+  let trial = false;
+  let paid = false;
+  for (const e of read.entitlements) {
+    if (!e.is_active || (e.expires_at !== null && !(Date.parse(e.expires_at) > nowMs))) continue;
+    if (inTrial(e.provider_status, e.trial_end, nowMs)) trial = true;
+    else if (e.provider !== null && (e.store ?? '').toLowerCase() !== PROMOTIONAL_STORE) paid = true;
+  }
+  if (read.bundle !== null) {
+    try {
+      const grants = await allRows<{ provider_status: string | null; trial_end: string | null; expires_at: string | null; requires_receipt: number | null }>(
+        env.PLATFORM_DB.prepare(
+          `SELECT g.provider_status, g.trial_end, g.expires_at, s.requires_receipt
+             FROM bundle_grants g LEFT JOIN bundle_sources s ON s.source = g.source
+            WHERE g.user_id = ? AND g.source = ? AND g.feature_set_name = ? AND g.feature_set_version = ?
+              AND g.revoked_at IS NULL AND g.superseded_by IS NULL`,
+        ).bind(userId, read.bundle.source, read.bundle.feature_set, read.bundle.version),
+      );
+      for (const g of grants) {
+        if (g.expires_at !== null && !(Date.parse(g.expires_at) > nowMs)) continue;
+        if (inTrial(g.provider_status, g.trial_end, nowMs)) trial = true;
+        else if (g.requires_receipt === 1) paid = true;
+      }
+    } catch {
+      // fail closed: an unreadable grant is not a payment.
+    }
+  }
+  return paid ? 'paid' : trial ? 'trial' : 'free';
 }
 
 interface AccountRow {
@@ -339,24 +374,30 @@ export interface PackGrant {
 
 /**
  * Credit a verified pack purchase. Called by the money path AFTER its signature
- * check, never by a client. A replay of the same (provider, ref) credits nothing:
- * the grant row is unique, and the balance moves only while the row is `pending`
- * — inside one batch, so a retried batch meets `granted` and adds nothing.
+ * check, never by a client. ONE batch (one transaction) writes the grant row, the
+ * account and the credit, so a failed batch leaves nothing behind — no `pending`
+ * row a retry would then skip — and a webhook retry credits exactly once: the
+ * grant row is unique per (provider, ref), and the balance moves only while THIS
+ * call's row is `pending`, so a replay meets `granted` and adds nothing.
  */
 export async function creditPack(db: SqlDb, g: PackGrant, now: string = nowIso()): Promise<boolean> {
   if (!Number.isInteger(g.credits) || g.credits <= 0) return false;
   const id = uuid();
-  const ins = await db
-    .prepare(
-      `INSERT INTO ai_ledger (id, kind, user_id, app_id, environment, source, credits, status, provider, provider_ref, created_at, day)
-       VALUES (?, 'grant', ?, ?, ?, 'pack', ?, 'pending', ?, ?, ?, ?)
-       ON CONFLICT (provider, provider_ref) DO NOTHING`,
-    )
-    .bind(id, g.userId, g.appId, g.environment, g.credits, g.provider, g.ref, now, utcDay(now))
-    .run();
-  if ((ins.meta?.changes ?? 0) !== 1) return false;
-  await db.batch([
-    db.prepare(`INSERT INTO ai_accounts (user_id, app_id, updated_at) VALUES (?, ?, ?) ON CONFLICT (user_id, app_id) DO NOTHING`).bind(g.userId, g.appId, now),
+  const res = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO ai_ledger (id, kind, user_id, app_id, environment, source, credits, status, provider, provider_ref, created_at, day)
+         VALUES (?, 'grant', ?, ?, ?, 'pack', ?, 'pending', ?, ?, ?, ?)
+         ON CONFLICT (provider, provider_ref) DO NOTHING`,
+      )
+      .bind(id, g.userId, g.appId, g.environment, g.credits, g.provider, g.ref, now, utcDay(now)),
+    db
+      .prepare(
+        `INSERT INTO ai_accounts (user_id, app_id, updated_at)
+         SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM ai_ledger WHERE id = ? AND status = 'pending')
+         ON CONFLICT (user_id, app_id) DO NOTHING`,
+      )
+      .bind(g.userId, g.appId, now, id),
     db
       .prepare(
         `UPDATE ai_accounts SET pack_credits = pack_credits + ?, updated_at = ?
@@ -365,7 +406,7 @@ export async function creditPack(db: SqlDb, g: PackGrant, now: string = nowIso()
       .bind(g.credits, now, g.userId, g.appId, id),
     db.prepare(`UPDATE ai_ledger SET status = 'granted' WHERE id = ? AND status = 'pending'`).bind(id),
   ]);
-  return true;
+  return (res[0]?.meta?.changes ?? 0) === 1;
 }
 
 /**

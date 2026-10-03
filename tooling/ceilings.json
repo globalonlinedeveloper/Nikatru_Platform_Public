@@ -566,7 +566,7 @@
       {
         "file": "services/platform/src/lib/ai/meter.ts",
         "boundedBy": "AI_METER_BATCH_STATEMENTS",
-        "note": "⏱ 2026-10-02 (T17). Three FIXED-size batches: a pack grant (3 — the account row, the credit, the grant flip), a released call (2 — the ledger row and the credit back) and a revoked pack (2). None grows with input; test/ai-routes.test.ts drives each."
+        "note": "⏱ 2026-10-02 (T17). Three FIXED-size batches: a pack grant (4 — the grant row, the account row, the credit, the grant flip; one transaction since 2026-10-03, so a failed batch leaves no pending row), a released call (2 — the ledger row and the credit back) and a revoked pack (2). None grows with input; test/ai-routes.test.ts drives each."
       },
       {
         "file": "services/subscriptiontracker-api/src/routes/categories.ts",

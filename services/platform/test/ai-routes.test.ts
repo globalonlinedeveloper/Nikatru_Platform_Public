@@ -63,13 +63,28 @@ afterEach(() => {
   aiRouteDeps.select = realSelect;
 });
 
-function seedEntitlement(db: RealDb, userId: string, o: { status?: string; trialEnd?: string | null } = {}) {
+function seedEntitlement(db: RealDb, userId: string, o: { status?: string; trialEnd?: string | null; store?: string | null; provider?: string } = {}) {
   db.db
     .prepare(
-      `INSERT INTO entitlements (user_id, app_id, entitlement, is_active, expires_at, updated_at, provider, provider_environment, provider_status, trial_end)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO entitlements (user_id, app_id, entitlement, is_active, expires_at, updated_at, provider, provider_environment, provider_status, trial_end, store)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     )
-    .run(userId, APP, 'pro', 1, FUTURE, NOW, 'paddle', 'live', o.status ?? 'active', o.trialEnd ?? null);
+    .run(userId, APP, 'pro', 1, FUTURE, NOW, o.provider ?? 'paddle', 'live', o.status ?? 'active', o.trialEnd ?? null, o.store ?? null);
+}
+
+/** A live bundle grant on `source` that serves APP (`promo_code`/`owner_comp` need no receipt: nobody paid). */
+function seedBundle(db: RealDb, userId: string, source: string, o: { status?: string | null; trialEnd?: string | null } = {}) {
+  db.db
+    .prepare(
+      `INSERT INTO bundle_grants
+         (grant_id, user_id, source, feature_set_name, feature_set_version, provider,
+          provider_environment, provider_subscription_id, provider_status, trial_end, occurred_at, expires_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(`g-${userId}-${source}`, userId, source, 'nikatru_all', 1, 'operator', 'live', `sub-${userId}`, o.status ?? null, o.trialEnd ?? null, NOW, FUTURE, NOW, NOW);
+  db.db
+    .prepare(`INSERT INTO feature_set_members (name, version, product_slug, product_kind) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`)
+    .run('nikatru_all', 1, APP, 'app');
 }
 
 function seedConsent(db: RealDb, userId: string, version = AI_DISCLOSURE_VERSION) {
@@ -131,6 +146,44 @@ describe('🔴 no free AI: every refusal is answered before a model call', () =>
     seedConsent(db2, TRIAL);
     expect((await call(db2, TRIAL, '/ai/import', IMPORT)).status).toBe(402);
     expect(calls()).toBe(0);
+  });
+
+  // 🔴 AI IS PAID ONLY (owner lock, review 2026-10-03 MAJOR): a grant nobody paid
+  // for is Pro for the app and buys NO call on our key.
+  for (const [kind, seed] of [
+    ['an owner comp bundle', (db: RealDb, u: string) => seedBundle(db, u, 'owner_comp')],
+    ['a promo-code bundle', (db: RealDb, u: string) => seedBundle(db, u, 'promo_code')],
+    ['a TRIALING bundle from a paid source', (db: RealDb, u: string) => seedBundle(db, u, 'paddle_subscription', { status: 'trialing', trialEnd: FUTURE })],
+    ['a RevenueCat PROMOTIONAL entitlement', (db: RealDb, u: string) => seedEntitlement(db, u, { provider: 'revenuecat', store: 'PROMOTIONAL' })],
+    ['a per-app row no rail wrote (no provider)', (db: RealDb, u: string) => db.db.prepare(
+      `INSERT INTO entitlements (user_id, app_id, entitlement, is_active, expires_at, updated_at, provider_environment) VALUES (?,?,?,?,?,?,?)`,
+    ).run(u, APP, 'pro', 1, FUTURE, NOW, 'live')],
+  ] as const) {
+    it(`${kind} is Pro and still buys no AI: 402, no call, no allowance`, async () => {
+      const db = realPlatformDb();
+      const u = 'u-ai-unpaid';
+      seed(db, u);
+      seedConsent(db, u);
+      expect((await call(db, u, `/ai/status?app_id=${APP}`, undefined)).json).toMatchObject({ allowance_left: 0 });
+      expect(await call(db, u, '/ai/import', IMPORT)).toMatchObject({ status: 402, json: { error: 'ai_requires_plan' } });
+      expect(calls()).toBe(0);
+      expect(db.count('ai_ledger', "kind = 'call'")).toBe(0);
+    });
+  }
+
+  it('a PAID bundle grant (a receipt source, not in trial) and a paid store entitlement are paid: the call is made', async () => {
+    for (const seed of [
+      (db: RealDb, u: string) => seedBundle(db, u, 'paddle_subscription', { status: 'active' }),
+      (db: RealDb, u: string) => seedEntitlement(db, u, { provider: 'revenuecat', store: 'APP_STORE' }),
+    ]) {
+      const db = realPlatformDb();
+      const u = 'u-ai-paid';
+      seed(db, u);
+      seedConsent(db, u);
+      expect((await call(db, u, `/ai/status?app_id=${APP}`, undefined)).json).toMatchObject({ plan: 'paid', allowance_left: PRO_MONTHLY_ALLOWANCE });
+      expect((await call(db, u, '/ai/import', IMPORT)).status).toBe(200);
+    }
+    expect(calls()).toBe(2);
   });
 
   it('the kill switch → 503 ai_disabled: AI_ENABLED absent, not "true", or CONFIG_KV ai:kill set', async () => {
@@ -341,6 +394,34 @@ describe('packs (AI-04): credited only by a verified purchase, idempotent', () =
     expect(db.rows('SELECT pack_credits FROM ai_accounts WHERE user_id = ?', PACK)[0]).toMatchObject({ pack_credits: 0 });
     expect(await revokePack(db as unknown as D1Database, 'paddle', 'txn_7')).toBe(false);
     expect(db.rows("SELECT status FROM ai_ledger WHERE kind = 'grant'")[0]).toMatchObject({ status: 'revoked' });
+  });
+
+  it('🔴 a failed credit batch leaves NO grant row, so the webhook retry credits exactly once', async () => {
+    const db = realPlatformDb();
+    const g = { provider: 'paddle', ref: 'txn_retry', userId: PACK, appId: APP, credits: 5, environment: 'live' };
+    const realBatch = db.batch.bind(db);
+    let failNext = true;
+    (db as unknown as { batch: typeof db.batch }).batch = (async (stmts: Parameters<typeof db.batch>[0]) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('D1_ERROR: network connection lost');
+      }
+      return realBatch(stmts);
+    }) as typeof db.batch;
+    await expect(creditPack(db as unknown as D1Database, g)).rejects.toThrow();
+    expect(db.count('ai_ledger')).toBe(0);
+    expect(await creditPack(db as unknown as D1Database, g)).toBe(true);
+    expect(await creditPack(db as unknown as D1Database, g)).toBe(false);
+    expect(db.rows('SELECT pack_credits FROM ai_accounts WHERE user_id = ?', PACK)[0]).toMatchObject({ pack_credits: 5 });
+    expect(db.rows("SELECT status FROM ai_ledger WHERE kind = 'grant'")).toEqual([{ status: 'granted' }]);
+  });
+
+  it('🔴 a batch that fails mid-way rolls the grant row back with it (one transaction)', async () => {
+    const db = realPlatformDb();
+    db.db.exec(`CREATE TRIGGER boom BEFORE UPDATE OF pack_credits ON ai_accounts BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+    await expect(creditPack(db as unknown as D1Database, { provider: 'paddle', ref: 'txn_mid', userId: PACK, appId: APP, credits: 5, environment: 'live' })).rejects.toThrow();
+    expect(db.count('ai_ledger')).toBe(0);
+    expect(db.count('ai_accounts')).toBe(0);
   });
 
   it('a zero or fractional grant credits nothing', async () => {
