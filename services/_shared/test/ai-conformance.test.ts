@@ -100,6 +100,20 @@ describe('the ai conformance suite reddens', () => {
     await expect(checkAiScenario('key-not-logged', over(chatty, stub), SENTINEL)).rejects.toThrow(/: match/);
   });
 
+  it('🔴 an adapter that LOGS the request content fails `key-not-logged`, even with the key redacted', async () => {
+    const stub = createStubAi({ beforeCall: GRANT, limits: CONFORMANCE_LIMITS, defaultText: CONFORMANCE_ROWS_TEXT });
+    for (const status of [429, 400, 503, 500]) stub.answer({ kind: 'status', status });
+    const bodyLogger: AiProvider = {
+      id: 'stub',
+      capabilities: stub.capabilities,
+      async complete(req, o) {
+        console.debug('sending request', { body: { messages: [{ role: 'user', content: req.input }] } });
+        return stub.complete(req, o);
+      },
+    };
+    await expect(checkAiScenario('key-not-logged', over(bodyLogger, stub), SENTINEL)).rejects.toThrow(/the request content appears in a log line: match/);
+  });
+
   it('🔴 an adapter that pins its own model fails `model-from-config`', async () => {
     const stub = createStubAi({ beforeCall: GRANT, limits: CONFORMANCE_LIMITS, defaultText: CONFORMANCE_ROWS_TEXT });
     const pinned: AiProvider = { id: 'stub', capabilities: stub.capabilities, complete: (req, o) => stub.complete({ ...req, model: 'claude-opus-5-5' }, o) };

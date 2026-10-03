@@ -45,9 +45,12 @@
 // the adapter refuses every call and the SDK is never invoked. A call that gets
 // no answer is billing-unknown and settles at that reservation.
 // 🔴 THE KEY NEVER LEAVES THIS FILE. It is the SDK's credential and nothing
-// else: `logLevel: 'off'` (the SDK's debug level prints headers), and no detail
-// carries an SDK message or a response body. The conformance suite feeds a
-// sentinel key and reads every log line, outcome and error-sink envelope for it.
+// else: `logLevel: 'off'` — the SDK already redacts x-api-key, authorization and
+// cookie, but its debug level prints the request BODY (user content), and with
+// no explicit level it falls back to ANTHROPIC_LOG — and no detail carries an
+// SDK message or a response body. The conformance suite feeds a sentinel key and
+// a sentinel input under ANTHROPIC_LOG=debug, and reads every log line (key and
+// content), outcome and error-sink envelope (key) for them.
 // 🔴 NO RETRIES HERE (`maxRetries: 0`): a retry is another call, and another
 // call is another reservation — the caller's meter decides.
 //

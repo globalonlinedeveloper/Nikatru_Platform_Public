@@ -902,9 +902,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "test/mount-auth.test.ts",
-      "lines": 74,
+      "lines": 99,
       "verdict": "STAYS",
-      "why": "ADDED 2026-10-01 (services-012). Per-app by construction: it drives THIS Worker's real app (its route table, its index.ts mounting) through the kit's supabaseAuth/erasureAuth, using the shared helper services/_shared/test/mount-auth.ts. Until it existed no test in a stamped Worker's suite executed either boundary."
+      "why": "ADDED 2026-10-01 (services-012). Per-app by construction: it drives THIS Worker's real app (its route table, its index.ts mounting) through the kit's supabaseAuth/erasureAuth, using the shared helper services/_shared/test/mount-auth.ts. Until it existed no test in a stamped Worker's suite executed either boundary. 74 -> 99 on 2026-10-03 (review of #1152, minor 1): the revoked-session case behind both boundaries."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

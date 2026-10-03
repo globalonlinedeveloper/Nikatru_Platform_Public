@@ -22,9 +22,11 @@ const DETERMINISTIC = 'D1_ERROR: no such column: definitely_not_a_column';
 const A = 'user-a';
 
 /** The real engine, with the next `times` batches failing with `message` BEFORE
- *  they run — a reset rolls the whole batch back, so nothing of it commits. */
+ *  they run — a reset rolls the whole batch back, so nothing of it commits —
+ *  and the next `afterCommit` batches RUNNING, committing, and then failing with
+ *  a transient reset: the reply is lost, the rows are not. */
 function flakyBatches(db: ReturnType<typeof realAppDb>) {
-  const state = { times: 0, message: TRANSIENT, injected: 0, batches: 0 };
+  const state = { times: 0, afterCommit: 0, message: TRANSIENT, injected: 0, batches: 0 };
   const wrapped = {
     prepare: (sql: string) => db.prepare(sql),
     async batch(statements: unknown[]) {
@@ -34,7 +36,13 @@ function flakyBatches(db: ReturnType<typeof realAppDb>) {
         state.injected++;
         throw new Error(state.message);
       }
-      return db.batch(statements as never);
+      const out = await db.batch(statements as never);
+      if (state.afterCommit > 0) {
+        state.afterCommit--;
+        state.injected++;
+        throw new Error(TRANSIENT);
+      }
+      return out;
     },
   };
   return { state, wrapped };
@@ -61,6 +69,27 @@ describe('PUT /v1/budget retries a transient reset of its replace batch', () => 
     expect((await call(A, '/v1/budget', { method: 'PUT', body: SEED })).status).toBe(200);
 
     state.times = 1;
+    const res = await call(A, '/v1/budget', { method: 'PUT', body: NEXT });
+
+    expect(state.injected).toBe(1);
+    expect(res.status).toBe(200);
+    expect(caps(db)).toEqual(['Music:25', 'Video:35']);
+    expect(db.rows('SELECT monthly_budget FROM budgets WHERE user_id = ?', A).map((r) => r.monthly_budget)).toEqual([650]);
+  });
+
+  // ⏱ 2026-10-03 (review of #1152, nit 5). The case above injects only BEFORE the
+  // batch runs. `batchIdempotent`'s claim is that the batch run TWICE leaves what
+  // it leaves once — which is what a reset after the commit replays.
+  // 🔴 RED WITHOUT IT: drop the route's `DELETE FROM budget_categories WHERE
+  // user_id = ?` and this case fails (measured 2026-10-03: the INSERT of an
+  // existing category id conflicts, the batch is not transient, a 500) — as
+  // does the case above: with every statement an upsert, the DELETE or an
+  // INSERT after it, no single-statement mutation makes the replay alone differ.
+  it('🔴 a reset AFTER the batch committed is retried, and the replay leaves the rows a single run leaves', async () => {
+    const { db, state, call } = setup();
+    expect((await call(A, '/v1/budget', { method: 'PUT', body: SEED })).status).toBe(200);
+
+    state.afterCommit = 1;
     const res = await call(A, '/v1/budget', { method: 'PUT', body: NEXT });
 
     expect(state.injected).toBe(1);

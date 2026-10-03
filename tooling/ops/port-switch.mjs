@@ -617,7 +617,10 @@ export function aiChecks(root, doc, target, model, add) {
     }
   }
   if (lost17.length) add(17, 'floor', 'LOST', `${lost17.length} floor(s) not derived — first: ${lost17[0]}`);
-  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below)`);
+  // A call that falls back also bills its declined attempt; C is the dearest
+  // SINGLE attempt, so on a refused call the margin can be under the multiple
+  // (the hard cap is unaffected). Said, not hidden (review of #1136, nit 1).
+  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below); a refusal's declined attempt is excluded`);
   return lines;
 }
 

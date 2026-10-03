@@ -135,7 +135,7 @@
     22,
 
   "autopilot-issue-queue.test.mjs":
-    18,
+    20,
 
   "autopilot-land-gate.test.mjs":
     31,
@@ -411,7 +411,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    36,
+    38,
 
   "ensure-monitors.test.mjs":
     24,
@@ -423,7 +423,7 @@
     4,
 
   "erasure-reach.test.mjs":
-    53,
+    55,
 
   "ext-connect-dom.test.mjs":
     7,
@@ -972,7 +972,7 @@
     37,
 
   "session-revocation.test.mjs":
-    15,
+    18,
 
   "setup-flutter-env.test.mjs":
     4,
