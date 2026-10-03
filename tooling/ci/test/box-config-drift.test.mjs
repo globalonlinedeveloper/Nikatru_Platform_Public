@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { judgeDrift, readRegister, REGISTER_REL } from '../../ops/check-box-config-drift.mjs';
+import { d1QueryUrl, judgeDrift, readRegister, readRows, REGISTER_REL } from '../../ops/check-box-config-drift.mjs';
+import { CouldNotLook } from '../../ops/bounded-retry.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -70,6 +71,51 @@ describe('check-box-config-drift.mjs — the CLI over fixtures', () => {
     });
     assert.equal(r.status, 2);
     assert.match(r.stderr, /CLOUDFLARE_API_TOKEN/);
+  });
+});
+
+// CodeQL alert 584 (js/file-access-to-http) is dispositioned by-design in
+// tooling/ci/codeql-dispositions.json on the ground that the host is a literal
+// and the file supplies only a UUID. These cases are what make that reason true.
+describe('the D1 read — a database_id from the file is refused unless it is a UUID', () => {
+  const ENV = { CLOUDFLARE_API_TOKEN: 'test-token', CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef' };
+  const GOOD = '0a36d6a0-c909-40aa-853e-970de3482321';
+  const stubFetch = () => {
+    const calls = [];
+    const impl = async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, headers: new Headers(), json: async () => ({ success: true, result: [{ results: [] }] }) };
+    };
+    return { calls, impl };
+  };
+
+  test('GREEN CONTROL: a UUID id reaches api.cloudflare.com exactly once, as a SELECT', async () => {
+    const { calls, impl } = stubFetch();
+    const rows = await readRows({ env: ENV, dbId: GOOD, fetchImpl: impl });
+    assert.deepEqual(rows, []);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, `https://api.cloudflare.com/client/v4/accounts/${ENV.CLOUDFLARE_ACCOUNT_ID}/d1/database/${GOOD}/query`);
+    assert.match(JSON.parse(calls[0].init.body).sql, /^SELECT /);
+  });
+
+  test('🔴 RED CONTROL: a non-UUID id (x/../../user) is refused as CouldNotLook and NO fetch is made', async () => {
+    const { calls, impl } = stubFetch();
+    await assert.rejects(readRows({ env: ENV, dbId: 'x/../../user', fetchImpl: impl }), (e) => {
+      assert.ok(e instanceof CouldNotLook, String(e));
+      assert.match(e.message, /is not a UUID/);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  test('d1QueryUrl refuses every non-UUID shape, and accepts the id the real wrangler config carries', () => {
+    for (const bad of ['x/../../user', '', null, 42, `${GOOD}/../x`, `${GOOD}?q=1`, GOOD.replace(/-/g, '')]) {
+      assert.throws(() => d1QueryUrl(ENV.CLOUDFLARE_ACCOUNT_ID, bad), CouldNotLook, String(bad));
+    }
+    const wrangler = readFileSync(join(REPO, 'services/platform/wrangler.jsonc'), 'utf8');
+    const ids = [...wrangler.matchAll(/"database_id":\s*"([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(ids.length > 0, 'the real wrangler config carries no database_id');
+    for (const id of ids) assert.match(d1QueryUrl(ENV.CLOUDFLARE_ACCOUNT_ID, id), /^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\//);
   });
 });
 

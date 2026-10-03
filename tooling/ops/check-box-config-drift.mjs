@@ -56,6 +56,7 @@ const ROOT = resolve(HERE, '..', '..');
 export const REGISTER_REL = 'tooling/ops/box-config-vendored.json';
 const PLATFORM_WRANGLER_REL = 'services/platform/wrangler.jsonc';
 const SHA256 = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function flag(name) {
   const i = process.argv.indexOf(name);
@@ -148,19 +149,35 @@ function platformDbId() {
   return (cfg.d1_databases ?? []).find((d) => d.migrations_dir)?.database_id ?? null;
 }
 
-async function readRows() {
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+/**
+ * The D1 query URL. 🔴 THE HOST IS A LITERAL and the file supplies only the
+ * database id, so the id is refused (CouldNotLook) unless it is a UUID before it
+ * enters the path: a `database_id` of `x/../../user` would otherwise send the
+ * Cloudflare token to a different API path on the same host. This is what makes
+ * the by-design disposition of CodeQL alert 584 (js/file-access-to-http) true.
+ */
+export function d1QueryUrl(account, databaseId) {
+  if (typeof databaseId !== 'string' || !UUID.test(databaseId)) {
+    throw new CouldNotLook(`${PLATFORM_WRANGLER_REL} database_id ${JSON.stringify(databaseId)} is not a UUID — refused before it reaches the D1 API URL`);
+  }
+  return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/d1/database/${databaseId}/query`;
+}
+
+/** The manifest rows, a SELECT through the D1 HTTP API. `env`, `dbId` and
+ *  `fetchImpl` are injectable so a test can prove a refused id makes no request. */
+export async function readRows({ env = process.env, dbId, fetchImpl = globalThis.fetch } = {}) {
+  const token = env.CLOUDFLARE_API_TOKEN;
+  const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!token || !account) throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment — cannot read box_config_manifest');
-  const db = platformDbId();
+  const db = dbId === undefined ? platformDbId() : dbId;
   if (!db) throw new CouldNotLook(`${PLATFORM_WRANGLER_REL} has no D1 binding carrying migrations_dir`);
-  const url = `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${db}/query`;
+  const url = d1QueryUrl(account, db);
   // 🔴 A POST THAT IS A READ (the D1 HTTP API takes SELECTs by POST), so a
   // re-send changes nothing — the same decision check-heartbeats.mjs records.
   return readWithBoundedRetry(async (_attempt, { signal }) => {
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetchImpl(url, {
         method: 'POST',
         signal,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },

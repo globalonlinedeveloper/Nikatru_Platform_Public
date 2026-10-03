@@ -917,10 +917,10 @@ function writeRegisterRow() {
     console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
     console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
   }
-  return { register, existing };
+  return { register };
 }
 
-const { register, existing } = writeRegisterRow();
+const { register } = writeRegisterRow();
 
 // ── 7. the inventory row and the monitor host row — files only (see the header) ──
 step(7, `Writing ${dbName}'s ${INVENTORY} row and ${appId}-api's ${MONITOR_REGISTER} host row(s)`);
