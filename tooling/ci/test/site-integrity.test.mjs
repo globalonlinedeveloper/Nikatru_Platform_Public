@@ -290,6 +290,13 @@ function selfHosted(dir, { root = 'a' } = {}) {
   // Only on a root that already carries a privacy page: sites/<root>/apps/ makes
   // a root app-facing, and the cases about a root that is NOT must stay so.
   if (existsSync(join(site, 'privacy.html'))) writeShot(dir, root);
+  // ⏱ 2026-10-03 (rv2-business 015) — a duty-matrix row whose
+  // `siteText` a page of this root discharges, because a fixture claiming to BE this
+  // repository carries what the repository carries: the duty-text limb's floor is real.
+  writeFileSync(join(site, 'contact.html'), FIXTURE_CONTACT_PAGE);
+  const matrix = join(dir, 'tooling', 'legal', 'duty-matrix.json');
+  mkdirSync(dirname(matrix), { recursive: true });
+  writeFileSync(matrix, `${JSON.stringify(fixtureDutyMatrix(root), null, 2)}\n`);
   return to;
 }
 
@@ -311,6 +318,20 @@ function writeShot(dir, root, { web = 'RIFF-web-copy', master = 'PNG-master', ca
   put('tooling/site-shots.json', JSON.stringify({ shots }));
   return file;
 }
+
+const FIXTURE_GRIEVANCE = 'We acknowledge within 48 hours and resolve within 30 days.';
+const FIXTURE_CONTACT_PAGE =
+  '<meta name="robots" content="noindex"><html lang="en"><body><main><h1>Contact</h1>' +
+  `<div><b>Grievance Officer</b><span>A. Person, Proprietor.<br>${FIXTURE_GRIEVANCE}</span></div></main></body></html>\n`;
+const fixtureDutyMatrix = (root) => ({
+  duties: [
+    {
+      id: 'grievance-contact-published',
+      status: 'implemented',
+      siteText: { page: `sites/${root}/contact.html`, mustRead: ['Grievance Officer', FIXTURE_GRIEVANCE] },
+    },
+  ],
+});
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
@@ -1935,5 +1956,71 @@ describe('sites/nikatru/functions/_middleware.js — the apex serves no Markdown
     await refuses('/a/wrangler.toml');
     await unchanged('/version.json', '{"sha":"0000000"}');
     await unchanged('/index.html', '<!doctype html><title>Nikatru</title>');
+  });
+});
+
+// ⏱ 2026-10-03 · rv2-business 015. A duty-matrix row that
+// says a PAGE discharges it names the text that page must still read, and this limb reads it.
+describe('check-site-integrity · a duty the matrix says a page discharges is still on that page', () => {
+  function selfHostedTree(name, edit) {
+    const dir = build(name, { sites: ['nikatru', 'b'], legal: allThree('nikatru') });
+    const from = selfHosted(dir, { root: 'nikatru' });
+    if (edit) edit(dir);
+    return run(dir, { from });
+  }
+  const contact = (dir) => join(dir, 'sites', 'nikatru', 'contact.html');
+  const matrix = (dir) => join(dir, 'tooling', 'legal', 'duty-matrix.json');
+
+  test('GREEN CONTROL: the page reads every line its row names', () => {
+    const r = selfHostedTree('dt-ok');
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 line\(s\) of published text a tooling\/legal\/duty-matrix\.json row says a page discharges are still on that page/);
+  });
+
+  test('RED CONTROL: the contact text changed FAILS, naming the page, the line and the duty', () => {
+    const r = selfHostedTree('dt-changed', (d) => {
+      writeFileSync(contact(d), readFileSync(contact(d), 'utf8').replace('resolve within 30 days', 'resolve when we can'));
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/nikatru\/contact\.html no longer reads "We acknowledge within 48 hours and resolve within 30 days\.", and tooling\/legal\/duty-matrix\.json duty "grievance-contact-published"/);
+  });
+
+  test('the text inside an HTML comment does not count — VISIBLE text only', () => {
+    const r = selfHostedTree('dt-comment', (d) => {
+      writeFileSync(contact(d), readFileSync(contact(d), 'utf8').replace(FIXTURE_GRIEVANCE, `<!-- ${FIXTURE_GRIEVANCE} -->`));
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no longer reads "We acknowledge within 48 hours/);
+  });
+
+  test('a row naming a page that does not exist FAILS', () => {
+    const r = selfHostedTree('dt-nopage', (d) => rmSync(contact(d)));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /duty "grievance-contact-published" is discharged by sites\/nikatru\/contact\.html, which does not exist/);
+  });
+
+  test('a malformed siteText FAILS rather than checking nothing', () => {
+    const r = selfHostedTree('dt-malformed', (d) => {
+      const m = JSON.parse(readFileSync(matrix(d), 'utf8'));
+      m.duties[0].siteText.mustRead = [];
+      writeFileSync(matrix(d), JSON.stringify(m));
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /carries a `siteText` that is not \{page, mustRead: \[non-empty strings\]\}/);
+  });
+
+  test('NO row carrying a siteText in a self-hosted tree is COVERAGE LOST', () => {
+    const r = selfHostedTree('dt-none', (d) => writeFileSync(matrix(d), JSON.stringify({ duties: [] })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /NO line of published text was checked for tooling\/legal\/duty-matrix\.json/);
+  });
+
+  test('the REAL matrix: the three rows exist and the two site rows name contact.html', () => {
+    const real = JSON.parse(readFileSync(join(CI_DIR, '..', 'legal', 'duty-matrix.json'), 'utf8'));
+    const ids = real.duties.map((d) => d.id);
+    for (const id of ['certin-directions-2022', 'grievance-contact-published', 'ecommerce-rules-4-2-display']) assert.ok(ids.includes(id), id);
+    for (const id of ['grievance-contact-published', 'ecommerce-rules-4-2-display']) {
+      assert.equal(real.duties.find((d) => d.id === id).siteText.page, 'sites/nikatru/contact.html');
+    }
   });
 });
