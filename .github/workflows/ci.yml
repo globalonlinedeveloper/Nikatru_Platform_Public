@@ -14,7 +14,9 @@ on:
   pull_request:
     # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
     # The other three are GitHub's defaults, listed because `types:` replaces them.
-    types: [opened, synchronize, reopened, edited]
+    # `ready_for_review` because a DRAFT runs nothing (docs/ci/README.md §1.1): marking it
+    # ready is the event that gives it its one full run (assert-green-means-ran A10).
+    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,10 +32,12 @@ permissions:
 jobs:
   # why: the workers lane, as ONE constituent of ci-gate (ADR 095). lane-workers.yml runs
   # only as a call; its detect job reads tooling/ci/lane-map.json and its lane-verdict job
-  # refuses a skip detect did not license. No `if:` (green-means-ran A6), and no
+  # refuses a skip detect did not license. Its one `if:` is the draft predicate, which
+  # ci-gate shares (green-means-ran A6/A10: a draft PR runs nothing, gate included), and no
   # `timeout-minutes` — GitHub rejects one on a call; every callee job bounds itself.
   lane-workers:
     name: lane-workers
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/lane-workers.yml
     # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
     # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
@@ -52,6 +56,7 @@ jobs:
     # .github/workflows, ops-register against tooling/ops), so "only prose changed"
     # does not imply "this cannot go red".
     name: Guards — the guards can still fail (shard ${{ matrix.shard }})
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -164,6 +169,7 @@ jobs:
     # index, the lane map, the PR's rows. The suite that proves each guard can fail
     # is guard-tests, sharded beside this job rather than in front of it.
     name: Guards — the guards can still fail
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -256,6 +262,7 @@ jobs:
 
   guards-platform:
     name: Guards — platform, data and ops
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # why: security-events: read is for assert-alert-disposition.mjs limb C, which reads
@@ -529,6 +536,7 @@ jobs:
 
   guards-legal:
     name: Guards — privacy, legal and money
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -669,6 +677,7 @@ jobs:
 
   guards-store:
     name: Guards — store, release and versioning
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -882,6 +891,7 @@ jobs:
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -1021,6 +1031,7 @@ jobs:
     # the vendor action — gitleaks-action v2+ is a commercial licence for org
     # accounts (09-selfhost-build-release.md §4.2).
     name: Security — secret and workflow scanners
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25 # why: the scanners (~1 min) plus the CodeQL PR rule's 12-minute step bound, with headroom
     # why: security-events: read is for assert-codeql-pr-no-new-high.mjs, which reads this
@@ -1222,6 +1233,7 @@ jobs:
     # a job id here is a two-file change with a required-check consequence, and
     # the name below is where the widened scope is said out loud instead.
     name: Design tokens (build + drift, all three outputs)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1299,6 +1311,7 @@ jobs:
 
   site-shared:
     name: Shared site build
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1335,6 +1348,7 @@ jobs:
 
   content-gate:
     name: Content pipeline (recipe -> pack -> sign -> gate)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1385,6 +1399,7 @@ jobs:
 
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     # why: 25, not 15. Since O-BRICK-STAMPS-WEB-ONLY (D30) each of the three stamps runs `flutter create`
     # and the launcher icons, and the job installs the Linux toolchain and compiles the probe for linux.
@@ -1823,6 +1838,7 @@ jobs:
 
   sites:
     name: Static sites (functions parse + required files)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -1903,6 +1919,7 @@ jobs:
     # in one and ignored in the other, so between them they test every member by
     # construction, and each refuses to run over zero members.
     name: Workspace gate (melos analyze + test) · ${{ matrix.part }}
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -2071,6 +2088,7 @@ jobs:
     # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
     # fan out over its `apps` output, so every app-shaped job here iterates one set.
     name: Derive the app set from the pub workspace
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -2569,11 +2587,13 @@ jobs:
 
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when
-  # any of them is. No `if:` (green-means-ran A6), and no `timeout-minutes` — GitHub
+  # any of them is. Its one `if:` is the draft predicate ci-gate shares (green-means-ran
+  # A6/A10), and no `timeout-minutes` — GitHub
   # rejects one on a call; every callee job bounds itself (workflow-hardening limb 4).
   # docs/ci/extensions-ci.md.
   extensions:
     name: extensions
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/extensions-ci.yml
     # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
     # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
@@ -2587,6 +2607,9 @@ jobs:
     # this file and must treat skipped as not-green — a skipped required check
     # satisfies branch protection, which is how a lane goes dark under a tick.
     # tooling/ci/assert-green-means-ran.mjs asserts all of that by name.
+    # why: always() so a red lane is read, never skipped past. The draft conjunct is the ONE
+    # extension: a draft PR cannot merge, and every lane it needs is skipped by that predicate,
+    # so the gate skips with them instead of reading them skipped (assert-green-means-ran A1/A10).
     name: ci-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2612,7 +2635,7 @@ jobs:
       - web-artifacts
       - linux-artifacts
       - extensions
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     steps:
       - name: Require all lanes green
         run: |
