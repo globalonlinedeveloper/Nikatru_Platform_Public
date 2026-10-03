@@ -1938,6 +1938,11 @@
         "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-offers.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-one-entitlement-reader.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
