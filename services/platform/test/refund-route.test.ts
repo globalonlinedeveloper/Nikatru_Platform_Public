@@ -92,7 +92,8 @@ async function post(db: RealDb, key: string | null, env: Record<string, unknown>
 
 describe('the window is the published page’s', () => {
   it('🔴 refund.html says "within N days of the charge" and N is REFUND_WINDOW_DAYS', () => {
-    const page = refundHtml.replace(/<[^>]+>/g, '').replace(/[<>]/g, ' ').replace(/\s+/g, ' ');
+    // Text outside tags, without a tag-stripping regex (CodeQL js/incomplete-multi-character-sanitization).
+    const page = refundHtml.split('<').map((s) => s.slice(s.indexOf('>') + 1)).join('').replace(/\s+/g, ' ');
     const windows = [...page.matchAll(/within (\d+) days of the charge/g)].map((m) => Number(m[1]));
     expect(windows.length).toBeGreaterThanOrEqual(2); // section 2 (Paddle) and section 3 (Razorpay)
     for (const n of windows) expect(n).toBe(REFUND_WINDOW_DAYS);
