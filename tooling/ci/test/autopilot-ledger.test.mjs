@@ -204,6 +204,28 @@ describe('one watch pass against a fake GitHub', () => {
     assert.equal(reads(f2), 15, 'only the 15 left UNREAD last pass are read; the 25 cached GREEN are reused');
     assert.ok(b2.used() < b1.used(), `${b2.used()} < ${b1.used()}`);
   });
+  test('🔴 budget.used() counts EVERY request of a pass, the heartbeat’s two reads included', async () => {
+    const f = fake(world());
+    let sent = 0;
+    const inner = f.call;
+    f.call = async (m, p, b) => {
+      sent++;
+      return inner(m, p, b);
+    };
+    const beatCalls = [];
+    const beatFetch = async (url) => {
+      beatCalls.push(String(url));
+      return String(url).includes('/git/ref/')
+        ? { ok: true, status: 200, json: async () => ({ object: { sha: 'd'.repeat(40) } }) }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ v: 1, at: iso(1), seq: 1, mode: 'primary', host: 'laptop' }) };
+    };
+    const b = requestBudget();
+    const r = await pass({ call: f.call, repo: 'o/r', token: null, now: NOW, fetchImpl: beatFetch, budget: b });
+    assert.equal(r.code, 0, r.lines.join('\n'));
+    assert.equal(beatCalls.length, 2, 'the beat is two requests: the ref, then the file');
+    assert.ok(sent > 0);
+    assert.equal(b.used(), sent + beatCalls.length, `${b.used()} counted, ${sent} REST + ${beatCalls.length} beat sent`);
+  });
   test('🔴 a pass that would exceed the ceiling throws before sending, so nothing past it is written', async () => {
     const f = fake(world());
     await assert.rejects(pass({ call: f.call, repo: 'o/r', token: null, now: NOW, fetchImpl: noBeat, budget: requestBudget(3) }), /REQUEST CEILING/);
