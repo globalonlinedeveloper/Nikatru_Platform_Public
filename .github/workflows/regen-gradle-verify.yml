@@ -1,0 +1,178 @@
+name: Regenerate Gradle verification
+
+run-name: "Regenerate Gradle verification for ${{ inputs.app }} on ${{ inputs.ref }}"
+
+# The dispatch command and what to do with the artifact are in docs/ci/README.md
+# ("Regenerate Gradle verification"). Only `# why:` lines live here.
+
+on:
+  # why: DISPATCH ONLY. apps/<app>/android/gradle/verification-metadata.xml has to
+  # be regenerated after every Android dependency change (a Flutter, AGP, Kotlin,
+  # Gradle or plugin bump), and that needs Gradle and the Android SDK on Linux,
+  # which neither the laptop nor the cloud sandbox has. Never on a clock or a push.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The branch to regenerate on. Its tree is built; nothing is pushed to it.
+        required: true
+        type: string
+      app:
+        description: The app under apps/ whose android/ project is regenerated.
+        required: true
+        default: subscriptiontracker
+        type: string
+
+concurrency:
+  group: regen-gradle-verify-${{ inputs.app }}-${{ inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate verification-metadata.xml on Linux
+    runs-on: ubuntu-24.04
+    # why 60: ci.yml android-artifacts' three release builds take 11.5–11.7 min warm
+    # and its first assembleRelease 404.8 s cold; this job runs cold (no Gradle cache)
+    # and builds debug through Flutter and Gradle, then release through Gradle.
+    timeout-minutes: 60
+    # why: read-only and NO secrets. It builds the branch's code and writes nothing
+    # back; the regenerated file leaves only as an artifact a human commits.
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a ref that is not a plain branch name, and an app id that is not one
+        timeout-minutes: 1
+        env:
+          REF: ${{ inputs.ref }}
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$' || ! git check-ref-format --branch "$REF" > /dev/null; then
+            echo "::error title=Refused::ref '$REF' is not a plain branch name."
+            exit 1
+          fi
+          if ! printf '%s' "$APP" | grep -Eq '^[a-z][a-z0-9_]*$'; then
+            echo "::error title=Refused::app '$APP' is not an app id (apps/<id>)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: The app has an Android Gradle project
+        id: plan
+        timeout-minutes: 1
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "apps/$APP/android/settings.gradle.kts" ] && [ ! -f "apps/$APP/android/settings.gradle" ]; then
+            echo "::error title=Refused::apps/$APP/android has no settings.gradle(.kts): not an Android Gradle project on this ref."
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          echo "sha8=${sha:0:8}" >> "$GITHUB_OUTPUT"
+
+      # why: the SAME JDK, Flutter (tooling/versions.json, through the same composite
+      # action) and runner image as ci.yml android-artifacts, so Gradle resolves the
+      # artefacts that job resolves. NO Gradle cache is restored: every digest below
+      # is computed over bytes this run fetched, never over a restored cache.
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        timeout-minutes: 5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: ./.github/actions/setup-flutter
+        timeout-minutes: 10
+      - name: Resolve the workspace
+        timeout-minutes: 5
+        run: flutter pub get --enforce-lockfile
+
+      # why: the builds below fetch artefacts the committed file may not list yet,
+      # which is why this runs. LENIENT ON THIS RUNNER ONLY, in ~/.gradle, never in
+      # the app's gradle.properties; the job holds no key and ships nothing.
+      - name: Let Gradle report, not refuse, unlisted artefacts while generating
+        timeout-minutes: 1
+        run: |
+          mkdir -p ~/.gradle
+          echo 'org.gradle.dependency.verification=lenient' >> ~/.gradle/gradle.properties
+
+      # why: the procedure tooling/ci/assert-signing-inputs-pinned.mjs limb V names:
+      # Gradle re-run with --write-verification-metadata over the tasks the builds
+      # run, debug and release separately. `flutter build --debug` writes
+      # android/gradlew and the debug plugin registrant; release covers what ci.yml
+      # android-artifacts builds (assembleRelease for the .apk, bundleRelease for
+      # the .aab), debug a developer's own build.
+      - name: Generate the debug half (bundleDebug, assembleDebug)
+        timeout-minutes: 20
+        working-directory: apps/${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          flutter build appbundle --debug
+          cd android
+          ./gradlew --no-daemon --write-verification-metadata sha256 bundleDebug assembleDebug
+
+      # why: NO release `flutter build` here. A hand-typed one is refused outside the
+      # composer and the gate (assert-channel-register 6b-v, assert-release-provenance),
+      # and this job ships nothing and must run on a branch whose ci-gate is red.
+      # What a release flutter build adds for Gradle is the RELEASE plugin registrant:
+      # Flutter drops every `dev_dependency` plugin from it, and its Gradle plugin
+      # drops the same plugins from the release classpath, both reading
+      # .flutter-plugins-dependencies. So the dev plugins' blocks are taken out of the
+      # debug registrant by that same flag, and the step fails if any is left.
+      - name: Write the release plugin registrant (dev_dependency plugins removed)
+        timeout-minutes: 1
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const app = process.env.APP;
+          const deps = JSON.parse(readFileSync(`apps/${app}/.flutter-plugins-dependencies`, 'utf8'));
+          const dev = (deps.plugins?.android ?? []).filter((p) => p.dev_dependency === true).map((p) => p.name);
+          const f = `apps/${app}/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java`;
+          let src = readFileSync(f, 'utf8');
+          for (const name of dev) {
+            if (!/^[a-z][a-z0-9_]*$/.test(name)) throw new Error(`plugin name ${JSON.stringify(name)} is not a Dart package name`);
+            const block = new RegExp(`\\n[ \\t]*try \\{\\n[^\\n]*\\n[ \\t]*\\} catch \\(Exception e\\) \\{\\n[^\\n]*"Error registering plugin ${name}, [^\\n]*\\n[ \\t]*\\}`, 'g');
+            const before = src;
+            src = src.replace(block, '');
+            console.log(`${name}: ${before === src ? 'not in the registrant' : 'removed'}`);
+            if (src.includes(`plugin ${name},`)) throw new Error(`${name} is still registered: the registrant template changed`);
+          }
+          writeFileSync(f, src);
+          console.log(`${dev.length} dev_dependency plugin(s) for android; registrant written to ${f}`);
+          JS
+
+      - name: Generate the release half (bundleRelease, assembleRelease)
+        timeout-minutes: 25
+        working-directory: apps/${{ inputs.app }}/android
+        run: ./gradlew --no-daemon --write-verification-metadata sha256 bundleRelease assembleRelease
+
+      - name: The file exists and is not empty
+        timeout-minutes: 1
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          f="apps/$APP/android/gradle/verification-metadata.xml"
+          if [ ! -s "$f" ] || ! grep -q '<verification-metadata' "$f"; then
+            echo "::error title=No metadata::$f was not written."
+            exit 1
+          fi
+          echo "$f: $(grep -c '<component ' "$f") components, sha256 $(sha256sum < "$f" | cut -c1-64)"
+          git diff --stat -- "$f"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 5
+        with:
+          name: verification-metadata-${{ inputs.app }}-${{ steps.plan.outputs.sha8 }}
+          path: apps/${{ inputs.app }}/android/gradle/verification-metadata.xml
+          if-no-files-found: error
+          retention-days: 14

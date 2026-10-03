@@ -577,11 +577,11 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from 
 | `actions/cache` | GitHub | `.github/actions/setup-flutter/action.yml`, `ci.yml`, `ops-watch.yml` |
 | `actions/cache/restore` | GitHub | `ci.yml` |
 | `actions/cache/save` | GitHub | `ci.yml` |
-| `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
+| `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `regen-gradle-verify.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
 | `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
-| `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
+| `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `regen-gradle-verify.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
-| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
+| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `regen-gradle-verify.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
 | `github/codeql-action/analyze` | GitHub | `codeql.yml` |
 | `github/codeql-action/init` | GitHub | `codeql.yml` |
 <!-- END GENERATED: gen-ci-map actions -->
@@ -799,6 +799,42 @@ without ever opening a pull request, and nothing would say so. The workflow
 fires **daily** and `renovate.json`'s own schedule decides when it does work:
 give the *evidence* margin, not the duty.
 
+### 8.2 Regenerate Gradle verification
+
+`apps/<app>/android/gradle/verification-metadata.xml` lists the sha256 of every
+artefact Gradle fetches, and Gradle refuses one it does not list ("Dependency
+verification failed … N artifacts failed verification"). So **every Android
+dependency change** (a Flutter, AGP, Kotlin, Gradle or plugin bump; a Flutter bump
+alone is a new engine artefact set) is red in `ci.yml` android-artifacts until the
+file is regenerated, and that needs Gradle and the Android SDK on Linux, which no
+laptop or cloud sandbox here has. `.github/workflows/regen-gradle-verify.yml`
+regenerates it on the runner:
+
+1. **Dispatch** on the branch that carries the dependency change:
+
+   ```
+   gh workflow run regen-gradle-verify.yml -R globalonlinedeveloper/Nikatru_Platform_Public \
+     -f ref=<branch> -f app=subscriptiontracker
+   ```
+
+   It builds that branch with the same JDK, Flutter and runner image as
+   android-artifacts, no Gradle cache and no secret, verification lenient in
+   `~/.gradle` only, and runs `./gradlew --write-verification-metadata sha256`
+   over bundleDebug + assembleDebug, then bundleRelease + assembleRelease (the
+   procedure `tooling/ci/assert-signing-inputs-pinned.mjs` limb V names). Gradle
+   MERGES into the committed file, so an entry no build uses any more stays.
+2. **Download** the artifact `verification-metadata-<app>-<sha8>` (`<sha8>` is the
+   commit the run built):
+   `gh run download <run id> -R globalonlinedeveloper/Nikatru_Platform_Public -n verification-metadata-<app>-<sha8>`.
+3. **Commit** it at `apps/<app>/android/gradle/verification-metadata.xml` on the
+   same branch, read the diff (new components should match the bump, nothing
+   else), and push. android-artifacts on the pull request is the proof: it builds
+   with verification on, against the committed file. If the branch moved after
+   the dispatch, dispatch again on the new head.
+
+The workflow pushes nothing and holds `contents: read` only; its duty row is
+`duty.workflow.regen-gradle-verify.yml` in `tooling/ops/register.json`.
+
 ---
 
 ## 9. One page per workflow
@@ -818,7 +854,7 @@ naming the job it belonged to and the line it sat above.
 
 <!-- BEGIN GENERATED: gen-ci-map workflows -->
 <!-- why: GENERATED by node tooling/ci/gen-ci-map.mjs --write. Never hand-edit. -->
-**31** workflows. A workflow's page is `docs/ci/<workflow>.md`; `ci.yml`'s is this one.
+**32** workflows. A workflow's page is `docs/ci/<workflow>.md`; `ci.yml`'s is this one.
 
 | page | workflow | its `name:` | triggers | jobs |
 |---|---|---|---|---|
@@ -842,6 +878,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 6 |
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 14 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
+| none | `.github/workflows/regen-gradle-verify.yml` | Regenerate Gradle verification | `workflow_dispatch` | 1 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/review-gate.yml` | Review gate | `pull_request_target` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
