@@ -648,7 +648,7 @@
     81,
 
   "main-rows.test.mjs":
-    21,
+    22,
 
   "measure-frame-ink.test.mjs":
     22,
@@ -749,6 +749,9 @@
   "ops-bounded-retry.test.mjs":
     116,
 
+  "ops-refund.test.mjs":
+    15,
+
   "ops-register.test.mjs":
     462,
 
@@ -775,6 +778,9 @@
 
   "pages-origin.test.mjs":
     26,
+
+  "paid-calls-metered.test.mjs":
+    15,
 
   "palette-consistent.test.mjs":
     56,
@@ -1153,6 +1159,9 @@
 
   "store-screenshots-lane.test.mjs":
     93,
+
+  "store-vitals.test.mjs":
+    14,
 
   "store-vocabulary.test.mjs":
     28,

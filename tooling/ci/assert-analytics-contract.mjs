@@ -491,14 +491,19 @@ const WIRE_CONTRACTS = [
         member: 'factory Entitlement.fromJson(',
         reader: 'j',
       },
-      requiredBoth: ['entitlement', 'product_id', 'store', 'is_active', 'expires_at'],
+      // ⏱ 2026-10-02 · refund-finish (MF-7): `revocation_reason` LEFT `serverOnly`.
+      // packages/core's `Entitlement.fromJson` now reads it, so the plan screen can
+      // say WHY access ended (and when). It is read for WORDS only: access is still
+      // decided on `is_active` and `expires_at`, never on the reason. Every row the
+      // shared reader renders carries it (null when nothing was recorded), so a
+      // rename now breaks an installed build's plan screen — both sides.
+      requiredBoth: ['entitlement', 'product_id', 'store', 'is_active', 'expires_at', 'revocation_reason'],
       clientOnly: {},
       serverOnly: {
         provider: 'support-visible provenance. The route returns rows that grant NOTHING so a locked-out paying user is explainable; the client models only what decides access.',
         provider_status: 'same — the row is returned inert with the provider\'s own word for why.',
         current_period_end: 'the provider\'s billing period, not our expiry. `expires_at` is the field access is decided on and the one the client reads.',
         trial_end: 'same class as current_period_end.',
-        revocation_reason: 'why a row was revoked. Its enum is pinned SQL-side by assert-entitlement-contract.mjs limb 3/4; the client fails closed on is_active alone and must not branch on the reason.',
       },
     },
   },
@@ -567,6 +572,45 @@ const WIRE_CONTRACTS = [
     reason:
       'NO DART CLIENT, BY CONSTRUCTION — the caller is the FullShot browser extension signing ITSELF out (PR-X). It reads the status code (200, or 401 for a credential already dead), not the body.',
     absentFromDart: '/v1/ext/revoke',
+  },
+  // ⏱ 2026-10-02 · club-rt-money — paid AI (T17) and the in-window refund
+  // (refund-finish). No Dart client builds any of them yet; each envelope is
+  // pinned where it is served, by services/platform/test/ai-routes.test.ts and
+  // test/refund-route.test.ts.
+  {
+    id: 'ai-status',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, A STATE: the app screens that read it land with each AI feature\'s measured model; until then every AI call answers 503. The body {enabled, plan, pack_credits, allowance_left, monthly_allowance, disclosure_version, consent_current} is asserted by ai-routes.test.ts.',
+    absentFromDart: '/v1/ai/status',
+  },
+  {
+    id: 'ai-consent',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, A STATE: the chassis AiDisclosureDialog exists; the app adapter that posts {app_id, disclosure_version} after it lands with the measured model. ai-routes.test.ts holds the request and the 409 on a stale version.',
+    absentFromDart: '/v1/ai/consent',
+  },
+  {
+    id: 'ai-import',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, A STATE: no model is set, so the route answers 503; the Import hub\'s AI entry lands with it. ai-routes.test.ts pins {provenance, candidates[{name, price, currency, cycle, next_date, confidence, source, provenance}]}.',
+    absentFromDart: '/v1/ai/import',
+  },
+  {
+    id: 'ai-review',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, A STATE: as ai-import. ai-routes.test.ts pins {advisory, provenance, suggestions[{name, action, reason, generated_by, provenance}]}.',
+    absentFromDart: '/v1/ai/review',
+  },
+  {
+    id: 'plan-refund',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, A STATE: no rail that sells today declares `refund`, so the in-app button lands with the first that does. refund-route.test.ts pins every answer: 200 {recorded, executed, request_id, refund_ref}, 202 {recorded, executed, request_id, route, reason}, 409 {route: store, refund_at, refund_url}, 403 outside_refund_window.',
+    absentFromDart: '/v1/plan/refund',
   },
   // ⏱ 2026-09-30 · EXA-11 — the account-side list and revoke of linked browsers.
   {
