@@ -57,6 +57,7 @@ import reminders0020 from '../migrations/0020_reminders.sql?raw';
 import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
+import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -123,6 +124,10 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // encrypted at rest: `token_ct` and `token_key_id` on provider_tokens. ADD
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   providerTokenEncryption0023,
+  // ⏱ 2026-10-02 · review of #1155, finding 1 — the OAuth client a provider
+  // token was issued to (the bundle id, for a native Apple sheet). ADD
+  // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  providerTokenClient0024,
 ];
 
 /**

@@ -149,8 +149,13 @@ describe('the register', () => {
     assert.equal(ids.has('com.nikatru.subscriptiontracker'), false);
     assert.equal(ids.size, REAL.protected.profiles.length + REAL.protected.certificates.length + 2 + REAL.retired.length);
   });
-  test('the real derivation: Runner.entitlements carries Declared Age Range only', () => {
-    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker')], [[DAR, true]]);
+  // ⏱ 2026-10-01 · EN-19: Sign in with Apple joined it — the native sheet
+  // will not present without the entitlement; the browser door never needed it.
+  test('the real derivation: Runner.entitlements carries Sign in with Apple and Declared Age Range', () => {
+    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker')], [
+      [SIWA, ['Default']],
+      [DAR, true],
+    ]);
     assert.deepEqual(expectedProfileKeys(REAL, 'subscriptiontracker', 'IOS_APP_STORE').sort(), [SIWA, DAR].sort());
   });
   // ── O-SECOND-APP-SIGNS-AS-THE-FIRST — the bundle id apple-signing keeps ─────
@@ -171,10 +176,10 @@ describe('the register', () => {
 });
 
 describe('plist reading', () => {
-  test('the real Runner.entitlements parses to exactly one key', () => {
+  test('the real Runner.entitlements parses to exactly its two keys', () => {
     const r = parseFlatDict(readFileSync(join(REPO, 'apps/subscriptiontracker/ios/Runner/Runner.entitlements'), 'utf8'));
     assert.equal(r.ok, true);
-    assert.deepEqual([...r.entries.keys()], [DAR]);
+    assert.deepEqual([...r.entries.keys()].sort(), [SIWA, DAR].sort());
   });
   test('a key named only inside a comment is not a key', () => {
     const r = parseFlatDict(`<plist><dict><!-- <key>${DAR}</key><true/> --></dict></plist>`);
@@ -583,14 +588,16 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
 });
 
 describe('macOS entitlements — the register and the derivation (O-STAMP-APPLE-MACOS-ENTITLEMENTS)', () => {
-  test('the real derivation: each macOS file carries its base sandbox keys and NOT Declared Age Range', () => {
+  // ⏱ 2026-10-01 · EN-19: plus Sign in with Apple, whose macOS side is the
+  // same key — the native sheet presents on macOS too.
+  test('the real derivation: each macOS file carries its base sandbox keys, Sign in with Apple, and NOT Declared Age Range', () => {
     const rel = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/Release.entitlements');
-    assert.deepEqual([...rel.keys()], ['com.apple.security.app-sandbox', 'com.apple.security.network.client']);
+    assert.deepEqual([...rel.keys()], ['com.apple.security.app-sandbox', 'com.apple.security.network.client', SIWA]);
     const dbg = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/DebugProfile.entitlements');
     assert.equal(dbg.has(DAR), false);
     assert.equal(dbg.has('com.apple.security.cs.allow-jit'), true);
-    // …while the iOS derivation is exactly what it was.
-    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker').keys()], [DAR]);
+    // …while the iOS derivation is its own two keys.
+    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker').keys()], [SIWA, DAR]);
   });
   test('entitlementKeyFor reads all three shapes', () => {
     assert.equal(entitlementKeyFor({ entitlementKey: null }, 'macos'), null);

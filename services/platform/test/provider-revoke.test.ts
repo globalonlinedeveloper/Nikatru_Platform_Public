@@ -33,6 +33,7 @@ import { SignJWT, exportJWK, exportPKCS8, generateKeyPair, importJWK, jwtVerify,
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import providerToken from '../src/routes/provider-token';
+import appleCode from '../src/routes/apple-code';
 import { APPLE_REVOKE_STEP, GOOGLE_REVOKE_STEP } from '../src/lib/erasure-ledger';
 import {
   appleClientSecret,
@@ -65,6 +66,10 @@ interface AppleCall {
 let appleCalls: AppleCall[] = [];
 let appleStatus = 200;
 let appleThrows = false;
+/** Calls to Apple's TOKEN endpoint (the native sheet's code exchange). */
+let appleTokenCalls: AppleCall[] = [];
+let appleTokenStatus = 200;
+let appleTokenBody: string | null = JSON.stringify({ refresh_token: 'r-native-refresh-value', id_token: 'x' });
 
 /** Everything the Google limb put on the wire, so the assertions grade the call
  *  itself: where it went, with which headers, carrying which fields. */
@@ -112,6 +117,16 @@ beforeAll(async () => {
       // Apple answers 200 with NO BODY on success, and cannot distinguish a
       // revoked token from one that was already invalid.
       return new Response(null, { status: appleStatus });
+    }
+    if (url === 'https://appleid.apple.com/auth/token') {
+      appleTokenCalls.push({
+        contentType: new Headers(init?.headers).get('Content-Type'),
+        body: new URLSearchParams(String(init?.body ?? '')),
+      });
+      return new Response(appleTokenBody, {
+        status: appleTokenStatus,
+        headers: appleTokenBody === null ? {} : { 'Content-Type': 'application/json' },
+      });
     }
     // EXACT match, like Apple's: a call to any other Google path falls through to
     // the throw at the bottom, which the revoke reads as "unreachable".
@@ -209,6 +224,9 @@ function harness(overrides: Partial<Record<string, unknown>> = {}) {
   appleCalls = [];
   appleStatus = 200;
   appleThrows = false;
+  appleTokenCalls = [];
+  appleTokenStatus = 200;
+  appleTokenBody = JSON.stringify({ refresh_token: 'r-native-refresh-value', id_token: 'x' });
   googleCalls = [];
   googleStatus = 200;
   googleBody = null;
@@ -229,6 +247,7 @@ function harness(overrides: Partial<Record<string, unknown>> = {}) {
   app.use('/v1/account/*', platformAuth);
   app.route('/v1', account);
   app.route('/v1', providerToken);
+  app.route('/v1', appleCode);
   const env = appleEnv(db, overrides);
   return {
     db,
@@ -657,5 +676,98 @@ describe('DELETE /v1/account revokes at every provider the account kept a token 
     expect(ledgerRows(h.db, 'user-ag')).toEqual([]);
     expect(h.db.count('provider_tokens', 'subject_ref = ?', 'user-ag')).toBe(0);
     expect(identityCalls).toHaveLength(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · review of #1155, finding 1. The native Sign in with Apple sheet
+// (iOS, macOS) signs in through `signInWithIdToken`, whose session carries NO
+// provider refresh token. Its `authorizationCode` is posted to PUT
+// /v1/account/apple-code, exchanged at Apple for the bundle id, and stored where
+// the revoke reads it — with the client it belongs to, which the revoke must
+// name or Apple refuses it as `invalid_client`.
+// ─────────────────────────────────────────────────────────────────────────────
+const claimsOf = (jwt: string | null): Record<string, unknown> =>
+  JSON.parse(Buffer.from(String(jwt).split('.')[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+
+describe('PUT /v1/account/apple-code — a native-sheet Apple account is revocable', () => {
+  it('🔴 RED CONTROL: deleting a native-Apple account calls the revoke endpoint, for the bundle id', async () => {
+    const h = harness();
+    const authz = `Bearer ${await appleUser('user-native')}`;
+    const put = await h.put('/v1/account/apple-code', { authorizationCode: 'c1.native-code.value', appId: 'subscriptiontracker' }, authz);
+    expect(put.status).toBe(200);
+    // The exchange: the code, for the app's bundle id, signed for that client.
+    expect(appleTokenCalls).toHaveLength(1);
+    expect(appleTokenCalls[0].contentType).toBe('application/x-www-form-urlencoded');
+    expect(appleTokenCalls[0].body.get('grant_type')).toBe('authorization_code');
+    expect(appleTokenCalls[0].body.get('code')).toBe('c1.native-code.value');
+    expect(appleTokenCalls[0].body.get('client_id')).toBe('com.nikatru.subscriptiontracker');
+    const exchangeSecret = appleTokenCalls[0].body.get('client_secret');
+    const verified = await jwtVerify(String(exchangeSecret), await importJWK(applePublicJwk, 'ES256'), { audience: APPLE_AUD });
+    expect(verified.payload.sub).toBe('com.nikatru.subscriptiontracker');
+    expect(await storedToken(h.db, 'user-native')).toEqual(['r-native-refresh-value']);
+
+    const res = await h.del('/v1/account', authz);
+    expect(res.status).toBe(200);
+    expect(appleCalls, 'the deletion revoked at Apple').toHaveLength(1);
+    expect(appleCalls[0].body.get('token')).toBe('r-native-refresh-value');
+    expect(appleCalls[0].body.get('client_id')).toBe('com.nikatru.subscriptiontracker');
+    expect(claimsOf(appleCalls[0].body.get('client_secret')).sub).toBe('com.nikatru.subscriptiontracker');
+    expect(await storedToken(h.db, 'user-native')).toEqual([]);
+    expect(identityCalls).toHaveLength(1);
+    const logs = logLines.join('\n');
+    expect(logs).not.toContain('c1.native-code.value');
+    expect(logs).not.toContain('r-native-refresh-value');
+  });
+
+  it('a web sign-in after a native one revokes under the web client again', async () => {
+    const h = harness();
+    const authz = `Bearer ${await appleUser('user-both-doors')}`;
+    await h.put('/v1/account/apple-code', { authorizationCode: 'c2.native-code.value', appId: 'subscriptiontracker' }, authz);
+    await h.put('/v1/account/apple-token', { refreshToken: 'r-web-token-value', appId: 'subscriptiontracker' }, authz);
+    await h.del('/v1/account', authz);
+    expect(appleCalls).toHaveLength(1);
+    expect(appleCalls[0].body.get('token')).toBe('r-web-token-value');
+    expect(appleCalls[0].body.get('client_id')).toBe('com.nikatru.services');
+  });
+
+  it('a code Apple refuses (used, expired, foreign) is 400 and stores nothing', async () => {
+    const h = harness();
+    appleTokenStatus = 400;
+    appleTokenBody = JSON.stringify({ error: 'invalid_grant' });
+    const res = await h.put(
+      '/v1/account/apple-code',
+      { authorizationCode: 'c3.native-code.value', appId: 'subscriptiontracker' },
+      `Bearer ${await appleUser('user-refused')}`,
+    );
+    expect(res.status).toBe(400);
+    expect(await storedToken(h.db, 'user-refused')).toEqual([]);
+  });
+
+  it('🔴 the owner credentials missing is 503, never a silent success', async () => {
+    const h = harness({ APPLE_REVOKE_PRIVATE_KEY: undefined });
+    const res = await h.put(
+      '/v1/account/apple-code',
+      { authorizationCode: 'c4.native-code.value', appId: 'subscriptiontracker' },
+      `Bearer ${await appleUser('user-nocreds')}`,
+    );
+    expect(res.status).toBe(503);
+    expect(appleTokenCalls).toHaveLength(0);
+    expect(await storedToken(h.db, 'user-nocreds')).toEqual([]);
+  });
+
+  it('an account that has not linked Apple, a malformed code or app id: 400, Apple never called', async () => {
+    const h = harness();
+    const googleOnly = `Bearer ${await token({
+      sub: 'user-g',
+      app_metadata: { provider: 'google', providers: ['google'] },
+      amr: [{ method: 'oauth', timestamp: Math.floor(Date.now() / 1000) - 10 }],
+    })}`;
+    const apple = `Bearer ${await appleUser('user-bad-input')}`;
+    expect((await h.put('/v1/account/apple-code', { authorizationCode: 'c5.native-code', appId: 'subscriptiontracker' }, googleOnly)).status).toBe(400);
+    expect((await h.put('/v1/account/apple-code', { authorizationCode: 'has spaces in it', appId: 'subscriptiontracker' }, apple)).status).toBe(400);
+    expect((await h.put('/v1/account/apple-code', { authorizationCode: 'c6.native-code', appId: '../evil' }, apple)).status).toBe(400);
+    expect((await h.put('/v1/account/apple-code', { authorizationCode: 'c7.native-code', appId: 'subscriptiontracker' })).status).toBe(401);
+    expect(appleTokenCalls).toHaveLength(0);
   });
 });

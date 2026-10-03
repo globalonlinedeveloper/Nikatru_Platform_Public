@@ -27,6 +27,8 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/features/account/account_rows.dart';
 import 'package:subscriptiontracker/features/account/account_security.dart';
 import 'package:subscriptiontracker/features/account/email_change_sign_out.dart';
+import 'package:subscriptiontracker/features/auth/connected_accounts_sheet.dart'
+    show ConnectedAccountsSheet;
 import 'package:subscriptiontracker/features/settings/reminder_settings.dart'
     show emailRemindersOnProvider;
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
@@ -489,6 +491,24 @@ void main() {
     testWidgets('no section off a live backend', (WidgetTester tester) async {
       await _pump(tester, _Auth());
       expect(find.text('Your devices'), findsNothing);
+    });
+  });
+
+  // ⏱ 2026-10-02 · SE-04 — "Connected accounts" is an ACCOUNT row: it was an
+  // inert row in the settings fork and now sits with change e-mail/password in
+  // AccountSecurityRows (drawn for a signed-in account), wired to the sheet.
+  // RED CONTROL: drop the row's onTap and no sheet opens.
+  group('SE-04 · connected accounts', () {
+    testWidgets('the account row opens the sign-in methods sheet', (
+      WidgetTester tester,
+    ) async {
+      await _pump(tester, _Auth());
+      final Finder row = find.byKey(AccountSecurityRows.connectedAccounts);
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ConnectedAccountsSheet), findsOneWidget);
     });
   });
 
