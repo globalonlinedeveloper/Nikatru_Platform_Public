@@ -648,7 +648,9 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // the boxes port: the declarations and the module that reads them (port-boxes)
       'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs',
       // port-auth: the Dart half's two conformance tests (the fake and the GoTrue adapter)
-      'packages/core/test/fake_auth_repository_conformance_test.dart', 'packages/auth_supabase/test/supabase_auth_conformance_test.dart']) copy(rel);
+      'packages/core/test/fake_auth_repository_conformance_test.dart', 'packages/auth_supabase/test/supabase_auth_conformance_test.dart',
+      // port-auth: the site's pages and its one identity client (limb 4's site half)
+      'sites/nikatru/js', 'sites/nikatru/app', 'sites/nikatru/ext']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
   it('green control: payments, mail and ai claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
@@ -767,6 +769,16 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     mutate('services/platform/src/lib/reminders.ts', (s) => `${s}\nexport const rpc = (base: string) => \`\${base}/rest/v1/rpc/x\`;\n`, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /`services\/platform\/src\/lib\/reminders\.ts` builds an identity-provider URL \(`\/rest\/v1`\)/);
+    });
+  });
+  it('🔴 red: a site page naming /auth/v1 outside the identity client reddens limb 4 (port-auth, the site half)', () => {
+    mutate('sites/nikatru/js/signin.js', (s) => `${s}\nexport const leak = () => fetch(\`\${SUPABASE_URL}/auth/v1/user\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\): tooling\/ports\/auth\.json: the site file `sites\/nikatru\/js\/signin\.js` names an identity-provider path/);
+    });
+    mutate('sites/nikatru/js/identity-client.js', (s) => s.replaceAll('/auth/v1', '/auth/vX'), (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST — sites\/nikatru\/js\/identity-client\.js no longer names an identity-provider path/);
     });
   });
   it('limb 4 URL half: a URL in a COMMENT is not a call; the adapter no longer matching is COVERAGE LOST', () => {

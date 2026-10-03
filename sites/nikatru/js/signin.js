@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // signin.js — a small, hand-written GoTrue (Supabase Auth) REST client for the
-// nikatru.com pages that need a signed-in user. An ES module: no CDN, no vendored
+// nikatru.com pages that need a signed-in user. ⏱ 2026-10-03 · port-auth: the
+// wire itself (every `{AUTH}` call below) is js/identity-client.js now; this
+// file keeps the flows, the session handling and the two public constants. An ES module: no CDN, no vendored
 // bundle, no npm, because this site has no build step (sites/nikatru/README.md).
 //
 // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — first used by /ext/connect;
@@ -31,6 +33,8 @@
 // widget will be refused by that gate.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { identityClient } from './identity-client.js';
+
 /** The GoTrue host. Self-hosted since 2026-09-24; never a *.supabase.co host. */
 export const SUPABASE_URL = 'https://auth-api.nikatru.com';
 
@@ -38,8 +42,11 @@ export const SUPABASE_URL = 'https://auth-api.nikatru.com';
  *  2026-09-25; .gitleaks.toml records why and allows exactly this one. */
 export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QNEBX6oUcWllQVU212e41A_Axpy1gmh';
 
-const AUTH = `${SUPABASE_URL}/auth/v1`;
 const STASH_KEY = 'nikatru.signin.pkce';
+
+/** ⏱ 2026-10-03 · port-auth: the provider's wire is js/identity-client.js; this
+ *  file speaks verbs and hands it the two constants above. */
+const identity = identityClient({ endpoint: SUPABASE_URL, publicKey: SUPABASE_PUBLISHABLE_KEY });
 
 function b64url(bytes) {
   let s = '';
@@ -47,24 +54,7 @@ function b64url(bytes) {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** A GoTrue call. Resolves to the parsed session, or throws an Error whose
- *  message is a fixed phrase — never the response body, which can echo input. */
-async function tokenCall(grant, body) {
-  let res;
-  try {
-    res = await fetch(`${AUTH}/token?grant_type=${grant}`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('network');
-  }
-  if (!res.ok) throw new Error(res.status === 400 || res.status === 401 ? 'credentials' : 'unavailable');
-  const session = await res.json();
-  if (!session || typeof session.access_token !== 'string') throw new Error('unavailable');
-  return session;
-}
+const tokenCall = (grant, body) => identity.token(grant, body);
 
 /** Email + password. Returns the session; the caller keeps it in memory. */
 export function signInWithPassword(email, password, { captchaToken } = {}) {
@@ -91,7 +81,7 @@ export async function startAppleSignIn(returnTo, carry) {
     code_challenge: challenge,
     code_challenge_method: 's256',
   });
-  location.assign(`${AUTH}/authorize?${q.toString()}`);
+  location.assign(identity.authorizeUrl(q));
 }
 
 /**

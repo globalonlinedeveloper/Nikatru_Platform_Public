@@ -54,7 +54,9 @@
 //               verb of IdentityAdmin. Declared exceptions
 //               (IDENTITY_URL_EXCEPTIONS) print, and one that stops matching is
 //               a stale row. The adapter is the positive control: not matched
-//               is COVERAGE LOST.
+//               is COVERAGE LOST. Its SITE half: no file under sites/ (.js,
+//               .mjs, .html, comments stripped) names such a path except
+//               sites/nikatru/js/identity-client.js, which must.
 //   5 secrets   every `secrets` NAME is a tooling/worker-secrets.json row when
 //               that file exists, else an `interface Env` member of some
 //               services/*/src/types.ts — printed `manifest absent, read
@@ -224,6 +226,9 @@ export const IDENTITY_URL_EXCEPTIONS = Object.freeze([
     until: 'nonPort',
   },
 ]);
+/** The SITE's one identity client (port-auth): every call a page makes to the identity
+ *  provider. No other file under sites/ names an identity-provider path; this one must. */
+export const SITE_IDENTITY_CLIENT = 'sites/nikatru/js/identity-client.js';
 /** Limb 13's one permitted reader. */
 export const GEO_HOME = 'services/_shared/src/geo.ts';
 /** Limb 12's permitted homes under services/_shared. */
@@ -713,6 +718,24 @@ export function evaluate(root) {
           limb4Clean.set(IDENTITY_PORT, false);
         }
       }
+      // The site half: pages call the identity provider through SITE_IDENTITY_CLIENT only.
+      const siteFiles = [];
+      walkSite(root, 'sites', siteFiles);
+      let siteClientMatched = false;
+      for (const f of siteFiles) {
+        const text = readFileSync(join(root, f), 'utf8');
+        const code = /\.html$/.test(f) ? text.replace(/<!--[\s\S]*?-->/g, '') : stripSourceComments(text, '.js');
+        const m = IDENTITY_URL_RE.exec(code);
+        if (f === SITE_IDENTITY_CLIENT) { siteClientMatched = Boolean(m); continue; }
+        if (m) {
+          find(4, `tooling/ports/${IDENTITY_PORT}.json: the site file \`${f}\` names an identity-provider path (\`${m[0]}\`). Every call a page makes to the identity provider goes through ${SITE_IDENTITY_CLIENT}.`);
+          limb4Clean.set(IDENTITY_PORT, false);
+        }
+      }
+      if (!siteClientMatched) {
+        lost(4, `${SITE_IDENTITY_CLIENT} ${siteFiles.includes(SITE_IDENTITY_CLIENT) ? 'no longer names an identity-provider path' : 'was not walked (moved or deleted)'}, so "no other site file does" is evidence of nothing.`);
+        limb4Clean.set(IDENTITY_PORT, false);
+      } else notes.push(`limb 4 (URL half, site): ${siteFiles.length} site file(s) read; identity-provider paths only in ${SITE_IDENTITY_CLIENT}`);
       if (!homeMatched) {
         lost(4, `no ${IDENTITY_PORT} ts adapter (${[...homes].join(', ') || 'none declared'}) matches the identity-URL pattern, so "nobody else builds one" is evidence of nothing.`);
         limb4Clean.set(IDENTITY_PORT, false);
@@ -1180,6 +1203,17 @@ export function directMonitorCalls(code) {
   const named = calls.filter((c) => MONITOR_ROUTE.test(c.split(/,\s*\{/)[0]));
   if (named.length) return named.length;
   return MONITOR_ROUTE.test(code) ? calls.filter((c) => /\/api\/0\//.test(c.split(/,\s*\{/)[0])).length : 0;
+}
+
+/** Every page script and page under sites/ (limb 4's site half). */
+function walkSite(root, relDir, out) {
+  let entries;
+  try { entries = listDir(join(root, relDir), { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const rel = posix.join(relDir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'node_modules') walkSite(root, rel, out); }
+    else if (/\.(?:m?js|html)$/.test(e.name)) out.push(rel);
+  }
 }
 
 function walkMjs(root, relDir, out) {
