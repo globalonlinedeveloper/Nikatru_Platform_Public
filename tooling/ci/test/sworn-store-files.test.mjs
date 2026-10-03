@@ -1400,11 +1400,14 @@ function stampProbe(root) {
   );
 }
 
-function withTreeArgs(mutate, args, fn) {
+function withTreeArgs(mutate, args, fn, env = {}) {
   const root = realTree();
   try {
     mutate(root);
-    fn(spawnSync(process.execPath, [GUARD, ...args, root], { cwd: REPO, encoding: 'utf8' }));
+    // PLAY_TRACK is the one variable the guard reads (2026-10-03); a test that does not set it
+    // runs without it, whatever the shell that started the suite exported.
+    const { PLAY_TRACK: _unset, ...base } = process.env;
+    fn(spawnSync(process.execPath, [GUARD, ...args, root], { cwd: REPO, encoding: 'utf8', env: { ...base, ...env } }));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1705,6 +1708,33 @@ describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gate
     );
   });
 
+  test('⏱ 2026-10-03 a REAL submission to an EXPLICIT testing track (PLAY_TRACK=internal) proceeds (exit 0) and prints the gap', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NOT YET DECLARED, AND NOT REFUSED: this real submission reaches no public step \(PLAY_TRACK="internal"\)/);
+        assert.doesNotMatch(r.stderr, /UNDECLARED/);
+      },
+      { PLAY_TRACK: 'internal' },
+    );
+  });
+
+  test('🔴 the same with PLAY_TRACK=production, or a blank PLAY_TRACK, is refused (exit 1): only an explicit testing track opens it', () => {
+    for (const track of ['production', ' ']) {
+      withTreeArgs(
+        () => {},
+        ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+        (r) => {
+          assert.equal(r.status, 1, `PLAY_TRACK=${JSON.stringify(track)}: ${r.stdout}`);
+          assert.match(r.stderr, /UNDECLARED — apps\/subscriptiontracker\/app\.yaml stores\.android-play\.declaredOn is null/);
+        },
+        { PLAY_TRACK: track },
+      );
+    }
+  });
+
   test('declaredOn null does not make app #1 a preview: the plain run grades it sworn', () => {
     withTreeArgs(
       () => {},
@@ -1749,10 +1779,12 @@ describe('⏱ 9b — --for-submission=windows-store: the declaration date alone 
       () => {},
       ['--for-submission=windows-store', '--app', 'subscriptiontracker', '--real-submission'],
       (r) => {
+        // Every Windows submission is public (PUBLIC_REACH env null): no PLAY_TRACK opens it.
         assert.equal(r.status, 1, r.stdout);
         assert.match(r.stderr, /UNDECLARED — apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.declaredOn is null/);
         assert.match(r.stderr, /Submit that console form \(Partner Center's Properties/);
       },
+      { PLAY_TRACK: 'internal' },
     );
   });
 

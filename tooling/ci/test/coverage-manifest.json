@@ -365,6 +365,9 @@
   "deployment-record.test.mjs":
     129,
 
+  "derive-site-shots.test.mjs":
+    7,
+
   "derived-sets.test.mjs":
     14,
 
@@ -866,6 +869,9 @@
   "provision-backend.test.mjs":
     34,
 
+  "provision-reviewer-accounts.test.mjs":
+    9,
+
   "pseudonymity-firewall.test.mjs":
     17,
 
@@ -1134,7 +1140,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    93,
+    95,
 
   "store-vocabulary.test.mjs":
     28,
@@ -1155,7 +1161,7 @@
     48,
 
   "sworn-store-files.test.mjs":
-    108,
+    110,
 
   "symbolication-proof.test.mjs":
     91,

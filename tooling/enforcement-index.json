@@ -2710,6 +2710,7 @@
   },
   {
     "claims": [
+      "ADR 031",
       "ADR 037",
       "ADR 067",
       "ADR 068",
@@ -4528,6 +4529,16 @@
     ],
     "kind": "script",
     "ref": "tooling/scripts/spawn-ceiling.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/derive-site-shots.mjs",
     "references": [],
     "state": "WIRED"
   },

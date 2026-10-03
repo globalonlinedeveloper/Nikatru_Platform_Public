@@ -330,7 +330,11 @@ jobs:
       # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
       # --real-submission (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): this job is the REAL submission, so the app's stores.android-play
       # declaredOn must be a date; the dry-run job's same step omits it and only prints the gap.
+      # why: ⏱ 2026-10-03 the date gates a PUBLIC release only: PLAY_TRACK is the expression the upload reads, so an
+      # explicit testing track (internal) proceeds and prints the gap, and an empty or production one is refused.
       - name: The app's Play declarations are sworn, not preview (--for-submission)
+        env:
+          PLAY_TRACK: ${{ inputs.track }}
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP" --real-submission
       # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
       # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).

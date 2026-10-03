@@ -83,6 +83,7 @@ import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
     show SetupStepsView;
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
@@ -175,6 +176,11 @@ const List<List<String>> kIllustrative = <List<String>>[
   <String>['Fitness club', '39.00', 'Fitness', '24'],
   <String>['News digest', '4.50', 'News', '29'],
 ];
+
+/// The monthly budget frame 04 shows, typed into the app's own budget editor.
+/// Above the six rows' $93.47 a month, so the card reads what is LEFT rather
+/// than an overspend — an illustrative household budget, like the rows.
+const String kIllustrativeBudget = '120';
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -503,6 +509,49 @@ void main() {
         .where((String s) => s.trim().isNotEmpty)
         .take(25);
     return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
+  /// Answers Home's catch-up nudge ("Your reminder was due") if it is up.
+  ///
+  /// ⏱ 2026-10-03 · RUN 37116134381 PHOTOGRAPHED NOTHING, BUT IT WOULD HAVE
+  /// PHOTOGRAPHED THIS. `CatchUpNudgeBanner` (home_screen.dart) shows on a
+  /// target that cannot schedule notifications — the WEB build this lane
+  /// drives — once the day's reminder time has passed, until it is answered.
+  /// So whether it is on screen depends on the CLOCK the drive runs at. The
+  /// Play listing describes the Android build, which schedules reminders and
+  /// never shows it, so a frame carrying it would show a screen the product
+  /// does not have. It is answered the way a user answers it — its own
+  /// "Got it", found by that control and inside the banner, never by what
+  /// kind of widget the banner is (assert-modal-detection.mjs) — and the
+  /// receipt is that the banner is gone. Absent, this does nothing.
+  Future<void> dismissCatchUpNudge(WidgetTester tester) async {
+    final Finder nudge = find.byType(CatchUpNudgeBanner);
+    if (nudge.evaluate().isEmpty) return;
+    final String gotIt = AppLocalizations.of(
+      tester.element(nudge.first),
+    ).catchUpDismiss;
+    final Finder answer = find.descendant(
+      of: nudge,
+      matching: find.text(gotIt),
+    );
+    if (answer.evaluate().isEmpty) return;
+    expect(
+      answer.hitTestable(),
+      findsOneWidget,
+      reason:
+          'Home\'s catch-up nudge is up but its "$gotIt" cannot be reached, '
+          'so the frames below would photograph it. On screen: '
+          '${onScreen(tester)}',
+    );
+    await tester.tap(answer);
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(
+      await waitGone(tester, answer),
+      isTrue,
+      reason:
+          '"$gotIt" did not take Home\'s catch-up nudge down, so the frames '
+          'below would photograph it. On screen: ${onScreen(tester)}',
+    );
   }
 
   // 🔴 THERE IS NO `shot(name)` WRAPPER ANY MORE, AND ITS ABSENCE IS LOAD-
@@ -1012,35 +1061,70 @@ void main() {
         );
         await tester.tap(find.byKey(E2EKeys.fabAdd));
         await pumpFor(tester, const Duration(seconds: 2));
+
+        // ── ⏱ 2026-10-03 · THE PICK STEP COMES FIRST (ST-T9, AD-03, #1130) ──
+        //
+        // Since #1130 the FAB opens the catalogue PICK step ("Search services |
+        // POPULAR | …") and the form carrying `addName` is one tap further,
+        // behind "Add by hand". Runs 36955800549 (Snap), 36955811141 (macOS)
+        // and 36955814987 (iOS) all reached Home and stopped here with "The
+        // add sheet did not open". The rows below are illustrative and not in
+        // the catalogue, so the drive goes the way a user with an unlisted
+        // plan goes — the walk `app_test.dart`'s `openAddFormByHand` and
+        // `flow_steps.dart`'s `addPlanThroughSheet` already take.
+        final Finder byHand = find.byKey(E2EKeys.addByHand);
         expect(
-          find.byKey(E2EKeys.addName),
+          await waitFor(tester, byHand, timeout: const Duration(seconds: 10)),
+          isTrue,
+          reason:
+              'The add FAB opened no pick step offering "Add by hand" for '
+              '"${row[0]}". On screen: ${onScreen(tester)}',
+        );
+        await tester.ensureVisible(byHand);
+        await pumpFor(tester, const Duration(milliseconds: 400));
+        expect(
+          byHand.hitTestable(),
           findsOneWidget,
           reason:
-              'The add sheet did not open for "${row[0]}". On screen: '
-              '${onScreen(tester)}',
+              'The pick step\'s "Add by hand" is in the tree but a finger '
+              'could not reach it for "${row[0]}", even after ensureVisible. '
+              'On screen: ${onScreen(tester)}',
         );
+        await tester.tap(byHand);
+        expect(
+          await waitFor(
+            tester,
+            find.byKey(E2EKeys.addName),
+            timeout: const Duration(seconds: 10),
+          ),
+          isTrue,
+          reason:
+              'The add sheet did not open for "${row[0]}": "Add by hand" did '
+              'not lead to the form. On screen: ${onScreen(tester)}',
+        );
+        await pumpFor(tester, const Duration(milliseconds: 500));
         await tester.enterText(find.byKey(E2EKeys.addName), row[0]);
         await tester.enterText(find.byKey(E2EKeys.addPrice), row[1]);
         await pumpFor(tester, const Duration(milliseconds: 400));
 
         // ── THE CATEGORY, CHOSEN IN THE SHEET'S OWN DROPDOWN ────────────────
         //
-        // 🔴 THE SHEET HAS NO `E2EKeys` ENTRY FOR THIS FIELD, so it is found by
-        // TYPE. `add_subscription_sheet.dart`'s `_categoryField()` builds
-        // exactly one `DropdownButtonFormField<String>` and the sheet is the
-        // only thing on screen that builds one at all, so the type is unique
-        // here — but it is a weaker handle than a key, and the `findsOneWidget`
-        // below is what turns "the sheet changed shape" into a named failure
-        // instead of a tap on whatever else matched first. Adding the key is an
-        // `apps/subscriptiontracker/lib/` change this increment does not own.
+        // 🔴 FOUND BY KEY, `E2EKeys.addCategory`, which `_categoryField()` in
+        // `add_subscription_sheet.dart` passes to the dropdown itself.
+        //
+        // ⚠️ THIS USED TO BE FOUND BY TYPE, AND THAT WENT FALSE (2026-10-03).
+        // The comment here said the sheet built exactly one
+        // `DropdownButtonFormField<String>`; since ST-E2 it also builds one for
+        // the row's CURRENCY, so the type matched two fields and the
+        // `findsOneWidget` below would have refused a correct sheet. The
+        // `findsOneWidget` stays: it is what turns "the sheet changed shape"
+        // into a named failure instead of a tap on whatever matched first.
         //
         // ⚠️ IT IS `ensureVisible`d FOR THE SAME REASON THE SUBMIT BUTTON IS,
         // and the reason is measured two blocks below: at 360x640 this sheet
         // lays its lower controls out past the bottom of the screen. The
         // dropdown sits BELOW both text fields, so it is in that region.
-        final Finder categoryField = find.byType(
-          DropdownButtonFormField<String>,
-        );
+        final Finder categoryField = find.byKey(E2EKeys.addCategory);
         expect(
           categoryField,
           findsOneWidget,
@@ -1439,43 +1523,44 @@ void main() {
         },
       );
 
+      await dismissCatchUpNudge(tester);
+
       // ⚠️ ASSERTED WHERE IT LIES, NOT AFTER A SCROLL, AND THE DIFFERENCE FROM
       // `app_test.dart` IS DELIBERATE. That suite scrolls before its read-back
       // and is right to — it reads back a row it created at an arbitrary price
       // into a lazy `ListView`. This one must not: the very next thing it does
       // is photograph `01-home`, and a scroll here would put a mid-list frame
-      // on the store listing. It is safe BECAUSE OF WHERE THIS PARTICULAR ROW
-      // LANDS, measured rather than hoped. `SubMath.upcoming` takes the four
-      // soonest, and `kIllustrative.first` carries the smallest renewal offset
-      // of the six (3 days), so it is FIRST in the upcoming block by date
-      // alone: pumped at 360x640 with these six rows its TREE position is
-      // y=507.5, inside the 640 the viewport has.
+      // on the store listing.
       //
-      // ⏱ 2026-09-22 · WAS "every row seeded above renews on the same day
-      // (one monthly cycle from today, the sheet's default), so the stable
-      // sort leaves `kIllustrative.first` FIRST". That was true until the
-      // fourth column; the rows now tie on nothing, and the row is first for a
-      // reason that holds on the server's order too. y=507.5 was measured on
-      // the old seed; the row keeps the same slot, and the number was not
-      // re-measured.
+      // ⏱ 2026-10-03 · IT USED TO ASK FOR `kIllustrative.first`'s NAME, AND
+      // THAT STOPPED BEING ON SCREEN. The old reasoning: the soonest row is
+      // first in the upcoming block, at tree y=507.5 of 640 (measured on the
+      // 2026-09-22 Home). #1130 put the search and sort controls between the
+      // header and the summary card, so at 360x640 the upcoming block now
+      // starts at the fold, and a lazy `ListView` builds nothing past it: run
+      // 37116134381 seeded all six rows (`6 active`, `$93.47` on screen) and
+      // failed here with `Found 0 widgets with text "Video streaming"`. The
+      // question this limb asks is unchanged — did the board round-trip to the
+      // Home the frame photographs — and it is now asked of what that frame
+      // DOES show: the summary card's count, `l10n.activeCount` over the
+      // charging rows, which Home renders from the same provider. WHICH rows
+      // they are is the census right below, by name, on both viewports.
       //
-      // ⚠️ READ THAT AS "NOT SCROLLED OUT OF THE LIST", NOT AS "A FINGER COULD
-      // REACH IT". y=507.5 is a layout coordinate and nothing here has checked
-      // it against the bottom navigation bar, which is drawn over that region.
-      // The assertion is `findsWidgets` — PRESENCE — and presence is the right
-      // question for a row that is about to be PHOTOGRAPHED rather than tapped,
-      // which is why this one carries no `hitTestable()` limb while every
-      // control above it does. Adding one here would be asserting something
-      // the capture does not need and the number does not support.
+      // ⚠️ PRESENCE, NOT REACHABILITY: the pill is photographed, never tapped,
+      // so it carries no `hitTestable()` limb.
+      final AppLocalizations homeText = AppLocalizations.of(
+        tester.element(find.byType(HomeScreen)),
+      );
       expect(
-        find.text(kIllustrative.first[0]),
+        find.text(homeText.activeCount(kIllustrative.length)),
         findsWidgets,
         reason:
             'The illustrative rows did not round-trip to Home, so the capture '
             'would photograph an empty board and call it the product. Every '
             'row seeded above was receipted individually, so reaching this line '
-            'means the sheets closed and the board still does not show them. On '
-            'screen: ${onScreen(tester)}',
+            'means the sheets closed and the summary card the frame shows does '
+            'not count them ("${homeText.activeCount(kIllustrative.length)}" is '
+            'not on screen). On screen: ${onScreen(tester)}',
       );
 
       // ── 🔴 THE BOARD IS EXACTLY THE ILLUSTRATIVE SET, ASSERTED ────────────
@@ -1488,10 +1573,10 @@ void main() {
       // would be published exactly as they were in #854. So the run REFUSES a
       // board it did not mean to photograph, rather than photographing it.
       //
-      // This fires on BOTH viewports, which is the half `kIllustrative.first`
-      // above cannot do: that limb asks whether one name is somewhere on
-      // screen, and `findsWidgets` passes just as happily on a board holding
-      // that name twice. `pass.board` is the board read back AFTER the seed,
+      // This fires on BOTH viewports, which is the half the summary-count limb
+      // above cannot do by itself: that limb asks whether the frame counts the
+      // right NUMBER of rows, and it passes just as happily on six rows that
+      // are not these six. `pass.board` is the board read back AFTER the seed,
       // through the same wait as the census before it.
       final List<Subscription> board = pass.board;
       final List<String> complaints = pass.complaints;
@@ -1560,6 +1645,9 @@ void main() {
     // public listing; see the header.
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(HomeScreen), findsWidgets);
+    // The seeding block answers it on a live drive; a demo drive skips that
+    // block, so it is asked again here (a no-op when it is already down).
+    await dismissCatchUpNudge(tester);
     await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);
     markFrame('01-home');
     recordFold(tester, '01-home');
@@ -1583,6 +1671,101 @@ void main() {
     await tester.tap(find.byIcon(Icons.insights_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
+
+    /// Sets the monthly budget to [amount] ('' clears it) through the app's
+    /// own editor, opened from the Insights budget card, and waits for the
+    /// card to say so. Every control is asked the REACHABILITY question first,
+    /// for the reason the seeding walk gives.
+    Future<void> saveBudgetThroughEditor(String amount, String why) async {
+      final Finder edit = find.byKey(BudgetCard.editButton);
+      await tester.ensureVisible(edit);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(
+        edit.hitTestable(),
+        findsOneWidget,
+        reason:
+            'The budget card\'s edit button cannot be reached ($why). On '
+            'screen: ${onScreen(tester)}',
+      );
+      await tester.tap(edit);
+      final Finder field = find.byKey(BudgetEditor.amountField);
+      expect(
+        await waitFor(tester, field, timeout: const Duration(seconds: 10)),
+        isTrue,
+        reason:
+            'The budget editor did not open ($why). On screen: '
+            '${onScreen(tester)}',
+      );
+      await tester.enterText(field, amount);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      final Finder save = find.byKey(BudgetEditor.saveButton);
+      await tester.ensureVisible(save);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(
+        save.hitTestable(),
+        findsOneWidget,
+        reason:
+            'The budget editor\'s Save cannot be reached ($why), even after '
+            'ensureVisible. On screen: ${onScreen(tester)}',
+      );
+      await tester.tap(save);
+      // `_save` pops the editor on the SUCCESS arm only, so its absence is the
+      // receipt for the PUT, with the same limit the seeding receipt states.
+      expect(
+        await waitGone(
+          tester,
+          find.byType(BudgetEditor),
+          timeout: const Duration(seconds: 20),
+        ),
+        isTrue,
+        reason:
+            'The budget editor is still up 20 s after Save ($why): the write '
+            'failed or had not answered. On screen: ${onScreen(tester)}',
+      );
+      await pumpFor(tester, const Duration(seconds: 2));
+    }
+
+    // ⏱ 2026-10-03 · ONE BUDGET STATE PER FRAME, ON BOTH VIEWPORTS. The budget
+    // is the ACCOUNT's (PUT /v1/budget), and the two drives share one account,
+    // so whatever the phone drive leaves is what the tablet drive arrives to.
+    // Frame 03 shows Insights as a new user first sees it — no budget, the
+    // card's "Set a budget" — so a budget a previous drive left is cleared
+    // first, through the same editor (an empty amount is "no budget").
+    if (find
+        .byKey(BudgetCard.meter, skipOffstage: false)
+        .evaluate()
+        .isNotEmpty) {
+      await saveBudgetThroughEditor(
+        '',
+        'clearing the previous drive\'s budget',
+      );
+      expect(
+        find.byKey(BudgetCard.meter, skipOffstage: false),
+        findsNothing,
+        reason:
+            'The budget meter is still drawn after the budget was cleared, so '
+            '03-insights would not show the no-budget state the phone frame '
+            'shows. On screen: ${onScreen(tester)}',
+      );
+    }
+    // The editor walk scrolls the page to reach the card's edit button, and
+    // frame 03 is the page from its top, as it opens. Back to offset 0 the way
+    // a scroll gets there, without a drag that could overscroll into a pull.
+    final ScrollableState insightsPage = tester
+        .stateList<ScrollableState>(
+          find.descendant(
+            of: find.byType(InsightsScreen),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .firstWhere(
+          (ScrollableState s) => s.axisDirection == AxisDirection.down,
+        );
+    if (insightsPage.position.pixels != 0) {
+      insightsPage.position.jumpTo(0);
+      await pumpFor(tester, const Duration(seconds: 1));
+    }
+    expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(
       take: shutter,
       frame: '03-insights',
@@ -1592,13 +1775,40 @@ void main() {
     recordFold(tester, '03-insights');
 
     // ⏱ ST-D3 D3-3: there is no Budget tab. The budget lives on Insights
-    // (ADR 077 §A), so frame 04 is the budget EDITOR opened from the Insights
-    // budget card — the one surface that sets a budget, as the app draws it.
-    // The frame keeps its name: the listing's order and file names do not move.
-    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
-    await tester.tap(find.byKey(BudgetCard.editButton));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.byType(BudgetEditor), findsWidgets);
+    // (ADR 077 §A).
+    //
+    // ⏱ 2026-10-03 · FRAME 04 IS THE BUDGET IN USE, NOT ITS EDITOR. It used to
+    // photograph the editor sheet, and run 37117009797 — the first drive to
+    // reach it — failed both viewports on the fold check: at 360x640 the sheet
+    // is taller than the screen, so its Save button was cut by the frame edge,
+    // and at 900x1600 the bottom of the frame was the modal scrim. So the drive
+    // now SETS a budget through that editor, the way a user does, and frame 04
+    // is the card it produces — the meter, what is left, the category bars
+    // below it — scrolled to the top of the page where the page is taller
+    // than the window. The frame keeps its name: the listing's order, the site
+    // copy's `from` (tooling/site-shots.json) and the file names do not move.
+    await saveBudgetThroughEditor(kIllustrativeBudget, 'setting the budget');
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(BudgetCard.meter, skipOffstage: false),
+        timeout: const Duration(seconds: 10),
+      ),
+      isTrue,
+      reason:
+          'A budget of $kIllustrativeBudget was saved and the Insights budget '
+          'card drew no meter, so 04-budget would photograph "Set a budget" '
+          'again. On screen: ${onScreen(tester)}',
+    );
+    // The card to the top of the window, a little below its edge, where the
+    // page is taller than the window (phone); a no-op where it is not (tablet:
+    // the whole page fits, and the frame is the page with the budget in use).
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(const Key('insights.budget'))),
+      alignment: 0.03,
+    );
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(take: shutter, frame: '04-budget', forbidden: forbidden);
     markFrame('04-budget');
     recordFold(tester, '04-budget');

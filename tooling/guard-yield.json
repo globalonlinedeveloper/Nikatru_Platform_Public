@@ -4033,6 +4033,11 @@
       "firstSeen": "2026-09-25",
       "evidence": []
     },
+    "tooling/sites/derive-site-shots.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/sites/gen-auth-mail.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",

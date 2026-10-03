@@ -254,6 +254,29 @@ jobs:
       - name: Every derived set was derived from the files in this tree
         run: node tooling/ci/assert-derived-sets.mjs
 
+      # why: THE SITE'S COPIES ARE DERIVED FROM THIS CAPTURE TOO (2026-10-03,
+      # O-CAPTURE-LEAVES-DERIVED-SETS-STALE). tooling/site-shots.json records each
+      # nikatru.com product screenshot as a WebP cut of one Play phone frame, and
+      # check-site-integrity.mjs (ci.yml `sites`) fails a copy whose frame moved.
+      # The cut needs ImageMagick, which this runner can install and the laptop
+      # cannot, so it is made HERE and travels with the frames: the paths go into
+      # both uploads below and the pull request. No `if:`, like the finish step.
+      - name: Re-derive the site copies of the Play phone frames (tooling/site-shots.json)
+        id: site
+        run: |
+          set -euo pipefail
+          if ! convert -list format 2>/dev/null | grep -qE '^ *WEBP'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq imagemagick libmagickcore-6.q16-7-extra
+          fi
+          convert -version | head -1
+          node tooling/sites/derive-site-shots.mjs > "${RUNNER_TEMP}/site-shots.txt"
+          cat "${RUNNER_TEMP}/site-shots.txt"
+          echo "paths=$(tr '\n' ' ' < "${RUNNER_TEMP}/site-shots.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Every site copy is derived from the frame on disk
+        run: node tooling/sites/derive-site-shots.mjs --check
+
       # why: A FAILED RUN THREW ITS PIXELS AWAY, TWICE. Runs 35483690951 and
       # 35488534460 both captured all four phone frames, failed afterwards on an
       # exception, and uploaded nothing — the upload below only runs on success,
@@ -303,6 +326,9 @@ jobs:
           path: |
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
+            sites/nikatru/apps/shots/
+            sites/nikatru/apps/*.html
+            tooling/site-shots.json
           if-no-files-found: error
 
       # why: A DRY RUN'S SET UNDER ITS OWN NAME, so nothing that looks for
@@ -316,6 +342,9 @@ jobs:
           path: |
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
+            sites/nikatru/apps/shots/
+            sites/nikatru/apps/*.html
+            tooling/site-shots.json
           if-no-files-found: error
 
       # why: PROPOSED, never pushed. Screenshots are a sworn store filing; a machine may
@@ -331,7 +360,7 @@ jobs:
           # proposing one device type leaves the listing one type short, the state
           # assert-play-device-coverage.mjs fails the submission lane for), then
           # every derived set the finish step printed.
-          SHOTS: apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet ${{ steps.finish.outputs.paths }}
+          SHOTS: apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet ${{ steps.finish.outputs.paths }} ${{ steps.site.outputs.paths }}
         run: |
           set -euo pipefail
           BRANCH="chore/play-screenshots-${{ github.run_id }}"

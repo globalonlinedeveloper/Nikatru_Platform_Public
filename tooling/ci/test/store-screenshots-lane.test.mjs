@@ -693,9 +693,34 @@ describe('store_screenshots_test.dart seeds a category per subscription', () => 
   });
 
   test('the suite actually chooses the category in the sheet, with a reachability limb', () => {
-    assert.match(dart, /DropdownButtonFormField<String>/);
+    // ⏱ 2026-10-03: by KEY, never by type. The sheet builds a second
+    // DropdownButtonFormField<String> (the currency, ST-E2), so a type finder
+    // matches two fields and its findsOneWidget refuses a correct sheet.
+    assert.match(dart, /final Finder categoryField = find\.byKey\(E2EKeys\.addCategory\);/);
+    assert.doesNotMatch(dart, /find\.byType\(\s*DropdownButtonFormField<String>/);
     assert.match(dart, /find\.text\(row\[2\]\)\.hitTestable\(\)/);
     assert.match(dart, /ensureVisible\(categoryField\)/);
+    // …and the key the suite finds is the one the sheet gives the category dropdown.
+    const sheet = stripSourceComments(readFileSync(
+      join(REPO, 'apps', 'subscriptiontracker', 'lib', 'features', 'add', 'add_subscription_sheet.dart'), 'utf8',
+    ), '.dart');
+    assert.match(sheet, /Widget _categoryField\([^)]*\)\s*\{[\s\S]*?_dropdown<String>\(\s*key: E2EKeys\.addCategory,/);
+  });
+
+  test('the seeding walk takes the pick step\'s "Add by hand" before it types (#1130)', () => {
+    // Runs 36955800549, 36955811141 and 36955814987 reached Home and stopped
+    // with "The add sheet did not open": since #1130 the FAB opens the
+    // catalogue pick step, and `addName` is one tap further.
+    const at = dart.indexOf('Future<void> addThroughSheet(List<String> row) async {');
+    assert.ok(at !== -1, 'addThroughSheet is gone');
+    const body = dart.slice(at);
+    const fab = body.indexOf('await tester.tap(find.byKey(E2EKeys.fabAdd));');
+    const byHand = body.indexOf('await tester.tap(byHand);');
+    const typed = body.indexOf('await tester.enterText(find.byKey(E2EKeys.addName), row[0]);');
+    assert.ok(fab !== -1 && byHand !== -1 && typed !== -1, 'the FAB, Add by hand and the name entry are not all in addThroughSheet');
+    assert.ok(fab < byHand && byHand < typed, 'addThroughSheet does not go FAB -> Add by hand -> type the name, in that order');
+    assert.match(body, /final Finder byHand = find\.byKey\(E2EKeys\.addByHand\);/);
+    assert.match(body, /byHand\.hitTestable\(\),\s*findsOneWidget/);
   });
 });
 
@@ -1670,9 +1695,32 @@ describe('store-screenshots.yml: every capture job finishes its capture before i
     assert.deepEqual(real.census, JOBS);
   });
 
+  test('⏱ 2026-10-03 the Play job re-derives the site copies (tooling/site-shots.json) and carries them in both uploads and the pull request', () => {
+    // check-site-integrity.mjs fails a site copy whose Play frame moved, so a Play
+    // re-capture that does not bring the copies with it turns ci.yml `sites` red.
+    const steps = workflowSteps(lane.jobs.get('capture'));
+    const site = steps.filter((s) => runs(s, /(?:^|\s)node\s+tooling\/sites\/derive-site-shots\.mjs(?!\s+--check)(?=\s|$)/));
+    assert.equal(site.length, 1, 'the Play job has no single step that re-derives the site copies');
+    assert.equal(site[0].id, 'site');
+    assert.equal(site[0].cond, null, 'the site derivation is gated; a dry run must carry the copies too');
+    const check = steps.findIndex((s) => runs(s, /(?:^|\s)node\s+tooling\/sites\/derive-site-shots\.mjs\s+--check(?=\s|$)/));
+    const derived = steps.findIndex((s) => runs(s, DERIVED_CALL));
+    const pr = steps.findIndex((s) => s.run && shellSegments(s.run.text).some((x) => PR_WRITE.test(x)));
+    assert.ok(derived < site[0].index && site[0].index < check && check < pr, 'not: derived-sets check, then the site derivation, then its --check, then the pull request');
+    assert.match(steps[pr].env.get('SHOTS')?.value ?? '', /\$\{\{ steps\.site\.outputs\.paths \}\}/);
+    const uploads = steps.filter((s) => s.uses && UPLOAD_ACTION.test(s.uses) && !NON_SUCCESS_IF.test(s.cond ?? ''));
+    assert.equal(uploads.length, 2);
+    for (const u of uploads) {
+      const p = u.with.get('path')?.value ?? '';
+      for (const want of ['sites/nikatru/apps/shots/', 'sites/nikatru/apps/*.html', 'tooling/site-shots.json']) {
+        assert.ok(p.includes(want), `the upload at :${u.first} does not carry ${want}`);
+      }
+    }
+  });
+
   test('🔴 the Play pull request without the finish step\'s paths in SHOTS is named', () => {
     const pr = stepNamed('capture', /^Propose the set/);
-    const at = lineOf(/^ {10}SHOTS: .*\$\{\{ steps\.finish\.outputs\.paths \}\}$/, pr.first);
+    const at = lineOf(/^ {10}SHOTS: .*\$\{\{ steps\.finish\.outputs\.paths \}\}( \$\{\{ steps\.site\.outputs\.paths \}\})?$/, pr.first);
     assert.ok(at > pr.first && at <= pr.last, 'the Play pull request carries no SHOTS line with the finish output to remove');
     const lines = yml.split('\n');
     lines[at - 1] = lines[at - 1].replace(' ${{ steps.finish.outputs.paths }}', '');
