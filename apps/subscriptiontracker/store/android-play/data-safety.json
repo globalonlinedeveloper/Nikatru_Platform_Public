@@ -101,6 +101,11 @@
       "fetched": "2026-08-04",
       "quote": "User Data policy: 'All developers must complete a clear and accurate Data safety section for every app detailing collection, use, and sharing of user data. The developer is responsible for the accuracy of the label'; the section 'must be consistent with the disclosures made in the app's privacy policy' and must include data shared by integrated SDKs."
     },
+    "appAccountDefinition": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/13327111",
+      "fetched": "2026-10-03",
+      "quote": "'An app account is a unique user identity that developers provide as a user-facing feature to serve the user across applications and/or devices (can often include use of usernames, email addresses, and passwords). App accounts provide a mechanism for a user to authenticate and generally include a mechanism to verify an identity, such as password, phone number OTP (one-time password), 2FA (two-factor authentication), biometric, SSO (single sign-on), and so on.' And: 'Your app supports account creation within the app if a user can complete creating an app account directly in the app or if the app directs the user to an app account creation flow outside of the app.'"
+    },
     "accountDeletionRule": {
       "url": "https://support.google.com/googleplay/android-developer/answer/13327111",
       "fetched": "2026-08-04",
@@ -1627,6 +1632,92 @@
       "answer": false,
       "basis": "No third-party MASVS assessment has been commissioned. The badge is optional and claiming it without a report would be a false statement to Google.",
       "humanOwned": true
+    }
+  },
+  "accounts": {
+    "_why": [
+      "🔴 PLAY'S ACCOUNT QUESTIONS, ANSWERED FROM THE CODE THAT SHIPS — PSL_SUPPORTED_ACCOUNT_CREATION_METHODS,",
+      "PSL_ACM_SPECIFY, PSL_HAS_OUTSIDE_APP_ACCOUNTS and its two follow-ups. Until 2026-10-03 this file did not",
+      "answer them, and tooling/release/play-data-safety.mjs left them blank as 'NOT declared' while printing a",
+      "deletion URL — for an app that lets users create an account, which is the one case Play requires them.",
+      "",
+      "Every method is recorded PER POSTURE, like every answer above, and `null` keeps its meaning here: nobody",
+      "derived it, and the renderer refuses to send it. tooling/ci/assert-play-declarations.mjs (limb 8c)",
+      "re-derives the two methods the code can decide — email + password, and OAuth — from the app's own Dart",
+      "for the `backend-live` column, so a sign-up door added or removed without this block moving fails the build.",
+      "",
+      "THE MAPPING TO PLAY'S RESPONSE IDS IS ONE TABLE: PLAY_ID_MAP.accounts in play-data-safety.mjs. Play's form",
+      "offers 'username and password', 'username and other authentication', 'username, password and other",
+      "authentication' (a second factor beside the password), 'OAuth', 'other' and 'none'."
+    ],
+    "citedBy": "sources.appAccountDefinition",
+    "creationMethods": {
+      "userIdPassword": {
+        "demo": false,
+        "backend-live": true,
+        "evidence": [
+          "apps/subscriptiontracker/lib/state/providers/auth.dart:138-195 (AppConfig.isBackendLive ? SupabaseAuthRepository(…) : InMemoryAuthRepository())",
+          "apps/subscriptiontracker/lib/features/auth/login_screen.dart:206 (await auth.signUpWithEmail(email:, password:, captchaToken:))",
+          "packages/auth_supabase/lib/src/supabase_auth_repository.dart:509 (_credentials.signUp(email:, password:, …) — a GoTrue account, confirmed by the confirm-signup mail)"
+        ],
+        "basis": "The sign-up arm of the login screen creates an account from an email address and a password, against the live identity server. The email is the user ID; the confirmation mail proves the address and is not a second factor at sign-in."
+      },
+      "userIdOtherAuth": {
+        "demo": false,
+        "backend-live": false,
+        "evidence": [
+          "packages/auth_supabase/lib/src/supabase_auth_repository.dart:1089 (signInWithOtp(…, shouldCreateUser: false, …))",
+          "packages/auth_supabase/lib/src/supabase_auth_repository.dart:1074 (emailCodeAvailable => _native == null — no code door at all where the native credential route is wired, which is Android)"
+        ],
+        "basis": "The emailed sign-in code signs an EXISTING account in and never makes one (`shouldCreateUser: false`; GoTrue refuses an address with no account and the refusal is swallowed so the send is no account oracle). Password reset and the magic-link mail likewise act on an account that already exists. No account is created with an email and no password."
+      },
+      "userIdPasswordOtherAuth": {
+        "demo": false,
+        "backend-live": false,
+        "evidence": [
+          "no `mfa` / `totp` / `challengeAndVerify` call anywhere under apps/subscriptiontracker/lib, packages/auth_supabase/lib, packages/core/lib or packages/chassis_screens/lib (grep -rnw, 2026-10-03)"
+        ],
+        "basis": "No second factor is enrolled or challenged at sign-up or sign-in; the password is the only credential the email arm asks for."
+      },
+      "oauth": {
+        "demo": false,
+        "backend-live": true,
+        "evidence": [
+          "packages/auth_supabase/lib/src/auth_providers.dart:136-138 (AuthProviders.configured = AuthProviders(apple: true, google: true) — kept equal to the live server by tooling/ops/verify-auth-providers.mjs, in both directions)",
+          "apps/subscriptiontracker/lib/state/providers/auth.dart:881-882 (kAuthCallbackTargets holds TargetPlatform.android, so AuthCapabilities.oauthRedirect is true on the Play artefact: packages/auth_supabase/lib/src/auth_capabilities.dart:113-115)",
+          "apps/subscriptiontracker/lib/features/auth/login_screen.dart:776 (if (caps.oauthRedirect && providers.any) — the 'Continue with Apple' / 'Continue with Google' buttons, :807 and :816)",
+          "apps/subscriptiontracker/lib/features/auth/login_screen.dart:299 (\"the account may exist the instant the redirect lands\" — an OAuth sign-in is an account creation, which is why the terms are recorded before the provider is called)"
+        ],
+        "basis": "Sign in with Apple and Sign in with Google are both ENABLED in the shipped posture: the server accepts both providers (Apple since 2026-09-16, Google since 2026-09-26), the Android build registers its auth callback, and the login screen draws both buttons. A first sign-in with either creates the account."
+      },
+      "other": {
+        "demo": false,
+        "backend-live": false,
+        "evidence": [],
+        "basis": "Every door that can create an account is one of the two above. No phone number, SIM binding or device-only identity creates an account."
+      },
+      "none": {
+        "demo": true,
+        "backend-live": false,
+        "evidence": [
+          "apps/subscriptiontracker/lib/state/providers/auth.dart:195 (InMemoryAuthRepository() when !AppConfig.isBackendLive)",
+          "packages/auth_supabase/lib/src/in_memory_auth_repository.dart:195 (signUpWithEmail is signInWithEmail: any credentials, held in memory, never transmitted, gone at restart)"
+        ],
+        "basis": "Under `demo` there is no identity server: the in-memory repository hands out a throwaway identity that exists only in the running process, which `buildPosture.postures.demo` already describes as 'no account'. Under `backend-live` accounts are created, so `none` is false."
+      }
+    },
+    "otherDescription": null,
+    "_otherDescription_why": "PSL_ACM_SPECIFY describes an 'other' method. `creationMethods.other` is false in every posture, so the question does not apply and is left blank; it is null, not a sentence, because there is nothing to describe.",
+    "outsideAppAccounts": {
+      "demo": false,
+      "backend-live": false,
+      "types": [],
+      "description": null,
+      "evidence": [
+        "apps/subscriptiontracker/lib/features/auth/login_screen.dart:206, :314, :316 (the only three ways in that can make an account: email sign-up, Google, Apple)",
+        "ls apps/ → subscriptiontracker only (2026-10-03): the shared identity project serves no other app yet"
+      ],
+      "basis": "Every account that can sign in was created through this app's own sign-up or its Apple/Google door — the OAuth door is a creation method above, not an outside account. There is no SIM binding, carrier or service-subscription identity and no employment or enterprise directory. ⚠️ THE ONE THING THAT WOULD MOVE THIS: the portfolio's identity project is SHARED (apps/subscriptiontracker/lib/state/providers/auth.dart, the AuthRedirects note), so the day a second app ships against it, an account made in that app signs in here, and this answer must be re-asked as 'Other'."
     }
   },
   "inventory": {

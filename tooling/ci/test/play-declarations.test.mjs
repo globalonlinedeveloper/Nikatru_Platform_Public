@@ -2352,3 +2352,144 @@ describe('assert-play-declarations — limb M: the merged set against the .aab t
     assert.match(out(r), /unknown argument\(s\) --merged-dumps/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · limb 8c — THE ACCOUNT-CREATION ANSWERS, RE-DERIVED FROM THE APP.
+// The base fixture has no account surface (its lib carries no AuthRepository), so
+// every case here opts into one. Real-tree mutation run, same day: 6/6 caught —
+// oauth flipped false, both providers off, android dropped from the callback set,
+// the block renamed away, a null method, the sign-up call renamed. And (r2) the
+// login_screen.dart button gate forced to `if (false && caps.oauthRedirect && …)`: exit 1.
+describe('assert-play-declarations — limb 8c, the account-creation answers', () => {
+  const ACCOUNT_DART = `abstract class AuthRepository {}
+const Set<TargetPlatform> kTargets = <TargetPlatform>{
+  TargetPlatform.android,
+  TargetPlatform.iOS,
+};
+final caps = AuthCapabilities.current(registeredCallbacks: kTargets);
+Future<void> signUp(a) => a.signUpWithEmail(email: 'e', password: 'p');
+Future<void> signIn(a) => a.signInWithEmail(email: 'e', password: 'p');
+Future<void> apple(a) => a.signInWithApple();
+List<Object> buttons(caps, providers) => [if (caps.oauthRedirect && providers.any) 'apple'];
+`;
+  const PROVIDERS = (apple) => `class AuthProviders {
+  // static const AuthProviders configured = AuthProviders(apple: false, google: false); — a COMMENT, not the constant
+  static const AuthProviders configured = AuthProviders(
+    apple: ${apple},
+    google: false,
+  );
+}
+`;
+  const method = (demo, live) => ({ demo, 'backend-live': live, evidence: [], basis: 'derived in the fixture' });
+  const ACCOUNTS = () => ({
+    creationMethods: {
+      userIdPassword: method(false, true),
+      userIdOtherAuth: method(false, false),
+      userIdPasswordOtherAuth: method(false, false),
+      oauth: method(false, true),
+      other: method(false, false),
+      none: method(true, false),
+    },
+    otherDescription: null,
+    outsideAppAccounts: { demo: false, 'backend-live': false, types: [], description: null, basis: 'no outside accounts' },
+  });
+  const withAccounts = ({ ds, files } = {}) =>
+    makeRoot({
+      ds: (x) => {
+        x.accounts = ACCOUNTS();
+        if (ds) ds(x);
+      },
+      files: (f) => {
+        f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART;
+        f['packages/auth_supabase/lib/src/auth_providers.dart'] = PROVIDERS(true);
+        if (files) files(f);
+      },
+    });
+
+  test('green control: an app with accounts and answers matching its code passes, and says what it derived', () => {
+    const r = run(withAccounts());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /accounts — "backend-live" methods userIdPassword, oauth; email\+password true and OAuth true re-derived/);
+  });
+
+  test('an app with NO account surface owes no answers, and says so', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /shows no account surface/);
+  });
+
+  test('🔴 FAILS when an app with accounts declares no account-creation methods', () => {
+    const r = run(withAccounts({ ds: (x) => { delete x.accounts; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /lets users create an account .* declares no `accounts\.creationMethods`/);
+  });
+
+  test('FAILS on a null method, naming the posture', () => {
+    const r = run(withAccounts({ ds: (x) => { x.accounts.creationMethods.oauth['backend-live'] = null; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accounts\.creationMethods\.oauth\["backend-live"\] is null/);
+  });
+
+  test('FAILS when a method Play offers is missing from the block', () => {
+    const r = run(withAccounts({ ds: (x) => { delete x.accounts.creationMethods.other; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /has no `other` answer/);
+  });
+
+  test('🔴 FAILS when "backend-live" answers none for an app with accounts', () => {
+    const r = run(withAccounts({ ds: (x) => { for (const m of Object.values(x.accounts.creationMethods)) m['backend-live'] = false; x.accounts.creationMethods.none['backend-live'] = true; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /answers `none` for "backend-live"/);
+  });
+
+  test('🔴 FAILS when email + password is denied and the app calls signUpWithEmail(', () => {
+    const r = run(withAccounts({ ds: (x) => { x.accounts.creationMethods.userIdPassword['backend-live'] = false; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /userIdPassword\["backend-live"\] is false and apps\/subscriptiontracker\/lib calls signUpWithEmail\(/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and the server has the provider OFF (a commented constant is not read)', () => {
+    const r = run(withAccounts({ files: (f) => { f['packages/auth_supabase/lib/src/auth_providers.dart'] = PROVIDERS(false); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /oauth\["backend-live"\] is true and the code does not offer an OAuth sign-in on Android/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and Android registers no callback', () => {
+    const r = run(withAccounts({ files: (f) => { f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace('  TargetPlatform.android,\n', ''); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not offer an OAuth sign-in on Android/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and the button gate is forced off (login_screen.dart\'s `if (caps.oauthRedirect && providers.any)`)', () => {
+    const r = run(withAccounts({ files: (f) => { f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace('if (caps.oauthRedirect', 'if (false && caps.oauthRedirect'); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not offer an OAuth sign-in on Android .*buttons drawn under an oauthRedirect gate false/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and the gate lives only in a file that calls no door', () => {
+    const r = run(withAccounts({ files: (f) => {
+      f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace(/^List<Object> buttons.*\n/m, '');
+      f['apps/subscriptiontracker/lib/sheet.dart'] = "List<Object> rows(caps, providers) => [if (caps.oauthRedirect && providers.apple) 'apple'];\n";
+    } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /buttons drawn under an oauthRedirect gate false/);
+  });
+
+  test('🔴 FAILS when OAuth is denied and the code offers it', () => {
+    const r = run(withAccounts({ ds: (x) => { x.accounts.creationMethods.oauth['backend-live'] = false; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /oauth\["backend-live"\] is false and the code OFFERS an OAuth sign-in on Android/);
+  });
+
+  test('an OAuth door with no readable AuthProviders.configured is COVERAGE LOST', () => {
+    const r = run(withAccounts({ files: (f) => { f['packages/auth_supabase/lib/src/auth_providers.dart'] = null; } }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /yields no `AuthProviders\.configured` with both flags/);
+  });
+
+  test('FAILS on a null outside-app answer', () => {
+    const r = run(withAccounts({ ds: (x) => { x.accounts.outsideAppAccounts.demo = null; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /accounts\.outsideAppAccounts\["demo"\] is null/);
+  });
+});

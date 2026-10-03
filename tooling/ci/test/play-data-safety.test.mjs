@@ -97,8 +97,16 @@ describe('render — the real data-safety.json', () => {
     assert.equal(v('PSL_DATA_USAGE_RESPONSES:PSL_EMAIL:DATA_USAGE_USER_CONTROL', 'PSL_DATA_USAGE_USER_CONTROL_REQUIRED'), 'true');
     assert.equal(v('PSL_ACCOUNT_DELETION_URL'), ds.dataSecurity.deletionRequestSupported.webDeletionUrl);
     assert.equal(v('PSL_SUPPORT_DATA_DELETION_BY_USER', 'DATA_DELETION_YES'), 'true');
+    // "Delete data URL" is for deleting data while KEEPING the account; the product offers no such
+    // path, so the row stays blank although the deletion answer is YES.
+    assert.equal(v('PSL_DATA_DELETION_URL'), '');
+    // Accounts: exactly the methods the sworn file sets true for this posture, and nothing else.
+    const methods = Object.entries(PLAY_ID_MAP.accounts.methods).filter(([k]) => ds.accounts.creationMethods[k][LIVE]).map(([, id]) => id);
+    assert.ok(methods.length > 0 && !methods.includes('PSL_ACM_NONE'), methods.join(', '));
+    assert.deepEqual(rows.filter((r) => r.question === 'PSL_SUPPORTED_ACCOUNT_CREATION_METHODS' && r.value === 'true').map((r) => r.response), methods);
+    assert.equal(v('PSL_HAS_OUTSIDE_APP_ACCOUNTS'), String(ds.accounts.outsideAppAccounts[LIVE]));
     // Not declared by the sworn file → blank, never guessed.
-    for (const q of ['PSL_SUPPORTED_ACCOUNT_CREATION_METHODS', 'PSL_HAS_OUTSIDE_APP_ACCOUNTS', 'PSL_UPI_BADGE_OPT_IN', 'PSL_DATA_DELETION_URL']) {
+    for (const q of ['PSL_UPI_BADGE_OPT_IN']) {
       assert.ok(rows.filter((r) => r.question === q).every((r) => r.value === ''), q);
     }
     // The Families question is only for apps that target children; `false` is rendered as blank.
@@ -173,6 +181,47 @@ describe('render — refusals (red) beside their green control', () => {
   test('a posture the file does not declare is refused', () => {
     assert.match(refusal(() => render(realDs(), 'staging')), /posture "staging" is not one of/);
   });
+  test('a null account-creation method is refused, and named', () => {
+    const ds = realDs();
+    ds.accounts.creationMethods.oauth[LIVE] = null;
+    assert.match(refusal(() => render(ds, LIVE)), new RegExp(`accounts\\.creationMethods\\.oauth\\["${LIVE}"\\] is null`));
+  });
+  test('no `accounts` block at all is refused — the methods question is never left blank', () => {
+    const ds = realDs();
+    delete ds.accounts;
+    assert.match(refusal(() => render(ds, LIVE)), /no `accounts\.creationMethods`/);
+  });
+  test('NONE beside another method is refused', () => {
+    const ds = realDs();
+    ds.accounts.creationMethods.none[LIVE] = true;
+    assert.match(refusal(() => render(ds, LIVE)), /chooses PSL_ACM_NONE beside 2 method/);
+  });
+  test('an `other` method needs its description; with one it renders PSL_ACM_SPECIFY', () => {
+    const ds = realDs();
+    ds.accounts.creationMethods.other[LIVE] = true;
+    assert.match(refusal(() => render(ds, LIVE)), /accounts\.otherDescription is empty/);
+    ds.accounts.otherDescription = 'a described method';
+    assert.equal(render(ds, LIVE).rows.find((r) => r.question === 'PSL_ACM_SPECIFY').value, 'a described method');
+  });
+  test('outside-app accounts: true needs its types, false refuses them; green renders the type', () => {
+    const ds = realDs();
+    ds.accounts.outsideAppAccounts[LIVE] = true;
+    assert.match(refusal(() => render(ds, LIVE)), /is true and names no `types`/);
+    ds.accounts.outsideAppAccounts.types = ['employment-or-enterprise'];
+    const { rows } = render(ds, LIVE);
+    assert.equal(rows.find((r) => r.response === 'PSL_LOGIN_THROUGH_EMPLOYMENT_OR_ENTERPRISE_ACCOUNT').value, 'true');
+    ds.accounts.outsideAppAccounts[LIVE] = false;
+    assert.match(refusal(() => render(ds, LIVE)), /is false and names `types`/);
+  });
+  test('the account-deletion page fills PSL_ACCOUNT_DELETION_URL, never the data-only row, whatever the deletion answer', () => {
+    for (const answer of [true, false]) {
+      const ds = realDs();
+      ds.dataSecurity.deletionRequestSupported.answer = answer;
+      const { rows } = render(ds, LIVE);
+      assert.equal(rows.find((r) => r.question === 'PSL_DATA_DELETION_URL').value, '', String(answer));
+      assert.equal(rows.find((r) => r.question === 'PSL_ACCOUNT_DELETION_URL').value, ds.dataSecurity.deletionRequestSupported.webDeletionUrl, String(answer));
+    }
+  });
   test('a non-https deletion URL is refused', () => {
     const ds = realDs();
     ds.dataSecurity.deletionRequestSupported.webDeletionUrl = 'http://nikatru.com/delete-account';
@@ -190,6 +239,39 @@ describe('validate — the hard checks over a rendered row set', () => {
     const rs = rows();
     rs.push({ question: 'PSL_MADE_UP', response: '', requirement: 'OPTIONAL', label: '', value: 'true' });
     assert.match(validate(rs).join('\n'), /PSL_MADE_UP.*not in Play's template/);
+  });
+  test('an app with accounts and NO account-creation method chosen is refused', () => {
+    const rows = render(realDs(), LIVE).rows.map((r) => (r.question === 'PSL_SUPPORTED_ACCOUNT_CREATION_METHODS' ? { ...r, value: '' } : r));
+    assert.match(validate(rows).join('\n'), /PSL_SUPPORTED_ACCOUNT_CREATION_METHODS has no method chosen/);
+  });
+  test('account-creation methods with the account-deletion link blank are refused', () => {
+    const rows = render(realDs(), LIVE).rows.map((r) => (r.question === 'PSL_ACCOUNT_DELETION_URL' ? { ...r, value: '' } : r));
+    assert.match(validate(rows).join('\n'), /says users can create an account and PSL_ACCOUNT_DELETION_URL is blank/);
+  });
+  test('the account-deletion page in the data-only PSL_DATA_DELETION_URL row is refused; a distinct data-only link is accepted', () => {
+    const rs = rows();
+    at(rs, 'PSL_DATA_DELETION_URL').value = at(rs, 'PSL_ACCOUNT_DELETION_URL').value;
+    assert.match(validate(rs).join('\n'), /PSL_DATA_DELETION_URL is the account-deletion page/);
+    at(rs, 'PSL_DATA_DELETION_URL').value = 'https://example.com/delete-some-data';
+    assert.deepEqual(validate(rs), []);
+  });
+  test('PSL_ACM_SPECIFY is refused without PSL_ACM_OTHER, and PSL_ACM_OTHER without it', () => {
+    const rs = rows();
+    at(rs, 'PSL_ACM_SPECIFY').value = 'a described method';
+    assert.match(validate(rs).join('\n'), /PSL_ACM_SPECIFY must be filled exactly when PSL_ACM_OTHER is chosen/);
+    at(rs, 'PSL_ACM_SPECIFY').value = '';
+    at(rs, 'PSL_SUPPORTED_ACCOUNT_CREATION_METHODS', 'PSL_ACM_OTHER').value = 'true';
+    assert.match(validate(rs).join('\n'), /PSL_ACM_SPECIFY must be filled exactly when PSL_ACM_OTHER is chosen/);
+    at(rs, 'PSL_ACM_SPECIFY').value = 'a described method';
+    assert.deepEqual(validate(rs), []);
+  });
+  test('an outside-app account type is refused while PSL_HAS_OUTSIDE_APP_ACCOUNTS is not true; with it true it is accepted', () => {
+    const rs = rows();
+    assert.equal(at(rs, 'PSL_HAS_OUTSIDE_APP_ACCOUNTS').value, 'false');
+    at(rs, 'PSL_OUTSIDE_APP_ACCOUNT_TYPES', 'PSL_LOGIN_THROUGH_EMPLOYMENT_OR_ENTERPRISE_ACCOUNT').value = 'true';
+    assert.match(validate(rs).join('\n'), /PSL_OUTSIDE_APP_ACCOUNT_TYPES is answered and PSL_HAS_OUTSIDE_APP_ACCOUNTS is not true/);
+    at(rs, 'PSL_HAS_OUTSIDE_APP_ACCOUNTS').value = 'true';
+    assert.deepEqual(validate(rs), []);
   });
   test('a REQUIRED question left blank is refused', () => {
     const rs = rows();
