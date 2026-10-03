@@ -7,9 +7,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { laptopState, parseBeat, nextBeat, stateLine, writeBeat, ghApi, readBeatApi, readBeatGit, isBranchOrTag, REF_PATH, STALE_MIN, STATE_EXIT, HB } from '../../autopilot/heartbeat.mjs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { laptopState, parseBeat, nextBeat, stateLine, writeBeat, ghApi, readBeatApi, readBeatGit, isBranchOrTag, assertBeatRef, REF_PATH, STALE_MIN, STATE_EXIT, HB } from '../../autopilot/heartbeat.mjs';
 import { isMain, samePath, ghSpawnSpec, redact } from '../../autopilot/cli.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -184,7 +186,13 @@ describe('the reader over the contents API', () => {
     const anon = await readBeatApi({ repo: 'o/r', fetchImpl: async (url, init) => (url.includes('/git/ref/') ? { ok: true, json: async () => ({ object: { sha: 'd'.repeat(40) } }) } : { ok: true, text: async () => String(init.headers.authorization) }) });
     assert.equal(anon.text, 'undefined', 'no token → no authorization header');
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => ({ ok: false, status: 404 }) })).text, null);
-    assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => ({ ok: true, json: async () => ({ object: { sha: '../x' } }) }) })).text, null, 'a ref that names no sha is no beat');
+    // A ref that names no sha is no beat, and no contents URL is built from it: the fake can
+    // answer `text()`, so only the SHA_SHAPE refusal stops the second request.
+    const calls = [];
+    const noSha = await readBeatApi({ repo: 'o/r', fetchImpl: async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ object: { sha: '../x' } }), text: async () => JSON.stringify(beat(1)) }; } });
+    assert.equal(noSha.text, null, 'a ref that names no sha is no beat');
+    assert.match(noSha.why, /does not name a commit sha/);
+    assert.equal(calls.length, 1, `one request (the ref), no contents URL: ${calls.join(' | ')}`);
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => { throw new Error('ECONNRESET'); } })).text, null);
   });
   test('🔴 a repo outside owner/name never reaches a request (CodeQL 582)', async () => {
@@ -192,6 +200,32 @@ describe('the reader over the contents API', () => {
     const r = await readBeatApi({ repo: 'evil.example/x/y', fetchImpl: async () => { called = true; return { ok: true, text: async () => '' }; } });
     assert.equal(r.text, null);
     assert.equal(called, false);
+  });
+  test('🔴 assertBeatRef refuses a branch or a tag, and passes the contract’s ref', () => {
+    assert.throws(() => assertBeatRef('refs/heads/x'), /is a branch or a tag/);
+    assert.throws(() => assertBeatRef('refs/tags/x'), /is a branch or a tag/);
+    assert.doesNotThrow(() => assertBeatRef(HB.ref));
+  });
+  test('🔴 the module REFUSES TO LOAD when its contract names a branch (the load-time call)', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'hb-'));
+    try {
+      const src = resolve(HERE, '..', '..', 'autopilot');
+      // One directory per contract: cli.mjs (which reads contract.json) is cached per URL.
+      const copy = (name, ref) => {
+        const dir = join(tmp, name);
+        mkdirSync(dir);
+        for (const f of ['heartbeat.mjs', 'cli.mjs']) copyFileSync(join(src, f), join(dir, f));
+        const contract = JSON.parse(readFileSync(join(src, 'contract.json'), 'utf8'));
+        contract.heartbeat.ref = ref;
+        writeFileSync(join(dir, 'contract.json'), JSON.stringify(contract));
+        return pathToFileURL(join(dir, 'heartbeat.mjs')).href;
+      };
+      const ok = await import(copy('green', HB.ref));
+      assert.equal(ok.HB.ref, HB.ref, 'green control: the copy loads on the real contract');
+      await assert.rejects(import(copy('branch', 'refs/heads/x')), /refs\/heads\/x is a branch or a tag/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
   test('the CLI refuses bad usage with exit 2', () => {
     const r = spawnSync(process.execPath, [SCRIPT, 'write'], { encoding: 'utf8' });

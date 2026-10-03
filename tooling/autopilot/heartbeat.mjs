@@ -52,7 +52,11 @@ const SHA_SHAPE = /^[0-9a-f]{40}$/;
 /** True for a ref that is a branch or a tag: the beat must never be one (a branch builds on Pages). */
 export const isBranchOrTag = (ref) => /^refs\/(?:heads|tags)\//.test(String(ref));
 if (!REF_SHAPE.test(HB.ref) || !FILE_SHAPE.test(HB.file)) throw new Error('contract.json heartbeat.ref must be a full refs/<ns>/<name> and heartbeat.file a plain git name');
-if (isBranchOrTag(HB.ref)) throw new Error(`contract.json heartbeat.ref ${HB.ref} is a branch or a tag: a moving branch starts a Pages build every beat`);
+/** Throws for a beat ref that is a branch or a tag. Called at load, so a contract naming one never writes a beat. */
+export function assertBeatRef(ref) {
+  if (isBranchOrTag(ref)) throw new Error(`contract.json heartbeat.ref ${ref} is a branch or a tag: a moving branch starts a Pages build every beat`);
+}
+assertBeatRef(HB.ref);
 /** The ref without `refs/`, as the git data API's /git/ref/{ref} and /git/refs/{ref} paths take it. */
 export const REF_PATH = HB.ref.slice('refs/'.length);
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
