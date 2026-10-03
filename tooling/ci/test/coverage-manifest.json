@@ -345,7 +345,7 @@
     13,
 
   "data-inventory.test.mjs":
-    55,
+    60,
 
   "dead-repo-names.test.mjs":
     17,
@@ -978,7 +978,7 @@
     18,
 
   "scan-dependencies.test.mjs":
-    25,
+    44,
 
   "scan-secrets.test.mjs":
     22,
@@ -1008,7 +1008,7 @@
     4,
 
   "signing-inputs-pinned.test.mjs":
-    14,
+    26,
 
   "signing-seam-census.test.mjs":
     9,
@@ -1089,7 +1089,7 @@
     39,
 
   "stamp-properties.test.mjs":
-    30,
+    32,
 
   "stamp-text-fidelity.test.mjs":
     44,

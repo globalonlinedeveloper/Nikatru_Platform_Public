@@ -144,13 +144,59 @@ class UnreleasedBuildFailure extends Failure {
       : super('the server accepts no rows from this build', cause: cause);
 }
 
+/// The platform Worker's stable error code, answered with 409, for a batch from
+/// an install whose analytics consent artifact the SERVER has no record of
+/// (services/platform/src/routes/events.ts, `consentVerdicts`).
+const String kConsentNotRecordedError = 'consent_not_recorded';
+
+/// The platform Worker's stable error code, answered with 403, for a batch from
+/// an install whose LATEST analytics artifact on the server is a withdrawal.
+const String kConsentWithdrawnError = 'consent_withdrawn';
+
+/// The server has no analytics artifact for this install. RETRYABLE, and the
+/// remedy is the client's: [AnalyticsRecorder] keeps the queue, posts the
+/// artifact in force, and sends the batch again once that post is acknowledged.
+class ConsentNotRecordedFailure extends Failure {
+  const ConsentNotRecordedFailure({Object? cause})
+      : super('the server holds no consent artifact for this install',
+            cause: cause);
+}
+
+/// The server kept answering [ConsentNotRecordedFailure] after
+/// [kMaxConsentRepairs] consent repairs that LANDED. Not retried under the
+/// artifact [consentId] names: [AnalyticsRecorder] keeps its queue, sends
+/// nothing more until a new decision replaces that artifact, and reports this
+/// through [AnalyticsRecorder.consentRepairFailure].
+class ConsentRepairExhaustedFailure extends Failure {
+  ConsentRepairExhaustedFailure({
+    required this.consentId,
+    required this.attempts,
+  }) : super('the server still holds no consent artifact for this install '
+            'after $attempts repairs that landed; delivery is stopped and the '
+            'queued events are kept');
+
+  final String consentId;
+  final int attempts;
+}
+
+/// The server's latest artifact for this install is a WITHDRAWAL. Not
+/// retryable: nothing collected under the grant this client still holds may
+/// land, so [AnalyticsRecorder] drops its queue rather than re-sending it.
+class ConsentWithdrawnFailure extends Failure {
+  const ConsentWithdrawnFailure({Object? cause})
+      : super('the server records analytics consent as withdrawn',
+            cause: cause);
+}
+
 /// Seam for shipping a batch. The implementation lives in the app layer (dio on
 /// the existing `RestClient`) so `core` stays pure Dart — the same shape as
 /// `ConfigTransport` (ADR 005).
 abstract interface class EventTransport {
   /// POST a batch. [Ok] means the server accepted it and the client may drop
   /// those events; [Err] means keep them queued and retry — EXCEPT an [Err]
-  /// carrying [UnreleasedBuildFailure], which means stop sending for good.
+  /// carrying [UnreleasedBuildFailure], which means stop sending for good,
+  /// [ConsentNotRecordedFailure], which means post consent before retrying, and
+  /// [ConsentWithdrawnFailure], which means drop the queue.
   Future<Result<void>> send({
     required String appId,
     required String anonId,

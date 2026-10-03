@@ -6,6 +6,7 @@ import '../models/category.dart';
 import '../models/entitlement.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 import '../seed/demo_data.dart';
 import 'api_client.dart';
@@ -168,6 +169,18 @@ class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
     return <PaymentRecord>[...manual, ...derived]
       ..sort((PaymentRecord a, PaymentRecord b) => b.date.compareTo(a.date));
   }
+
+  /// Every row's derived history ([getPaymentHistory]) — what the nightly
+  /// pass would have written — and NO price changes: the seed keeps no edit
+  /// log, so a price rise is never invented here.
+  @override
+  Future<SpendHistory> getSpendHistory() async => SpendHistory(
+    payments: <PaymentRecord>[
+      for (final Subscription s in _subs)
+        if (s.deletedAt == null) ...await getPaymentHistory(s.id),
+    ],
+    priceChanges: const <PlanPriceChange>[],
+  );
 
   @override
   Future<BudgetInfo> getBudget() async => _budget;

@@ -541,7 +541,7 @@
       {
         "file": "services/platform/src/routes/events.ts",
         "boundedBy": "MAX_EVENTS_PER_BATCH",
-        "note": "One INSERT per well-formed event. This is the call site the 100 → 50 correction was about."
+        "note": "One INSERT per well-formed event, PLUS one consent read (CONSENT_READS_PER_BATCH) before the batch since 2026-10-01 — so a full batch is MAX_EVENTS_PER_BATCH + 1 statements, and the cap went 50 → 49 to keep that sum at the ceiling. This is the call site the 100 → 50 correction was about; test/events.test.ts sums a full batch's statements against this file's d1.queriesPerInvocation."
       },
       {
         "file": "services/subscriptiontracker-api/src/routes/preferences.ts",
