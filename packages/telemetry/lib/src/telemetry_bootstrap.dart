@@ -7,6 +7,7 @@ import 'pii_scrubber.dart';
 import 'sentry_telemetry_client.dart';
 import 'telemetry_client.dart';
 import 'telemetry_config.dart';
+import 'telemetry_rate_bound.dart';
 import 'web_envelope_transport.dart';
 
 /// One-shot initializer wiring [TelemetryConfig], Sentry and the PII
@@ -42,6 +43,50 @@ class TelemetryBootstrap {
     return const SentryTelemetryClient();
   }
 
+  /// The bound every app's events share, per process
+  /// ([TelemetryRateBound.defaultMaxEvents] a minute).
+  static final TelemetryRateBound _defaultRateBound = TelemetryRateBound();
+
+  /// THE SENTRY-PROTOCOL HALF of the options: what every event carries and
+  /// what every event passes through, on any [SentryOptions] — the app's
+  /// [SentryFlutterOptions] in [optionsCallback], and a plain [SentryOptions]
+  /// under `runTelemetryClientConformance` (lib/testing.dart), so the suite
+  /// drives THIS wiring rather than a copy of it.
+  ///
+  /// `beforeSend` is the one door every event leaves through, whichever path
+  /// captured it (the client, an uncaught Flutter error, an isolate error): it
+  /// first applies the rate bound — an event over it is dropped, never sent and
+  /// never thrown — and then [scrubEvent]. [rateBound] is injectable for tests;
+  /// apps share [_defaultRateBound].
+  static void configureCore(
+    SentryOptions options,
+    TelemetryConfig config, {
+    TelemetryRateBound? rateBound,
+  }) {
+    final bound = rateBound ?? _defaultRateBound;
+    options.dsn = config.dsn;
+    options.release = config.release;
+    options.environment = config.environment;
+    // 🔴 SET ONLY WHEN DECLARED, AND THE `if` IS THE WHOLE POINT.
+    // [pipeline 9]R-7, web limb. A source-map artifact is stored under
+    // (release, dist) and matched against the event's (release, dist), so
+    // an EMPTY string is not "no dist" — it is a dist value that matches
+    // no bundle, which is strictly worse than sending none. Two open
+    // production issues were unreadable on 2026-09-03 for want of the
+    // upload; sending a dist nobody uploaded under would leave them
+    // unreadable with the upload in place, and look configured while doing
+    // it. Apps that declare a channel pass it (`AppConfig.releaseChannel`);
+    // a developer build declares nothing and sends nothing.
+    if (config.dist.isNotEmpty) {
+      options.dist = config.dist;
+    }
+    options.tracesSampleRate = config.tracesSampleRate;
+    // Belt and braces: never attach default PII (ip address, ...).
+    options.sendDefaultPii = false;
+    options.beforeSend =
+        (event, hint) => bound.tryAcquire() ? scrubEvent(event) : null;
+  }
+
   /// The options every app gets. A function of [config] and of whether this is
   /// a web build, so a test can drive the WEB branch on the VM.
   @visibleForTesting
@@ -51,25 +96,10 @@ class TelemetryBootstrap {
     http.Client? webClient,
   }) {
     return (options) {
-      options.dsn = config.dsn;
-      options.release = config.release;
-      options.environment = config.environment;
-      // 🔴 SET ONLY WHEN DECLARED, AND THE `if` IS THE WHOLE POINT.
-      // [pipeline 9]R-7, web limb. A source-map artifact is stored under
-      // (release, dist) and matched against the event's (release, dist), so
-      // an EMPTY string is not "no dist" — it is a dist value that matches
-      // no bundle, which is strictly worse than sending none. Two open
-      // production issues were unreadable on 2026-09-03 for want of the
-      // upload; sending a dist nobody uploaded under would leave them
-      // unreadable with the upload in place, and look configured while doing
-      // it. Apps that declare a channel pass it (`AppConfig.releaseChannel`);
-      // a developer build declares nothing and sends nothing.
-      if (config.dist.isNotEmpty) {
-        options.dist = config.dist;
-      }
-      options.tracesSampleRate = config.tracesSampleRate;
-      // Belt and braces: never attach default PII (ip address, ...).
-      options.sendDefaultPii = false;
+      // The Sentry-protocol half, shared with the conformance suite
+      // (lib/testing.dart): DSN, release, environment, the PII scrub and the
+      // rate bound. Only the FLUTTER-only switches follow it here.
+      configureCore(options, config);
       // 🔴 SESSIONS ARE OFF, AND THAT IS AN HONESTY FIX, NOT A SAVING.
       // [pipeline 11]E-10. sentry_flutter defaults this ON, so the SDK was
       // computing and shipping session start/end envelopes to a server that
@@ -89,7 +119,7 @@ class TelemetryBootstrap {
       // probably being SENT. Two things make such an event worse than none:
       // nothing uploads the symbols that would make it readable (no dSYM, PDB,
       // NDK or R8 mapping upload exists), and it never passes `beforeSend`
-      // below, because the native SDK sends it itself — so it reaches
+      // (configureCore), because the native SDK sends it itself — so it reaches
       // GlitchTip outside the PII scrub the privacy policy promises. Off, the
       // register's `native: false` is true: the JVM handler and ANR watchdog
       // on Android, KSCrash on iOS/macOS (which also drops the native device
@@ -100,7 +130,6 @@ class TelemetryBootstrap {
       // register, this line and the manifest to one answer. Turning it back on
       // needs the native symbol uploads AND a native-side scrub first.
       options.enableNativeCrashHandling = false;
-      options.beforeSend = (event, hint) => scrubEvent(event);
       // LAST, because the transport reads `options.dsn` when it is built.
       if (isWeb) {
         useHttpTransportOnWeb(options, client: webClient);

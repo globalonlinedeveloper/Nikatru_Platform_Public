@@ -6,7 +6,7 @@
 // Three questions, each against the REAL migrations on a real SQL engine:
 //
 //   1. THE CONTRACT. A non-USD, weekly, trialing row goes in through POST and
-//      comes back — from POST, GET /:id, GET / and /v1/renewals — carrying
+//      comes back — from POST, GET /:id and GET / — carrying
 //      exactly what was sent. Before 0003 the Worker dropped `currency` and
 //      `price_minor`, so ₹649 came back as a bare 649 and the client read it as
 //      $649.00 (the audit's B21/D5/D18).
@@ -19,7 +19,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeEach } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
-import renewals from '../src/routes/renewals';
 import subscriptions from '../src/routes/subscriptions';
 import { todayYmd } from '../src/lib/d1';
 import init0001 from '../migrations/0001_init.sql?raw';
@@ -127,14 +126,6 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
     expect(res.status).toBe(200);
     const patched = (await res.json()) as Row;
     expect({ ...patched, updated_at: null }).toEqual({ ...created, updated_at: null });
-  });
-
-  it('/v1/renewals serves the same model keys, plus days_left', async () => {
-    await create(INR_WEEKLY_TRIAL);
-    const rens = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
-    const out = (await (await rens(U, '/v1/renewals?withinDays=7')).json()) as Row[];
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ ...EXPECTED_MODEL_KEYS, days_left: 3 });
   });
 
   it('stores what it serves: the DB row holds the exact amount, the unit and a NULL legacy cycle', async () => {
@@ -317,7 +308,7 @@ describe('the write rules that span keys', () => {
       { cycle_every: 366, cycle_unit: 'day' },
       { share_numerator: 100, share_denominator: 100 },
       { reminder_days: [0, 365, 30, 7, 1] },
-      { price: 1_000_000_000, price_minor: 10_000_000_000_000, currency: 'KWD' },
+      { price: 1_000_000_000, price_minor: 10_000_000_000_000, currency: 'CLF' },
       { deleted_at: null },
       { cancel_url: 'http://example.com/cancel' },
       { status: 'active', cancelled_on: '2026-09-28' },

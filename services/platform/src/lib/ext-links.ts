@@ -33,6 +33,7 @@
 //
 // Every instant here is ISO-8601 TEXT, as 0017_ext_devices.sql requires.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 
 /**
  * A link nobody has used for 30 days is dead. The extension checks at most once
@@ -97,7 +98,7 @@ export function predatesFloor(authAt: string | null | undefined, notBefore: stri
  * means.
  */
 export async function raiseLinkFloor(
-  db: D1Database,
+  db: SqlDb,
   userId: string,
   nowIso: string,
   recoverySession?: string,
@@ -120,7 +121,7 @@ export async function raiseLinkFloor(
 }
 
 /** The account's floor, or null. Throws on a D1 failure. */
-export async function linkFloorOf(db: D1Database, userId: string): Promise<string | null> {
+export async function linkFloorOf(db: SqlDb, userId: string): Promise<string | null> {
   const row = await db
     .prepare('SELECT not_before FROM ext_link_floor WHERE user_id = ?')
     .bind(userId)
