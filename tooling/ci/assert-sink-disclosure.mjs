@@ -77,6 +77,10 @@
 //   4. a denial that resolves to NO category → FAIL unless it is classified in
 //      `denialsOutOfScope`. A new denial cannot be published unscoped, and a
 //      classification cannot outlive the sentence it was granted for.
+//   (5. the delegated ceiling — SINK_DELEGATIONS, below.)
+//   6. every vendor a tooling/ops/register.json row names in `accessProviders`
+//      maps, through the register's `accessProviderMap`, to provider rows that
+//      exist, or says why it is not a sink (⏱ 2026-10-01, SYN-P1's class fix).
 //
 // ⚠️ THE TRAP THIS GUARD WAS BUILT AROUND, recorded because the first draft fell
 // into it: SCOPE THE DENIAL TO ITS OBJECT, NEVER TO ITS SENTENCE. The real
@@ -394,6 +398,88 @@ const delegated = [];
   }
 }
 
+// ── LIMB 6 · every vendor an ops duty runs through maps to its disclosure ───
+// ⏱ 2026-10-01 · SYN-P1's class fix (O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED). The backup duties in
+// tooling/ops/register.json copy personal data into vendors named only by that register's
+// `accessProviders`, and nothing joined them to the provider rows the disclosures are driven from:
+// Google Drive held the GlitchTip dumps with no row anywhere. `accessProviderMap.map` in the provider
+// register is that join, explicit, because the grains differ (ops `google` is Play AND Sign in with
+// Google AND Drive here). Every accessProvider an ops row names must have an entry; an entry names
+// provider rows that EXIST, or says why the vendor receives no user data (`notASink`); a known
+// undisclosed service is an `undisclosed` entry with its open row, and PRINTS.
+const accessMapped = { entries: 0, duties: 0, printed: 0 };
+{
+  const OPS_PROVIDERS_AT = `${rel(OPS_REGISTER)} \`rows[].accessProviders\``;
+  const map = providerReg.accessProviderMap?.map;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) {
+    coverageLost(
+      `${rel(PROVIDERS)} carries no \`accessProviderMap.map\`, so the vendors ${OPS_PROVIDERS_AT} sends data to were joined to no provider row.`,
+      'Without the map every backup duty is a sink nobody has to disclose.',
+    );
+  }
+  let ops = null;
+  try {
+    ops = JSON.parse(readFileSync(OPS_REGISTER, 'utf8'));
+  } catch (err) {
+    coverageLost(`${rel(OPS_REGISTER)} is absent or unparseable (${err.message}), so limb 6 has no duties to read.`);
+  }
+  const opsRows = Array.isArray(ops?.rows) ? ops.rows : [];
+  const rowIds = new Set(providers.map((p) => p.id));
+  const named = new Map();
+  for (const r of opsRows) {
+    if (!Array.isArray(r?.accessProviders)) continue;
+    accessMapped.duties++;
+    for (const a of r.accessProviders) named.set(a, [...(named.get(a) ?? []), r.id]);
+  }
+  for (const a of Array.isArray(ops?._providers) ? ops._providers : []) if (!named.has(a)) named.set(a, []);
+  if (accessMapped.duties === 0) {
+    coverageLost(`NOT ONE row in ${rel(OPS_REGISTER)} names \`accessProviders\`, so limb 6 joined nothing.`);
+  }
+  for (const [a, by] of [...named.entries()].sort(([x], [y]) => x.localeCompare(y))) {
+    const e = Object.prototype.hasOwnProperty.call(map, a) ? map[a] : undefined;
+    const where = by.length ? `named by ${by.slice(0, 3).join(', ')}${by.length > 3 ? ` and ${by.length - 3} more` : ''}` : `in \`_providers\``;
+    if (!e || typeof e !== 'object') {
+      problems.push(
+        `ops accessProvider ${JSON.stringify(a)} (${where}) has NO entry in accessProviderMap.map. A duty runs through ` +
+          'that vendor and no provider row says whether it holds user data: map it to its rows, or say why it is not a sink.',
+      );
+      continue;
+    }
+    accessMapped.entries++;
+    const rows = Array.isArray(e.rows) ? e.rows : [];
+    const reason = typeof e.notASink === 'string' ? e.notASink.trim() : '';
+    if (rows.length && reason) {
+      problems.push(`accessProviderMap.map.${a} names provider rows AND says it is not a sink. One of the two is wrong.`);
+    } else if (!rows.length && !reason) {
+      problems.push(
+        `accessProviderMap.map.${a} (${where}) names no provider row and gives no \`notASink\` reason. A vendor a duty ` +
+          'runs through is either disclosed by a row or argued out of being a sink; an empty entry is neither.',
+      );
+    }
+    for (const id of rows) {
+      if (!rowIds.has(id)) {
+        problems.push(
+          `accessProviderMap.map.${a} (${where}) maps to provider row ${JSON.stringify(id)}, which does not exist in ` +
+            `${rel(PROVIDERS)}. The duty's data goes to a vendor no disclosure row describes.`,
+        );
+      }
+    }
+    for (const u of Array.isArray(e.undisclosed) ? e.undisclosed : []) {
+      if (typeof u?.what !== 'string' || !u.what.trim() || typeof u?.openRow !== 'string' || !/^O-[A-Z0-9-]+$/.test(u.openRow)) {
+        problems.push(`accessProviderMap.map.${a}.undisclosed carries an entry without a \`what\` and an \`openRow\` (O-…). A known gap with no owner is a gap nobody closes.`);
+        continue;
+      }
+      accessMapped.printed++;
+      prints.push(`UNDISCLOSED SINK (${u.openRow}) · ops accessProvider \`${a}\`: ${u.what}`);
+    }
+  }
+  for (const a of Object.keys(map)) {
+    if (!a.startsWith('_') && !named.has(a)) {
+      problems.push(`accessProviderMap.map.${a} maps a vendor no row of ${rel(OPS_REGISTER)} names and \`_providers\` does not declare. Retire the entry with the vendor.`);
+    }
+  }
+}
+
 // ── LIMB 2 · the denials, EXTRACTED FROM THE PAGES ──────────────────────────
 // The domain is the served documents, read through the same reduction
 // assert-policy-claims.mjs uses. It cannot be shrunk except by editing a page a
@@ -570,6 +656,10 @@ console.log(
     `personal-data categor(ies) of ${categoryIds.length} in the vocabulary; ${denials.length} published denial(s) ` +
     `across ${pages.length} page(s), ${scoped} scoped against that union, ${denials.length - scoped} classified ` +
     'out of scope',
+);
+console.log(
+  `    limb 6: ${accessMapped.entries} ops accessProvider(s) across ${accessMapped.duties} ops row(s) joined to provider rows; ` +
+    `${accessMapped.printed} known undisclosed sink(s) printed below`,
 );
 console.log(
   `    declared union: ${[...declaredBy.entries()].map(([c, ps]) => `${c} (${ps.map((p) => p.id).join('+')})`).sort().join(', ')}`,
