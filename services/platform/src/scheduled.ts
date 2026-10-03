@@ -1178,10 +1178,14 @@ export const MAX_ERASURE_RETRIES_PER_RUN = 15;
  * is DERIVED from the schema (erasePlatformRows), so it grows with every
  * user-owned table; 60 leaves room for a few, and the count test is what reds
  * when the schema outgrows it.
+ * ⏱ 2026-10-03 · club-rt-rights stack (#1191's feedback tables + #1176's AI meter
+ * and refund tables on one tree): RE-MEASURED 949 for the whole invocation at
+ * 15 orders = 63 a completed subject plus 4 a run; 60 -> 66 (4 + 15 x 66 = 994,
+ * inside d1.queriesPerInvocation 1,000).
  *
  * @ceiling none — a measured per-order cost that JOB_STATEMENT_BUDGET multiplies, not a cap on any platform resource.
  */
-export const ERASURE_STATEMENTS_PER_ORDER = 60;
+export const ERASURE_STATEMENTS_PER_ORDER = 66;
 
 export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promise<void> {
   const nowIso = new Date(nowMs).toISOString();
