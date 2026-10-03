@@ -39,6 +39,21 @@
 //             `land-freeze` issue naming the run and the job. Only ci.yml and
 //             codeql.yml are judged, so the attended dispatches (Rollback, Native
 //             auth proof, Store submit) never count.
+//   review    ⏱ 2026-10-02 (O-REVIEWS-DEPEND-ON-THE-LAPTOP) a `land-hold` label waits; a
+//             `needs-review` PR — or one whose OWN file list is review-classed or
+//             unreadable (`reviewRequired`: the label is a display, never the only
+//             input) — waits until the NEWEST owner verdict review (line 1
+//             `VERDICT: APPROVE`) is on the current head, with `review:approve`
+//             (`reviewVerdict`); any other `VERDICT:` line 1 is CHANGES. Labels set by
+//             review-gate.yml; verdicts posted by tooling/autopilot/post-verdict.mjs.
+//   fix-first ⏱ 2026-10-02 (O-FREEZE-FIX-NEEDS-THE-LAPTOP) the freeze issue carries each
+//             new failing job's first failing step and log tail (`freezeLogSection`);
+//             while it is open, a PR labelled `fix-first` whose body says
+//             `Fixes-freeze: #<it>` may merge (every other rule still applies), and a
+//             later pass CLOSES it once main's newest ci.yml AND codeql.yml runs at the
+//             head (`unionFreezeChecks`) have every
+//             named job green and no red that was not already red on the parent
+//             (`freezeCloseVerdict`). The fixer routine is docs/autopilot/fixer.prompt.md.
 //   one       ONE write per run (a merge, an update-branch, an E2E dispatch, a
 //             main dispatch or a freeze), in order of land-ok label time, then
 //             PR number. `concurrency: land` makes the run itself the one actor.
@@ -63,11 +78,41 @@ import { gateVerdict, newReds, MAIN_WORKFLOW, MAIN_WORKFLOW_PATH } from '../ops/
 import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
 import { globClaims } from './deploy-globs.mjs';
 import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
+import { CONTRACT } from '../autopilot/cli.mjs';
+import { classify as classifyReview } from '../autopilot/review-paths.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 export const LAND_LABEL = 'land-ok';
 export const FREEZE_LABEL = 'land-freeze';
+// ⏱ 2026-10-02 · O-REVIEWS-DEPEND-ON-THE-LAPTOP. The review gate's labels are the
+// autopilot contract's (tooling/autopilot/contract.json), never spelled twice.
+const PR_LABELS = CONTRACT.publicLabels.pr;
+export const HOLD_LABEL = PR_LABELS[1];
+export const NEEDS_REVIEW_LABEL = PR_LABELS[2];
+export const APPROVE_LABEL = PR_LABELS[3];
+/** ⏱ 2026-10-02 · O-FREEZE-FIX-NEEDS-THE-LAPTOP. During a freeze only a PR with this
+ *  label AND a `Fixes-freeze: #<the open freeze>` line in its body may merge. */
+export const FIX_FIRST_LABEL = PR_LABELS[5];
+export const FIXES_FREEZE_LINE = /^Fixes-freeze: #(\d+)\s*$/m;
+/** The freeze issue's log section: each failing job's last lines, capped in total. */
+export const FREEZE_LOG_LINES = 60;
+export const FREEZE_LOG_CAP = 20_000;
+/** Line 1 of a verdict review's body. A verdict is a COMMENT review (GitHub refuses
+ *  APPROVE from a PR's author, and every PR here has one author). ANY line 1 that
+ *  starts `VERDICT:` is a verdict, and only exactly `VERDICT: APPROVE` approves:
+ *  `VERDICT: CHANGES REQUIRED`, `VERDICT: APPROVE WITH NITS` or a typo is CHANGES
+ *  here (fail closed). post-verdict.mjs maps `APPROVE WITH NITS` to the canonical
+ *  `VERDICT: APPROVE` before posting (nits never block), so a NITS line reaching
+ *  this gate was posted by hand and is read as CHANGES. */
+export const VERDICT_LINE = /^VERDICT:/;
+export const APPROVE_LINE = /^VERDICT: APPROVE\s*$/;
+/** Line 1 → 'APPROVE' | 'CHANGES' | null (not a verdict). */
+export function verdictOf(line1) {
+  const l = String(line1 ?? '');
+  if (!VERDICT_LINE.test(l)) return null;
+  return APPROVE_LINE.test(l) ? 'APPROVE' : 'CHANGES';
+}
 export const BASE_BRANCH = 'main';
 export const E2E_WORKFLOW_PATH = '.github/workflows/e2e.yml';
 /** The workflows whose run on main's head is main's verdict after a merge. */
@@ -251,6 +296,7 @@ export function mainWatch({ main, runs, failedJobs = {}, baseline = {}, now = Da
 function freezeBody({ sha, fresh, marker }) {
   const lines = [
     marker,
+    `<!-- land-freeze-jobs ${JSON.stringify([...new Set(fresh.flatMap((f) => f.jobs))])} -->`,
     `land.yml found main \`${sha}\` red on job(s) that were not red on its parent, so it stops merging until this issue is closed.`,
     '',
     ...fresh.map((f) => `- run ${f.run.id} (${pathOf(f.run).split('/').pop()}): ${f.run.html_url ?? ''}\n  failing job(s) new against the parent: ${f.jobs.map((j) => `\`${j}\``).join(', ')}`),
@@ -258,6 +304,148 @@ function freezeBody({ sha, fresh, marker }) {
     'Fix main (a pull request labelled `land-ok` waits like every other until this is closed), or close this issue once the red is read and judged not to block.',
   ];
   return lines.join('\n');
+}
+
+// ── PURE: the freeze a fixer works from, and its end ───────────────────────
+
+/** ANSI colour / cursor sequences out of a job log. */
+export const stripAnsi = (text) => String(text ?? '').replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\u001b\][^\u0007]*\u0007/g, '');
+
+/**
+ * The freeze issue's log section. `jobs` = [{ name, step, log }] (log null when it
+ * could not be read). Each job gets its first failing step and its last
+ * FREEZE_LOG_LINES lines, ANSI stripped (GitHub has already masked secrets); the
+ * whole section is at most `cap` characters, cut from each tail's oldest lines.
+ */
+export function freezeLogSection(jobs, { lines = FREEZE_LOG_LINES, cap = FREEZE_LOG_CAP } = {}) {
+  const tails = (jobs ?? []).map((j) => ({ ...j, tail: j.log === null || j.log === undefined ? null : stripAnsi(j.log).replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n').slice(-lines) }));
+  const render = (t) => [
+    '## The failing jobs (for the fixer)',
+    '',
+    ...t.flatMap((j) => [
+      `### \`${j.name}\` — first failing step: ${j.step ? `\`${j.step}\`` : 'not named by the API'}`,
+      '',
+      ...(j.tail === null ? ['_the log could not be read_'] : ['```text', ...j.tail.map((l) => l.replace(/```/g, "'''")), '```']),
+      '',
+    ]),
+  ].join('\n');
+  let out = render(tails);
+  while (out.length > cap && tails.some((t) => t.tail?.length)) {
+    const longest = tails.filter((t) => t.tail?.length).sort((a, b) => b.tail.length - a.tail.length)[0];
+    longest.tail = longest.tail.slice(Math.ceil(longest.tail.length / 4) || 1);
+    out = render(tails);
+  }
+  return out.slice(0, cap);
+}
+
+/** The job names a freeze issue named (its marker; or, for an older body, the backticked list). */
+export function freezeJobs(body) {
+  const m = /<!-- land-freeze-jobs (\[.*?\]) -->/.exec(String(body ?? ''));
+  if (m) {
+    try {
+      const j = JSON.parse(m[1]);
+      if (Array.isArray(j)) return j.map(String);
+    } catch {
+      /* fall through to the prose */
+    }
+  }
+  const p = /failing job\(s\) new against the parent: (.+)/.exec(String(body ?? ''));
+  return p ? [...p[1].matchAll(/`([^`]+)`/g)].map((x) => x[1]) : [];
+}
+
+/**
+ * MAY THE FREEZE CLOSE? `check` = { runId, url, status, conclusion, jobs: [{name, conclusion}],
+ * baseline: [failed job names on the parent] | null } for main's newest ci.yml run at the
+ * head. Closes only when every job the freeze named is in that run and green, and every
+ * red job in it was already red on the parent (baseline-aware, like the opening).
+ */
+/**
+ * The newest run of EACH watched workflow at main's head (`parts`, one per workflow
+ * that has one) → ONE check for freezeCloseVerdict: completed only when every part
+ * is, their jobs unioned, each part's baseline unioned (a part with no baseline adds
+ * none, so its reds stay new: fail closed). null when no part was read.
+ */
+export function unionFreezeChecks(parts) {
+  const ps = (parts ?? []).filter(Boolean);
+  if (!ps.length) return null;
+  const pending = ps.find((p) => p.status !== 'completed');
+  return {
+    runId: ps.map((p) => p.runId).join('+'),
+    url: ps.map((p) => p.url).filter(Boolean).join(' · ') || null,
+    status: pending ? pending.status : 'completed',
+    conclusion: ps.every((p) => p.conclusion === 'success') ? 'success' : (ps.find((p) => p.conclusion !== 'success')?.conclusion ?? null),
+    jobs: ps.flatMap((p) => p.jobs ?? []),
+    baseline: ps.flatMap((p) => p.baseline ?? []),
+  };
+}
+
+export function freezeCloseVerdict({ freeze, check }) {
+  const named = freezeJobs(freeze?.body);
+  const stay = (why) => ({ close: false, why: `#${freeze?.number} stays open: ${why}` });
+  if (!check) return stay("main's newest watched run (ci.yml, codeql.yml) at the head was not read");
+  if (check.status !== 'completed') return stay(`run ${check.runId} is ${check.status}`);
+  if (!named.length) return stay('it names no job this can check');
+  const by = new Map((check.jobs ?? []).map((j) => [String(j.name), String(j.conclusion)]));
+  const notGreen = named.filter((n) => by.get(n) !== 'success');
+  if (notGreen.length) return stay(`named job(s) not green in run ${check.runId}: ${notGreen.map((n) => `${n} (${by.get(n) ?? 'absent'})`).join(', ')}`);
+  const reds = [...by].filter(([, c]) => RED_JOB.has(c)).map(([n]) => n);
+  const fresh = check.baseline === null || check.baseline === undefined ? reds : newReds(check.baseline, reds);
+  if (fresh.length) return stay(`run ${check.runId} has red job(s) that were not red on the parent: ${fresh.join(', ')}`);
+  return { close: true, why: `#${freeze.number}: run ${check.runId} has every named job green (${named.join(', ')})${reds.length ? `; ${reds.length} red job(s) were already red on the parent` : ''}`, comment: `Main is green again on the named job(s) — ${check.url ?? `run ${check.runId}`}. Closed by land.yml; merges resume.` };
+}
+
+/** Does this PR name an OPEN freeze as the one it fixes? */
+export function fixesOpenFreeze(pr, freezes) {
+  if (!(pr?.labels ?? []).includes(FIX_FIRST_LABEL)) return null;
+  const m = FIXES_FREEZE_LINE.exec(String(pr?.body ?? ''));
+  return m && (freezes ?? []).some((f) => f.number === Number(m[1])) ? Number(m[1]) : null;
+}
+
+// ── PURE: the independent review ────────────────────────────────────────────
+
+/**
+ * THE REVIEW GATE (owner rule 2026-09-29; lane autopilot-reviews). `reviews` are the
+ * PR's reviews from the REST API. Only a review by the repository OWNER
+ * (`author_association`) whose body's first line is `VERDICT: APPROVE|CHANGES` is a
+ * verdict — anyone may post a COMMENT review on a public repository, so nobody
+ * else's text can approve or block. The NEWEST owner verdict decides, and it must be
+ * an APPROVE whose `commit_id` is the current head, with the `review:approve` label.
+ * Returns { ok, why }.
+ */
+export function reviewVerdict({ reviews, headSha, labels }) {
+  const verdicts = (reviews ?? [])
+    .map((r) => {
+      const v = verdictOf(String(r?.body ?? '').split(/\r?\n/)[0]);
+      return { r, m: v && [null, v] };
+    })
+    .filter(({ r, m }) => m && r?.author_association === 'OWNER')
+    .sort((a, b) => (Date.parse(b.r.submitted_at ?? '') || 0) - (Date.parse(a.r.submitted_at ?? '') || 0) || Number(b.r.id ?? 0) - Number(a.r.id ?? 0));
+  const at = String(headSha).slice(0, 8);
+  if (!verdicts.length) {
+    const others = (reviews ?? []).filter((r) => VERDICT_LINE.test(String(r?.body ?? '').split(/\r?\n/)[0])).length;
+    return { ok: false, why: `needs-review: no owner verdict yet${others ? ` (${others} verdict-shaped review(s) by a non-owner ignored)` : ''}` };
+  }
+  const { r, m } = verdicts[0];
+  if (r.commit_id !== headSha) return { ok: false, why: `needs-review: the newest verdict (${m[1]}, review ${r.id}) is on ${String(r.commit_id).slice(0, 8)}, not the head ${at}` };
+  if (m[1] !== 'APPROVE') return { ok: false, why: `needs-review: the newest verdict on ${at} is CHANGES (review ${r.id})` };
+  if (!(labels ?? []).includes(APPROVE_LABEL)) return { ok: false, why: `needs-review: APPROVE on ${at} (review ${r.id}) but no \`${APPROVE_LABEL}\` label` };
+  return { ok: true, why: `owner APPROVE on ${at} (review ${r.id})` };
+}
+
+/**
+ * Does this PR need the independent review? Re-derived HERE from its own file list
+ * (tooling/autopilot/review-paths.mjs `classify`), not trusted to the `needs-review`
+ * label: that label is set by one review-gate.yml run that can fail, never ran for a
+ * PR opened before the cut-over or by a workflow token, and its ABSENCE is the
+ * default. The label still counts; it is now a display, never the only input. A file
+ * list that is unreadable or cut at the API's cap needs review (fail closed).
+ * Returns the reason, or null.
+ */
+export function reviewRequired(pr) {
+  if ((pr?.labels ?? []).includes(NEEDS_REVIEW_LABEL)) return `\`${NEEDS_REVIEW_LABEL}\``;
+  if (!Array.isArray(pr?.files) || pr.filesComplete === false) return 'the file list is unreadable or cut (fail closed)';
+  const c = classifyReview(pr.files);
+  return c.classes.length ? `review-classed: ${c.classes.join(', ')}` : null;
 }
 
 // ── PURE: one pull request ──────────────────────────────────────────────────
@@ -276,12 +464,21 @@ export function decidePr(pr, { repo, units }) {
   if (!(pr.labels ?? []).includes(LAND_LABEL)) return skip(`no \`${LAND_LABEL}\` label`);
   if (pr.baseRef !== BASE_BRANCH) return skip(`base is ${pr.baseRef}, not ${BASE_BRANCH}`);
   if (!/^[0-9a-f]{40}$/.test(String(pr.headSha ?? ''))) return skip('no readable head sha');
+  if ((pr.labels ?? []).includes(HOLD_LABEL)) return wait(`\`${HOLD_LABEL}\`: held by the lead`);
+  // Before the review gate: an unreadable list is never landed by this tool at all
+  // (and reviewRequired would fail closed on it anyway).
+  if (!Array.isArray(pr.files) || pr.filesComplete === false) return skip("the PR's file list is unreadable or cut at the API's cap: land it by hand");
+  let reviewed = '';
+  if (reviewRequired(pr)) {
+    const rv = reviewVerdict({ reviews: pr.reviews, headSha: pr.headSha, labels: pr.labels });
+    if (!rv.ok) return wait(rv.why);
+    reviewed = `, ${rv.why}`;
+  }
   const g = gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) });
   if (g.verdict === 'RED') return skip(`ci-gate RED — ${g.why}`);
   if (g.verdict !== 'GREEN') return wait(`ci-gate ${g.verdict} — ${g.why}`);
   if (pr.mergeable === false || pr.mergeableState === 'dirty') return skip('merge conflict with main');
   if (pr.mergeable !== true) return wait('GitHub has not computed mergeability yet');
-  if (!Array.isArray(pr.files) || pr.filesComplete === false) return skip("the PR's file list is unreadable or cut at the API's cap: land it by hand");
   if (Number(pr.behindBy) > 0) {
     const s = skewVerdict({ prFiles: pr.files, mainFiles: pr.mainFiles, mainComplete: pr.mainFilesComplete !== false, units });
     if (s.verdict !== 'DISJOINT') return { action: 'UPDATE', why: `${pr.behindBy} commit(s) behind main, skew ${s.verdict}: ${s.why}` };
@@ -296,7 +493,7 @@ export function decidePr(pr, { repo, units }) {
     }
   }
   const skew = Number(pr.behindBy) > 0 ? `, ${pr.behindBy} behind but DISJOINT` : '';
-  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}` };
+  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}${reviewed}` };
 }
 
 /** Queue order: land-ok label time, then PR number. A PR with no label time sorts last. */
@@ -319,25 +516,40 @@ export function plan(snap) {
   const units = snap.units ?? {};
   const watch = mainWatch({ main: snap.main, runs: snap.mainRuns, failedJobs: snap.failedJobs, baseline: snap.baseline, now: Date.parse(snap.now ?? '') || Date.now() });
   const freezes = (snap.freezes ?? []).filter((i) => i?.state === 'open');
-  const decisions = queueOrder(snap.prs).map((pr) => ({ number: pr.number, title: pr.title ?? '', ...decidePr(pr, { repo: snap.repo, units }) }));
+  const openFreezes = (snap.freezes ?? []).filter((i) => i?.state === 'open');
+  const decisions = queueOrder(snap.prs).map((pr) => {
+    const d = { number: pr.number, title: pr.title ?? '', ...decidePr(pr, { repo: snap.repo, units }) };
+    // FIX-FIRST: during a freeze only the PR that names it may merge.
+    if (openFreezes.length && d.action === 'MERGE') {
+      const fixes = fixesOpenFreeze(pr, openFreezes);
+      if (fixes === null) return { ...d, action: 'WAIT', why: `frozen by ${openFreezes.map((f) => `#${f.number}`).join(', ')}: only a \`${FIX_FIRST_LABEL}\` PR whose body says \`Fixes-freeze: #<n>\` merges (${d.why})`, fix: false };
+      return { ...d, why: `FIX-FIRST for #${fixes}: ${d.why}`, fix: true };
+    }
+    return d;
+  });
   // A NEW red whose run already has a land-freeze issue — open, or CLOSED by the lead to
   // lift it — is not frozen again: closed means "read, and judged not to block".
   const lifted = watch.state === 'FREEZE' && (snap.freezeMarkers ?? []).includes(watch.freeze.marker);
   const state = lifted ? 'RED' : watch.state;
+  const mainBlocked = ['FREEZE', 'RUNNING', 'NO_RUN', 'HOLD'].includes(state) ? `main is ${state} — no merge this run` : null;
   const blocked = freezes.length
-    ? `FROZEN by ${freezes.map((i) => `#${i.number}`).join(', ')} — no merge until closed`
-    : ['FREEZE', 'RUNNING', 'NO_RUN', 'HOLD'].includes(state)
-      ? `main is ${state} — no merge this run`
-      : null;
+    ? `FROZEN by ${freezes.map((i) => `#${i.number}`).join(', ')} — only its fix-first PR merges until it closes`
+    : mainBlocked;
+  // AUTO-CLOSE: the first open freeze whose named jobs are green again on main.
+  const closing = freezes.map((f) => ({ f, v: freezeCloseVerdict({ freeze: f, check: snap.freezeCheck ?? null }) }));
+  const toClose = state === 'RUNNING' ? null : closing.find((c) => c.v.close) ?? null;
   let act = null;
   if (state === 'FREEZE') {
     act = { kind: 'freeze', why: watch.why, freeze: watch.freeze };
   } else if (state === 'NO_RUN') {
     act = { kind: 'dispatch-main', why: watch.why };
+  } else if (toClose) {
+    act = { kind: 'close-freeze', issue: toClose.f.number, comment: toClose.v.comment, why: toClose.v.why };
   } else {
-    // A merge needs main settled and unfrozen; an update-branch or an E2E dispatch only
-    // readies a head, so it may go ahead while main's run is still going.
-    const writes = blocked ? ['UPDATE', 'DISPATCH_E2E'] : ['MERGE', 'UPDATE', 'DISPATCH_E2E'];
+    // A merge needs main settled; during a freeze only a fix-first PR's MERGE survived
+    // above. An update-branch or an E2E dispatch only readies a head, so it may go
+    // ahead while main's run is still going.
+    const writes = mainBlocked ? ['UPDATE', 'DISPATCH_E2E'] : ['MERGE', 'UPDATE', 'DISPATCH_E2E'];
     const next = decisions.find((d) => writes.includes(d.action));
     if (next) {
       const pr = snap.prs.find((p) => p.number === next.number);
@@ -345,16 +557,17 @@ export function plan(snap) {
       act = { kind, pr: { number: pr.number, headSha: pr.headSha, headRef: pr.headRef }, why: next.why };
     }
   }
-  return { watch, freezes, decisions, act, blocked };
+  return { watch, freezes, decisions, act, blocked, closing: closing.map((c) => c.v.why) };
 }
 
 /** The lines a run prints: main, the freeze, every PR's decision, the act. */
 export function report(p, { dryRun }) {
   const out = [`main: ${p.watch.state} — ${p.watch.why}`];
   if (p.blocked) out.push(`blocked: ${p.blocked}`);
+  for (const c of p.closing ?? []) out.push(`freeze: ${c}`);
   for (const d of p.decisions) out.push(`#${d.number} ${d.action} — ${d.why}`);
   if (!p.decisions.length) out.push('no open pull request into main');
-  const act = p.act ? `${p.act.kind}${p.act.pr ? ` #${p.act.pr.number}` : ''} — ${p.act.why}` : 'nothing to do';
+  const act = p.act ? `${p.act.kind}${p.act.pr ? ` #${p.act.pr.number}` : ''}${p.act.issue ? ` #${p.act.issue}` : ''} — ${p.act.why}` : 'nothing to do';
   out.push(`${dryRun ? 'DRY RUN, would act' : 'act'}: ${act}`);
   return out;
 }
@@ -480,7 +693,27 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
     }
   }
   const issues = (await paged(get, `/issues?labels=${FREEZE_LABEL}&state=all`)).rows.filter((i) => !i.pull_request);
-  const freezes = issues.filter((i) => i.state === 'open').map((i) => ({ number: i.number, title: i.title, state: i.state }));
+  const freezes = issues.filter((i) => i.state === 'open').map((i) => ({ number: i.number, title: i.title, state: i.state, body: i.body ?? '' }));
+  // The auto-close input, read only while a freeze is open: each watched workflow's
+  // newest run at the head, its jobs, and the parent's failed jobs (the baseline).
+  // One part per WATCHED workflow (ci.yml AND codeql.yml), unioned by unionFreezeChecks:
+  // a freeze naming a CodeQL job closes on codeql's own run, never waits on ci.yml's.
+  let freezeCheck = null;
+  if (freezes.length) {
+    const parts = [];
+    for (const wf of WATCHED_PATHS) {
+      const top = mainRuns.filter((r) => r?.head_sha === main.sha && r?.head_branch === BASE_BRANCH && POST_GATE_EVENTS.includes(String(r?.event ?? '')) && pathOf(r) === wf).sort(newestFirst)[0];
+      if (!top) continue;
+      const jobs = top.status === 'completed' ? ((await get(`/actions/runs/${top.id}/jobs?filter=latest&per_page=100`)).jobs ?? []).map((j) => ({ name: j.name, conclusion: j.conclusion })) : [];
+      let base = baseline[wf];
+      if (base === undefined && main.parentSha && jobs.some((j) => RED_JOB.has(String(j.conclusion)))) {
+        const prev = ((await get(`/actions/runs?head_sha=${main.parentSha}&per_page=100`)).workflow_runs ?? []).filter((x) => pathOf(x) === wf && x.status === 'completed' && x.conclusion !== 'cancelled').sort(newestFirst)[0];
+        base = prev ? failedJobNames((await get(`/actions/runs/${prev.id}/jobs?filter=latest&per_page=100`)).jobs) : null;
+      }
+      parts.push({ runId: top.id, url: top.html_url, status: top.status, conclusion: top.conclusion, jobs, baseline: base ?? null });
+    }
+    freezeCheck = unionFreezeChecks(parts);
+  }
   const freezeMarkers = issues.map((i) => (/<!-- land-freeze run=\d+ -->/.exec(String(i.body ?? '')) ?? [null])[0]).filter(Boolean);
   const units = JSON.parse(readFileSync(join(ROOT, 'tooling/ci/lane-map.json'), 'utf8')).deployUnits ?? {};
   if (!Object.keys(units).length) throw new Error(`${NO_UNITS}: the skew rule cannot tell one deploy unit from another`);
@@ -488,7 +721,7 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
   const prs = [];
   for (const p of open) {
     const labels = (p.labels ?? []).map((l) => l.name);
-    const entry = { number: p.number, title: p.title, state: p.state, draft: Boolean(p.draft), labels, baseRef: p.base?.ref, headSha: p.head?.sha, headRef: p.head?.ref, headRepo: p.head?.repo?.full_name ?? null };
+    const entry = { number: p.number, title: p.title, body: p.body ?? '', state: p.state, draft: Boolean(p.draft), labels, baseRef: p.base?.ref, headSha: p.head?.sha, headRef: p.head?.ref, headRepo: p.head?.repo?.full_name ?? null };
     if (!labels.includes(LAND_LABEL) || p.draft) {
       prs.push(entry);
       continue;
@@ -500,7 +733,11 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
     const runs = (await get(`/actions/runs?head_sha=${p.head.sha}&per_page=100`)).workflow_runs ?? [];
     const files = await paged(get, `/pulls/${p.number}/files`, null, PR_FILE_CAP / 100);
     const cmp = await get(`/compare/${p.head.sha}...${BASE_BRANCH}`);
+    // The review gate's input, read for every PR reviewRequired names: the label OR
+    // its own file list (re-derived here, never trusted to the label alone).
+    const reviews = reviewRequired({ labels, files: files.rows.map((f) => f.filename), filesComplete: files.complete }) ? (await paged(get, `/pulls/${p.number}/reviews`)).rows.map((r) => ({ id: r.id, author_association: r.author_association, body: r.body, commit_id: r.commit_id, submitted_at: r.submitted_at, state: r.state })) : [];
     prs.push({
+      reviews,
       ...entry,
       labeledAt: labeled.at(-1) ?? null,
       mergeable: full.mergeable,
@@ -515,7 +752,27 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
       mainFilesComplete: (cmp.files ?? []).length < COMPARE_FILE_CAP,
     });
   }
-  return { repo, now: now.toISOString(), main, mainRuns, failedJobs, baseline, freezes, freezeMarkers, units, prs };
+  return { repo, now: now.toISOString(), main, mainRuns, failedJobs, baseline, freezes, freezeMarkers, freezeCheck, units, prs };
+}
+
+/** Each named failing job of `run`: its first failing step and its raw log (null when unreadable). */
+async function freezeJobLogs({ repo, token, run, names }) {
+  const { get } = client(repo, token);
+  const jobs = (await get(`/actions/runs/${run.id}/jobs?filter=latest&per_page=100`)).jobs ?? [];
+  const out = [];
+  for (const name of names) {
+    const j = jobs.find((x) => x.name === name);
+    const step = j?.steps?.find((s) => RED_JOB.has(String(s.conclusion)))?.name ?? null;
+    let log = null;
+    if (j) {
+      // The logs endpoint answers 302 to a short-lived signed URL; fetch follows it and
+      // drops the authorization header on the cross-origin hop.
+      const res = await fetchWithBoundedRetry(({ signal }) => fetch(`${API}/repos/${repo}/actions/jobs/${j.id}/logs`, { headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-land-next' }, signal }), { describe: (s) => `GET job ${j.id} logs — ${s}` });
+      if (res.ok) log = await res.text();
+    }
+    out.push({ name, step, log });
+  }
+  return out;
 }
 
 const DISPATCH_REFUSED = (wf, r) => `dispatch ${wf} answered HTTP ${r.status} ${r.text.slice(0, 200)}`;
@@ -525,8 +782,22 @@ export async function perform(act, { repo, token }) {
   const { write } = client(repo, token);
   const dispatch = async (wf, ref, inputs) => write('POST', `/actions/workflows/${wf}/dispatches`, inputs ? { ref, inputs } : { ref });
   if (act.kind === 'freeze') {
-    const r = await write('POST', '/issues', { title: act.freeze.title, body: act.freeze.body, labels: [FREEZE_LABEL] });
+    // The fixer's input: each new failing job's first failing step and log tail. A read
+    // that fails leaves that job's tail out ("could not be read"); the issue still opens.
+    let logs = '';
+    try {
+      logs = `\n\n${freezeLogSection(await freezeJobLogs({ repo, token, run: act.freeze.run, names: act.freeze.jobs }))}`;
+    } catch (e) {
+      logs = `\n\n_The failing jobs' logs could not be read (${String(e.message).slice(0, 120)})._`;
+    }
+    const r = await write('POST', '/issues', { title: act.freeze.title, body: `${act.freeze.body}${logs}`, labels: [FREEZE_LABEL] });
     return r.ok ? { code: 0, lines: [`opened the ${FREEZE_LABEL} issue for run ${act.freeze.run.id}`] } : { code: 1, lines: [`opening the ${FREEZE_LABEL} issue answered HTTP ${r.status} ${r.text.slice(0, 200)}`] };
+  }
+  if (act.kind === 'close-freeze') {
+    const c = await write('POST', `/issues/${act.issue}/comments`, { body: act.comment });
+    if (!c.ok) return { code: 1, lines: [`commenting on ${FREEZE_LABEL} #${act.issue} answered HTTP ${c.status} ${c.text.slice(0, 200)}`] };
+    const r = await write('PATCH', `/issues/${act.issue}`, { state: 'closed', state_reason: 'completed' });
+    return r.ok ? { code: 0, lines: [`closed ${FREEZE_LABEL} #${act.issue}: ${act.why}`] } : { code: 1, lines: [`closing ${FREEZE_LABEL} #${act.issue} answered HTTP ${r.status} ${r.text.slice(0, 200)}`] };
   }
   if (act.kind === 'dispatch-main') {
     const r = await dispatch('ci.yml', BASE_BRANCH);
