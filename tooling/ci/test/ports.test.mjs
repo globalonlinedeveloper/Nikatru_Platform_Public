@@ -67,12 +67,16 @@ function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other'
   w('tooling/capability-register.json', JSON.stringify({ vendors: { _why: [], acme: { seam: { file: 'services/w/src/lib/contract.ts', symbol: 'WidgetPort' } } } }));
   w('tooling/legal/provider-register.json', JSON.stringify({ providers: [{ id: 'acme' }, { id: 'other' }] }));
   w('tooling/house-identity.json', JSON.stringify({ ownerDomain: { value: 'acme.test', why: 'fixture' } }));
-  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n');
+  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n  CACHE?: KVNamespace;\n}\n');
+  // limb 13's one reader, and limb 12's binding type in a permitted home (types.ts above): each
+  // limb's pattern must still match SOMETHING, or it is coverage lost.
+  w('services/_shared/src/geo.ts', 'export function requestGeo(req: Request) {\n  return (req as Request & { cf?: { colo?: string } }).cf?.colo;\n}\n');
   w('services/w/src/lib/contract.ts', 'export interface WidgetPort {\n  verify(): boolean;\n}\n');
   w('services/w/src/lib/acme.ts', "import type { WidgetPort } from './contract';\nexport const acmeVerifier: WidgetPort = { verify: () => true };\n");
   w('services/w/src/lib/fake.ts', "import type { WidgetPort } from './contract';\nexport const fakeWidget: WidgetPort = { verify: () => false };\n");
   w('services/w/src/registry.ts', "import { acmeVerifier } from './lib/acme';\nexport const ADAPTERS = [acmeVerifier];\n");
   w('services/w/src/index.ts', "import { ADAPTERS } from './registry';\nexport default ADAPTERS;\n");
+  w('tooling/ops/monitor-api/glitchtip.mjs', "export const listMonitors = (o) => fetch(`${o.base}/api/0/organizations/${o.org}/monitors/`);\n");
   for (const [rel, text] of Object.entries(files)) {
     if (text === null) rmSync(join(root, rel), { force: true });
     else w(rel, text);
@@ -223,7 +227,8 @@ describe('assert-ports — every limb reddens', () => {
     assert.match(r.out, /no row of tooling\/worker-secrets\.json/);
   });
   it('limb 5: no interface Env anywhere is COVERAGE LOST', () => {
-    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = 1;\n' } }));
+    // (a binding type stays in types.ts, so limb 12's own coverage holds and limb 5 is the one that decides)
+    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = KVNamespace;\n' } }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.first, /^assert-ports: COVERAGE LOST — limb 5 \(secrets\): no `interface Env` member/);
   });
@@ -306,6 +311,90 @@ describe('assert-ports — every limb reddens', () => {
     const stale = run(fixture({ ports: { widgets: declared } }));
     assert.equal(stale.code, 1, stale.out);
     assert.match(stale.out, /Remove the stale waiver/);
+  });
+  it('limb 1: a DRAFT adapter may be unbuilt (empty impl) and vendorless; anything else may not', () => {
+    const draft = { ...adapter({ id: 'next', vendor: null, status: 'draft', impl: {} }) };
+    const ok = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, draft] }) } }));
+    assert.equal(ok.code, 0, ok.out);
+    const built = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, status: 'built' }] }) } }));
+    assert.equal(built.code, 1, built.out);
+    assert.match(built.first, /limb 1 \(schema\).*adapter `next` has vendor null but is not a fake and names no `channel`/);
+    const half = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, impl: { file: 'services/w/src/lib/next.ts' } }] }) } }));
+    assert.equal(half.code, 1, half.out);
+    assert.match(half.out, /impl must be \{file, symbol\}, or \{\} while unbuilt/);
+  });
+  it('limb 8: ONE vendor may be the adapter of SEVERAL ports, with a non-port row for what is LEFT', () => {
+    const gizmos = port({
+      port: 'gizmos',
+      handTables: [],
+      adapters: [adapter({ id: 'acme-gizmo', impl: { file: 'services/w/src/lib/gizmo.ts', symbol: 'acmeGizmo' } }), port().adapters[1]],
+      selection: { by: 'single', source: null, default: { live: 'acme-gizmo', sandbox: 'acme-gizmo', test: 'fake' }, canary: null },
+    });
+    const files = { 'services/w/src/lib/gizmo.ts': "import type { WidgetPort } from './contract';\nexport const acmeGizmo: WidgetPort = { verify: () => true };\n" };
+    const rest = { vendor: 'acme', registers: ['provider-register'], reason: 'the rest of acme waits for its own train', until: 'port-x', remaining: ['the sql binding'] };
+    const nonPortRows = [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true }, rest];
+    const ok = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files }));
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /vendor acme is the adapter of gizmos, widgets; what is left \(the sql binding\) until port-x/);
+    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files })), 'acme'),
+      'port: gizmos (adapter acme-gizmo, earned L2); widgets (adapter acme, earned L2) — the rest (the sql binding) none yet, until port-x');
+    // red: the same row without `remaining` is a vendor placed three times
+    const { remaining: _r, ...bare } = rest;
+    const noRest = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows: [nonPortRows[0], bare], files }));
+    assert.equal(noRest.code, 1, noRest.out);
+    assert.match(noRest.first, /limb 8 \(cross-register\): vendor `acme` is placed 3 times .*must name what is LEFT/);
+    // red: `remaining` on a vendor no port has an adapter for
+    const stale = run(fixture({ nonPortRows: [{ ...nonPortRows[0], nonPort: undefined, until: 'port-x', remaining: ['x'] }].map(({ nonPort: _n, ...r }) => r) }));
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /row `other` names `remaining` surfaces, but `other` is no adapter of any port/);
+  });
+  it('limb 12: a handler typed with a Cloudflare binding type exits 1 and the first line names limb 12', () => {
+    const r = run(fixture({ files: { 'services/w/src/routes/h.ts': 'export async function h(kv: KVNamespace) {\n  return kv.get("k");\n}\n' } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 12 \(bindings\): `services\/w\/src\/routes\/h\.ts` names the Cloudflare binding type `KVNamespace`/);
+    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit', 'D1Database', 'D1PreparedStatement', 'D1Result']) {
+      const x = run(fixture({ files: { 'services/w/src/routes/h.ts': `export const h = (b: ${t}) => b;\n` } }));
+      assert.equal(x.code, 1, `${t}: ${x.out}`);
+      assert.match(x.first, new RegExp(`limb 12 .*\`${t}\``));
+    }
+  });
+  it('limb 12: the composition root, a types.ts and services/_shared/src/ports/ may name it; a comment or a string is not a type', () => {
+    for (const rel of ['services/w/src/ports.ts', 'services/_shared/src/ports/adapters/cf.ts', 'services/v/src/types.ts']) {
+      const r = run(fixture({ files: { [rel]: 'export const adapt = (b: KVNamespace) => b;\n' } }));
+      assert.equal(r.code, 0, `${rel}: ${r.out}`);
+    }
+    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace or a D1Database here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\nexport const dumpD1Database = (db: SqlDb) => db;\n' } }));
+    assert.equal(prose.code, 0, prose.out);
+  });
+  it('limb 12: a pattern that matches NOTHING in the tree is COVERAGE LOST (exit 2)', () => {
+    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n' } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /COVERAGE LOST — limb 12 \(bindings\): the binding-type pattern matched nothing/);
+  });
+  it('limb 13: a `.cf` read outside geo.ts exits 1 — dot, optional chain, bracket and destructuring alike', () => {
+    for (const body of [
+      'export const c = (r: Request) => (r as any).cf?.colo;\n',
+      'export const c = (r: any) => r?.cf;\n',
+      "export const c = (r: any) => r['cf'];\n",
+      'export function c(r: any) {\n  const { cf } = r;\n  return cf;\n}\n',
+      'export type G = IncomingRequestCfProperties;\n',
+    ]) {
+      const r = run(fixture({ files: { 'services/w/src/routes/e.ts': body } }));
+      assert.equal(r.code, 1, `${body}${r.out}`);
+      assert.match(r.first, /limb 13 \(geo\): `services\/w\/src\/routes\/e\.ts` reads the runtime's `cf` object/);
+    }
+  });
+  it("limb 13: prose about request.cf, a 'cf-' header and a cf-named local are not reads", () => {
+    const r = run(fixture({ files: { 'services/w/src/routes/e.ts': "// keyed on request.cf\nexport const h = (n: string) => n.startsWith('cf-') || n === 'x.cf';\nexport const cf = 1;\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('limb 13: geo.ts gone (or no longer reading cf) is COVERAGE LOST (exit 2)', () => {
+    const gone = run(fixture({ files: { 'services/_shared/src/geo.ts': null } }));
+    assert.equal(gone.code, 2, gone.out);
+    assert.match(gone.first, /COVERAGE LOST — limb 13 \(geo\): services\/_shared\/src\/geo\.ts was not walked/);
+    const blind = run(fixture({ files: { 'services/_shared/src/geo.ts': 'export const requestGeo = () => ({});\n' } }));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.first, /no longer matches the `\.cf` pattern/);
   });
   it('the exported reader gives C-8 its one line per vendor', () => {
     const r = evaluate(fixture());
@@ -414,13 +503,144 @@ describe('assert-ports — every limb reddens', () => {
   });
 });
 
+describe('assert-ports — a port with two interfaces, graded apart (level.byInterface)', () => {
+  // A ts half (acme + fake) and a dart half (dacme + dfake), sharing vendor acme.
+  const dartAdapter = (over = {}) => adapter({ id: 'dacme', impl: { file: 'packages/w/lib/dacme.dart', symbol: 'DacmeClient' }, secrets: [], ...over });
+  const twoHalves = (over = {}) => port({
+    level: { claimed: 2, target: 3, byInterface: { ts: { claimed: 2, target: 3 }, dart: { claimed: 2, target: 3 } } },
+    interface: { ts: { file: 'services/w/src/lib/contract.ts', symbols: ['WidgetPort'] }, dart: { file: 'packages/w/lib/widget.dart', symbols: ['WidgetClient'] } },
+    adapters: [...port().adapters, dartAdapter(), dartAdapter({ id: 'dfake', vendor: null, status: 'fake', impl: { file: 'packages/w/lib/dfake.dart', symbol: 'DfakeClient' }, environments: ['test'] })],
+    ...over,
+  });
+  const dartFiles = {
+    'packages/w/lib/widget.dart': 'abstract class WidgetClient {\n  void send();\n}\n',
+    'packages/w/lib/dacme.dart': 'class DacmeClient implements WidgetClient {\n  void send() {}\n}\n',
+    'packages/w/lib/dfake.dart': 'class DfakeClient implements WidgetClient {\n  void send() {}\n}\n',
+    'packages/w/lib/testing.dart': 'void runWidgetConformance(String name) {}\n',
+    'packages/w/test/dacme_test.dart': "void main() {\n  runWidgetConformance('dacme');\n}\n",
+    'packages/w/test/dfake_test.dart': "void main() {\n  runWidgetConformance('dfake');\n}\n",
+    'tooling/ops/port-switch.mjs': '// present\n',
+  };
+  const conformant = (claimDart = 3) => twoHalves({
+    level: { claimed: 2, target: 3, byInterface: { ts: { claimed: 2, target: 3 }, dart: { claimed: claimDart, target: 3 } } },
+    adapters: twoHalves().adapters.map((a) => (a.id === 'dacme' ? { ...a, conformance: { file: 'packages/w/test/dacme_test.dart' } } : a.id === 'dfake' ? { ...a, conformance: { file: 'packages/w/test/dfake_test.dart' } } : a)),
+    conformance: { suite: { file: 'packages/w/lib/testing.dart', runner: 'runWidgetConformance' }, pending: [] },
+  });
+
+  it('green control: each half is graded over its own adapters, and one vendor backs both halves of ONE port', () => {
+    const r = run(fixture({ ports: { widgets: conformant() }, files: dartFiles }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^widgets\.dart\s+L3\s+L3\s+L3/m);
+    assert.match(r.out, /^widgets\.ts\s+L2\s+L2\s+L3\s+\(below target: no conformance suite for the ts interface/m);
+    assert.match(r.out, /^widgets\s+L2\s+L2\s+L3/m);
+  });
+  it('red: the dart half claims L3 while only ONE dart adapter calls the runner', () => {
+    const one = conformant();
+    one.adapters = one.adapters.map((a) => (a.id === 'dfake' ? { ...a, conformance: null } : a));
+    const r = run(fixture({ ports: { widgets: one }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 6 \(level\): tooling\/ports\/widgets\.json claims L3 for its dart interface and earns L2: 1 conformant adapter/);
+  });
+  it('red: a ts adapter calling the DART runner does not count toward the ts half', () => {
+    const doc = conformant();
+    doc.level.byInterface.ts.claimed = 3;
+    doc.adapters = doc.adapters.map((a) => (a.id === 'acme' || a.id === 'fake' ? { ...a, conformance: { file: 'packages/w/test/dacme_test.dart' } } : a));
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /claims L3 for its ts interface and earns L2: no conformance suite for the ts interface/);
+  });
+  it('red: the port-level claim must be the weakest interface\'s', () => {
+    const doc = conformant();
+    doc.level.claimed = 3;
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /level\.claimed is L3, and its weakest interface claims L2/);
+  });
+  it('red: byInterface must grade exactly the declared interfaces', () => {
+    const doc = conformant();
+    delete doc.level.byInterface.ts;
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/widgets\.json level\.byInterface grades \["dart"\]/);
+  });
+  it('red: a per-interface selection naming the other half\'s adapter is refused', () => {
+    const doc = conformant();
+    doc.selection.byInterface = { ts: { by: 'single', source: null, default: { live: 'dacme', sandbox: null, test: null }, canary: null } };
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /selection\.byInterface\.ts\.default\.live names `dacme`, which is not a ts adapter/);
+  });
+  it('red: a per-interface selection of a FAKE in live reddens limb 7', () => {
+    const doc = conformant();
+    doc.selection.byInterface = { ts: { by: 'single', source: null, default: { live: 'fake', sandbox: null, test: null }, canary: null } };
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/widgets\.json selection\.byInterface\.ts\.default\.live is the fake `fake`/);
+  });
+  it('red: one vendor in TWO ports is still placed twice (limb 8)', () => {
+    const second = port({ port: 'gadgets', switch: { runbook: 'Private/runbooks/switch-vendor.md#gadgets', dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' }, handTables: [] });
+    const r = run(fixture({ ports: { widgets: port(), gadgets: second } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times \((gadgets\/acme, widgets\/acme|widgets\/acme, gadgets\/acme)\)/);
+  });
+  it('a DRAFT adapter whose vendor is placed elsewhere is not a second placement, and is printed; alone it places its vendor in its own port', () => {
+    const doc = port({ adapters: [...port().adapters, adapter({ id: 'later', vendor: 'other', status: 'draft', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const ok = run(fixture({ ports: { widgets: doc } }));
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /widgets\/later: draft adapter of vendor other, placed at _non-port until it is built/);
+    // A draft of a vendor its OWN port already places is that one placement (mail's ses on the real tree
+    // is the case nothing else places: it places amazon-ses in mail, and the real-tree green control holds it).
+    const own = port({ adapters: [...port().adapters, adapter({ id: 'later', status: 'draft', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const alone = run(fixture({ ports: { widgets: own } }));
+    assert.equal(alone.code, 0, alone.out);
+    assert.doesNotMatch(alone.out, /draft adapter of vendor acme/);
+    // …and a BUILT adapter beside the _non-port row is still two placements: the rule is for drafts only.
+    const built = port({ adapters: [...port().adapters, adapter({ id: 'later', vendor: 'other', status: 'built', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const twice = run(fixture({ ports: { widgets: built } }));
+    assert.equal(twice.code, 1, twice.out);
+    assert.match(twice.out, /vendor `other` is placed 2 times/);
+  });
+
+});
+
+describe('assert-ports — limb 11, the monitor API', () => {
+  it('green control: the adapter calls the monitor API and nothing else does', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 11 scanned 0 ops script\(s\)/);
+  });
+  it('red: an ops script with its own fetch of a monitor route reddens limb 11', () => {
+    const r = run(fixture({ files: { 'tooling/ops/rogue.mjs': "await fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, { headers: {} });\n" } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 11 \(monitor-api\): tooling\/ops\/rogue\.mjs calls GlitchTip's monitor API directly/);
+  });
+  it('red: composing the route away from the call is still a direct call', () => {
+    const src = "const path = `organizations/${ORG}/monitors/`;\nasync function api(p) { return fetch(`${BASE}/api/0/${p}`); }\nawait api(path);\n";
+    const r = run(fixture({ files: { 'tooling/ops/rogue.mjs': src } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /rogue\.mjs calls GlitchTip's monitor API directly/);
+  });
+  it('a mention in a comment, or a route string with no fetch, is not a call', () => {
+    const r = run(fixture({ files: { 'tooling/ops/doc.mjs': "// fetch(`${BASE}/api/0/organizations/o/monitors/`)\nexport const route = 'monitors/';\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('COVERAGE LOST: the adapter gone, or no longer matched, is exit 2', () => {
+    const gone = run(fixture({ files: { 'tooling/ops/monitor-api/glitchtip.mjs': null } }));
+    assert.equal(gone.code, 2, gone.out);
+    assert.match(gone.first, /COVERAGE LOST — limb 11 \(monitor-api\)/);
+    const blind = run(fixture({ files: { 'tooling/ops/monitor-api/glitchtip.mjs': 'export const x = 1;\n' } }));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.out, /the matcher has broken/);
+  });
+});
+
 describe('assert-ports — on a copy of the REAL registries', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
-      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'packages/api_client/lib', 'packages/api_client/test', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
+      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'packages/telemetry/test', 'tooling/ops', 'packages/api_client/lib', 'packages/api_client/test', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
       // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
       'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
       // the channels port: the contract, its submitters and the conformance file that calls the runner
@@ -434,7 +654,13 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
-    for (const p of ['auth', 'boxes', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
+    assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
+    for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L2`, 'm')); // port-storage
+    assert.match(r.out, /^sql\s+L2\s+L2\s+L3/m); // port-sql
+    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit, sql; what is left \(Workers, Pages, the nikatru\.com zone\)/);
+    // port-sql: the D1 adapter's scenarios are named as pending, never hidden.
+    assert.match(r.out, /PENDING sql\/d1: batch-is-atomic/);
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /ai\s+L3\s+L3\s+L3/);
@@ -442,6 +668,29 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.match(r.out, /limb 10: payments\/client — PurchaseRail 3 conformant, IapBridge 2 conformant/);
     assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
     assert.match(r.out, /CANDIDATE channels\/indus-appstore \(Indus Appstore\): not submittable — \[ADR 076\] rider; commission UNREAD/);
+  });
+  it('red: a REAL handler re-typed D1Database reddens limb 12 (lib/erasure-ledger.ts)', () => {
+    const rel = join(root, 'services/platform/src/lib/erasure-ledger.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /clearPendingErasure\(db: SqlDb,/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('clearPendingErasure(db: SqlDb,', 'clearPendingErasure(db: D1Database,'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 12 \(bindings\): `services\/platform\/src\/lib\/erasure-ledger\.ts` names the Cloudflare binding type `D1Database`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: sql claiming L3 while D1 has pending scenarios reddens limb 6', () => {
+    const rel = join(root, 'tooling/ports/sql.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.level.claimed = 3;
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 6 \(level\): tooling\/ports\/sql\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
+    } finally { writeFileSync(rel, before); }
   });
   // port-pay-client · MUTATE THE REAL TREE: RevenueCat's conformance test that imports the suite
   // but never CALLS the runner reddens limb 10, and the client half falls to L2 (IapBridge has one).
@@ -603,6 +852,82 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /boxes\s+L2\s+L0/);
     } finally { writeFileSync(rel, before); }
   });
+  it('red: a conformance test that no longer CALLS runTelemetryClientConformance un-earns the dart L3', () => {
+    const rel = join(root, 'packages/telemetry/test/noop_telemetry_client_conformance_test.dart');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace('runTelemetryClientConformance(', '// runTelemetryClientConformance(\nnoCall('));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 6 \(level\): tooling\/ports\/telemetry\.json claims L3 for its dart interface and earns L2: 1 conformant adapter/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a Worker handler importing the sentry-envelope adapter reddens limb 4 and the ts half earns L1', () => {
+    const rel = join(root, 'services/platform/src/index.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `import { sentryEnvelopeSink } from '../../_shared/src/adapters/telemetry/sentry-envelope';\nvoid sentryEnvelopeSink;\n${before}`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /limb 4 \(imports\) tooling\/ports\/telemetry\.json: `services\/platform\/src\/index\.ts` imports the adapter `services\/_shared\/src\/adapters\/telemetry\/sentry-envelope\.ts`/);
+      assert.match(r.out, /^telemetry\.ts\s+L2\s+L1\s+L3/m);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: verify-monitors calling the GlitchTip monitor URL itself reddens limb 11', () => {
+    const rel = join(root, 'tooling/ops/verify-monitors.mjs');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `${before}\nawait fetch(\`\${BASE}/api/0/organizations/\${ORG}/monitors/\`, { headers: {} });\n`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 11 \(monitor-api\): tooling\/ops\/verify-monitors\.mjs calls GlitchTip's monitor API directly/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: the composition root may import it; scheduled.ts may not import the ntfy adapter', () => {
+    const rel = join(root, 'services/platform/src/scheduled.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `import { ntfyNotifier } from '../../_shared/src/adapters/telemetry/notify-ntfy';\nvoid ntfyNotifier;\n${before}`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /`services\/platform\/src\/scheduled\.ts` imports the adapter `services\/_shared\/src\/adapters\/telemetry\/notify-ntfy\.ts`/);
+      assert.doesNotMatch(r.out, /`services\/platform\/src\/ports\.ts` imports the adapter/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a REAL handler re-typed KVNamespace reddens limb 12 (routes/sessions.ts)', () => {
+    const rel = join(root, 'services/platform/src/routes/sessions.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /kv: KvStore \| undefined/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('kv: KvStore | undefined', 'kv: KVNamespace | undefined'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 12 \(bindings\): `services\/platform\/src\/routes\/sessions\.ts` names the Cloudflare binding type `KVNamespace`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: the REAL events route reading request.cf directly again reddens limb 13', () => {
+    const rel = join(root, 'services/platform/src/routes/events.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /requestGeo\(c\.req\.raw\)/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('requestGeo(c.req.raw)', '((c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf ?? {})'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 13 \(geo\): `services\/platform\/src\/routes\/events\.ts` reads the runtime's `cf` object/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it("red: Cloudflare's non-port row without `remaining` reddens limb 8", () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      delete doc.rows.find((x) => x.vendor === 'cloudflare').remaining;
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 5 times/);
+    } finally { writeFileSync(rel, before); }
+  });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');
     const before = readFileSync(rel, 'utf8');
@@ -644,7 +969,11 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const rel = join(root, 'services/platform/src/generated/ports.ts');
     const before = readFileSync(rel, 'utf8');
     try {
-      writeFileSync(rel, before.replace("razorpay: 'none',", "razorpay: 'api',"));
+      // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay declares `cancel` now (api), so the hand edit
+      // flips it back — and the mutation is asserted to have changed the file (a no-op replace is vacuous).
+      const mutated = before.replace("razorpay: 'api',", "razorpay: 'none',");
+      assert.notEqual(mutated, before, 'the mutation must change the rendered table');
+      writeFileSync(rel, mutated);
       const r = run(root);
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /limb 3 \(waivers\): render --check: services\/platform\/src\/generated\/ports\.ts differs from its render/);
@@ -662,6 +991,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/payments\.json selection\.default\.live is the fake `fake`/);
     } finally { writeFileSync(rel, before); }
   });
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: razorpay keeps one case pending (`refund revokes`) in the REAL
+  // registry, so a case pending on the fake leaves paddle the one conformant adapter.
   it('red: claiming L3 with a scenario pending on the fake reddens limb 6', () => {
     const rel = join(root, 'tooling/ports/payments.json');
     const before = readFileSync(rel, 'utf8');
@@ -757,7 +1088,7 @@ describe('assert-ports — limb 10, the client half, reddens', () => {
 });
 
 describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
-  it('a registry-named impl file, a registry, and a shared port module select it; an unnamed route does not', async () => {
+  it('a registry-named impl file, a registry, a shared port module and geo.ts select it; an unnamed route does not', async () => {
     const { buildChecks, select, trackedTree } = await import('../../scripts/affected-guards.mjs');
     const { checks, contentLost } = buildChecks(REPO, trackedTree(REPO));
     assert.deepEqual(contentLost, []);
@@ -766,7 +1097,18 @@ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
     assert.equal(picks('packages/telemetry/lib/src/noop_telemetry_client.dart'), true, 'named by telemetry.json impl.file');
     assert.equal(picks('tooling/ports/payments.json'), true);
     assert.equal(picks('services/_shared/src/ports/payments.ts'), true);
-    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it');
+    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it, and it names no binding type and reads no .cf');
+    // limbs 9/10: the one .cf reader, and a module whose TEXT carries the shape
+    assert.equal(picks('services/_shared/src/geo.ts'), true, "limb 10's one reader");
+    assert.equal(picks('services/_shared/src/ports/adapters/cloudflare.ts'), true, 'a registry impl file that names the binding types');
+    assert.equal(picks('services/platform/src/routes/events.ts'), false, 'reads geography only through requestGeo');
+    // the content branch itself: a binding type or a `.cf` read in Worker source selects; prose and tests do not
+    const content = checks.find((c) => c.id === 'guard:assert-ports').subjects.find((x) => x.kind === 'content');
+    const route = 'services/platform/src/routes/x.ts';
+    assert.equal(content.test(route, 'export const f = (k: KVNamespace) => k;\n'), true);
+    assert.equal(content.test(route, 'export const f = (r: any) => r.cf?.country;\n'), true);
+    assert.equal(content.test(route, '// keyed on request.cf, never a KVNamespace\nexport const x = 1;\n'), false);
+    assert.equal(content.test('services/platform/test/x.test.ts', 'export const f = (r: any) => r.cf;\n'), false, 'a test is not Worker source');
     assert.equal(picks('services/platform/src/lib/mor/paddle-cancel.ts'), true, 'named by payments.json outbound.modules');
     assert.equal(picks('services/platform/src/lib/mor/paddle-rail.ts'), true, 'named by payments.json outbound.file');
     assert.equal(picks('services/platform/src/generated/ports.ts'), true, 'the rendered table limb 3 checks');

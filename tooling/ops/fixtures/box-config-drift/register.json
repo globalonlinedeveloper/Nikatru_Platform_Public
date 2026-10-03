@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "Fixture register for tooling/ci/test/box-config-drift.test.mjs \u2014 fake hashes, no real box."
+  ],
+  "maxPostAgeHours": 50,
+  "boxes": {
+    "boxb": {
+      "files": {
+        "compose": {
+          "vendored": "boxes/boxb/docker-compose.yml",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    "boxc": {
+      "files": {
+        "compose": {
+          "vendored": "boxes/boxc/docker-compose.yml",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "override": {
+          "vendored": "boxes/boxc/docker-compose.override.yml",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "tunnel": {
+          "vendored": "boxes/boxc/cloudflared/config.yml",
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    }
+  }
+}

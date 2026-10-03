@@ -18,7 +18,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import subscriptions from '../src/routes/subscriptions';
 import budget from '../src/routes/budget';
-import renewals from '../src/routes/renewals';
 import { realAppDb, asUser } from './harness';
 
 const A = 'user-a';
@@ -164,17 +163,51 @@ describe('budget rows are scoped to the owner', () => {
   });
 });
 
-describe('renewals are scoped to the owner', () => {
-  it('user B’s upcoming renewals never include user A’s subscriptions', async () => {
-    const rens = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
-    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
-    await subs(A, '/v1/subscriptions', {
-      method: 'POST',
-      body: { name: 'Netflix', price: 9.99, next_renewal: soon },
+// ⏱ 2026-10-01 · rv2-services-023: 'renewals are scoped to the owner' stood
+// here and went with GET /v1/renewals, which had no caller and was removed.
+
+describe('a budget category id is never shared across accounts (rv2-services-026)', () => {
+  it('🔴 B PUTs with A’s category id: 200 with a NEW id, and A’s row is unchanged', async () => {
+    const putA = await budgets(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 500, categories: [{ name: 'Music', cap: 20 }] },
     });
-    const res = await rens(B, '/v1/renewals');
+    expect(putA.status).toBe(200);
+    const aId = ((await putA.json()) as { categories: Array<{ id: string }> }).categories[0].id;
+    const before = db.rows('SELECT user_id, name, cap, id FROM budget_categories WHERE id = ?', aId);
+
+    // idx_budget_categories_id is UNIQUE across every user: before this change
+    // B's INSERT of aId failed inside the batch and the save was a 500.
+    const putB = await budgets(B, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 10, categories: [{ id: aId, name: 'Games', cap: 5 }] },
+    });
+    expect(putB.status, 'a cross-tenant id collision is a 500 without the json_each read').toBe(200);
+    const bId = ((await putB.json()) as { categories: Array<{ id: string }> }).categories[0].id;
+    expect(bId).not.toBe(aId);
+    expect(db.rows('SELECT name, cap, id FROM budget_categories WHERE user_id = ?', B)).toEqual([
+      { name: 'Games', cap: 5, id: bId },
+    ]);
+    expect(db.rows('SELECT user_id, name, cap, id FROM budget_categories WHERE id = ?', aId)).toEqual(before);
+  });
+
+  it('B keeps the id of B’s own same-named cap when the sent one is A’s', async () => {
+    const aId = (
+      (await (
+        await budgets(A, '/v1/budget', { method: 'PUT', body: { categories: [{ name: 'Music', cap: 20 }] } })
+      ).json()) as { categories: Array<{ id: string }> }
+    ).categories[0].id;
+    const bOwn = (
+      (await (
+        await budgets(B, '/v1/budget', { method: 'PUT', body: { categories: [{ name: 'Games', cap: 5 }] } })
+      ).json()) as { categories: Array<{ id: string }> }
+    ).categories[0].id;
+    const res = await budgets(B, '/v1/budget', {
+      method: 'PUT',
+      body: { categories: [{ id: aId, name: 'Games', cap: 6 }] },
+    });
     expect(res.status).toBe(200);
-    expect(JSON.stringify(await res.json())).not.toContain('Netflix');
+    expect(((await res.json()) as { categories: Array<{ id: string }> }).categories[0].id).toBe(bOwn);
   });
 });
 

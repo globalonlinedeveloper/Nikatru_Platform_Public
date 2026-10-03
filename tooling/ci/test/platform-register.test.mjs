@@ -61,6 +61,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-platform-register.mjs');
+const REPO = resolve(CI_DIR, '..', '..');
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-preg-')); });
@@ -1905,4 +1906,152 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
     assert.equal(code, 1, out);
     assert.match(out, /services\/edge-shield\/wrangler\.jsonc — `vars\.API_VERSION` is declared here, but the register's `absentFrom` says it is not/);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · LIMB 8 (rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS).
+// Every env block twins every top-level binding name, or the register's
+// envBindingParity.exempt says why; no placeholder id in a deployable config's env.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-platform-register — limb 8, every environment twins the top level', () => {
+  const SANDBOX = {
+    routes: [],
+    workers_dev: true,
+    vars: { SUPABASE_URL: 'https://fixture.supabase.co', API_VERSION: 'v1' },
+    d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: '22222222-2222-2222-2222-222222222222' }],
+    kv_namespaces: [{ binding: 'CONFIG_KV', id: 'k1sandbox' }],
+    ratelimits: [
+      { name: 'EVENTS_CEILING_LIMITER', namespace_id: '2002' },
+      { name: 'CONFIG_CEILING_LIMITER', namespace_id: '2003' },
+    ],
+  };
+  /** PLATFORM_CFG with `env.sandbox` = `edit(copy of SANDBOX)`. */
+  const withSandbox = (edit = (s) => s) =>
+    PLATFORM_CFG.replace(/\n\}$/, `\n  "env": { "sandbox": ${JSON.stringify(edit(structuredClone(SANDBOX)))} },\n}`);
+  const parityRegister = (exempt = [], pendingTwins) => {
+    const reg = baseRegister();
+    reg.envBindingParity = { _why: ['fixture'], exempt };
+    if (pendingTwins) reg.envBindingParity.pendingTwins = pendingTwins;
+    return reg;
+  };
+  const files = (edit) => ({ 'services/platform/wrangler.jsonc': withSandbox(edit) });
+
+  test('GREEN: a sandbox twinning every top-level binding and var passes, and the count says what it checked', () => {
+    const { code, out } = run(tree({ register: parityRegister(), files: files() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 environment block\(s\) twinning 6 top-level binding\(s\) \(limb 8\)/);
+  });
+
+  const missing = (edit, needle) => {
+    const { code, out } = run(tree({ register: parityRegister(), files: files(edit) }));
+    assert.equal(code, 1, out);
+    assert.match(out, needle);
+  };
+  test('🔴 RED: a sandbox missing a KV namespace fails (exit 1), naming it', () => {
+    missing((s) => ({ ...s, kv_namespaces: [] }), /env\.sandbox — declares no `kv_namespaces` CONFIG_KV, which the top level binds/);
+  });
+  test('🔴 RED: a sandbox missing a D1 database fails (exit 1), naming it', () => {
+    missing((s) => ({ ...s, d1_databases: [] }), /env\.sandbox — declares no `d1_databases` PLATFORM_DB/);
+  });
+  test('🔴 RED: a sandbox missing a ratelimit fails (exit 1), naming it', () => {
+    missing((s) => ({ ...s, ratelimits: s.ratelimits.slice(1) }), /env\.sandbox — declares no `ratelimits` EVENTS_CEILING_LIMITER/);
+  });
+  test('🔴 RED: a sandbox missing a var fails (exit 1), naming it', () => {
+    missing((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } }), /env\.sandbox — declares no `vars` API_VERSION/);
+  });
+
+  test('🔴 RED: a top-level service binding and R2 bucket are twinned too', () => {
+    const cfg = withSandbox().replace(
+      '"routes": [{ "pattern"',
+      '"services": [{ "binding": "ERASURE_X", "service": "x-api" }],\n  "r2_buckets": [{ "binding": "BACKUPS_R2", "bucket_name": "b" }],\n  "routes": [{ "pattern"',
+    );
+    const reg = parityRegister();
+    reg.bindings.push({ binding: 'BACKUPS_R2', kind: 'r2_buckets', purpose: 'Backups.', readers: [], unreadReason: 'Fixture: the backup cron is not in this tree.' });
+    const { code, out } = run(tree({ register: reg, files: { 'services/platform/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /env\.sandbox — declares no `services` ERASURE_X/);
+    assert.match(out, /env\.sandbox — declares no `r2_buckets` BACKUPS_R2/);
+  });
+
+  test('🔴 RED: a deployable config whose env KV or D1 id is the all-zeros placeholder fails — a twin in name only', () => {
+    const { code, out } = run(
+      tree({
+        register: parityRegister(),
+        files: files((s) => ({
+          ...s,
+          kv_namespaces: [{ binding: 'CONFIG_KV', id: '00000000000000000000000000000000' }],
+          d1_databases: [{ ...s.d1_databases[0], database_id: '00000000-0000-0000-0000-000000000000' }],
+        })),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /env\.sandbox — KV CONFIG_KV still carries the all-zeros placeholder[\s\S]*provision-sandbox-twins\.mjs --apply/);
+    assert.match(out, /env\.sandbox — D1 PLATFORM_DB still carries the all-zeros placeholder/);
+  });
+
+  // ⏱ 2026-10-02 · a placeholder that waits on the vault step is DECLARED: printed, never silent,
+  // and the row must leave with the placeholder.
+  const PENDING_ROW = {
+    config: 'services/platform/wrangler.jsonc',
+    env: 'sandbox',
+    section: 'kv_namespaces',
+    binding: 'CONFIG_KV',
+    why: 'Fixture: the namespace needs the Cloudflare token to create.',
+  };
+  const zeroKv = (s) => ({ ...s, kv_namespaces: [{ binding: 'CONFIG_KV', id: '00000000000000000000000000000000' }] });
+  test('a placeholder a pendingTwins row names passes and is PRINTED every run', () => {
+    const { code, out } = run(tree({ register: parityRegister([], [PENDING_ROW]), files: files(zeroKv) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /⚠ {2}services\/platform\/wrangler\.jsonc env\.sandbox — `kv_namespaces` CONFIG_KV is a PLACEHOLDER, PENDING\. Fixture: the namespace/);
+  });
+  test('🔴 RED: a pendingTwins row must stay TRUE — over a recorded id, or with no reason, each fails', () => {
+    const recorded = run(tree({ register: parityRegister([], [PENDING_ROW]), files: files() }));
+    assert.equal(recorded.code, 1, recorded.out);
+    assert.match(recorded.out, /envBindingParity\.pendingTwins names services\/platform\/wrangler\.jsonc env\.sandbox `kv_namespaces` CONFIG_KV, and that entry carries no all-zeros placeholder/);
+    const noWhy = run(tree({ register: parityRegister([], [{ ...PENDING_ROW, why: 'x' }]), files: files(zeroKv) }));
+    assert.equal(noWhy.code, 1, noWhy.out);
+    assert.match(noWhy.out, /envBindingParity\.pendingTwins row .* needs a `config` under services\//);
+    // A row for ANOTHER binding excuses nothing: the unnamed placeholder is still refused.
+    const other = run(tree({ register: parityRegister([], [{ ...PENDING_ROW, binding: 'OTHER_KV' }]), files: files(zeroKv) }));
+    assert.equal(other.code, 1, other.out);
+    assert.match(other.out, /KV CONFIG_KV still carries the all-zeros placeholder/);
+  });
+
+  test('an exemption with a reason passes and is PRINTED every run', () => {
+    const reg = parityRegister([
+      { config: 'services/platform/wrangler.jsonc', env: 'sandbox', section: 'vars', name: 'API_VERSION', why: 'Fixture: the sandbox answers no versioned route at all.' },
+    ]);
+    const { code, out } = run(tree({ register: reg, files: files((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } })) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /⚠ {2}services\/platform\/wrangler\.jsonc env\.sandbox — `vars` API_VERSION NOT TWINNED\. Fixture: the sandbox answers/);
+  });
+
+  test('🔴 RED: an exemption must stay TRUE — present in the block, naming nothing, or with no reason, each fails', () => {
+    const row = { config: 'services/platform/wrangler.jsonc', env: 'sandbox', section: 'vars', name: 'API_VERSION', why: 'Fixture: a reason that no longer describes the block.' };
+    const stale = run(tree({ register: parityRegister([row]), files: files() }));
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /`vars` API_VERSION is declared there, and envBindingParity\.exempt says it is not/);
+    const nothing = run(tree({ register: parityRegister([{ ...row, name: 'NOT_A_VAR' }]), files: files() }));
+    assert.equal(nothing.code, 1, nothing.out);
+    assert.match(nothing.out, /envBindingParity\.exempt names services\/platform\/wrangler\.jsonc env\.sandbox `vars` NOT_A_VAR[\s\S]*Delete the row/);
+    const noWhy = run(tree({ register: parityRegister([{ ...row, why: 'x' }]), files: files((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } })) }));
+    assert.equal(noWhy.code, 1, noWhy.out);
+    assert.match(noWhy.out, /needs `config`, `env`, `section`, `name` and a `why` of a sentence/);
+  });
+
+  test('COVERAGE LOST: the register declares envBindingParity and no config has an env block', () => {
+    const { code, out } = run(tree({ register: parityRegister() }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — the register declares envBindingParity, and none of the 1 wrangler config\(s\) declares an `env` block/);
+  });
+
+  test('the real tree: the three sandboxes are held, and every placeholder is a declared pending twin', () => {
+    const { code, out } = run(REPO);
+    // Until tooling/scripts/provision-sandbox-twins.mjs --apply has run, its placeholder ids are
+    // PRINTED through envBindingParity.pendingTwins rows; every NAME must already be twinned.
+    assert.doesNotMatch(out, /env\.sandbox — declares no /, out);
+    assert.equal(code, 0, out);
+    assert.match(out, /3 environment block\(s\) twinning \d+ top-level binding\(s\) \(limb 8\)/);
+  });
+
 });

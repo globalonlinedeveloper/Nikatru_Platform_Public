@@ -268,6 +268,58 @@
         "swapCost": "Low — one config value, because the protocol is open."
       }
     },
+    "ntfy": {
+      "surface": "Owner-alert push channel (self-hosted ntfy on Box B, topic-per-audience). The platform Worker posts an owner alert through the telemetry port's `ntfy` notifier (services/_shared/src/adapters/telemetry/notify-ntfy.ts); the GlitchTip alert rules page the same topic (tooling/ops/alarm-chains.json).",
+      "stickiness": "★ — an HTTP POST of plain text to a topic URL; every push service takes the same three facts (title, priority, body).",
+      "surfaces": [
+        "NTFY_ALERT_URL",
+        "NTFY_ALERT_TOKEN"
+      ],
+      "openProtocol": "YES — ntfy's publish API is a documented plain HTTP POST (https://docs.ntfy.sh/publish/), and the server is open source and self-hosted.",
+      "seam": {
+        "file": "services/_shared/src/ports/telemetry.ts",
+        "symbol": "Notifier"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "Worker secrets read per alert; repointing the topic is `wrangler secret put NTFY_ALERT_URL`, no release."
+      },
+      "ownTheRecord": "N/A — an alert is a notification, not a record; the record of the condition is the cron_heartbeat row the alert is raised from.",
+      "exportPath": {
+        "path": "Private/runbooks/switch-vendor.md#telemetry",
+        "detail": "Nothing to export: ntfy keeps a short message cache only. The switch is a new topic URL, or a notifier route change in services/_shared/src/ports/telemetry.ts NOTIFIER_ROUTES."
+      },
+      "exitPlan": {
+        "alternative": "Any push or chat webhook behind the same Notifier port (the `webhook` adapter), or mail once the mail port lands (`mailFor('alerts')`).",
+        "swapCost": "Low — one route in NOTIFIER_ROUTES and one Worker secret; callers name a severity, never a channel."
+      },
+      "note": "🔴 ntfy shares Box B with GlitchTip and the vault, so it cannot carry news of Box B being down; NOTIFIER_ROUTES gives every critical and warning route an off-box fallback (`alert-webhook`)."
+    },
+    "alert-webhook": {
+      "surface": "The OFF-BOX-B owner-alert endpoint: one JSON POST of {severity, title, body, dedupeKey, source} to whatever HTTPS URL the owner configures (a chat incoming-webhook, a hosted ntfy topic, a relay). The telemetry port's `webhook` notifier (services/_shared/src/adapters/telemetry/notify-webhook.ts).",
+      "stickiness": "★ — a generic JSON webhook; the receiving service is whatever the URL names.",
+      "surfaces": [
+        "ALERT_WEBHOOK_URL"
+      ],
+      "openProtocol": "YES — a plain HTTPS POST of JSON; no vendor SDK and no vendor-specific field.",
+      "seam": {
+        "file": "services/_shared/src/ports/telemetry.ts",
+        "symbol": "Notifier"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "A Worker secret read per alert (the URL is the credential); repointing is `wrangler secret put ALERT_WEBHOOK_URL`, no release."
+      },
+      "ownTheRecord": "N/A — an alert is a notification, not a record.",
+      "exportPath": {
+        "path": "Private/runbooks/switch-vendor.md#telemetry",
+        "detail": "Nothing to export; the switch is a new URL."
+      },
+      "exitPlan": {
+        "alternative": "Any other webhook receiver, or mail through the mail port.",
+        "swapCost": "Low — one Worker secret."
+      }
+    },
     "github": {
       "surface": "GitHub Actions workflow dispatch — the alarm clock's outbound leg. The `platform` Worker POSTs `workflow_dispatch` so that a Cloudflare cron, not GitHub's own scheduler, decides WHEN a workflow runs. [research/76 §C] Phase 1.",
       "stickiness": "★★★★★ — the stickiest entry in this register, and it is written down rather than implied. GitHub holds the repositories, CI, the release lanes, the issue-based alert chain and the RECORD every duty row reads. ⚠️ WHAT THIS SURFACE ADDS IS NOT NEW LOCK-IN — it is one more call into a dependency the whole pipeline already rests on. Declaring it here makes that dependency countable instead of assumed, which is the only thing this register can honestly buy on a vendor nobody is leaving.",
@@ -509,6 +561,8 @@
       "judgement call."
     ],
     "API_BASE_URL": "our own subscriptiontracker-api Worker",
+    "BOX_MANIFEST_SECRET_BOXB": "OUR OWN shared secret between Box B's config-hash cron (tooling/ops/boxes/post-config-manifest.sh) and POST /v1/ops/box-manifest on the platform Worker (services/platform/src/routes/box-manifest.ts, PB-27). No external system is behind it: both ends are ours, and it authenticates only that one box's row of hashes. Added 2026-10-01.",
+    "BOX_MANIFEST_SECRET_BOXC": "OUR OWN shared secret between Box C's config-hash cron and POST /v1/ops/box-manifest — see BOX_MANIFEST_SECRET_BOXB; one per box, so a box can write only its own row. Added 2026-10-01.",
     "E2E_APP_ID": "OUR OWN test-harness fact, and no external system is behind it: the workspace app id the e2e lane drives (e2e.yml's `matrix.app`, the value its steps already export as the E2E_APP_ID environment variable to tooling/e2e/backend.mjs). The brick's stamped integration_test/app_test.dart (10b, O-BRICK-STAMPS-NO-E2E-SUITE) reads it as a compile-time define and refuses a binary whose AppConfig.appId differs, so a lane that drives the wrong app, or passes none, fails at the suite's first expect; there is no default. It reaches only the `flutter drive` DEBUG build on the runner: no store lane, no `deploy-web.yml` build and no release build passes it. Measured at main 80cffc6c: e2e.yml's `flutter drive` does not pass `--dart-define=E2E_APP_ID` yet, so the row's two-leg e2e confirm needs that line first.",
     "E2E_EXPECT_CAPTCHA_GATE": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the auth stack the live E2E run signs in against — the hosted Supabase project (`no`) or the self-hosted GoTrue on Box C (`yes`) — refuses a password sign-in at the captcha first. Both stacks are ours; the only third party either involves is Cloudflare Turnstile, which has its own vendor row above. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs) from the run's SUPABASE_URL, reaches only the `flutter drive` DEBUG build served to a headless Chrome on the runner, and selects which wrong-password copy `apps/subscriptiontracker/integration_test/app_test.dart` expects. It reaches no shipping binary: no store lane, no `deploy-web.yml` build and no release build passes it, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
     "E2E_EXPECT_WORKERS_TRUST": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the deployed Workers — ours — trust the issuer the live E2E run signs in against, i.e. whether its SUPABASE_URL is tooling/platform-register.json vars.SUPABASE_URL. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs), reaches only the `flutter drive` DEBUG build on the runner, and selects whether `apps/subscriptiontracker/integration_test/app_test.dart` walks the app or asserts the one-issuer refusal (401), because the Workers trust exactly one issuer. It reaches no shipping binary, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
@@ -552,6 +606,7 @@
     "NATIVE_AUTH_UNATTESTED_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1021; sandbox 1023) for the native sign-in ops that carry the UNATTESTED install-key kind (Windows, Linux, macOS outside the Mac App Store), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, FAILING CLOSED; far tighter than NATIVE_AUTH_EDGE_LIMITER because that channel proves nothing about the binary. Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
     "NATIVE_AUTH_INSTALL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1022; sandbox 1024) for POST /v1/auth/native/:app/attest/install (key registration, every kind), keyed `edge:<colo>:<asn>`. Not a vendor surface; FAILS CLOSED. Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
     "NATIVE_AUTH_ATTEST_KINDS": "OUR OWN flag: the attestation kinds the native sign-in route accepts. No external system is behind it. Absent or empty accepts none — every native op is refused. ⏱ 2026-09-30 (review of #1070): production lists only the server-verified kinds (app-attest, play-integrity), the sandbox none, and install-key is structurally confined to the password grant (KIND_OPS). Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
+    "WRITE_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1031; sandbox 1032) for every WRITE on subscriptiontracker-api's /v1 group (rv2-services-008, lane fix-st-api-bounds), keyed `st:<verified sub>` after supabaseAuth — never a header, the body or an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, its own namespace so one account's burst spends no other route's budget. FAILS OPEN (the per-account row cap holds without it). Added 2026-10-01.",
     "CHECKOUT_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1027; sandbox 1028) for POST /v1/checkout, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a checkout flood cannot spend another route's budget. Added 2026-10-01 (O-ST-CHECKOUT-UNBOUNDED); on this line so no citation below moves.", "CHECKOUT_USER_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1029; sandbox 1030) for POST /v1/checkout, keyed `checkout:<sub>` on the VERIFIED account id; fails closed. Not a vendor surface — the same Workers Rate Limiting binding, its own namespace. Added 2026-10-01 (O-ST-CHECKOUT-UNBOUNDED); on this line so no citation below moves.", "NATIVE_AUTH_PLAY_VERIFY_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1025; sandbox 1026) for Play Integrity verifications on the native sign-in route, spent before a decode is asked of Google, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`; FAILS CLOSED. Added 2026-09-30, ADR no.NNN (native sign-in serves only attested app installs).",
     "NATIVE_ATTEST_CHALLENGE_KEY": "OUR OWN secret: the HMAC-SHA256 key native sign-in challenges are signed with, so issuing one writes no row. Random bytes we generate, no external system behind it; absent or short, the native route answers 503. Added 2026-09-30, ADR no.NNN (native sign-in serves only attested app installs).",
     "TOKEN_ENC_KEY_V1": "OUR OWN secret: the AES-256-GCM key (key id v1) the provider refresh tokens in platform_db.provider_tokens are sealed with at rest (services/platform/src/lib/token-crypto.ts, migration 0023). 32 random bytes, standard base64, put by the owner with `wrangler secret put TOKEN_ENC_KEY_V1`; no external system behind it and held in no file or backup, which is what makes an R2 backup carry ciphertext only. Absent or malformed FAILS CLOSED: a token store answers 503, a revoke is blocked, the nightly provider_token_backfill is red and /v1/health reports token_encryption_key not ok. Added 2026-09-30, review round 2 (security).",

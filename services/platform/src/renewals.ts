@@ -3,6 +3,7 @@
 // scheduler's per-app fan-out. The date math is a PURE core (unit tested); the
 // D1 pass wraps it. Generic over any app DB with subscriptions + payment_history.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlStatement } from '../../_shared/src/ports/sql';
 import type { Subscription } from './types';
 import { allRows, nowIso, todayYmd, uuid } from './lib/d1';
 
@@ -193,7 +194,7 @@ export const RENEWAL_SOURCE = 'renewal';
  * broken database must not take the rest of the fan-out down with it.
  */
 export async function recomputeRenewals(
-  db: D1Database,
+  db: SqlDb,
   appId: string,
 ): Promise<{ ok: boolean; detail: string }> {
   const today = todayYmd();
@@ -280,7 +281,7 @@ export async function recomputeRenewals(
        VALUES (${paymentCols.map(() => '?').join(', ')})`,
     );
 
-    const ops: D1PreparedStatement[] = [];
+    const ops: SqlStatement[] = [];
     let rolled = 0;
     let skipped = 0;
     for (const sub of due) {

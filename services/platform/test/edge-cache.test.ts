@@ -141,6 +141,30 @@ describe('GET /config/:app', () => {
     ]);
   });
 
+  // ⏱ 2026-10-03 · merge of #1149 (`?market=`) into this cache. RED CONTROL: drop
+  // 'market' from the route's edgeCacheKey list and the India answer is served
+  // from the no-market entry, so the bodies match and `kv.reads` is one.
+  it('🔴 `?market=` is part of the key: a market answer is never served to a buyer who declared none', async () => {
+    const kv = new FakeKv();
+    const plain = await (await get(kv, '/config/subscriptiontracker')).json();
+    const indiaRes = await get(kv, '/config/subscriptiontracker?market=IN&cb=1');
+    expect(indiaRes.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+    const india = await indiaRes.json();
+    expect(india, 'the IN price book changes nothing, so this case would test nothing').not.toEqual(plain);
+    expect(kv.reads).toHaveLength(2);
+    expect(await (await get(kv, '/config/subscriptiontracker?cb=2')).json()).toEqual(plain);
+    expect(cache.puts).toEqual([
+      'https://platform.nikatru.com/config/subscriptiontracker',
+      'https://platform.nikatru.com/config/subscriptiontracker?market=IN',
+    ]);
+  });
+
+  it('an unknown app, channel or market is answered before the cache is even asked', async () => {
+    const kv = new FakeKv();
+    expect((await get(kv, '/config/subscriptiontracker?market=in')).status).toBe(400);
+    expect(cache.matches).toEqual([]);
+  });
+
   it('an unknown app or channel is answered before the cache is even asked', async () => {
     const kv = new FakeKv();
     expect((await get(kv, '/config/__proto__')).status).toBe(404);

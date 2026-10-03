@@ -24,6 +24,14 @@
 // not declare ⇒ 400 `unknown_channel`, decided the same way as the 404: from
 // memory, before the ceiling and before KV.
 //
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · O-WEB-INR-PRICE-BOOK. `?market=<ISO
+// 3166-1 alpha-2>` is the BUYER'S OWN declaration of where they buy from — never
+// `cf.country` (Q2, ruled). A market with its own web price book (India) is served
+// every paywall offering at that book's price and currency (src/config.ts
+// `priceForMarket`: rupees, GST-inclusive); any other well-formed market is served
+// the default (USD) book. A malformed value ⇒ 400 `unknown_market`, from memory,
+// before the ceiling and before KV, exactly as an unknown channel is.
+//
 // ⏱ 2026-10-01 · rv2-services-013. A KV READ THAT THROWS IS A 503
 // `config_unavailable`, `no-store` — never the compiled-in defaults. A thrown
 // `get` is not "no override": the override may be exactly the raised floor or
@@ -34,7 +42,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { DEFAULT_CHANNEL, isKnownApp, isKnownChannel, resolveConfig } from '../config';
+import { DEFAULT_CHANNEL, MARKET_PATTERN, isKnownApp, isKnownChannel, priceForMarket, resolveConfig } from '../config';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { EDGE_CACHE_HEADER, edgeCacheKey, edgeCacheMatch, edgeCachePut, hitResponse, waitUntilOf } from '../lib/edge-cache';
 
@@ -56,12 +64,17 @@ app.get('/:app', async (c) => {
   if (channel !== undefined && !isKnownChannel(channel)) {
     return c.json({ error: 'unknown_channel' }, 400);
   }
+  // The buyer-declared market, refused the same way when it is not a market at all.
+  const market = c.req.query('market');
+  if (market !== undefined && !MARKET_PATTERN.test(market)) {
+    return c.json({ error: 'unknown_market' }, 400);
+  }
 
   // ⏱ 2026-10-01 · O-WORKER-RESPONSES-NOT-EDGE-CACHED. The Worker's OWN cache,
-  // keyed on the path and `?channel=` only (src/lib/edge-cache.ts says why the CDN
-  // never cached this route). A hit costs no KV read and no ceiling budget, and
-  // `?cb=<random>` now lands on the same entry as no parameter at all.
-  const cacheKey = edgeCacheKey(c.req.url, ['channel']);
+  // keyed on the path, `?channel=` and `?market=` only (src/lib/edge-cache.ts says
+  // why the CDN never cached this route). A hit costs no KV read and no ceiling
+  // budget, and `?cb=<random>` now lands on the same entry as no parameter at all.
+  const cacheKey = edgeCacheKey(c.req.url, ['channel', 'market']);
   const hit = await edgeCacheMatch(cacheKey);
   if (hit) {
     const r = hitResponse(hit);
@@ -99,10 +112,12 @@ app.get('/:app', async (c) => {
   const cfg = resolveConfig(appId, kvValue, channel ?? DEFAULT_CHANNEL);
   if (!cfg) return c.json({ error: 'unknown_app' }, 404);
   // Edge + client cache; overrides propagate within the TTL — the Worker's own
-  // cache honours the same `s-maxage`.
+  // cache honours the same `s-maxage`. The market is in the query string, so it is
+  // part of the cache key: an India answer is never served to a buyer who declared
+  // no market.
   c.header('Cache-Control', 'public, max-age=300, s-maxage=300');
   c.header(EDGE_CACHE_HEADER, 'MISS');
-  const res = c.json(cfg);
+  const res = c.json(market === undefined ? cfg : priceForMarket(cfg, appId, market));
   await edgeCachePut(cacheKey, res, waitUntilOf(c));
   return res;
 });

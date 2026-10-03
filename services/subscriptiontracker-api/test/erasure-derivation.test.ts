@@ -50,7 +50,7 @@ async function deletedTablesFor(db: SqliteD1, userId = 'u-derive') {
     c.set('requestId', 'test');
     // What the auth middleware sets on every admitted request (a password account);
     // the route refuses without it since O-APP-API-DELETE-NO-RECENCY.
-    c.set('authRecency', { passwordless: false, lastAuthenticatedAt: null });
+    c.set('authRecency', { passwordless: false, linked: false, lastAuthenticatedAt: null });
     await next();
   });
   app.route('/v1', account);

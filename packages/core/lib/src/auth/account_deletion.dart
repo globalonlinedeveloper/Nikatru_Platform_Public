@@ -261,6 +261,66 @@ String reauthProviderOf(AuthUser user) =>
         ? 'google'
         : 'apple';
 
+/// How the delete dialog re-proves an account before `DELETE /v1/account`.
+enum DeletionReauth {
+  /// The password typed into the dialog, through the password grant.
+  password,
+
+  /// A sign-in with the account's provider, through
+  /// [confirmIdentityWithProvider].
+  provider,
+}
+
+/// The OAuth identities [deletionReauthOf] can send a person back to: the
+/// sheets [confirmIdentityWithProvider] can open.
+const Set<String> kReauthProviders = <String>{'apple', 'google'};
+
+/// ⏱ 2026-10-01 · AB-A5-01. Which proof [user] gives before deletion:
+/// [DeletionReauth.provider] for every account with an Apple or Google
+/// identity, linked or not, and for every password-less account;
+/// [DeletionReauth.password] only for an account whose ONLY way in is a
+/// password.
+///
+/// 🔴 THIS WAS `user.hasPasswordIdentity`, AND A LINKED ACCOUNT COULD NOT
+/// DELETE ITSELF NATIVELY. An email account that linked Apple or Google carries
+/// `email` in `app_metadata.providers`, so the dialog forced the password grant
+/// on a person who signs in with the provider. GoTrue captchas that grant, the
+/// native route admits only an attested install, and a desktop build has no
+/// attested path at all (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH). The
+/// server never asked for the password: `deletionRecencyRefusal`
+/// (`services/_shared/src/auth.ts`) holds only a password-less token to a
+/// recent sign-in, so a password account's proof is the client's. The provider
+/// sheet is a client proof every target can give (OAuth goes to GoTrue direct:
+/// no captcha, no attestation), and it is the one a password-less account
+/// already gives.
+///
+/// ⚠️ A pure password account still types its password. On a desktop target
+/// that grant waits for the attested hand-off: `tooling/e2e-leg-register.json`
+/// `deletionReauth` says so per target, and `assert-deletion-control.mjs`
+/// grades it.
+DeletionReauth deletionReauthOf(AuthUser user) =>
+    !user.hasPasswordIdentity ||
+        user.oauthProviders.any(kReauthProviders.contains)
+    ? DeletionReauth.provider
+    : DeletionReauth.password;
+
+/// ⏱ 2026-10-02 · #1142 review item 2. Whether the dialog ALSO offers [user]
+/// their password, next to the provider re-auth [deletionReauthOf] chose: an
+/// account that HAS a password identity, on a target whose password grant
+/// passes ([passwordGrant] — web, and attested Android and iOS; the app reads
+/// it from `AuthCapabilities.passwordReauth`).
+///
+/// 🔴 WITHOUT IT A LINKED ACCOUNT COULD LOSE IN-APP DELETION ON EVERY TARGET.
+/// Its Google account closed, or its Apple relay address gone, the provider
+/// sheet can never return the same user, and before this the dialog showed no
+/// password field to an account that still has one. A password-only account
+/// takes the password anyway ([DeletionReauth.password]); an OAuth-only account
+/// has no password to offer, which is the accepted trade (#1142's body).
+bool offersPasswordReauth(AuthUser user, {required bool passwordGrant}) =>
+    passwordGrant &&
+    user.hasPasswordIdentity &&
+    deletionReauthOf(user) == DeletionReauth.provider;
+
 /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10) — a
 /// PASSWORD-LESS account confirms deletion by signing in with its provider AGAIN,
 /// at the moment of deletion. Returns when [user] has freshly authenticated;

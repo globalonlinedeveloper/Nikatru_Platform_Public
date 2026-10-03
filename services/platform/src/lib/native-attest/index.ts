@@ -41,6 +41,7 @@
 // server config is missing is 503; a challenge is burned by the first request
 // that presents it, pass or fail.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlResult, SqlStatement } from '../../../../_shared/src/ports/sql';
 import type { Env } from '../../types';
 import { b64url, fromB64, fromB64url, sha256 } from './bytes';
 import { appleRootDer, verifyAssertion, verifyAttestation } from './app-attest';
@@ -194,9 +195,9 @@ const iso = (ms: number) => new Date(ms).toISOString();
 export const NATIVE_ATTEST_BATCH_STATEMENTS = 2;
 
 /** The one batch shape: prune what has expired, then write — atomically. Answers the write's result. */
-async function pruneThenWrite<T = unknown>(db: D1Database, prune: D1PreparedStatement, write: D1PreparedStatement): Promise<D1Result<T> | undefined> {
-  const statements: [D1PreparedStatement, D1PreparedStatement] = [prune, write];
-  const results = (await db.batch(statements)) as D1Result<T>[];
+async function pruneThenWrite<T = unknown>(db: SqlDb, prune: SqlStatement, write: SqlStatement): Promise<SqlResult<T> | undefined> {
+  const statements: [SqlStatement, SqlStatement] = [prune, write];
+  const results = (await db.batch(statements)) as SqlResult<T>[];
   return results[NATIVE_ATTEST_BATCH_STATEMENTS - 1];
 }
 
@@ -271,10 +272,27 @@ export async function redeemNonce(env: Env, app: string, nonce: string, expMs: n
 }
 
 /**
+ * ⏱ 2026-10-02 — gives a redeemed nonce BACK, for the one caller that spends it
+ * before the work it pays for: the hand-off exchange (routes/native-auth.ts), when
+ * GoTrue fails after the code was redeemed (review of #1133, finding 3). Without
+ * it a transient 5xx burned the code and the app's retry read "used". Only after
+ * a fault that minted no session; a race still has exactly one winner, because
+ * the loser was refused before this runs. Throws nothing: a failed delete leaves
+ * the code spent, which is the behaviour before.
+ */
+export async function releaseNonce(env: Env, app: string, nonce: string): Promise<void> {
+  try {
+    await env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE nonce = ? AND app_id = ?').bind(nonce, app).run();
+  } catch {
+    // the code stays spent
+  }
+}
+
+/**
  * Adds one to today's counter for `scope` and answers the new total. Every call
  * first deletes the previous days' rows, so the table holds one UTC day.
  */
-export async function bumpDailyCounter(db: D1Database, scope: string, now: number): Promise<number> {
+export async function bumpDailyCounter(db: SqlDb, scope: string, now: number): Promise<number> {
   const day = iso(now).slice(0, 10);
   const bumped = await pruneThenWrite<{ calls: number }>(
     db,
@@ -379,7 +397,7 @@ export async function verifyOp(
 }
 
 /** A VERIFIED key's daily budget (NATIVE_ATTEST_OPS_PER_KEY_PER_DAY), counted only once its proof has passed. */
-async function withinKeyBudget(db: D1Database, app: string, keyId: string, now: number): Promise<Outcome> {
+async function withinKeyBudget(db: SqlDb, app: string, keyId: string, now: number): Promise<Outcome> {
   return (await bumpDailyCounter(db, `key:${app}:${keyId}`, now)) > NATIVE_ATTEST_OPS_PER_KEY_PER_DAY
     ? overBudget('daily calls for this key')
     : { ok: true };

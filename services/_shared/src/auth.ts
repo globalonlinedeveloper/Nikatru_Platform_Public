@@ -75,6 +75,38 @@ export const JWKS_KV_KEY = 'supabase_jwks';
 export const JWKS_TTL_SECONDS = 600; // 10 minutes
 
 /**
+ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13) — THE LAST-KNOWN-GOOD
+ * KEY SET, under its own KV key beside [JWKS_KV_KEY].
+ *
+ * The 10-minute copy above is the only thing a Worker could verify against once
+ * Box C stopped answering, and it expires on a timer that only a SUCCESSFUL fetch
+ * renews. So about ten minutes into a Box C outage every authenticated request
+ * 401'd, although every access token in flight was still valid and its signing
+ * key had not changed. (The shield's 24 h stale entry, #1096, does not reach
+ * here: the Workers' own JWKS reads are same-zone subrequests that skip it.)
+ *
+ * The LKG copy is the same public document with NO expiry. It is:
+ *   · WRITTEN by the warm path after a successful fetch, whenever the fetched
+ *     set differs from the one stored ([lastKnownGoodNeedsWrite]) — so a fetched
+ *     set always replaces it, and an unchanged one costs no KV write;
+ *   · READ for verification ONLY when the key set could not be obtained
+ *     ([isKeySetUnavailable]) AND the 10-minute copy is unusable. A usable
+ *     10-minute copy is the newer set, and a token whose `kid` it lacks is
+ *     refused without a second bite at an older one.
+ *
+ * 🔴 WHY NO EXPIRY IS SAFE. It holds PUBLIC keys, verified through the same
+ * [verifyOptions] (ES256, issuer, audience, `exp`), so it can only ever admit a
+ * token Supabase signed and that has not expired. An access token lives at most
+ * `jwt_exp` (3600 s, tooling/mail-transport.json), and a refresh needs Box C — so
+ * in an outage the LKG carries signed-in calls for as long as their tokens live,
+ * and then nothing. A rotation replaces it on the next good fetch.
+ *
+ * KV writes (`tooling/ceilings.json` → `kv.writesPerDay`): one per CHANGE of the
+ * published key set, which is a rotation — not one per expiry.
+ */
+export const JWKS_LKG_KV_KEY = 'supabase_jwks_lkg';
+
+/**
  * 🔴 THE VERIFY OPTIONS ARE DECLARED ONCE AND SHARED BY EVERY PATH, AND THAT IS
  * THE WHOLE SAFETY ARGUMENT FOR EVERY FALLBACK BUILT ON THEM.
  *
@@ -186,6 +218,60 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
   }
 }
 
+/**
+ * Should a body the JWKS endpoint just answered 200 with replace the stored
+ * last-known-good copy ([JWKS_LKG_KV_KEY])?
+ *
+ * TRUE when the body IS a key-set document — a JSON object with a `keys` array —
+ * and differs from what is stored. An EMPTY `keys` array still replaces: it is
+ * what the server now publishes, and a stale LKG must never outlive the set that
+ * superseded it (rotation wins; [usableJwksDocument] then refuses the empty copy
+ * on the read, so the outage path fails closed). A body that is NOT a key-set
+ * document (an HTML error page answered 200, a truncated read) is not a set and
+ * leaves the stored copy alone.
+ *
+ * ⏱ 2026-10-03 · PR #1174 review nit 6. "Differs" is the parsed KEY SET, not
+ * the response text: the same keys served in another order or with other
+ * whitespace would otherwise spend a KV write on every warm, against the Free
+ * plan's 1,000 writes/day. A stored copy that is absent or not a key set always
+ * loses to a fetched one.
+ */
+export function lastKnownGoodNeedsWrite(fetched: string, stored: string | null): boolean {
+  const next = canonicalKeySet(fetched);
+  if (next === null) return false;
+  return stored === null || next !== canonicalKeySet(stored);
+}
+
+/**
+ * A key-set document's keys as one order- and whitespace-free string (each key
+ * JSON with its members sorted, the list sorted), or null when [text] is not a
+ * JSON object with a `keys` array.
+ */
+function canonicalKeySet(text: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const keys = (parsed as { keys?: unknown }).keys;
+  if (!Array.isArray(keys)) return null;
+  return JSON.stringify(keys.map(canonicalJson).sort());
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — THE RECENT-SIGN-IN RULE FOR
 // ACCOUNT DELETION, IN ONE PLACE.
@@ -225,11 +311,21 @@ export const CLOCK_SKEW_SECONDS = 60;
  * AUTHENTICATES and carries it unchanged through every refresh, so it answers
  * "when did this person last prove who they are" where `iat` — reissued by each
  * silent refresh — cannot. Null when the token carries no usable entry.
+ *
+ * `linked` (⏱ 2026-10-02, #1142 review item 3) is true when `providers` names an
+ * OAuth provider the app re-proves at (`apple`, `google` — core
+ * `kReauthProviders`, account_deletion.dart): such an account confirms deletion
+ * at its provider, or within the app's freshness window with no prompt at all,
+ * so its recency is a server fact like a password-less account's.
  */
 export interface AuthRecency {
   passwordless: boolean;
+  linked: boolean;
   lastAuthenticatedAt: number | null;
 }
+
+/** The providers a linked account re-proves at — core `kReauthProviders` (packages/core account_deletion.dart). */
+export const REAUTH_PROVIDERS: readonly string[] = ['apple', 'google'];
 
 /**
  * How the verified token's user signs in, and when they last authenticated.
@@ -246,6 +342,7 @@ export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
   const meta = payload.app_metadata;
   const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
   const passwordless = Array.isArray(providers) && !providers.includes('email');
+  const linked = Array.isArray(providers) && providers.some((p) => typeof p === 'string' && REAUTH_PROVIDERS.includes(p));
   let lastAuthenticatedAt: number | null = null;
   if (Array.isArray(payload.amr)) {
     for (const entry of payload.amr) {
@@ -255,7 +352,7 @@ export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
       }
     }
   }
-  return { passwordless, lastAuthenticatedAt };
+  return { passwordless, linked, lastAuthenticatedAt };
 }
 
 /** The refusal every erasure door answers with. 🔴 403, NEVER 401: the client's
@@ -281,6 +378,17 @@ export const REAUTH_REQUIRED_BODY = { error: 'reauth_required' } as const;
  * is proven client-side only, at both ends equally. Tightening it is one edit
  * here plus the client flow, and belongs in its own reviewed change.
  *
+ * ⏱ 2026-10-02 · LINKED ACCOUNTS ARE HELD TO IT (#1142 review item 3, lead
+ * ruling). An account with an Apple or Google identity (`linked`) no longer
+ * types its password: it re-proves at its provider, and the app skips even that
+ * inside its own freshness window (half of RECENT_AUTH_SECONDS). Exempting it
+ * here would let ANY unexpired token delete it. So it is held to the same `amr`
+ * window as a password-less account — the session's own sign-in time, never
+ * `iat` — whichever way it re-proved (a password re-auth, where the app offers
+ * one, mints a fresh `amr` too). One window for every account the app does not
+ * ask for a password: the server's is twice the app's so a sheet and a redirect
+ * fit inside it, exactly as for password-less accounts.
+ *
  * 🔴 A MISSING `recency` IS A REFUSAL. Every auth middleware in front of an
  * erasure door sets it on every admitted request, so undefined means the door was
  * reached without one; a tidy-up that dropped the `c.set` line must produce a
@@ -291,14 +399,15 @@ export function deletionRecencyRefusal(
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): string | null {
   if (recency === undefined) return 'no sign-in recency was read from the token (the auth middleware did not set it)';
-  if (!recency.passwordless) return null;
+  if (!recency.passwordless && !recency.linked) return null;
+  const kind = recency.passwordless ? 'password-less' : 'linked';
   const at = recency.lastAuthenticatedAt;
-  if (at === null) return `password-less account whose token carries no amr timestamp`;
+  if (at === null) return `${kind} account whose token carries no amr timestamp`;
   if (nowSeconds - at > RECENT_AUTH_SECONDS) {
-    return `password-less account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${nowSeconds - at}s ago)`;
+    return `${kind} account without a sign-in in the last ${RECENT_AUTH_SECONDS}s (amr=${nowSeconds - at}s ago)`;
   }
   if (at - nowSeconds > CLOCK_SKEW_SECONDS) {
-    return `password-less account whose amr timestamp is ${at - nowSeconds}s in the future (skew allowance ${CLOCK_SKEW_SECONDS}s)`;
+    return `${kind} account whose amr timestamp is ${at - nowSeconds}s in the future (skew allowance ${CLOCK_SKEW_SECONDS}s)`;
   }
   return null;
 }
