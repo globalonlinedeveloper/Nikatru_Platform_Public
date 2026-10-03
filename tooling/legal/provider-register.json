@@ -117,6 +117,8 @@
       "receipts",
       "apple-token",
       "provider-token",
+      "apple-code",
+      "identity-change",
       "report",
       "ext",
       "codes",

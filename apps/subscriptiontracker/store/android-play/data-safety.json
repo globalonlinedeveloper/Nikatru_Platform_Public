@@ -252,8 +252,8 @@
       "  isApiConfigured      := API_BASE_URL   != placeholder",
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
       "and the app branches on them at four places that decide everything this form asks about:",
-      "  providers/auth.dart:167          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
-      "  providers/subscriptions.dart:91  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
+      "  providers/auth.dart:184          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
+      "  providers/subscriptions.dart:92  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:552  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:471                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
@@ -1797,6 +1797,45 @@
           "residual": "The RevenueCat and Play Billing AAR manifests were NOT read (there is no Gradle cache on the measuring host), and flutter_timezone's Gradle dependencies were not walked. Reading the AAR manifests from a CI runner's Gradle cache settles which library declares it.",
           "collectionSignal": false,
           "why": "Lets the SDK ask whether a network is up before it calls out. It reads connectivity state, not content, and moves no Play data type; what travels over the network is answered under `answers`, per posture."
+        },
+        {
+          "name": "android.permission.USE_BIOMETRIC",
+          "attributedTo": "local_auth_android",
+          "attribution": "direct",
+          "evidenceGrade": "read",
+          "evidence": "local_auth_android-2.2.0/android/src/main/AndroidManifest.xml in the pub cache declares it on its line 3, and nothing else. Arrived with XP-03 (app lock, club-st-singles); first seen in the .aab of CI run 36987135082 (ci.yml android-artifacts, PR #1155 merge commit f0b28f5e, 2026-10-02), read by dump-aab-permissions.mjs under `--merged-dump`.",
+          "collectionSignal": false,
+          "why": "Asks the system BiometricPrompt to unlock the app (XP-03 app lock). The prompt returns only success or failure: no biometric template, image or identifier reaches the app, and nothing is stored or transmitted, so no Play data type moves."
+        },
+        {
+          "name": "android.permission.USE_FINGERPRINT",
+          "attributedTo": "local_auth_android (androidx.biometric:biometric 1.1.0)",
+          "attribution": "transitive",
+          "evidenceGrade": "inferred",
+          "evidence": "First seen in the .aab of CI run 36987135082 (ci.yml android-artifacts, PR #1155 merge commit f0b28f5e, 2026-10-02), read by dump-aab-permissions.mjs under `--merged-dump`. local_auth_android's own manifest declares USE_BIOMETRIC only, and its android/build.gradle line 71 `api(\"androidx.biometric:biometric:1.1.0\")` is the one library in its graph that handles fingerprint hardware; the pre-API-28 fingerprint path is what that permission names.",
+          "residual": "The androidx.biometric AAR manifest was NOT read (no Gradle cache on the measuring host). Reading it from a CI runner's Gradle cache, or the manifest-merger report, settles it.",
+          "collectionSignal": false,
+          "why": "The pre-API-28 name for the same unlock as USE_BIOMETRIC. Success or failure only; nothing collected or sent."
+        },
+        {
+          "name": "android.permission.WAKE_LOCK",
+          "attributedTo": "home_widget (androidx.work:work-runtime 2.11.2)",
+          "attribution": "transitive",
+          "evidenceGrade": "inferred",
+          "evidence": "First seen in the .aab of CI run 36987135082 (ci.yml android-artifacts, PR #1155 merge commit f0b28f5e, 2026-10-02), read by dump-aab-permissions.mjs under `--merged-dump`. home_widget-0.10.0's android/build.gradle line 67 pulls `androidx.work:work-runtime-ktx:2.11.2`; WorkManager holds a wake lock while a job runs. home_widget's own plugin manifest declares no permission.",
+          "residual": "The work-runtime AAR manifest was NOT read (no Gradle cache on the measuring host). The manifest-merger report from the Android lane names the contributing file.",
+          "collectionSignal": false,
+          "why": "Keeps the CPU awake while a scheduled widget refresh runs (XP-04 glance). It moves no data; the widget reads values the app already wrote on the device."
+        },
+        {
+          "name": "android.permission.FOREGROUND_SERVICE",
+          "attributedTo": "home_widget (androidx.work:work-runtime 2.11.2)",
+          "attribution": "transitive",
+          "evidenceGrade": "inferred",
+          "evidence": "First seen in the .aab of CI run 36987135082 (ci.yml android-artifacts, PR #1155 merge commit f0b28f5e, 2026-10-02), read by dump-aab-permissions.mjs under `--merged-dump`, together with WAKE_LOCK. Same route: home_widget-0.10.0 → androidx.work:work-runtime-ktx:2.11.2, whose SystemForegroundService is the only foreground service in this app's graph; this tree's manifest declares none.",
+          "residual": "The work-runtime AAR manifest was NOT read. ⚠️ OWNER: on targetSdk 34+ Play asks for a foreground-service-type declaration only when a typed foreground service is declared; nothing in this app starts one (the glance refresh is plain work). Confirm against the Console's App content page before the next Play submission.",
+          "collectionSignal": false,
+          "why": "Lets WorkManager promote a long job to a foreground service; the glance refresh does not ask for that. No data type moves."
         }
       ],
       "unattributed": {
@@ -1806,7 +1845,8 @@
         "_android.permission.ACCESS_NETWORK_STATE (arrived; a permissions row since 2026-09-26)": "🔴 PREDICTED BY THE ABSTENTION THIS BLOCK REPLACED, AND MEASURABLY NOT THERE. `cannotSee` reasoned from the locked plugin set that the sentry-android AAR would contribute INTERNET *and* ACCESS_NETWORK_STATE. INTERNET is present; ACCESS_NETWORK_STATE is not — under either decoder, in either artefact of run 32869814582. It is kept here rather than deleted for two reasons: it is the receipt showing what careful reasoning about a plugin list got wrong, and it is an equality with teeth — if a later sentry-android brings it in, a re-measurement finds this key contradicting the permission list and FAILS, which forces somebody to say what the new permission changes instead of appending it silently.  ⏱ ARRIVED, measured 2026-09-26 from the .aab of run 35993088623 (42acef7c). It is now a row of `permissions` with its attribution and grade, and this receipt is kept under a leading underscore so the guard no longer reads it as a prediction."
       },
       "pinned": {
-        "flutter_local_notifications": "22.3.1"
+        "flutter_local_notifications": "22.3.1",
+        "local_auth_android": "2.2.0"
       },
       "_pinned_why": [
         "THE RESOLVED VERSIONS THIS READING WAS TAKEN AGAINST, compared to `lockfile` — the lock, not the",
@@ -1931,6 +1971,14 @@
       "nikatru_external_links": {
         "introduces": [],
         "why": "⏱ ADDED 2026-09-24 (O-LINK-LAUNCHER-SEAM-UNOWNED). First-party adapter package (packages/external_links) that now owns the app's ONE url_launcher call: it hands the nikatru.com legal pages, the site, the contact page, the support mailto and the force-update destination to the system browser or mail client, after core's LinkPolicy has allowed the link, and receives nothing back. It is url_launcher's former role in this app behind a policy, so it introduces no data type url_launcher did not."
+      },
+      "nikatru_app_lock": {
+        "introduces": [],
+        "why": "First-party. ⏱ 2026-10-01 · T16 XP-03. The app lock: a salted SHA-256 of the user's PIN in the device's secure store, and local_auth 3.x for the device biometric (android: BiometricPrompt; its manifest adds USE_BIOMETRIC, read in the pub cache 2026-10-01). The OS answers pass or fail and nothing else — no biometric data reaches the app, let alone leaves the device — and nothing here transmits, so it introduces no collected or shared data type."
+      },
+      "nikatru_widgets": {
+        "introduces": [],
+        "why": "First-party. ⏱ 2026-10-01 · T16 XP-04/XP-05/IM-11. home_widget 0.10.0 writes the glance (two formatted facts, or the Pro prompt) to the app's own SharedPreferences for the home-screen widget, and quick_actions 1.1.1 publishes launcher shortcuts; neither declares a permission (their AndroidManifest.xml files, read in the pub cache 2026-10-01) and neither transmits. The share-in channel receives what the user shares INTO the app and hands it to the import screen on the device. No collected or shared data type."
       },
       "flutter_localizations": {
         "introduces": [],

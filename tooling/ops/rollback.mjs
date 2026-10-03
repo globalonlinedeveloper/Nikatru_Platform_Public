@@ -28,6 +28,12 @@
 //                  deployments/<id>/rollback. The pinned wrangler has no Pages
 //                  rollback command, so this is the API call.
 //        site    → the same call, on the row's `pagesProject`.
+//        ⏱ 2026-10-02 · PB-09: a Pages target that is ALREADY the project's
+//        production deployment (its `canonical_deployment`, read with
+//        check-pages-deployments.mjs's readProject) is `already live: <id>` and
+//        no POST is made; Cloudflare's 8000039 ("currently in production") is
+//        the same no-op. Both write the same outputs as a re-promotion, so the
+//        smoke and the record still run.
 //        service → `wrangler rollback <version-id> --message … --yes`, from the
 //                  wrangler island, in the service's directory, whose config
 //                  names the Worker exactly as the deploy's does.
@@ -60,7 +66,7 @@
 //        loopback, as record-deployment.mjs's githubApiBase allows); for a real run
 //        CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; GITHUB_RUN_ID, when set, is
 //        named in the Worker rollback's message.
-// Exit 0 = re-promoted, or with --dry-run, the command printed.
+// Exit 0 = re-promoted, or already live (a Pages target, PB-09), or with --dry-run, the command printed.
 //      1 = refused or failed. Nothing was re-promoted unless a line above says so.
 // ─────────────────────────────────────────────────────────────────────────────
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -69,6 +75,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveEnvironment } from '../ci/deployment-record.mjs';
 import { api, githubApiBase, CLOUDFLARE_ID, workerVersionIdFrom } from '../ci/record-deployment.mjs';
+import { readProject, readWithBoundedRetry } from './check-pages-deployments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -340,11 +347,48 @@ function flagValue(argv, name) {
   return v;
 }
 
+/** Cloudflare's answer to a Pages rollback whose target is the deployment already
+ *  in production: `8000039: You cannot rollback to the deployment that is currently
+ *  in production.` (PB-09 drill, 2026-10-02, runs 36970520119 and 36970542712). */
+export const PAGES_ALREADY_LIVE = 8000039;
+
+/** PURE. The id of the deployment a Pages project serves in production — its
+ *  `canonical_deployment`, as readProject returns the project — or null when the
+ *  answer names none that is an id. */
+export function productionDeploymentId(project) {
+  const id = project?.canonical_deployment?.id;
+  return typeof id === 'string' && CLOUDFLARE_ID.test(id) ? id.toLowerCase() : null;
+}
+
+/** PURE. Whether a refused rollback's body is Cloudflare saying the target is already live. */
+export const refusedAsAlreadyLive = (body) =>
+  Array.isArray(body?.errors) && body.errors.some((e) => Number(e?.code) === PAGES_ALREADY_LIVE);
+
+/** Re-promote a Pages deployment. Returns `{ alreadyLive }`: TRUE when the target
+ *  is the project's production deployment already, read first through
+ *  check-pages-deployments.mjs's readProject (no POST is made), or when Cloudflare
+ *  answers 8000039 because it became live between that read and the POST. Either
+ *  way nothing changed and the run goes on to the smoke and the record, exactly
+ *  as a real re-promotion does: a drill on the newest record proves the path. */
 async function pagesRollback(target, plan) {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const account = process.env.CLOUDFLARE_ACCOUNT_ID;
   if (!token) throw new Refusal('CLOUDFLARE_API_TOKEN is not set');
   if (!account || !/^[0-9A-Za-z]+$/.test(account)) throw new Refusal('CLOUDFLARE_ACCOUNT_ID is not set, or is not an account id');
+  // A failed read is not a refusal: the POST decides, and 8000039 is handled below.
+  let live = null;
+  try {
+    const project = await readWithBoundedRetry((_attempt, { signal }) => readProject(target.project, { signal }), {
+      note: (m) => console.log(`  ⟳ ${target.project} production deployment — ${m}`),
+    });
+    live = productionDeploymentId(project);
+  } catch (e) {
+    console.log(`::warning title=production deployment not read::${String(e?.message ?? e).split('\n')[0]} — re-promoting without it.`);
+  }
+  if (live === plan.id) {
+    console.log(`already live: ${plan.id}`);
+    return { alreadyLive: true };
+  }
   const url = `${CLOUDFLARE_API}/accounts/${account}/pages/projects/${target.project}/deployments/${plan.id}/rollback`;
   const res = await fetch(url, {
     method: 'POST',
@@ -359,9 +403,14 @@ async function pagesRollback(target, plan) {
     // named below
   }
   if (!res.ok || body?.success !== true) {
+    if (refusedAsAlreadyLive(body)) {
+      console.log(`already live: ${plan.id}`);
+      return { alreadyLive: true };
+    }
     const errors = (body?.errors ?? []).map((e) => `${e.code}: ${e.message}`).join('; ') || text.slice(0, 200);
     throw new Refusal(`Cloudflare refused the Pages rollback (HTTP ${res.status}): ${errors}. Nothing was re-promoted.`);
   }
+  return { alreadyLive: false };
 }
 
 function workerRollback(target, plan, message) {
@@ -508,16 +557,17 @@ async function main() {
     return;
   }
 
+  let alreadyLive = false;
   try {
-    if (target.kind === 'web' || target.kind === 'site') await pagesRollback(target, plan);
+    if (target.kind === 'web' || target.kind === 'site') ({ alreadyLive } = await pagesRollback(target, plan));
     else workerRollback(target, plan, message);
   } catch (e) {
     return fail(e.message);
   }
   writeOutputs({ dry_run: 'false', ...outputs });
   console.log(
-    `ok  ${unit} re-promoted to ${plan.sha.slice(0, 8)} (${target.idKey} ${plan.id}). ` +
-      'The smoke and the ledger record are the next two steps.',
+    `ok  ${unit} ${alreadyLive ? 'is already live on' : 're-promoted to'} ${plan.sha.slice(0, 8)} (${target.idKey} ${plan.id})` +
+      `${alreadyLive ? ': nothing was changed' : ''}. The smoke and the ledger record are the next two steps.`,
   );
 }
 
