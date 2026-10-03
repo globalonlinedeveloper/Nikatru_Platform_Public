@@ -2053,6 +2053,28 @@
       "unverifiedWhy": "A workflow_dispatch workflow can be dispatched only once it is on the default branch, so its first real run is the lead's dispatch after this row reaches main."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-03 for lane ci-regen-gradle-verify. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so .github/workflows/regen-gradle-verify.yml and this row land together.",
+      "id": "duty.workflow.regen-gradle-verify.yml",
+      "kind": "duty",
+      "what": "Regenerates apps/<app>/android/gradle/verification-metadata.xml on GitHub's Linux runner for a dispatched branch and app: the same ubuntu-24.04 image, temurin 17 and setup-flutter action (so the same tooling/versions.json Flutter pin) as ci.yml android-artifacts, no Gradle cache, verification lenient in ~/.gradle only; `flutter build appbundle` then `./gradlew --write-verification-metadata sha256` for bundleDebug and assembleDebug, then again for bundleRelease and assembleRelease. It uploads the file as the artifact verification-metadata-<app>-<sha8> and pushes nothing.",
+      "detector": "Attended: whoever dispatched it reads the run and downloads the artifact. It fails, and uploads nothing, when ref is not a plain branch name, when app is not an app id or apps/<app>/android is not a Gradle project on that ref, when a build fails, or when the file was not written.",
+      "response": "Read the run. A refusal names the ref or the app; a red build is a build failure on the branch, not a verification failure (verification is lenient while generating). After a green run, download the artifact, put the file at apps/<app>/android/gradle/verification-metadata.xml on the branch, review the diff and commit it; ci.yml android-artifacts on that pull request is what proves it.",
+      "cadence": "on-demand",
+      "why": "The file changes when an Android dependency changes (a Flutter, AGP, Kotlin, Gradle or plugin bump), on a branch, never on a clock. Generating it needs Gradle and the Android SDK on Linux, which neither the laptop nor the cloud sandbox has, so this dispatch is how any lane regenerates it. Dispatch-only, read-only, no secrets.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/regen-gradle-verify.yml",
+        "record": "GitHub Actions run history for regen-gradle-verify.yml, plus the verification-metadata-<app>-<sha8> artifact",
+        "failingValue": "conclusion = failure: a refused input, a failed build or no file written, with nothing uploaded",
+        "readBy": "the dispatching agent or human, plus ci.yml android-artifacts on the pull request that carries the committed file"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "A workflow_dispatch workflow can be dispatched only once it is on the default branch, so its first real run is the lead's dispatch after this row reaches main."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-29 for rv2-pipe-a P-1 (the landing machine outside every repository). The laptop lander judged main's health by reading GitHub's run listings, and a filtered listing served a page 9 days stale on 2026-09-28; this workflow publishes the verdict from the finished run itself, as a commit status, so no lander reads a listing for it. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
       "id": "duty.workflow.main-healthy.yml",
       "kind": "duty",
