@@ -28,7 +28,8 @@
 //   · a user that exists → its password is SET to the vault's value (the same
 //     value again on a re-run), because production sign-in is captcha-gated and
 //     a password grant cannot be used to check that the vault still opens it;
-//   · REVIEWER_<ROLE>_EMAIL and REVIEWER_<ROLE>_USER_ID are appended once.
+//   · REVIEWER_<ROLE>_EMAIL is appended once (the user id is printed, never stored:
+//     the address finds it again).
 // The vault is APPEND-ONLY here: a name already present is never rewritten, and
 // one present with a DIFFERENT value than this run would write is a refusal.
 //
@@ -52,10 +53,25 @@
 //   `draft`, the single member subscriptiontracker) — a reviewed, opt-in act.
 //
 // Prints NO secret: a password appears as its length and the first 8 hex of its
-// sha256, never its characters. Credentials come from the environment or the
-// vault by EXACT name (never a split on `=`): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-// (or SUPABASE_Secret_key), and for --grant-pro CLOUDFLARE_ACCOUNT_ID plus
-// CLOUDFLARE_D1_TOKEN (or CLOUDFLARE_API_TOKEN).
+// sha256, never its characters.
+//
+// 🔴 THE IDENTITY STACK IS THE ONE PRODUCTION TRUSTS, READ FROM THE FILE THE DEPLOY
+// READS: services/platform/wrangler.jsonc vars.SUPABASE_URL (Box C's GoTrue). A
+// SUPABASE_URL in the environment must name that same origin or the run refuses.
+// The VAULT's SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are NOT read: measured
+// 2026-10-03, they are the HOSTED project's (the vault-sync labels say "remove
+// then"), and accounts made there would be accounts no production build can sign
+// in to. The service-role key comes from the environment (SUPABASE_SERVICE_ROLE_KEY,
+// Box C's — the GitHub secret SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY, or
+// /opt/supabase/.env on the box) or from the vault name
+// SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY, by EXACT name (never a split on `=`). For
+// --grant-pro: CLOUDFLARE_ACCOUNT_ID plus CLOUDFLARE_D1_TOKEN (or CLOUDFLARE_API_TOKEN).
+//
+// The vault gains REVIEWER_{FREE,PRO}_{EMAIL,PASSWORD}. Nikatru_Platform_Private
+// runbooks/config/vault-sync-machine-keys.mjs refuses a secrets.env name with no
+// purpose (exit 2, the 02:30 "NIKATRU vault sync" task), so its NAME_PURPOSES map
+// needs REVIEWER_FREE_PASSWORD and REVIEWER_PRO_PASSWORD (each with `user:` its
+// _EMAIL) in the same sitting as the first --apply.
 //
 // Exit 0 = done (or planned). 1 = a request or a refusal stopped it. 2 = COVERAGE
 // LOST: a credential, the vault, or the comp precondition is missing.
@@ -247,6 +263,18 @@ export async function loadPlatform(root) {
   return { upsertBundleGrant: store.upsertBundleGrant, readProductEntitlement: reader.readProductEntitlement };
 }
 
+/** The GoTrue origin production trusts: the platform Worker's top-level
+ *  vars.SUPABASE_URL, the issuer its JWT verify and /v1/health read. */
+async function authTargetOf(root) {
+  const { parseJsonc } = await import(pathToFileURL(join(root, 'tooling/ci/d1-sql-inventory.mjs')).href);
+  const cfg = parseJsonc(readFileSync(join(root, 'services/platform/wrangler.jsonc'), 'utf8'));
+  const v = cfg?.vars?.SUPABASE_URL;
+  if (typeof v !== 'string' || !v.startsWith('https://')) {
+    throw new Refused(2, ['services/platform/wrangler.jsonc carries no https vars.SUPABASE_URL, so the identity stack production trusts is unknown.']);
+  }
+  return v;
+}
+
 /** platform_db's production id and the production money world, from the files
  *  the deploys read (never typed here). */
 async function platformTarget(root) {
@@ -289,15 +317,28 @@ export async function run(opts) {
     return undefined;
   };
 
+  // The identity production trusts, from the platform Worker's own config; never the vault's.
+  const trusted = await (opts.authTarget ?? authTargetOf)(root);
   let url;
   try {
-    url = credentialOrigin(cred('SUPABASE_URL') ?? '', 'supabase');
+    url = credentialOrigin(env.SUPABASE_URL || trusted, 'supabase');
   } catch (e) {
     if (e instanceof CredentialOriginRefused) throw new Refused(2, [`SUPABASE_URL: ${e.message}`]);
     throw e;
   }
-  const serviceKey = cred('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_Secret_key');
-  if (!serviceKey) throw new Refused(2, ['no SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_Secret_key) in the environment or the vault.']);
+  if (url !== new URL(trusted).origin) {
+    throw new Refused(2, [
+      `SUPABASE_URL is ${url}, and production trusts ${new URL(trusted).origin} (services/platform/wrangler.jsonc vars.SUPABASE_URL).`,
+      'Accounts made on another stack are accounts no production build can sign in to; nothing was made.',
+    ]);
+  }
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || vault.get('SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceKey) {
+    throw new Refused(2, [
+      `no service-role key for ${url}: set SUPABASE_SERVICE_ROLE_KEY in the environment (Box C's), or add SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY to the vault.`,
+      'The vault\'s SUPABASE_SERVICE_ROLE_KEY is the hosted project\'s and is never used here.',
+    ]);
+  }
   const auth = gotrue({ url, serviceKey, fetchImpl });
 
   const accounts = [
@@ -338,7 +379,6 @@ export async function run(opts) {
     appendVault(vaultPath, `${a.prefix}_EMAIL`, a.email);
     const userId = user ? user.id : await auth.create(a.email, password, a.role);
     if (user) await auth.setPassword(user.id, password, a.role);
-    appendVault(vaultPath, `${a.prefix}_USER_ID`, userId);
     log(`       ok: user ${userId}; password ${fingerprint(password)} is in the vault as ${a.prefix}_PASSWORD`);
     done.push({ ...a, userId });
   }

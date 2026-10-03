@@ -20,11 +20,17 @@ const REPO = join(import.meta.dirname, '..', '..', '..');
 const AUTH = 'https://auth-api.nikatru.com';
 const SERVICE = 'service-role-test-value';
 
-/** A vault with the credentials the run reads, in a temporary directory. */
+/** A vault with the credentials the run reads, in a temporary directory. Its
+ *  SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are the HOSTED project's, as the real
+ *  vault's are: the run must read neither. */
 function vault(extra = '') {
   const dir = mkdtempSync(join(tmpdir(), 'nk-reviewers-'));
   const path = join(dir, 'secrets.env');
-  writeFileSync(path, `SUPABASE_URL=${AUTH}\nSUPABASE_SERVICE_ROLE_KEY=${SERVICE}\nCLOUDFLARE_ACCOUNT_ID=acct\nCLOUDFLARE_API_TOKEN=cf-token\n${extra}`);
+  writeFileSync(
+    path,
+    `SUPABASE_URL=https://abcdefgh.supabase.co\nSUPABASE_SERVICE_ROLE_KEY=hosted-key-never-used\n` +
+      `SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY=${SERVICE}\nCLOUDFLARE_ACCOUNT_ID=acct\nCLOUDFLARE_API_TOKEN=cf-token\n${extra}`,
+  );
   return { dir, path };
 }
 
@@ -95,6 +101,27 @@ describe('provision-reviewer-accounts', () => {
     }
   });
 
+  test('🔴 the identity stack is the one production trusts: another stack in SUPABASE_URL is refused, the vault\'s hosted key is never used', async () => {
+    const real = readFileSync(join(REPO, 'services/platform/wrangler.jsonc'), 'utf8');
+    assert.match(real, /"SUPABASE_URL": "https:\/\/auth-api\.nikatru\.com"/, 'the fixture origin is not the platform Worker\'s');
+    const v = vault();
+    const b = backend();
+    try {
+      await assert.rejects(
+        run({ root: REPO, vault: v.path, env: { SUPABASE_URL: 'http://127.0.0.1:54321' }, fetchImpl: b.fetchImpl, log: () => {} }),
+        (e) => e instanceof Refused && e.code === 2 && /production trusts https:\/\/auth-api\.nikatru\.com/.test(e.lines[0]),
+      );
+      writeFileSync(v.path, readFileSync(v.path, 'utf8').replace(/^SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY=.*\n/m, ''));
+      await assert.rejects(
+        run({ root: REPO, vault: v.path, env: {}, fetchImpl: b.fetchImpl, log: () => {} }),
+        (e) => e instanceof Refused && e.code === 2 && /never used here/.test(e.lines[1]),
+      );
+      assert.deepEqual(b.state.calls, [], 'a request was made with the wrong stack or key');
+    } finally {
+      rmSync(v.dir, { recursive: true, force: true });
+    }
+  });
+
   test('the default PLAN writes nothing: no user, no vault line', async () => {
     const v = vault();
     const b = backend();
@@ -122,7 +149,8 @@ describe('provision-reviewer-accounts', () => {
         const user = b.state.users.find((u) => u.email === email);
         assert.ok(user && user.confirmed === true, `${email} was not made pre-confirmed`);
         assert.equal(held.get(`REVIEWER_${role}_PASSWORD`), user.password, `${email}'s password is not the vault's`);
-        assert.equal(held.get(`REVIEWER_${role}_USER_ID`), user.id);
+        assert.equal(held.get(`REVIEWER_${role}_EMAIL`), email);
+        assert.equal(held.has(`REVIEWER_${role}_USER_ID`), false, 'a name the vault sync has no purpose for was added');
         assert.equal(user.app_metadata.store_review, role.toLowerCase());
         assert.ok(!out.lines.join('\n').includes(user.password), 'a password was printed');
       }
