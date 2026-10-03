@@ -3,8 +3,9 @@
 // dialog capped at `AppBreakpoints.medium` from a tablet up — and the view
 // inside holds the form cap (`ConnectedAccountsView`'s own width decision).
 //
-// RED CONTROL: open it with `showModalBottomSheet` directly — the kTablet and
-// kDesktop cases find no Dialog and a list the width of the window.
+// RED CONTROL: open it with `showModalBottomSheet` directly — the kTablet,
+// kExpanded, kDesktop and kWide cases find no Dialog and a list the width of
+// the window.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/settings/connected_accounts_view.dart';
@@ -62,6 +63,25 @@ void main() {
     WidgetTester tester,
   ) async {
     await _openAt(tester, kDesktop);
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(_listWidth(tester), lessThanOrEqualTo(AppBreakpoints.form));
+  });
+
+  // ⏱ 2026-10-03 · merged over main's P39 (SYN-X1 C-17), which declared the
+  // EXPANDED (1024) class and made kWide (1920) a required window: the same
+  // dialog at both, the list still at the form cap rather than the window.
+  testWidgets('an expanded window (1024) gets the same dialog, at the cap', (
+    WidgetTester tester,
+  ) async {
+    await _openAt(tester, kExpanded);
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(_listWidth(tester), lessThanOrEqualTo(AppBreakpoints.form));
+  });
+
+  testWidgets('a wide window (1920) gets the same dialog, at the cap', (
+    WidgetTester tester,
+  ) async {
+    await _openAt(tester, kWide);
     expect(find.byType(Dialog), findsOneWidget);
     expect(_listWidth(tester), lessThanOrEqualTo(AppBreakpoints.form));
   });
