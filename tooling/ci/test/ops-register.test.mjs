@@ -2350,7 +2350,7 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  failing, so the outage rule can grade it DEGRADED during a proven outage
    *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read on
    *  main, before the time-travel row; a healthy run makes none.
-   *  2026-10-03: the merge of both: 33. */
+   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree. */
   const OPS_GITHUB_REQUEST_CEILING = 33;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
