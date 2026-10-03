@@ -1275,14 +1275,14 @@ describe('⏱ 2026-10-03 — a slot is owed by the schedule of the release live 
     test('🔴 without the ledger, the job whose cron moved is ABSENT — the measured red, reproduced', () => {
       const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E, iso(jSlot - 3_600_000 + 30_000)))], NOW_E);
       assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
-      assert.match(r.stderr, new RegExp(`${J.job}: the run due at ${iso(jSlot).replace(/[.]/g, '\\.')}`));
+      assert.ok(r.stderr.includes(`${J.job}: the run due at ${iso(jSlot)} (cron \``), r.stderr);
     });
 
     test('✅ with the ledger, the slot the OLD release owed is the one judged — exit 0', () => {
       const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E, iso(jSlot - 3_600_000 + 30_000))), '--releases-file', releasesFile(ledgerRows, { [OLD]: oldRegister(), [NEW]: real() })], NOW_E);
       assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
       assert.match(r.stdout, /OFFLINE LEDGER/);
-      assert.match(r.stdout, new RegExp(`ok  ${J.job}: the run due ${iso(jSlot - 3_600_000).replace(/[.]/g, '\\.')} \\(cron \`${oldCron.replace(/\*/g, '\\*')}\`, owed by release aaaaaaaaaaaa\\)`));
+      assert.ok(r.stdout.includes(`ok  ${J.job}: the run due ${iso(jSlot - 3_600_000)} (cron \`${oldCron}\`, owed by release aaaaaaaaaaaa)`), r.stdout);
     });
 
     test('🔴 RED CONTROL — the NEW release\'s next slot, missed, exits 1 naming that release', () => {
@@ -1290,7 +1290,7 @@ describe('⏱ 2026-10-03 — a slot is owed by the schedule of the release live 
       const rows = rowsAt(next, iso(jSlot - 3_600_000 + 30_000));
       const r = cli(['--rows-file', rowsFile(rows), '--releases-file', releasesFile(ledgerRows, { [OLD]: oldRegister(), [NEW]: real() })], next);
       assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
-      assert.match(r.stderr, new RegExp(`${J.job}: the run due at ${iso(jSlot + 86_400_000).replace(/[.]/g, '\\.')} \\(cron \`[^\`]+\`, owed by release bbbbbbbbbbbb`));
+      assert.ok(r.stderr.includes(`${J.job}: the run due at ${iso(jSlot + 86_400_000)} (cron \`${J.cron[0]}\`, owed by release bbbbbbbbbbbb`), r.stderr);
     });
 
     test('⚠ a release whose register cannot be read falls back to main\'s schedule — red again, and said', () => {
