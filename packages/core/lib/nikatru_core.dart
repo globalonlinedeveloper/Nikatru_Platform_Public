@@ -2,6 +2,8 @@
 /// packs. Pure Dart — safe to depend on from any app or package.
 library;
 
+// ⏱ 2026-10-02 · port-ai: the AI port's client seam (bring-your-own-key).
+export 'src/ai/ai_provider.dart';
 export 'src/analytics/analytics.dart';
 export 'src/auth/account_deletion.dart';
 export 'src/auth/age_signal.dart';
@@ -10,6 +12,7 @@ export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/auth/browser_handoff.dart';
 export 'src/auth/credentials_preflight.dart';
+export 'src/auth/email_code.dart';
 export 'src/auth/identity_assurance.dart';
 export 'src/integrity/device_integrity.dart';
 // ⏱ 2026-09-29 · the native sign-in attestation protocol and its seam.
@@ -18,7 +21,9 @@ export 'src/auth/password_policy.dart';
 // ⏱ 2026-09-24 · was src/auth/apple_token_keeper.dart; the Apple names it
 // exported (keepAppleRefreshToken, AppleTokenNotKept, …) are still exported here.
 export 'src/auth/provider_token_keeper.dart';
+export 'src/auth/sign_in_methods.dart';
 export 'src/legal/legal_acceptance.dart';
+export 'src/legal/legal_change_notes.dart';
 export 'src/links/external_link_launcher.dart';
 export 'src/links/link_policy.dart';
 export 'src/analytics/analytics_lifecycle.dart';
@@ -48,6 +53,7 @@ export 'src/config/default_configs.dart';
 export 'src/config/flag_resolver.dart';
 export 'src/config/observed_feature_flags.dart';
 export 'src/config/version_gate.dart';
+export 'src/digest/sha256_hex.dart';
 export 'src/models/entitlement.dart';
 export 'src/money/fx_rates.dart';
 export 'src/money/fx_source.dart';

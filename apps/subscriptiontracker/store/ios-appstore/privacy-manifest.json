@@ -361,6 +361,32 @@
         "manifest": "none",
         "accessedApis": [],
         "basis": "⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). The native half of package:objective_c, which path_provider_foundation 2.6.0 depends on (objective_c ^9.2.1; pubspec.lock resolves 9.4.1) for its direct FFI calls to Foundation. Flutter's native-assets build compiles it from the package's own src/ (CFBundleIdentifier io.flutter.flutter.native-assets.objective-c), outside CocoaPods and Swift Package Manager, which is why no plugin row named it. Measured in the .ipa of bp run 36229543907: the framework carries no PrivacyInfo.xcprivacy. Its native source in the pub cache (objective_c-9.4.1/src, the .m and .c files) was grepped for the Required Reason symbols of all five categories and is clean. What Dart SENDS through it by objc_msgSend is `ffiFindings` and `unresolved.U-1`, not this binary's own code."
+      },
+      {
+        "binary": "home_widget 0.10.0",
+        "manifest": "none",
+        "accessedApis": [
+          "NSPrivacyAccessedAPICategoryUserDefaults: 1C8F.1"
+        ],
+        "basis": "⏱ ADDED 2026-10-01 (T16). XP-04 glance. Read from the pub cache (home_widget-0.10.0/ios/home_widget/Sources/home_widget): it ships NO PrivacyInfo.xcprivacy, and HomeWidgetPlugin.swift:109 and HomeWidgetBackgroundWorker.swift:40/:89 open `UserDefaults(suiteName:)` on the app group the app and its widget extension share. That is the UserDefaults category with reason 1C8F.1 (data shared with the same App Group), and because the binary carries no manifest of its own, the app target declares it (accessedApiDetermination.ios)."
+      },
+      {
+        "binary": "local_auth_darwin 2.0.4",
+        "manifest": "ships-own",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-10-01 (T16). XP-03 app lock. Manifest read from the pub cache (local_auth_darwin-2.0.4/darwin/local_auth_darwin/Sources/local_auth_darwin/Resources/PrivacyInfo.xcprivacy): tracking false, no accessed API types, no collected data. It calls LAContext.evaluatePolicy, which answers pass or fail; no biometric data reaches the app."
+      },
+      {
+        "binary": "quick_actions_ios 1.2.5",
+        "manifest": "ships-own",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-10-01 (T16). XP-05 shortcuts. Manifest read from the pub cache (quick_actions_ios-1.2.5/ios/quick_actions_ios/Sources/quick_actions_ios/Resources/PrivacyInfo.xcprivacy): tracking false, no accessed API types. It sets UIApplication.shortcutItems."
+      },
+      {
+        "binary": "sign_in_with_apple 8.2.0",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-10-01 (T16). EN-19 native Apple sheet. Read from the pub cache (sign_in_with_apple-8.2.0/darwin): no PrivacyInfo.xcprivacy, and its Swift calls ASAuthorizationController and ASWebAuthenticationSession only — none of UserDefaults, file timestamps, system boot time, disk space or active keyboards (grep over the darwin tree, 2026-10-01). No Required Reason API, so no manifest is owed."
       }
     ],
     "macos": [
@@ -499,6 +525,18 @@
         "manifest": "none",
         "accessedApis": [],
         "basis": "As iOS, measured in the .pkg of bp run 36229543907: the framework carries no PrivacyInfo.xcprivacy."
+      },
+      {
+        "binary": "local_auth_darwin 2.0.4",
+        "manifest": "ships-own",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-10-01 (T16). XP-03 app lock. Manifest read from the pub cache (local_auth_darwin-2.0.4/darwin/local_auth_darwin/Sources/local_auth_darwin/Resources/PrivacyInfo.xcprivacy): tracking false, no accessed API types, no collected data. It calls LAContext.evaluatePolicy, which answers pass or fail; no biometric data reaches the app."
+      },
+      {
+        "binary": "sign_in_with_apple 8.2.0",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-10-01 (T16). EN-19 native Apple sheet. Read from the pub cache (sign_in_with_apple-8.2.0/darwin): no PrivacyInfo.xcprivacy, and its Swift calls ASAuthorizationController and ASWebAuthenticationSession only — none of UserDefaults, file timestamps, system boot time, disk space or active keyboards (grep over the darwin tree, 2026-10-01). No Required Reason API, so no manifest is owed."
       }
     ]
   },
@@ -527,9 +565,19 @@
     ]
   },
   "accessedApiDetermination": {
-    "ios": [],
+    "ios": [
+      {
+        "category": "NSPrivacyAccessedAPICategoryUserDefaults",
+        "reasons": ["1C8F.1"]
+      }
+    ],
     "macos": [],
     "_why": [
+      "⏱ 2026-10-01 (T16) — iOS IS NO LONGER EMPTY. home_widget 0.10.0 ships no manifest of its own and opens",
+      "UserDefaults(suiteName:) on the app group the widget extension shares, so the app target declares",
+      "UserDefaults 1C8F.1 on that binary's behalf (binaryInventory.ios records the read). macOS stays empty:",
+      "home_widget has no macOS implementation. What follows is the audit as it stood before.",
+      "",
       "🔴 BOTH ARE EMPTY, AND THAT IS THE AUDIT'S FINDING RATHER THAN ITS DEFAULT.",
       "",
       "The app target's own code — three files, read in full — calls no Required Reason API. Every",
