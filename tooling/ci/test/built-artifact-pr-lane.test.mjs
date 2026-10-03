@@ -497,10 +497,13 @@ test('ci-gate needs every PR-lane job', () => {
 // ── T12 ──────────────────────────────────────────────────────────────────────
 // assert-green-means-ran.mjs rule A6 (no conditional constituents) forbids the
 // same thing for every ci-gate constituent; named here for this lane's jobs.
-test('the PR lane carries no job-level if', () => {
+// ⏱ 2026-10-03 — its one admitted `if:` is the draft predicate (A6/A10), which the
+// root job `prepare` carries: a draft PR builds no artifact, and ci-gate skips with it.
+const DRAFT_SKIP_IF = 'github.event.pull_request.draft != true';
+test('the PR lane carries no job-level if but the draft predicate', () => {
   const conditional = [APPS_JOB, ...PR_LANE_JOBS]
     .map((name) => ({ name, jobIf: jobOf(ciWorkflow, PR_WORKFLOW, name).jobIf }))
-    .filter((j) => j.jobIf !== null)
+    .filter((j) => j.jobIf !== null && j.jobIf.cond !== DRAFT_SKIP_IF)
     .map((j) => `${PR_WORKFLOW}:${j.jobIf.n} "${j.name}" if: ${j.jobIf.cond}`);
   assert.deepEqual(conditional, [], 'a job-level if: resolves to skipped whenever it is false, and a skipped lane proves nothing');
 });
