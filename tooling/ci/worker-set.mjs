@@ -80,12 +80,12 @@
 //                 value deploy-workers.yml's `workers` job writes to `workers=`. The
 //                 whole set is still checked first;
 //   --env <name>  with --json only: the entries whose own wrangler.jsonc declares an
-//                 `env.<name>` block, the rest dropped. deploy-sandbox.yml's `workers` job
-//                 reads `--json --app-workers --env sandbox`, so a Worker with no sandbox
-//                 block is never handed to `wrangler deploy --env sandbox` (which would
-//                 otherwise be a question for wrangler, not this reader), and
-//                 assert-release-provenance.mjs limb 2b resolves a sandbox leg's
-//                 `workingDirectory` through envEntries(), the same answer;
+//                 `env.<name>` block. deploy-sandbox.yml's `workers` job reads
+//                 `--json --app-workers --env sandbox`, and assert-release-provenance.mjs
+//                 limb 2b resolves a sandbox leg's `workingDirectory` through envEntries(),
+//                 the same answer. An APP Worker without the block is REFUSED (exit 1,
+//                 naming it; envRefusals() below), never dropped; a serving or edge
+//                 Worker without one is still left out of the list;
 //   with none of these, one directory name per line.
 //
 // ⏱ 2026-09-29 — `--env` (B-12, row O-SERVICE-KIT-UNBUILT). deploy-sandbox.yml was one
@@ -94,10 +94,19 @@
 // command; symbolication-proof.yml named the app on nine lines. Both were classified
 // out of assert-release-lane-generic.mjs, so app #2 would have had no sandbox and
 // nothing would have said so.
+//
+// ⏱ 2026-10-01 — AN APP WORKER WITH NO `env.<name>` IS A REFUSAL, NOT A DROP
+// (rv2-services-011, row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV). `--env` used to filter
+// such a Worker out without a word, and the brick stamped none, so app #2's Worker
+// would have deployed to production and never to the sandbox, its store capture
+// would have had no API, and deploy-sandbox would have stayed green over the gap
+// it was built to close. Every app Worker is held to the same sandbox parity as app
+// #1's; the brick now stamps the block (its own test/wrangler-config.test.ts).
 // Exit 0 = the set is non-empty, every directory under services/ is placed, and
 //          (--for-deploy) every member holds.
 // Exit 1 = a directory under services/ is neither `_shared` nor a Worker, or
-//          (--for-deploy) a member fails the register, its lockfile or `dsnSecret`.
+//          (--for-deploy) a member fails the register, its lockfile or `dsnSecret`,
+//          or (--env <name>) an app Worker declares no `env.<name>` block.
 // Exit 2 = COVERAGE LOST: no services/ directory, no Worker in it, or
 //          (--for-deploy) no readable register or no git index to ask.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -366,6 +375,22 @@ export function envEntries(root, entries, name) {
   });
 }
 
+/** Why each APP Worker entry of `d` (a deploySet() answer) is refused under
+ *  `--env <name>`: one line per app Worker whose own `${WORKER_CONFIG}` declares no
+ *  `env.<name>` block (or does not parse), in the set's order. Empty is the pass. */
+export function envRefusals(root, d, name) {
+  const app = appWorkerEntries(d);
+  const kept = new Set(envEntries(root, app, name).map((e) => e.dir));
+  return app
+    .filter((e) => !kept.has(e.dir))
+    .map(
+      (e) =>
+        `${e.dir}/${WORKER_CONFIG} (${e.worker}) is an app Worker and declares no \`env.${name}\` block. ` +
+        `A \`--env ${name}\` deploy would leave it out without a word: give it the block the brick stamps ` +
+        '(tooling/bricks/app/.../wrangler.jsonc env.sandbox), with its ids written by provision-backend.mjs.',
+    );
+}
+
 /** `${{ matrix.<dimension>.<field> }}` naming a field of an appWorkerMatrix() entry —
  *  the one shape a workflow reads a deploy-matrix leg in. Group 1 is the dimension,
  *  group 2 the field. Global: callers use `matchAll` or reset `lastIndex`. */
@@ -462,6 +487,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       for (const p of d.problems) console.error(`FAIL worker-set --for-deploy: ${p}`);
       console.error('\nworker-set: FAILED');
       process.exit(1);
+    }
+    if (envName !== null) {
+      const refused = envRefusals(root, d, envName);
+      if (refused.length) {
+        console.error('');
+        for (const r of refused) console.error(`FAIL worker-set --env ${envName}: ${r}`);
+        console.error('\nworker-set: FAILED');
+        process.exit(1);
+      }
     }
     if (json) {
       const picked = appOnly ? appWorkerEntries(d) : d.entries;

@@ -64,3 +64,11 @@ RAZORPAY_WEBHOOK_SECRET=
 # sandbox destination sets `sandbox` HERE so a sandbox notification can never be
 # written with a live provider_environment.
 MONEY_ENVIRONMENT=sandbox
+
+# ⏱ 2026-10-01 · PB-27 — POST /v1/ops/box-manifest (src/routes/box-manifest.ts).
+# ONE SECRET PER BOX: each box's config-hash cron authenticates with its own, so
+# a box can write only its own row. The same value sits on that box only, in the
+# root-only file tooling/ops/boxes/post-config-manifest.sh reads. Absent, that
+# box's posts answer 503. Deploy: `wrangler secret put <NAME>`, never a var.
+BOX_MANIFEST_SECRET_BOXB=
+BOX_MANIFEST_SECRET_BOXC=

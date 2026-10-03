@@ -75,6 +75,38 @@ export const JWKS_KV_KEY = 'supabase_jwks';
 export const JWKS_TTL_SECONDS = 600; // 10 minutes
 
 /**
+ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13) — THE LAST-KNOWN-GOOD
+ * KEY SET, under its own KV key beside [JWKS_KV_KEY].
+ *
+ * The 10-minute copy above is the only thing a Worker could verify against once
+ * Box C stopped answering, and it expires on a timer that only a SUCCESSFUL fetch
+ * renews. So about ten minutes into a Box C outage every authenticated request
+ * 401'd, although every access token in flight was still valid and its signing
+ * key had not changed. (The shield's 24 h stale entry, #1096, does not reach
+ * here: the Workers' own JWKS reads are same-zone subrequests that skip it.)
+ *
+ * The LKG copy is the same public document with NO expiry. It is:
+ *   · WRITTEN by the warm path after a successful fetch, whenever the fetched
+ *     set differs from the one stored ([lastKnownGoodNeedsWrite]) — so a fetched
+ *     set always replaces it, and an unchanged one costs no KV write;
+ *   · READ for verification ONLY when the key set could not be obtained
+ *     ([isKeySetUnavailable]) AND the 10-minute copy is unusable. A usable
+ *     10-minute copy is the newer set, and a token whose `kid` it lacks is
+ *     refused without a second bite at an older one.
+ *
+ * 🔴 WHY NO EXPIRY IS SAFE. It holds PUBLIC keys, verified through the same
+ * [verifyOptions] (ES256, issuer, audience, `exp`), so it can only ever admit a
+ * token Supabase signed and that has not expired. An access token lives at most
+ * `jwt_exp` (3600 s, tooling/mail-transport.json), and a refresh needs Box C — so
+ * in an outage the LKG carries signed-in calls for as long as their tokens live,
+ * and then nothing. A rotation replaces it on the next good fetch.
+ *
+ * KV writes (`tooling/ceilings.json` → `kv.writesPerDay`): one per CHANGE of the
+ * published key set, which is a rotation — not one per expiry.
+ */
+export const JWKS_LKG_KV_KEY = 'supabase_jwks_lkg';
+
+/**
  * 🔴 THE VERIFY OPTIONS ARE DECLARED ONCE AND SHARED BY EVERY PATH, AND THAT IS
  * THE WHOLE SAFETY ARGUMENT FOR EVERY FALLBACK BUILT ON THEM.
  *
@@ -184,6 +216,60 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
   } catch {
     return null;
   }
+}
+
+/**
+ * Should a body the JWKS endpoint just answered 200 with replace the stored
+ * last-known-good copy ([JWKS_LKG_KV_KEY])?
+ *
+ * TRUE when the body IS a key-set document — a JSON object with a `keys` array —
+ * and differs from what is stored. An EMPTY `keys` array still replaces: it is
+ * what the server now publishes, and a stale LKG must never outlive the set that
+ * superseded it (rotation wins; [usableJwksDocument] then refuses the empty copy
+ * on the read, so the outage path fails closed). A body that is NOT a key-set
+ * document (an HTML error page answered 200, a truncated read) is not a set and
+ * leaves the stored copy alone.
+ *
+ * ⏱ 2026-10-03 · PR #1174 review nit 6. "Differs" is the parsed KEY SET, not
+ * the response text: the same keys served in another order or with other
+ * whitespace would otherwise spend a KV write on every warm, against the Free
+ * plan's 1,000 writes/day. A stored copy that is absent or not a key set always
+ * loses to a fetched one.
+ */
+export function lastKnownGoodNeedsWrite(fetched: string, stored: string | null): boolean {
+  const next = canonicalKeySet(fetched);
+  if (next === null) return false;
+  return stored === null || next !== canonicalKeySet(stored);
+}
+
+/**
+ * A key-set document's keys as one order- and whitespace-free string (each key
+ * JSON with its members sorted, the list sorted), or null when [text] is not a
+ * JSON object with a `keys` array.
+ */
+function canonicalKeySet(text: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const keys = (parsed as { keys?: unknown }).keys;
+  if (!Array.isArray(keys)) return null;
+  return JSON.stringify(keys.map(canonicalJson).sort());
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

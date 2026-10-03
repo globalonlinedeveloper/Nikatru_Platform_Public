@@ -27,6 +27,9 @@
 //   IQ16 nextReady and claim() agree on a stale lane: claim() RECLAIMs it and wins, once;
 //        a launched-stale lane is neither offered nor taken; a fresh one is refused unwritten
 //   IQ17 a migration stub is never flipped to `ready`, never offered, never launchable
+//   IQ19 an invalid RECLAIM 10 s short of stale (a claimant's clock ahead) and a losing
+//        CLAIM do not refresh the holder's window: it goes stale on the holder's own clock
+//   IQ20 claim() on a migration stub, or on an empty prompt, throws and writes nothing
 //   IQ18 fail closed: an issue without a comments array throws; free-text owner comments
 //        that start with a verb are not protocol lines
 //
@@ -235,18 +238,21 @@ test('IQ11 housekeepingPlan: merged → done + close; blocked ↔ ready; at most
 });
 
 /** A minimal in-memory issue API: comments get increasing ids in the order they land. */
-function fakeIssueApi(owner) {
+function fakeIssueApi(owner, laneOver = {}) {
   let id = 0;
   const comments = [];
   const labels = new Set();
+  const posts = [];
   return {
     owner,
     comments,
     labels,
-    addLabels: async (_n, ls) => ls.forEach((l) => labels.add(l)),
+    posts,
+    getIssue: async (n) => ({ number: n, state: 'open', labels: [{ name: 'cloud-lane' }, { name: 'ready' }], ...renderIssue(lane(laneOver)) }),
+    addLabels: async (_n, ls) => { posts.push('label'); ls.forEach((l) => labels.add(l)); },
     removeLabel: async (_n, l) => labels.delete(l),
     // Like the REST POST, the new comment comes back (with its id).
-    comment: async (_n, body) => { const cm = { id: ++id, body, user: { login: owner }, created_at: new Date(NOW).toISOString() }; comments.push(cm); return { ...cm }; },
+    comment: async (_n, body) => { posts.push('comment'); const cm = { id: ++id, body, user: { login: owner }, created_at: new Date(NOW).toISOString() }; comments.push(cm); return { ...cm }; },
     listComments: async () => [...comments],
   };
 }
@@ -385,4 +391,37 @@ test('IQ18 fail closed on a missing comments array; free text is not a protocol 
   for (const body of ['CLAIM runner=laptop at=2026-10-02T12:00:00.000Z nonce=0a1b2c3d', 'YIELD runner=cloud-a', 'RELEASE runner=cloud-a', 'RECLAIM previous=cloud-a runner=laptop at=x', 'PROGRESS routine=trig_1 pr=12']) {
     assert.ok(parseEvent(c(body)), `control: ${body}`);
   }
+});
+
+test('IQ19 another claimant\'s losing line never keeps a dead holder fresh (review of #1163, minor 1)', () => {
+  // The review's repro: the holder's CLAIM at T0; a claimant whose local clock runs ahead
+  // posts a RECLAIM that lands, by the server's clock, 10 s short of stale.
+  const T0 = NOW - 6 * 3600_000 - 60_000;
+  const at = (ms) => new Date(ms).toISOString();
+  const comments = [
+    c('CLAIM runner=cloud-a at=x nonce=aaaaaaaa', { id: 200, at: at(T0) }),
+    c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 201, at: at(T0 + 6 * 3600_000 - 10_000) }),
+  ];
+  const st = claimState(comments, { owner: OWNER, now: NOW });
+  assert.equal(st.holder.runner, 'cloud-a', 'the early RECLAIM is invalid and does not take the lane');
+  assert.deepEqual([st.fresh, st.reclaimable], [false, true], 'the holder is stale by its own clock, so a valid RECLAIM may now take it');
+  // a losing CLAIM in the same window is the same: not the holder's activity
+  const losing = [comments[0], c('CLAIM runner=cloud-c at=x nonce=cccccccc', { id: 202, at: hoursAgo(1) })];
+  assert.deepEqual([claimState(losing, { owner: OWNER, now: NOW }).fresh, claimState(losing, { owner: OWNER, now: NOW }).reclaimable], [false, true]);
+  // control: the HOLDER's own later line is activity and keeps it fresh
+  const own = [comments[0], c('CLAIM runner=cloud-a at=x nonce=bbbbbbbb', { id: 203, at: hoursAgo(1) })];
+  assert.equal(claimState(own, { owner: OWNER, now: NOW }).fresh, true);
+});
+
+test('IQ20 claim() refuses a migration stub or an empty prompt before any write (review of #1163, nit 3)', async () => {
+  const stub = fakeIssueApi(OWNER, { deps: [{ kind: 'marker', name: MIGRATION_STUB_MARKER }], prompt: MIGRATION_STUB_PROMPT });
+  await assert.rejects(claim(stub, 7, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) }), /migration stub/);
+  assert.deepEqual([stub.posts, stub.comments.length, [...stub.labels]], [[], 0, []], 'a stub: no label, no comment');
+  const empty = fakeIssueApi(OWNER, { prompt: '   ' });
+  await assert.rejects(claim(empty, 8, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) }), /the prompt is empty/);
+  assert.deepEqual([empty.posts, empty.comments.length], [[], 0], 'an empty prompt: nothing written');
+  // control: a real lane is claimed
+  const real = fakeIssueApi(OWNER);
+  const r = await claim(real, 9, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) });
+  assert.equal(r.won, true);
 });

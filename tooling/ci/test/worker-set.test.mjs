@@ -17,7 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { workerSet, SERVICES_DIR, SHARED_DIR, WORKER_CONFIG } from '../worker-set.mjs';
+import { workerSet, deploySet, envRefusals, SERVICES_DIR, SHARED_DIR, WORKER_CONFIG } from '../worker-set.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -227,20 +227,57 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
     const p = join(r, SERVICES_DIR, dir, WORKER_CONFIG);
     writeFileSync(p, readFileSync(p, 'utf8').replace(/\}\n$/, `  "env": { "${name}": { "name": "w-${name}" } },\n}\n`));
   };
-  test('--env <name> keeps the entries whose config declares env.<name>, the rest dropped', () => {
-    const r = deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'yyy-api': { migrated: ['APP_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
+  // ⏱ 2026-10-01 — rv2-services-011 (O-BRICK-WORKER-HAS-NO-SANDBOX-ENV): an APP Worker
+  // with no env.<name> is a REFUSAL, not a drop. The case below used to assert the drop.
+  const twoApps = () =>
+    deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'yyy-api': { migrated: ['APP_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
       reg: register((g) => ({ ...g, appWorkers: [row('yyy-api'), row('zzz-api')] })) });
+  test('--env <name> keeps every app Worker that declares env.<name>; a serving Worker without one is left out', () => {
+    const r = twoApps();
+    withEnv(r, 'yyy-api', 'sandbox');
     withEnv(r, 'zzz-api', 'sandbox');
-    withEnv(r, 'platform', 'sandbox');
     const j = cli('--for-deploy', '--json', '--app-workers', '--env', 'sandbox', r);
     assert.equal(j.code, 0, j.out);
-    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['zzz-api']);
+    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['yyy-api', 'zzz-api']);
     const all = cli('--for-deploy', '--json', '--env', 'sandbox', r);
     assert.equal(all.code, 0, all.out);
-    assert.deepEqual(JSON.parse(all.stdout).map((x) => x.worker), ['platform', 'zzz-api']);
+    assert.deepEqual(JSON.parse(all.stdout).map((x) => x.worker), ['yyy-api', 'zzz-api']);
+    withEnv(r, 'platform', 'sandbox');
+    const both = cli('--for-deploy', '--json', '--env', 'sandbox', r);
+    assert.deepEqual(JSON.parse(both.stdout).map((x) => x.worker), ['platform', 'yyy-api', 'zzz-api']);
+  });
+
+  test('🔴 RED CONTROL: a two-app register where app #2 declares no env.sandbox is REFUSED (exit 1), naming it, with no set printed', () => {
+    const r = twoApps();
+    withEnv(r, 'zzz-api', 'sandbox');
+    withEnv(r, 'platform', 'sandbox');
+    for (const args of [['--app-workers'], []]) {
+      const j = cli('--for-deploy', '--json', ...args, '--env', 'sandbox', r);
+      assert.equal(j.code, 1, j.out);
+      assert.match(j.out, /FAIL worker-set --env sandbox: services\/yyy-api\/wrangler\.jsonc \(yyy-api\) is an app Worker and declares no `env\.sandbox` block/);
+      assert.doesNotMatch(j.out, /zzz-api\/wrangler\.jsonc \(zzz-api\) is an app Worker/);
+      assert.equal(j.stdout.trim(), '', 'a refused --env read still printed a set');
+    }
+  });
+
+  test('an environment no app Worker declares refuses every app Worker, never prints `[]`', () => {
+    const r = twoApps();
+    withEnv(r, 'yyy-api', 'sandbox');
+    withEnv(r, 'zzz-api', 'sandbox');
     const none = cli('--for-deploy', '--json', '--app-workers', '--env', 'staging', r);
-    assert.equal(none.code, 0, none.out);
-    assert.deepEqual(JSON.parse(none.stdout), []);
+    assert.equal(none.code, 1, none.out);
+    assert.match(none.out, /services\/yyy-api\/wrangler\.jsonc \(yyy-api\)[^\n]*env\.staging/);
+    assert.match(none.out, /services\/zzz-api\/wrangler\.jsonc \(zzz-api\)[^\n]*env\.staging/);
+  });
+
+  test('envRefusals() is the module answer the CLI prints, and an edge or serving row is never in it', () => {
+    const r = twoApps();
+    withEnv(r, 'zzz-api', 'sandbox');
+    const d = deploySet(r);
+    assert.deepEqual(d.problems, []);
+    const refused = envRefusals(r, d, 'sandbox');
+    assert.equal(refused.length, 1);
+    assert.match(refused[0], /^services\/yyy-api\/wrangler\.jsonc \(yyy-api\)/);
   });
 
   test('the real tree: every app Worker the sandbox matrix gets declares env.sandbox, and there is at least one', () => {

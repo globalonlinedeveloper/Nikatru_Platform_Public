@@ -32,6 +32,7 @@
 // user-written text flows to Resend, and the privacy notice's account of what
 // Resend holds (email addresses, for auth mail) stays true.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
 import { SUPPORT_EMAIL } from '../generated/entity';
 
@@ -69,7 +70,7 @@ export function utcDayStart(iso: string): string {
  * null when the stream's key is not set.
  */
 export async function notifyReport(
-  db: D1Database,
+  db: SqlDb,
   mail: MailTransport | null,
   report: ReportNotice,
 ): Promise<NoticeOutcome> {
@@ -129,7 +130,7 @@ export async function notifyReport(
 /** Undo THIS claim (its own stamp, nothing later), so the report reads un-noticed
  *  again. Never throws: a release that fails leaves the report stamped, which
  *  under-uses the day's cap rather than overshooting it. */
-async function releaseClaim(db: D1Database, id: string, claimedAt: string): Promise<void> {
+async function releaseClaim(db: SqlDb, id: string, claimedAt: string): Promise<void> {
   try {
     await db.prepare('UPDATE content_reports SET notified_at = NULL WHERE id = ? AND notified_at = ?').bind(id, claimedAt).run();
   } catch (err) {

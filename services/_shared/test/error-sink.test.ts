@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { buildEnvelope, parseDsn, reportWorkerError } from '../src/error-sink';
+import { buildEnvelope, parseDsn, reportWorkerError, sentryEnvelopeSink } from '../src/error-sink';
+import { recordingErrorSink } from '../src/ports/fakes/telemetry';
+import { runErrorSinkConformance } from './telemetry-conformance';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // error-sink.test.ts — THE SINK MODULE'S OWN CASES, beside the one home.
@@ -174,5 +176,63 @@ describe('the sink fails open', () => {
     // Cloudflare's edge rejects any client request carrying this header with
     // error 1000, before the origin is reached.
     expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain('cf-connecting-ip');
+  });
+});
+
+// ── port-telemetry: the same POST behind the `ErrorSink` port ─────────────────
+// The body above moved to services/_shared/src/adapters/telemetry/sentry-envelope.ts
+// (error-sink.ts re-exports it, so every case above still runs through the shim
+// the carriers use). These cases add the PORT's view: one scenario list that the
+// adapter and the recording fake both pass (telemetry-conformance.ts).
+describe('the ErrorSink port — conformance', () => {
+  const stub = (answer: () => Promise<Response>) => {
+    let n = 0;
+    vi.stubGlobal('fetch', async () => {
+      n += 1;
+      return answer();
+    });
+    return () => n;
+  };
+
+  runErrorSinkConformance('sentry-envelope', {
+    accepts: () => ({ adapter: sentryEnvelopeSink({ GLITCHTIP_DSN: DSN }), requests: stub(async () => new Response('', { status: 200 })) }),
+    outage: () => ({ adapter: sentryEnvelopeSink({ GLITCHTIP_DSN: DSN }), requests: stub(async () => new Response('', { status: 503 })) }),
+    unconfigured: () => ({ adapter: sentryEnvelopeSink({}), requests: stub(async () => new Response('', { status: 200 })) }),
+  });
+
+  const fakeArranged = (answer?: Parameters<typeof recordingErrorSink>[0], counted = true) => {
+    const sink = recordingErrorSink(answer);
+    return { adapter: sink, requests: () => (counted ? sink.reports.length : 0) };
+  };
+  runErrorSinkConformance('fake-sink', {
+    accepts: () => fakeArranged(),
+    outage: () => fakeArranged({ ok: false, kind: 'unavailable', retryable: true, detail: 'fake outage' }),
+    unconfigured: () => fakeArranged({ ok: false, kind: 'invalid', retryable: false, detail: 'fake unconfigured' }, false),
+  });
+
+  it('the runner THROWS on a scenario with no fixture — a missing fixture is never a skip', () => {
+    expect(() => runErrorSinkConformance('incomplete', { accepts: () => fakeArranged() })).toThrow(/no fixture for scenario `outage`/);
+  });
+
+  it('the adapter posts the SAME envelope reportWorkerError builds, and records nothing else', async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return new Response('', { status: 200 });
+    });
+    const out = await sentryEnvelopeSink({ GLITCHTIP_DSN: DSN }).report(new Error('boom'), CTX, NOW);
+    expect(out).toEqual({ ok: true, via: 'sentry-envelope' });
+    expect(bodies).toHaveLength(1);
+    const event = JSON.parse(bodies[0].split('\n')[2]);
+    expect(event.server_name).toBe(CTX.service);
+    expect(event.release).toBe(CTX.release);
+  });
+
+  it('the recording fake keeps a COPY of the context it was given', async () => {
+    const sink = recordingErrorSink();
+    const ctx = { ...CTX };
+    await sink.report(new Error('x'), ctx, NOW);
+    ctx.path = '/mutated';
+    expect(sink.reports[0].ctx.path).toBe(CTX.path);
   });
 });
