@@ -15,6 +15,8 @@
 // it as a choice, so nobody re-derives a constraint that has been paid off.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
+import type { KvStore } from '../../_shared/src/ports/kv';
+import type { SqlDb } from '../../_shared/src/ports/sql';
 import { recomputeRenewals } from './renewals';
 import { MAX_D1_QUERIES_PER_RUN, runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
@@ -35,6 +37,7 @@ import {
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { reminderMailStatementBudget, runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
+import { notifierFor } from './ports';
 import {
   MAX_TOKEN_BACKFILL_PER_RUN,
   backfillProviderTokens,
@@ -106,7 +109,7 @@ import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from './lib/ext-links';
  *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
  *  `env` is read by the binding's NAME, so it is indexed as a record. */
 export function appTargets(env: Env): AppTarget[] {
-  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));
+  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));
 }
 
 /**
@@ -221,6 +224,27 @@ export async function boxbReachability(env: Env): Promise<void> {
   // marks the rows, so it runs BEFORE they are recorded.
   await pageOnConsecutiveMiss(env, BOXB_REACH_JOB, 'Box B', rows);
   await recordHeartbeat(env, rows, BOXB_REACH_JOB);
+  await alertBoxbDown(env, rows);
+}
+
+/**
+ * [port-telemetry] THE ROW IS THE RECORD; THIS IS THE PAGE. A Box B outage used to
+ * write ok=0 rows that someone had to go and read. Now any down target also goes
+ * to the owner through `notifierFor('critical')` (src/ports.ts): ntfy first —
+ * which is ON Box B, so in exactly this case it is expected to fail — and then,
+ * once, the off-box fallback (ports/telemetry.ts NOTIFIER_ROUTES). The outcome is
+ * logged and never thrown: an alert channel being down must not stop the cron.
+ */
+export async function alertBoxbDown(env: Env, rows: { target: string; ok: boolean; detail: string }[]): Promise<void> {
+  const down = rows.filter((r) => !r.ok);
+  if (down.length === 0) return;
+  const outcome = await notifierFor('critical', env).notify({
+    severity: 'critical',
+    title: `Box B unreachable: ${down.length} of ${rows.length} host(s)`,
+    body: down.map((r) => `${r.target} — ${r.detail}`).join('\n'),
+    dedupeKey: BOXB_REACH_JOB,
+  });
+  console.log(`[cron] box B alert: ${outcome.ok ? `sent via ${outcome.via}` : `NOT SENT (${outcome.kind}): ${outcome.detail}`}`);
 }
 
 /**
@@ -2945,7 +2969,7 @@ export async function backupRerunJob(
   nowMs: number = Date.now(),
   backup: typeof runBackup = runBackup,
 ): Promise<'none' | 'ran' | 'expired' | 'malformed' | 'failed'> {
-  const kv = env.CONFIG_KV as KVNamespace | undefined;
+  const kv: KvStore | undefined = env.CONFIG_KV;
   if (!kv) return 'none';
   let raw: string | null;
   try {

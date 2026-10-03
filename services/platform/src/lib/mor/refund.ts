@@ -21,6 +21,7 @@
 // stored notification names it, the window cannot be shown, so the request is
 // NOT refunded automatically — it is recorded for a human (never more generous).
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../../_shared/src/ports/sql';
 
 /**
  * The refund window, in days from the charge — refund.html sections 2 and 3.
@@ -45,7 +46,7 @@ export function withinRefundWindow(chargedAt: string, requestedAt: string): bool
  * stored, signed notification from `provider` in `environment` whose raw body
  * names it as a JSON string. Null when none does.
  */
-export async function chargedAtOf(db: D1Database, provider: string, environment: string, purchaseRef: string): Promise<string | null> {
+export async function chargedAtOf(db: SqlDb, provider: string, environment: string, purchaseRef: string): Promise<string | null> {
   const row = await db
     .prepare(
       `SELECT MIN(occurred_at) AS charged_at

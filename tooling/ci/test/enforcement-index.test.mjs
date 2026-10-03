@@ -684,6 +684,27 @@ describe('build-enforcement-index — a preload named by a variable a composite 
     assert.equal(rows(false).find((x) => x.ref === 'tooling/scripts/pre-load.mjs'), undefined);
   });
 
+  // ⏱ 2026-10-03 (review of #1160, nit 2): the map was built from EVERY composite in
+  // the repo, so a job that never ran the exporting composite was still credited.
+  const unexported = WORKFLOW.replace(
+    '      - run: node --test "tooling/ci/test/*.test.mjs"\n',
+    '      - run: node --import "$PRE_LOAD" --test "tooling/ci/test/*.test.mjs"\n',
+  );
+  test('🔴 a job that names "$PRE_LOAD" but never uses the composite that exports it gives no edge (generator)', () => {
+    assert.ok(unexported.includes('"$PRE_LOAD"') && !unexported.includes('setup-node'), 'the fixture rewrite did not land');
+    const root = fixture({ workflow: unexported, files: { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' }, index: null, yieldDoc: null });
+    const r = spawnSync(process.execPath, [GENERATOR, root], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).find((x) => x.ref === 'tooling/scripts/pre-load.mjs'), undefined);
+  });
+
+  test('🔴 the same job, with the index claiming it WIRED, is a finding (assert-enforcement-index)', () => {
+    const files = { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' };
+    const red = run(fixture({ workflow, files, breakAfter: { '.github/workflows/ci.yml': unexported } }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /"tooling\/scripts\/pre-load\.mjs" is WIRED by "\.github\/workflows\/ci\.yml#platform" and that job never names it/);
+  });
+
   test('assert-enforcement-index reads the same edge: green with the write, red once the write is gone', () => {
     const files = { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' };
     const green = run(fixture({ workflow, files }));

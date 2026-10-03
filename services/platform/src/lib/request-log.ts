@@ -26,6 +26,7 @@ import type { Context, Next } from 'hono';
 import { matchedRoutes } from 'hono/route';
 import type { AppEnv } from '../types';
 import { reportablePath } from './error-sink';
+import { requestGeo } from '../../../_shared/src/geo';
 
 /**
  * The route patterns whose URL is a capability: the token IS the credential,
@@ -120,10 +121,8 @@ export async function requestLog(c: Context<AppEnv>, next: Next): Promise<void> 
   } finally {
     const route = routeOf(c);
     if (!isCapabilityRoute(route, c.req.url)) {
-      const colo = (c.req.raw as { cf?: { colo?: unknown } }).cf?.colo;
-      console.log(
-        requestLine(route, c.req.method, threw ? 500 : c.res.status, Date.now() - start, typeof colo === 'string' ? colo : null),
-      );
+      const colo = requestGeo(c.req.raw).colo;
+      console.log(requestLine(route, c.req.method, threw ? 500 : c.res.status, Date.now() - start, colo ?? null));
     }
   }
 }

@@ -204,7 +204,14 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
     assert.match(wf, /^\s+branches: \[main\]\s*$/m);
     assert.match(wf, /^\s+statuses: write\s*$/m);
     assert.match(wf, /node tooling\/ops\/land-gate\.mjs publish-main-health/);
-    assert.doesNotMatch(wf, /\$\{\{\s*github\.event\./, 'the event is read from GITHUB_EVENT_PATH by the script, never by an expression');
+    // The display-only `run-name:` names the verdict (assert-workflow-hardening.mjs limb 16)
+    // from two values no PR author writes; the job itself reads no event field.
+    const runName = wf.match(/^run-name:.*$/m)?.[0] ?? '';
+    assert.deepEqual(
+      [...runName.matchAll(/github\.event\.[\w.]+/g)].map((m) => m[0]).sort(),
+      ['github.event.workflow_run.conclusion', 'github.event.workflow_run.head_sha'],
+    );
+    assert.doesNotMatch(wf.replace(runName, ''), /\$\{\{[^}]*github\.event\./, 'the event is read from GITHUB_EVENT_PATH by the script, never by an expression');
   });
 });
 

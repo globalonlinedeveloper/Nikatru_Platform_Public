@@ -36,6 +36,7 @@ import { allRows, firstRow, nowIso, uuid } from '../d1';
 import { isAttributableProduct } from '../../config';
 import { isMoneyEnvironment } from '../mor/contract';
 import type { Env } from '../../types';
+import type { SqlDb } from '../../../../_shared/src/ports/sql';
 
 /**
  * The version of the AI disclosure a user must have acknowledged. A new text is
@@ -132,7 +133,7 @@ interface AccountRow {
 }
 
 /** The user's AI account, or the empty one (nothing bought, nothing used, no opt-in). */
-export async function readAccount(db: D1Database, userId: string, appId: string): Promise<AccountRow> {
+export async function readAccount(db: SqlDb, userId: string, appId: string): Promise<AccountRow> {
   const row = await firstRow<AccountRow>(
     db.prepare('SELECT pack_credits, allowance_period, allowance_used, consent_version, consent_at FROM ai_accounts WHERE user_id = ? AND app_id = ?').bind(userId, appId),
   );
@@ -147,7 +148,7 @@ export function allowanceLeft(plan: AiPlan, account: AccountRow, now: string): n
 }
 
 /** Record the user's acknowledgement of the current disclosure. Idempotent. */
-export async function recordConsent(db: D1Database, userId: string, appId: string, now: string): Promise<void> {
+export async function recordConsent(db: SqlDb, userId: string, appId: string, now: string): Promise<void> {
   await db
     .prepare(
       `INSERT INTO ai_accounts (user_id, app_id, consent_version, consent_at, updated_at) VALUES (?, ?, ?, ?, ?)
@@ -342,7 +343,7 @@ export interface PackGrant {
  * the grant row is unique, and the balance moves only while the row is `pending`
  * — inside one batch, so a retried batch meets `granted` and adds nothing.
  */
-export async function creditPack(db: D1Database, g: PackGrant, now: string = nowIso()): Promise<boolean> {
+export async function creditPack(db: SqlDb, g: PackGrant, now: string = nowIso()): Promise<boolean> {
   if (!Number.isInteger(g.credits) || g.credits <= 0) return false;
   const id = uuid();
   const ins = await db
@@ -372,7 +373,7 @@ export async function creditPack(db: D1Database, g: PackGrant, now: string = now
  * what was already spent was already paid for by the call it bought). Idempotent:
  * only a `granted` row is revoked, once.
  */
-export async function revokePack(db: D1Database, provider: string, ref: string, now: string = nowIso()): Promise<boolean> {
+export async function revokePack(db: SqlDb, provider: string, ref: string, now: string = nowIso()): Promise<boolean> {
   const row = await firstRow<{ id: string; user_id: string | null; app_id: string; credits: number; status: string }>(
     db.prepare(`SELECT id, user_id, app_id, credits, status FROM ai_ledger WHERE kind = 'grant' AND provider = ? AND provider_ref = ?`).bind(provider, ref),
   );

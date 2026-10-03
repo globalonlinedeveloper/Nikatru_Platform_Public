@@ -25,6 +25,7 @@
 // Per app: `app_id` must be an app this Worker fans reminders out to (it has an
 // app database in the generated target list), not merely a known app.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { firstRow, nowIso, run } from '../lib/d1';
@@ -142,7 +143,7 @@ function page(title: string, body: string): string {
 }
 
 /** Which (account, app) a token names, or null. Refuses a malformed token before any read. */
-async function tokenOwner(db: D1Database, token: string | undefined): Promise<{ user_id: string; app_id: string } | null> {
+async function tokenOwner(db: SqlDb, token: string | undefined): Promise<{ user_id: string; app_id: string } | null> {
   if (typeof token !== 'string' || !TOKEN_SHAPE.test(token)) return null;
   return firstRow<{ user_id: string; app_id: string }>(
     db.prepare('SELECT user_id, app_id FROM reminder_sent WHERE unsubscribe_hash = ? LIMIT 1').bind(await sha256Hex(token)),

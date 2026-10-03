@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0028_cancel_attempts.sql — THE CANCEL EXECUTOR'S RETRY STATE
+-- 0029_cancel_attempts.sql — THE CANCEL EXECUTOR'S RETRY STATE
 -- (refund-finish; O-CANCEL-EXECUTOR-UNBUILT).
 --
 -- Applies to the SHARED platform_db (services/platform is the sole applier):

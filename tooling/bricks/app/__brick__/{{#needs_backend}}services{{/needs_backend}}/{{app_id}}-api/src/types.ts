@@ -1,4 +1,13 @@
 import type { AuthRecency } from '../../_shared/src/auth';
+/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the KV
+ *  bindings are declared as the KV PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts). */
+import type { KvStore } from '../../_shared/src/ports/kv';
+/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
+ *  are declared as the SQL PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
+ *  assert-ports limb 12 refuses a `D1Database` type in any handler. */
+import type { SqlDb } from '../../_shared/src/ports/sql';
 import type { Context } from 'hono';
 
 // Bindings from wrangler.jsonc. APP_DB is the ONLY per-app resource;
@@ -6,14 +15,14 @@ import type { Context } from 'hono';
 // There is deliberately no R2 binding: object storage is one portfolio bucket
 // bound in `services/platform` and keyed by an `<app_id>/` prefix.
 export interface Env {
-  APP_DB: D1Database;
-  PLATFORM_DB: D1Database;
-  JWKS_CACHE: KVNamespace;
+  APP_DB: SqlDb;
+  PLATFORM_DB: SqlDb;
+  JWKS_CACHE: KvStore;
   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The shared revocation list
   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
   // writes it. Optional: absence fails OPEN, and
   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
-  SESSION_REVOKED?: KVNamespace;
+  SESSION_REVOKED?: KvStore;
   APP_ID: string;
   SUPABASE_URL: string;
   API_VERSION: string;

@@ -853,6 +853,14 @@ const WIRE_CONTRACTS = [
     absentFromDart: '/v1/calendar/',
     absentCall: 'get',
   },
+  // ⏱ 2026-10-01 · PB-27 — a box's config-hash report (services/platform/src/routes/box-manifest.ts).
+  {
+    id: 'box-manifest',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is each box\'s own cron, tooling/ops/boxes/post-config-manifest.sh, which posts `{box, files: {<logical name>: <sha256>}}` with a secret scoped to that box and reads only the status (204, or 4xx/503). The wire is pinned on both sides outside Dart: services/platform/test/box-manifest.test.ts for the route and tooling/ci/test/box-config-drift.test.mjs for the body the script sends.',
+    absentFromDart: '/v1/ops/',
+  },
   // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
   // It was a gap until the TRANSPORT shipped with its first consumer, and its
   // `absentFromDart` fired the day one did — as designed.

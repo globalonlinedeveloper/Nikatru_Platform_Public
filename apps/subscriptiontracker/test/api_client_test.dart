@@ -35,6 +35,44 @@ class _FakeAdapter implements HttpClientAdapter {
   }
 }
 
+/// One list row as the Worker serves it.
+Map<String, dynamic> _row(String id, String name, double price) =>
+    <String, dynamic>{
+      'id': id,
+      'name': name,
+      'category': 'Streaming',
+      'price': price,
+      'cycle': 'monthly',
+      'next_renewal': '2026-08-01',
+    };
+
+/// Answers each request with the next body in [bodies], recording the request.
+class _PagedAdapter implements HttpClientAdapter {
+  _PagedAdapter(this.bodies);
+
+  final List<String> bodies;
+  final List<RequestOptions> requests = <RequestOptions>[];
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    return ResponseBody.fromString(
+      bodies[requests.length - 1],
+      200,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>['application/json'],
+      },
+    );
+  }
+}
+
 void main() {
   test('attaches the bearer token and parses subscriptions', () async {
     final _FakeAdapter adapter = _FakeAdapter(
@@ -60,6 +98,49 @@ void main() {
     expect(subs, hasLength(1));
     expect(subs.first.name, 'Netflix');
     expect(adapter.lastRequest!.headers['Authorization'], 'Bearer tok123');
+  });
+
+  // Lane fix-st-api-bounds (rv2-services-008): GET /subscriptions pages by
+  // keyset. The client asks with `?limit=`, follows `next`, and still reads a
+  // Worker that predates paging (the bare array above).
+  test(
+    'follows `next` across pages and asks with limit and the cursor',
+    () async {
+      final _PagedAdapter adapter = _PagedAdapter(<String>[
+        jsonEncode(<String, dynamic>{
+          'items': <dynamic>[_row('1', 'A', 9.0), _row('2', 'B', 8.0)],
+          'next': 'c-1',
+        }),
+        jsonEncode(<String, dynamic>{
+          'items': <dynamic>[_row('3', 'C', 7.0)],
+          'next': null,
+        }),
+      ]);
+      final DioApiClient client = DioApiClient(
+        baseUrl: 'https://example.test/v1',
+        tokenProvider: () async => null,
+        httpClient: Dio()..httpClientAdapter = adapter,
+      );
+      final List<Subscription> subs = await client.getSubscriptions();
+      expect(subs.map((Subscription s) => s.id), <String>['1', '2', '3']);
+      expect(adapter.requests, hasLength(2));
+      expect(adapter.requests[0].uri.queryParameters, <String, String>{
+        'limit': '${DioApiClient.subscriptionsPageSize}',
+      });
+      expect(adapter.requests[1].uri.queryParameters['after'], 'c-1');
+    },
+  );
+
+  test('a paged body without `items` is an ApiException, not a TypeError', () {
+    final DioApiClient client = DioApiClient(
+      baseUrl: 'https://example.test/v1',
+      tokenProvider: () async => null,
+      httpClient: Dio()
+        ..httpClientAdapter = _FakeAdapter(
+          jsonEncode(<String, dynamic>{'next': null}),
+        ),
+    );
+    expect(client.getSubscriptions(), throwsA(isA<ApiException>()));
   });
 
   test('maps error responses to ApiException', () {
@@ -113,7 +194,7 @@ void main() {
       'id': '1',
       'name': 'Netflix',
       'category': 'Streaming',
-      'price': 15.0,
+      'price': 499.0,
       'price_minor': 49900,
       'currency': 'INR',
       'cycle': 'monthly',
@@ -193,7 +274,12 @@ void main() {
 
     test('a row that names its OWN currency keeps it', () async {
       final List<Subscription> subs = await over(<dynamic>[
-        <String, dynamic>{...row('4'), 'currency': 'USD', 'price_minor': 999},
+        <String, dynamic>{
+          ...row('4'),
+          'price': 9.99,
+          'currency': 'USD',
+          'price_minor': 999,
+        },
       ]).getSubscriptions();
       expect(subs.single.price, const Money(999, 'USD'));
     });

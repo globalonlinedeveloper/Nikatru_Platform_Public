@@ -20,6 +20,7 @@
 // clause below, in SQL, so there is no read-modify-write window between two
 // concurrent deliveries in which the check could be true for both.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb, SqlStatement } from '../../../../_shared/src/ports/sql';
 import { nowIso } from '../d1';
 import {
   type DecisionOutcome,
@@ -42,7 +43,7 @@ import {
 export const MONEY_ENTITLEMENT = 'pro';
 
 export interface MoneyStoreDeps {
-  db: D1Database;
+  db: SqlDb;
   /** From configuration, never from the payload — see contract.ts. */
   environment: MoneyEnvironment;
   nowMs: number;
@@ -208,7 +209,7 @@ export function isUnconcluded(s: DerivationState): boolean {
 
 /** The stored row's derivation stamp, or null when no such row exists. */
 export async function derivationStateOf(
-  db: D1Database,
+  db: SqlDb,
   n: Pick<NormalizedNotification, 'provider' | 'eventId'>,
 ): Promise<DerivationState | null> {
   const row = await db
@@ -232,7 +233,7 @@ export interface StoredNotification {
  * test/money-rederive.test.ts asserts the two agree on every state.
  */
 export async function unconcludedNotifications(
-  db: D1Database,
+  db: SqlDb,
   sinceIso: string,
   limit: number,
 ): Promise<StoredNotification[]> {
@@ -330,7 +331,7 @@ async function resolveAccount(
 }
 
 /** Paddle and Razorpay: the FIRST link wins, forever. Their bodies carry the checkout's metadata. */
-const firstLinkWinsInsert = (db: D1Database): D1PreparedStatement =>
+const firstLinkWinsInsert = (db: SqlDb): SqlStatement =>
   db.prepare(`INSERT INTO provider_accounts
      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
    VALUES (?,?,?,?,?,?,?)
@@ -348,7 +349,7 @@ const firstLinkWinsInsert = (db: D1Database): D1PreparedStatement =>
  *     event's time. A live owner is never displaced by a notice; the caller
  *     refuses that case as `owner_change_on_live_subscription`.
  */
-const revenuecatLinkUpsert = (db: D1Database): D1PreparedStatement =>
+const revenuecatLinkUpsert = (db: SqlDb): SqlStatement =>
   db.prepare(`INSERT INTO provider_accounts
      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
    VALUES (?,?,?,?,?,?,?)
@@ -854,7 +855,7 @@ async function applyAdjustment(
  * NOT A SUBSCRIPTION. A Razorpay refund or dispute carries `payment_id`; whether its payment entity
  * also names the subscription is unconfirmed (razorpay.ts header). So every subscription event of
  * such a rail that names the payment it charged (`subscription.charged`) writes
- * `payment id → subscription id` into `provider_payment_links` (migration 0025), and an adjustment
+ * `payment id → subscription id` into `provider_payment_links` (migration 0026), and an adjustment
  * resolves its subscription through that link first. ⚠️ The link is fixture-proven only:
  * tooling/ports/payments.json keeps the razorpay `refund revokes` case PENDING until one real
  * test-mode refund is seen to resolve by it, so flip limb 5 cannot read the adapter as finished.

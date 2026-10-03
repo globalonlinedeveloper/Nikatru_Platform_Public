@@ -170,6 +170,45 @@ describe('worker-shared-modules — the refusals', () => {
   });
 });
 
+describe('worker-shared-modules — a chain inside the home (port-telemetry)', () => {
+  const write = (root, rel, text) => {
+    const abs = join(root, ...rel.split('/'));
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, text);
+  };
+  test('C1 GREEN CONTROL — carrier → home module → adapter resolves to the BODY', () => {
+    const { root, carrierRel } = fixture({ carrier: REEXPORT, shared: "export * from './adapters/x/body';\n" });
+    write(root, `${SHARED_DIR}/adapters/x/body.ts`, 'export function reportWorkerError() { return fetch("x"); }\n');
+    const r = workerModuleSource(root, carrierRel);
+    assert.ok(!('lost' in r), JSON.stringify(r));
+    assert.equal(r.relPath, `${SHARED_DIR}/adapters/x/body.ts`);
+    assert.match(r.source, /reportWorkerError/);
+    assert.equal(r.delegated, true);
+  });
+  test('C2 a CYCLE inside the home is `lost`, never a pass', () => {
+    const { root, carrierRel } = fixture({ carrier: REEXPORT, shared: "export * from './n';\n" });
+    write(root, `${SHARED_DIR}/n.ts`, "export * from './m';\n");
+    const r = workerModuleSource(root, carrierRel);
+    assert.ok('lost' in r, JSON.stringify(r));
+    assert.match(r.lost, /is a cycle/);
+  });
+  test('C3 a hop that leaves the home is `lost`', () => {
+    const { root, carrierRel } = fixture({ carrier: REEXPORT, shared: "export * from '../../w/src/lib/elsewhere';\n" });
+    write(root, 'services/w/src/lib/elsewhere.ts', 'export const y = 2;\n');
+    const r = workerModuleSource(root, carrierRel);
+    assert.ok('lost' in r, JSON.stringify(r));
+    assert.match(r.lost, /outside services\/_shared\/src/);
+  });
+  test('C4 the REAL error-sink chain reaches the sentry-envelope adapter body', () => {
+    for (const worker of ['platform', 'subscriptiontracker-api']) {
+      const r = workerModuleSource(REPO, `services/${worker}/src/lib/error-sink.ts`);
+      assert.ok(!('lost' in r), JSON.stringify(r));
+      assert.equal(r.relPath, `${SHARED_DIR}/adapters/telemetry/sentry-envelope.ts`);
+      assert.match(r.source, /export async function reportWorkerError\b/);
+    }
+  });
+});
+
 describe('worker-shared-modules — against the real tree', () => {
   test('R1 both Workers really do delegate error-sink.ts and health.ts to one home', () => {
     // The green control that would go red if the tree stopped matching the rule

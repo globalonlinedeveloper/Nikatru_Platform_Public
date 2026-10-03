@@ -9,7 +9,7 @@
 //   · a failing rail retries with a backoff (not before next_attempt_at), and
 //     after CANCEL_ALERT_AFTER_ATTEMPTS failures pages the owner ONCE;
 //   · a row with no subscription reference is a human's and is never selected;
-//   · before migration 0028, the queue is unreadable and nothing is done.
+//   · before migration 0029, the queue is unreadable and nothing is done.
 // The account-deletion half ("deleting an account with an active Paddle
 // subscription produces exactly one cancel") is test/account-billing.test.ts.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ describe('the cancel executor', () => {
     expect(await executeQueuedCancels(env(db), '2026-10-02T06:00:00.000Z')).toMatchObject({ tried: 0 });
   });
 
-  it('before migration 0028 the queue is unreadable, and nothing is done', async () => {
+  it('before migration 0029 the queue is unreadable, and nothing is done', async () => {
     answer = ok;
     const db = new RealDb(PLATFORM_MIGRATIONS.filter((m) => !m.includes('ADD COLUMN next_attempt_at')));
     queue(db, 'r-5');

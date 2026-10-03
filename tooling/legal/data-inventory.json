@@ -251,7 +251,7 @@
         "reason": "The row is the person's: their balance and their consent. Erasing the account leaves nothing for it to describe."
       },
       "writtenBy": [
-        "services/platform/migrations/0026_ai_meter.sql",
+        "services/platform/migrations/0027_ai_meter.sql",
         "services/platform/src/lib/ai/meter.ts"
       ],
       "disclosure": {
@@ -275,7 +275,7 @@
         "reason": "Every row names the person's account. When the account is erased the ledger has nobody left to explain a balance to."
       },
       "writtenBy": [
-        "services/platform/migrations/0026_ai_meter.sql",
+        "services/platform/migrations/0027_ai_meter.sql",
         "services/platform/src/lib/ai/meter.ts"
       ],
       "disclosure": {
@@ -299,7 +299,7 @@
         "reason": "The row is the person's request. When the account is erased the request has nobody left to answer to."
       },
       "writtenBy": [
-        "services/platform/migrations/0027_refund_requests.sql",
+        "services/platform/migrations/0028_refund_requests.sql",
         "services/platform/src/routes/refund.ts"
       ],
       "disclosure": {
@@ -323,7 +323,7 @@
         "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
       },
       "writtenBy": [
-        "services/platform/migrations/0025_provider_payment_links.sql",
+        "services/platform/migrations/0026_provider_payment_links.sql",
         "services/platform/src/lib/mor/store.ts"
       ],
       "disclosure": {
@@ -920,6 +920,25 @@
         "quote": "We keep a record of each consent decision"
       },
       "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes."
+    },
+    {
+      "id": "table:platform_db.box_config_manifest",
+      "kind": "d1-table",
+      "name": "box_config_manifest",
+      "personalData": false,
+      "holds": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each of that box's live config files under a logical name (compose, override, tunnel) and the server's time of the post. Written by POST /v1/ops/box-manifest from the box's own cron. Hashes only — no file content, no user data of any kind.",
+      "retention": {
+        "kind": "keep",
+        "reason": "At most one row per box, replaced whole on every post, so the table cannot grow past the box count. It is the live side of the drift comparison tooling/ops/check-box-config-drift.mjs makes; deleting it by age would read as a box that stopped reporting."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A box name, config-file hashes and a timestamp. No user id, no install id, nothing that is about anybody."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0025_box_config_manifest.sql",
+        "services/platform/src/routes/box-manifest.ts"
+      ]
     },
     {
       "id": "table:platform_db.cron_heartbeat",

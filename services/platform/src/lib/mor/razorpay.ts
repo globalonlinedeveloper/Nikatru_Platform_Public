@@ -114,7 +114,7 @@ import type { MoRWebhookVerifier, MoneyEnvironment, MoneySubject, ParseOutcome, 
 //                `invoice_id`), so the link no longer rests on it: every
 //                `subscription.charged` names the payment it charged, and the
 //                store writes `payment id → subscription id` there
-//                (store.ts `linkPayment`, migration 0025); an adjustment resolves
+//                (store.ts `linkPayment`, migration 0026); an adjustment resolves
 //                its subscription by its `payment_id` through that link FIRST.
 //                Only with no stored link does the store fall back to what THIS
 //                file reads off the body: the event's own subscription entity,
