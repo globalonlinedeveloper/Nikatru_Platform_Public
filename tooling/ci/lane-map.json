@@ -235,6 +235,7 @@
       "tooling/store/store-record.mjs",
       "tooling/ci/store-key-secret.mjs",
       "tooling/wrangler/**",
+      "tooling/a11y/exceptions.json",
       ".github/workflows/deploy-web.yml"
     ],
     "platform": [

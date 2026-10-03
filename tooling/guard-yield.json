@@ -26,6 +26,11 @@
       "firstSeen": "2026-07-18",
       "evidence": []
     },
+    "tooling/a11y/scan.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/app-yaml/render-privacy.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
@@ -115,6 +120,11 @@
     "tooling/ci/assert-a11y-primitives.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-a11y-statement.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/assert-adapter-capabilities.mjs": {
@@ -1379,6 +1389,11 @@
         "basis": "exposure",
         "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/assert-known-issues.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
     },
     "tooling/ci/assert-lane-coverage.mjs": {
       "catches": 0,
@@ -4036,6 +4051,11 @@
     "tooling/scripts/test-clock.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
+      "evidence": []
+    },
+    "tooling/sites/gen-accessibility-statement.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/sites/gen-auth-mail.mjs": {
