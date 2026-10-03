@@ -17,7 +17,7 @@ import path, { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { analyse, applyAllows, changedLines, dangerousOpener, parseArgs, RULES, toRepoRel, tokenize, TokenizeError, unquoteGitPath, CODE_FILE, TEST_FILE, CODEQL_CONFIG_REL } from '../assert-codeql-lite.mjs';
+import { analyse, applyAllows, changedLines, dangerousOpener, parseArgs, RULES, toRepoRel, tokenize, TokenizeError, unquoteGitPath, grade, CODE_FILE, CODEQL_CONFIG_REL } from '../assert-codeql-lite.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -96,7 +96,7 @@ describe('js/regex/missing-regexp-anchor', () => {
 // The post-merge review of #1199: `--all` on main gave 13 findings, each a line CodeQL
 // analysed and never flagged. Each green below is one of those lines (or its exact shape);
 // each red is the nearest shape CodeQL DOES flag, so the fix cannot be "flag nothing".
-describe('review item 1a — file-system-race: an `if (check)` that falls through decides nothing', () => {
+describe('review item 1a — file-system-race: a SHORT-CIRCUITED check in an `if` that falls through decides nothing', () => {
   const elf = (body) => `function f(rel) {\n  const abs = resolve(ROOT, rel);\n  if (!existsSync(abs) || !statSync(abs).isFile()) {\n    ${body}\n  }\n  const buf = readFileSync(abs);\n  return buf;\n}`;
 
   test('green: assert-elf-page-alignment.mjs:300→308 and assert-android-vapt-manifest.mjs:165→171 — the body calls coverageLost() and falls through', () => {
@@ -117,12 +117,35 @@ describe('review item 1a — file-system-race: an `if (check)` that falls throug
     assert.deepEqual(rulesOf("function f(p) { const s = statSync(p); log(s); writeFileSync(p, 'x'); }"), [RULES.race]);
   });
 
-  test('green: a last statement that only CONTAINS a return (a nested if) does not leave', () => {
-    assert.deepEqual(rulesOf("function f(p) { if (!existsSync(p)) { if (x) { return 1; } log(p); } writeFileSync(p, 'x'); }"), []);
+  test('green: a last statement that only CONTAINS a return (a nested if) does not leave — for a short-circuited check', () => {
+    assert.deepEqual(rulesOf("function f(p) { if (x || !statSync(p).isFile()) { if (y) { return 1; } log(p); } readFileSync(p, 'utf8'); }"), []);
+  });
+
+  test('red (PR #1203 review F1): a check that is the whole condition dominates the code after the `if`, whatever the body does', () => {
+    assert.deepEqual(rulesOf("function f(p) { if (!existsSync(p)) { if (x) { return 1; } log(p); } writeFileSync(p, 'x'); }"), [RULES.race], 'the old nested-return green, exists → write');
+    assert.deepEqual(rulesOf("if (existsSync(p)) { log(p); }\nwriteFileSync(p, 'x');"), [RULES.race]);
+  });
+
+  test('red: alerts 271, 86 and 71 — exists, an `if` that falls through, then a WRITE of the same path', () => {
+    // #271 tooling/scripts/check-agent-docs.mjs:377
+    assert.deepEqual(rulesOf("function main() {\n  let baseline = {};\n  if (existsSync(BASELINE_PATH)) {\n    try { baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')); } catch { baseline = {}; }\n  }\n  if (WRITE_BASELINE) {\n    writeFileSync(BASELINE_PATH, JSON.stringify(baseline));\n  }\n}"), [RULES.race]);
+    // #86 tooling/scripts/provision-backend.mjs:406
+    assert.deepEqual(rulesOf("function f(cfgPath, cfgText) {\n  if (!existsSync(cfgPath)) {\n    die(['no config at', cfgPath]);\n  }\n  writeFileSync(cfgPath, cfgText);\n}"), [RULES.race]);
+    // #71 extensions/scripts/gen-catalog.mjs:152
+    assert.deepEqual(analyse("import fs from 'node:fs';\nfunction f(fileAbs, after) {\n  if (!fs.existsSync(fileAbs)) die(`missing ${fileAbs}`);\n  fs.writeFileSync(fileAbs, after, 'utf8');\n}").map((x) => x.rule), [RULES.race]);
+  });
+
+  test('the discriminator is the operand: the same check leftmost is red, behind `||`/`&&`/`?:` it is green', () => {
+    assert.deepEqual(rulesOf("function f(p) { if (existsSync(p) || x) { log(p); } writeFileSync(p, 'x'); }"), [RULES.race]);
+    assert.deepEqual(rulesOf("function f(p) { if (x || existsSync(p)) { log(p); } writeFileSync(p, 'x'); }"), []);
+    assert.deepEqual(rulesOf("function f(p) { if (x && existsSync(p)) { log(p); } writeFileSync(p, 'x'); }"), []);
+    assert.deepEqual(rulesOf("function f(p) { if (x ? existsSync(p) : y) { log(p); } writeFileSync(p, 'x'); }"), []);
+    assert.deepEqual(rulesOf("function f(p) { if (g(x || y) && existsSync(p)) { log(p); } writeFileSync(p, 'x'); }"), [], 'an operator inside a call is not the condition\'s');
+    assert.deepEqual(rulesOf("function f(p) { if (existsSync(p) && g(x || y)) { log(p); } writeFileSync(p, 'x'); }"), [RULES.race], 'nor is one after the check');
   });
 });
 
-describe('review item 1b/3 — missing-regexp-anchor: only a URL/host validator, and never one whose other alternatives anchor themselves', () => {
+describe('review item 1b/3 — missing-regexp-anchor: never one whose other alternatives anchor themselves, nor one whose anchored alternative spells no letter', () => {
   test('green: the alternations main carried, each with another alternative anchoring the same end (capture.js, package.node.js, verify-*.node.js, assert-signing-inputs-pinned.mjs)', () => {
     for (const re of [
       '/\\b(load|show)\\s+(more|older)\\b|\\b(more|older)\\s+(comments|replies)\\b|^\\s*(more)/i',
@@ -132,10 +155,9 @@ describe('review item 1b/3 — missing-regexp-anchor: only a URL/host validator,
     ]) assert.deepEqual(rulesOf(`const ok = ${re}.test(url);`), [], re);
   });
 
-  test('green: skeleton-sim.node.js:4119 is in a test/ directory — out of the anchor rule, as CodeQL leaves it', () => {
-    const src = 'export const wide = (url) => /<all_urls>|^\\*:\\/\\/\\*\\/|^\\*:\\/\\/\\*$/.test(url);';
-    assert.deepEqual(analyse(src).map((x) => x.rule), [RULES.anchor], 'red control: outside a test, no other alternative ENDS anchored');
-    assert.deepEqual(analyse(src, { testFile: true }), []);
+  test('green: skeleton-sim.node.js:4119 — the one-sided anchored alternative `^\\*:\\/\\/\\*$` spells no letter', () => {
+    assert.deepEqual(analyse('export const wide = (url) => /<all_urls>|^\\*:\\/\\/\\*\\/|^\\*:\\/\\/\\*$/.test(url);'), []);
+    assert.deepEqual(analyse('export const wide = (url) => /<all_urls>|^\\*:\\/\\/\\*\\/|^https:\\/\\/\\*$/.test(url);').map((x) => x.rule), [RULES.anchor], 'red control: the same alternative spelling https');
   });
 
   test('red: CodeQL is per DIRECTION — a leading `(?:^|\\/)` does not excuse a `$` on the last alternative (alert 617, on this very guard)', () => {
@@ -143,27 +165,30 @@ describe('review item 1b/3 — missing-regexp-anchor: only a URL/host validator,
     assert.deepEqual(rulesOf("const t = /(?:(?:^|\\/)(?:test|tests)\\/.*|\\.(?:test|spec)\\.[^/]+)$/i.test(url);"), [], 'the grouped fix');
   });
 
-  test('TEST_FILE: a test directory anywhere, or a *.test.* / *.spec.* name — and nothing else', () => {
-    for (const f of ['test/a.mjs', 'tooling/ci/test/x.mjs', 'a/__tests__/b.ts', 'a/b.test.mjs', 'c.spec.TS']) assert.ok(TEST_FILE.test(f), f);
-    for (const f of ['tooling/ci/latest/x.mjs', 'contest.mjs', 'a/tests.mjs', 'a/test.mjs']) assert.ok(!TEST_FILE.test(f), f);
+  test('red (PR #1203 review F2): CodeQL\'s precedence check is not about URLs — alerts 45, 49, 57 and this guard\'s own pre-96dea14 TEST_FILE (617)', () => {
+    assert.deepEqual(rulesOf("const PLACEHOLDER_ID = /REPLACE-WITH-YOUR-DOMAIN|\\.example$/i;"), [RULES.anchor], 'alert 45: not even tested');
+    assert.deepEqual(rulesOf("const placeholder = /REPLACE|\\.example$/i.test(gid);"), [RULES.anchor], 'alert 49');
+    assert.deepEqual(rulesOf("const IS_TEST_PATH = /(^|\\/)(tests?|integration_test)\\/|(_|\\.)test\\.[a-z]+$/;\nexport const t = (p) => IS_TEST_PATH.test(p);"), [RULES.anchor], 'alert 57');
+    assert.deepEqual(rulesOf("export const TEST_FILE = /(?:^|\\/)(?:test|tests|__tests__)\\/|\\.(?:test|spec)\\.[^/]+$/i;"), [RULES.anchor], 'alert 617');
+    assert.deepEqual(rulesOf("const t = s.replace(/REPLACE|\\.example$/i, '');"), [], 'green control: a replace pattern is out of the precedence check');
   });
 
-  test('green: #1176 refund.mjs:210, a PATH check — no URL in the regex, no URL in the tested name', () => {
+  test('green: #1176 refund.mjs:210 — the one-sided anchored alternative `^[A-Za-z]:[\\\\/]` spells no letter, whatever the subject is named', () => {
     assert.deepEqual(rulesOf("const absolute = /^[A-Za-z]:[\\\\/]|\\\\/.test(p);"), []);
+    assert.deepEqual(rulesOf("const absolute = /^[A-Za-z]:[\\\\/]|\\\\/.test(redirectUrl);"), [], 'a URL-named subject changes nothing (review F2: the old red encoded a guess)');
   });
 
-  test('red: the same one-sided anchor validating a URL — by a URL-named subject, or by a host in the regex', () => {
-    assert.deepEqual(rulesOf("const absolute = /^[A-Za-z]:[\\\\/]|\\\\/.test(redirectUrl);"), [RULES.anchor]);
+  test('red: a one-sided anchor on an alternative that spells text, or a host with no anchor at all', () => {
     assert.deepEqual(rulesOf("const ok = /^https:\\/\\/a\\.example\\.com|b\\.example\\.com/.test(u);"), [RULES.anchor]);
     assert.deepEqual(rulesOf("const ok = origin.match(/^staging|preview$/);").length, 0, 'both ends anchored is the trim idiom');
     assert.deepEqual(rulesOf("const ok = origin.match(/^staging|preview/);"), [RULES.anchor]);
   });
 
-  test('green (item 3): a test file is out of the anchor rule, as CodeQL leaves tests out; an assertion\'s pattern validates nothing', () => {
-    const src = 'export const ok = (body) => /https?:\\/\\/nikatru\\.com/.test(body);';
-    assert.deepEqual(analyse(src).map((x) => x.rule), [RULES.anchor], 'red control: the same line outside a test');
-    assert.deepEqual(analyse(src, { testFile: true }), []);
-    assert.deepEqual(analyse("import assert from 'node:assert';\nassert.ok(/https?:\\/\\/nikatru\\.com/.test(out));"), []);
+  test('red (PR #1203 review F2): a test file and an assertion are graded too — 16 of 29 fixed anchor alerts are in tests; alerts 44 and 51', () => {
+    assert.deepEqual(analyse('export const ok = (body) => /https?:\\/\\/nikatru\\.com/.test(body);').map((x) => x.rule), [RULES.anchor]);
+    assert.deepEqual(analyse("import assert from 'node:assert';\nassert.ok(/app\\.example\\.com/.test(pop.text()), pop.text());").map((x) => x.rule), [RULES.anchor], 'alert 44, background-sim.node.js:4720');
+    assert.deepEqual(analyse("import assert from 'node:assert';\nassert.ok(/localeCompare|sort\\(\\)\\s*$/.test(src));").map((x) => x.rule), [RULES.anchor], 'alert 51');
+    assert.deepEqual(analyse("import assert from 'node:assert';\nassert.ok(/^(?:localeCompare|sort\\(\\)\\s*)$/.test(src));"), [], 'green control: the grouped fix');
   });
 });
 
@@ -374,6 +399,18 @@ describe('review item 5 — nothing skipped silently', () => {
     const m = changedLines('+++ "b/tooling/\\303\\251.mjs"\n@@ -0,0 +1 @@\n+x\n');
     assert.deepEqual([...m.keys()], ['tooling/é.mjs']);
   });
+
+  test('red (PR #1203 review F4): a CHANGED path that does not exist is COVERAGE LOST, never a skip — --diff-filter=AMR already drops deletions', () => {
+    const root = mkdtempSync(join(tmpdir(), 'codeql-lite-enoent-'));
+    try {
+      const r = grade(root, new Map([['tooling/mis-decoded.mjs', new Set([1])]]));
+      assert.equal(r.files, 0);
+      assert.equal(r.lost.length, 1, JSON.stringify(r));
+      assert.match(r.lost[0], /tooling\/mis-decoded\.mjs: unreadable \(ENOENT\).*does not exist/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('paths', () => {
@@ -542,9 +579,12 @@ describe('the CLI', () => {
     assert.match(r.stdout, /codeql-lite: clean — \d+ code file\(s\) graded/);
   });
 
-  test('the real tree: --all tokenizes every tracked code file, and main carries none of the shapes (review item 1)', () => {
+  // Not a whole-tree ratchet (PR #1203 review F5): a finding on an old line is a report, not a
+  // red guard test — the gate is diff-scoped, as CodeQL's PR rule is. `--all` stays a manual command.
+  test('the real tree: --all tokenizes every tracked code file (exit 0 or 1, never COVERAGE LOST)', () => {
     const r = run(['--all']);
-    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.notEqual(r.status, 2, r.stdout + r.stderr);
+    assert.ok(r.status === 0 || r.status === 1, `exit ${r.status}: ${r.stderr}`);
     const graded = Number(/(\d+) code file\(s\) graded/.exec(r.stdout)?.[1]);
     assert.ok(graded > 1000, `only ${graded} files graded`);
   });

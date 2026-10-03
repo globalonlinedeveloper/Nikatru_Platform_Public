@@ -20,20 +20,27 @@
 //                                function, where the check dominates the use — except
 //                                exists() then a READ, which CodeQL does not report (as
 //                                tooling/ci/test/fixtures/fs-spy-preload.mjs measured).
-//                                A check in an `if (…)` condition guards only its own
-//                                branches, and the code after the `if` only when a branch
-//                                ends in return/throw/break/continue: `if (!existsSync(p))
-//                                coverageLost(…)` falls through, so a later read of p is
-//                                not on a checked branch (assert-elf-page-alignment.mjs).
+//                                A check that is the whole `if (…)` condition, or its
+//                                leftmost operand, dominates the code after the `if`
+//                                whatever the body does (`if (!existsSync(p)) die(…);` then
+//                                a write of p: alerts 271, 86, 71). A check SHORT-CIRCUITED
+//                                behind `||`/`&&`/`??`/`?:` decides the code after the `if`
+//                                only when a branch ends in return/throw/break/continue:
+//                                `if (!existsSync(p) || !statSync(p).isFile()) coverageLost(…)`
+//                                then a read of p is quiet (assert-elf-page-alignment.mjs),
+//                                with a `return` it is flagged (alert 89).
 //                                → read once in a try (ENOENT = missing), or write 'wx'.
-//   js/regex/missing-regexp-anchor  a regex that VALIDATES a URL or host — tested (`.test`/
-//                                `.exec`/`.match`/`.search`) and holding a host on a common
-//                                TLD or a `//`, or tested against a URL-named value — with
-//                                neither `^` nor `$`; or `^a|b` / `a|b$`, an anchor that
-//                                binds to one alternative while no other alternative anchors
-//                                that same end itself (`^`/`\b`/`(^|\/)` at a start, `$`/`\b`
-//                                at an end — CodeQL is per direction). Not in a test file (CodeQL
-//                                leaves tests out of this rule) and not an assertion's pattern.
+//   js/regex/missing-regexp-anchor  a TESTED regex (`.test`/`.exec`/`.match`/`.search`) of
+//                                a host on a common TLD, URL-shaped, with neither `^` nor
+//                                `$`; or, in any regex not used by replace/split, `^a|b` /
+//                                `a|b$` — an anchor that binds to one alternative — while no
+//                                other alternative anchors that same end itself (`^`/`\b`/
+//                                `(^|\/)` at a start, `$`/`\b` at an end — CodeQL is per
+//                                direction) and the anchored alternative spells a letter or
+//                                digit (`^[A-Za-z]:[\\/]|\\` and `^\*:\/\/\*$` are quiet in
+//                                CodeQL, `\.example$` is alert 45). URL or not, test file or
+//                                not, assertion or not: 16 of the repo's 29 fixed anchor
+//                                alerts are in test files, alert 44 inside an assertion.
 //   js/incomplete-hostname-regexp   an UNESCAPED `.` inside a host on a common TLD in a
 //                                regex literal or a `new RegExp('…')` string.
 //   js/incomplete-url-substring-sanitization  includes/startsWith/endsWith of a URL or
@@ -99,9 +106,9 @@
 // removal, an indexOf kept for later, a `.replace('%', '')`.
 //
 // ⏱ 2026-10-03 (the post-merge review of #1199): `--all` on main gave 13 findings, every
-// one a line CodeQL analysed and never flagged — an exists check whose `if` falls through,
-// an alternation whose other alternatives carry their own anchor (or that validates no URL),
-// a `<string>…</string>` removal. Each shape is now a green test; `--all` on main is 0.
+// one a line CodeQL analysed and never flagged — a short-circuited stat check whose `if` falls
+// through, an alternation whose other alternatives carry their own anchor (or whose anchored
+// one spells no letter), a `<string>…</string>` removal. Each shape is now a green test; `--all` on main is 0.
 //
 // Exit 0 = clean. 1 = a finding. 2 = COVERAGE LOST: git could not name the change, the
 // CodeQL config could not be read, a file it should grade could not be read or tokenized
@@ -515,10 +522,6 @@ function urlShaped(blanked) {
   return /^(?:[a-z0-9-]|\\\.|\(\?:|[()?*+])+$/i.test(s);
 }
 
-/** A regex that names a URL or a host: a host on a common TLD, or a `//`. */
-const URLISH_REGEX = new RegExp(`${HOST_IN_REGEX.source}|\\\\\\/\\\\\\/`, 'i');
-/** A tested value whose name says it holds a URL, a host or an origin. */
-export const URL_SUBJECT = /(?:url|uri|href|host|origin|domain|referr?er|redirect|location|endpoint|callback|link)/i;
 /** An alternative that anchors its own START (`^`, `\b`, `(^|\/)`, `(?:^|…)`, a lookbehind), or its own
  *  END (`$`, `\b`, `(\/|$)`). CodeQL's precedence check is per direction: a `$` on the last alternative
  *  is excused only by another alternative's own END anchor — `(?:^|\/)x\/|y$` is flagged (alert 617). */
@@ -529,10 +532,8 @@ const TRAILING_ANCHOR = /(?:(?<!\\)\$|\\[bB])\)*$/;
  * One regex source's own shape findings: [{ rule, message }]. `use` is how the regex is
  * used: 'test' (.test/.exec, or the pattern of .match/.search), 'replace' (the pattern of
  * .replace/.replaceAll/.split — CodeQL's precedence check skips those) or 'other'.
- * `urlSubject`: the tested value is named like a URL. `testFile`: CodeQL's anchor query
- * leaves test files out, so the anchor rule does too.
  */
-export function regexFindings(source, use = 'other', { urlSubject = false, testFile = false } = {}) {
+export function regexFindings(source, use = 'other') {
   const out = [];
   const s = blankClasses(source);
   if (UNESCAPED_HOST_DOT.test(s)) {
@@ -541,22 +542,24 @@ export function regexFindings(source, use = 'other', { urlSubject = false, testF
   const alts = topAlternatives(source);
   const startAnchored = (a) => a.startsWith('^');
   const endAnchored = (a) => /(?<!\\)\$$/.test(a);
-  // the anchor rule is about a regex that VALIDATES a URL or host, as CodeQL's is
-  const validates = !testFile && use === 'test' && (URLISH_REGEX.test(s) || urlSubject);
   if (alts.length > 1) {
     const first = startAnchored(alts[0]);
     const last = endAnchored(alts[alts.length - 1]);
     // `^a|b$` is the trim idiom, anchored at both ends on purpose; only a ONE-sided anchor
     // misleads, and only when no OTHER alternative anchors that same end of its own
-    // (`(^|\/)x(\/|$)|\.md$`, `\bload\b|^\s*more$`, `REPLACE|\.example$|^$` are deliberate)
+    // (`(^|\/)x(\/|$)|\.md$`, `\bload\b|^\s*more$`, `REPLACE|\.example$|^$` are deliberate),
+    // and only when the one-sided anchored alternative spells a letter or digit: CodeQL is
+    // silent on `^[A-Za-z]:[\\/]|\\` (#1176 refund.mjs:210) and `^\*:\/\/\*$`, and flags
+    // `\.example$` (alerts 45-49), `test\.[a-z]+$` (57), `sort\(\)\s*$` (51) — URL or not,
+    // test file or not, inside an assertion or not (alerts 43, 44, 50, 58-66)
     const others = first ? alts.slice(1) : alts.slice(0, -1);
     const own = first ? LEADING_ANCHOR : TRAILING_ANCHOR;
-    if (validates && first !== last && !others.some((a) => own.test(a))) {
+    if (use !== 'replace' && first !== last && !others.some((a) => own.test(a)) && spellsText(first ? alts[0] : alts[alts.length - 1])) {
       out.push({ rule: RULES.anchor, message: `the regex /${source}/ anchors only ${first ? 'its first' : 'its last'} alternative: '|' binds looser than '^'/'$' — group the alternatives, ^(?:a|b)$` });
     }
     return out;
   }
-  if (!testFile && use === 'test' && HOST_IN_REGEX.test(s) && urlShaped(s) && !startAnchored(s) && !endAnchored(s)) {
+  if (use === 'test' && HOST_IN_REGEX.test(s) && urlShaped(s) && !startAnchored(s) && !endAnchored(s)) {
     out.push({ rule: RULES.anchor, message: `the regex /${source}/ tests for a host with neither '^' nor '$', so it matches anywhere in a URL (https://evil.example/?x=<host>) — anchor it` });
   }
   return out;
@@ -638,15 +641,14 @@ const FS_CHECK = new Set(['open', 'openSync', 'exists', 'existsSync', 'stat', 's
 const FS_USE = new Set(['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync']);
 const TMP_SINK = new Set(['writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'createWriteStream']);
 
-/** A test file, as CodeQL's anchor query leaves them out: a test/tests/__tests__ directory, or *.test.* / *.spec.*. */
-export const TEST_FILE = /(?:(?:^|\/)(?:test|tests|__tests__)\/.*|\.(?:test|spec)\.[^/]+)$/i;
 const EXITS = new Set(['return', 'throw', 'break', 'continue']);
 
 /**
  * Every finding in one file's source: [{ line, rule, message }]. Throws TokenizeError.
- * `testFile`: the source is a test (TEST_FILE), so the anchor rule does not apply.
+ * A test file is graded like any other: 16 of the repo's 29 fixed missing-regexp-anchor
+ * alerts are in test files, one (44) inside an assertion's arguments.
  */
-export function analyse(src, { testFile = false } = {}) {
+export function analyse(src) {
   const toks = tokenize(src);
   const { match, fn, blk } = structure(toks);
   const consts = constStrings(toks);
@@ -683,23 +685,6 @@ export function analyse(src, { testFile = false } = {}) {
       const prev = toks[b - 1];
       if (prev?.t === 'id' && prev.v === 'do') return true;
       if (prev?.t === 'p' && prev.v === ')' && match[b - 1] > 0 && ['for', 'while'].includes(toks[match[b - 1] - 1]?.v)) return true;
-    }
-    return false;
-  };
-
-  /** Is token k inside the arguments of `assert(…)`, `assert.x(…)`, `t.assert.x(…)` or `expect(…)`?
-   *  An assertion on output validates nothing, so its regex is no URL check. */
-  const inAssertion = (k) => {
-    for (let j = k - 1; j >= 0; j--) {
-      const x = toks[j];
-      if (x.t !== 'p') continue;
-      if ((x.v === ')' || x.v === ']' || x.v === '}') && match[j] < j) { j = match[j]; continue; }
-      if (x.v === ';' || x.v === '{' || x.v === '}') return false;
-      if (x.v === '(' && toks[j - 1]?.t === 'id') {
-        const callee = toks[j - 1].v;
-        if (callee === 'assert' || callee === 'expect') return true;
-        if (isMember(toks, j - 1) && toks[j - 3]?.t === 'id' && toks[j - 3].v === 'assert') return true;
-      }
     }
     return false;
   };
@@ -748,11 +733,23 @@ export function analyse(src, { testFile = false } = {}) {
     }
     return null;
   };
-  /** Is the use at u on a branch the check at c decided? Not when c is an `if` condition and u
-   *  sits after an `if` none of whose branches leaves — the use runs whatever the check said. */
+  /** Is the use at u on a branch the check at c decided? A check that is the whole `if (…)`
+   *  condition, or its leftmost operand, runs whenever the `if` does, so it dominates the code
+   *  after it whatever the body does (alerts 271, 86, 71: `if (!existsSync(p)) die(…);` then a
+   *  write of p). Only a check SHORT-CIRCUITED behind a top-level `||`/`&&`/`??`/`?`/`:` may not
+   *  run, and then it decides the code after the `if` only when a branch leaves. */
   const onCheckedBranch = (c, u) => {
     const g = ifOf(c);
     if (!g) return true;
+    let short = false;
+    for (let j = c - 1; j >= 0; j--) {
+      const x = toks[j];
+      if (x.t !== 'p') continue;
+      if ((x.v === ')' || x.v === ']' || x.v === '}') && match[j] < j) { j = match[j]; continue; }
+      if (x.v === '(' && toks[j - 1]?.t === 'id' && toks[j - 1].v === 'if') break;
+      if (['||', '&&', '??', '?', ':'].includes(x.v)) { short = true; break; }
+    }
+    if (!short) return true;
     const within = ([a, b]) => u >= a && u < b;
     if (within(g.then) || (g.else && within(g.else))) return true;
     if (u < g.end) return true;
@@ -763,7 +760,7 @@ export function analyse(src, { testFile = false } = {}) {
   // spy (tooling/ci/test/fixtures/fs-spy-preload.mjs): every check→use pair on one path
   // in one function where the check dominates the use, EXCEPT exists() followed by a
   // READ (a vanished file makes that read throw; it cannot act on stale state), and a use
-  // after an `if (check)` that falls through (assert-elf-page-alignment.mjs:300→308).
+  // after an `if (a || check)` that falls through (assert-elf-page-alignment.mjs:300→308).
   const checks = [];
   for (let k = 0; k < toks.length; k++) {
     const name = fsCallName(toks, k, fsb);
@@ -790,11 +787,8 @@ export function analyse(src, { testFile = false } = {}) {
     if (t.t === 're') {
       const nextIsTest = toks[k + 1]?.v === '.' && isCallAt(toks, k + 2) && (toks[k + 2].v === 'test' || toks[k + 2].v === 'exec');
       const argOf = toks[k - 1]?.v === '(' && isCallAt(toks, k - 2) && isMember(toks, k - 2) ? toks[k - 2].v : null;
-      const asserts = inAssertion(k);
-      const use = nextIsTest || ['match', 'search', 'matchAll'].includes(argOf) ? (asserts ? 'other' : 'test') : ['replace', 'replaceAll', 'split'].includes(argOf) ? 'replace' : 'other';
-      // the tested value: .test(<arg>), or the receiver of .match(/re/)
-      const subject = nextIsTest ? rangeText(src, toks, argRanges(toks, match, k + 3)[0] ?? [0, 0]) : argOf ? (toks[k - 4]?.v ?? '') : '';
-      for (const f of regexFindings(t.v.source, use, { urlSubject: URL_SUBJECT.test(String(subject)), testFile })) add(t.line, f.rule, f.message);
+      const use = nextIsTest || ['match', 'search', 'matchAll'].includes(argOf) ? 'test' : ['replace', 'replaceAll', 'split'].includes(argOf) ? 'replace' : 'other';
+      for (const f of regexFindings(t.v.source, use)) add(t.line, f.rule, f.message);
       continue;
     }
     if (t.t !== 'id' || !isCallAt(toks, k)) continue;
@@ -1070,13 +1064,14 @@ export function grade(root, set, { ignores = [] } = {}) {
     try {
       src = readFileSync(path.join(root, ...rel.split('/')), 'utf8');
     } catch (e) {
-      if (e && e.code === 'ENOENT' && scope !== 'all') continue; // deleted by the change itself
-      lost.push(`${rel}: unreadable (${e.code ?? e.message})`);
+      // --diff-filter=AMR already drops a deletion (committed, staged or in the working tree),
+      // so a changed path that is not there is a path this guard mis-decoded: never a skip
+      lost.push(`${rel}: unreadable (${e.code ?? e.message})${e.code === 'ENOENT' ? ' — a path to grade that does not exist: a mis-decoded changed path, or a --files typo' : ''}`);
       continue;
     }
     let all;
     try {
-      all = analyse(src, { testFile: TEST_FILE.test(rel) });
+      all = analyse(src);
     } catch (e) {
       if (e instanceof TokenizeError) { lost.push(`${rel}: could not be tokenized — ${e.message}`); continue; }
       throw e;
