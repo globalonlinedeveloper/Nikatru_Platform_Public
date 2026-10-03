@@ -117,7 +117,7 @@
 //          missing, so the record would bind to no run. Red on purpose. ⏱ 2026-09-26: or
 //          the channel is one a lane submits through and no --mode names the run.
 // ─────────────────────────────────────────────────────────────────────────────
-import { appendFileSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { appendFileSync, readFileSync, existsSync, statSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -689,15 +689,15 @@ export function artifactRecord(path, buildNumberRaw) {
   if (!/^[1-9]\d*$/.test(buildNumberRaw) || !Number.isSafeInteger(Number(buildNumberRaw))) {
     return { refusal: `--build-number "${buildNumberRaw}" is not a whole number of 1 or more.` };
   }
-  let st;
+  let st, bytes; // one descriptor for the stat and the read: no window between them (CodeQL js/file-system-race)
   try {
-    st = statSync(path);
+    const fd = openSync(path, 'r'); try { st = fstatSync(fd); bytes = st.isFile() ? readFileSync(fd) : null; } finally { closeSync(fd); }
   } catch (e) {
     return { refusal: `--artifact ${path} cannot be read (${e.code ?? e.message}). The record would name bytes nobody hashed.` };
   }
   if (!st.isFile() || st.size === 0) return { refusal: `--artifact ${path} is ${st.isFile() ? 'empty' : 'not a regular file'}.` };
-  const sha256 = createHash('sha256').update(readFileSync(path)).digest('hex');
-  return { artifact: { name: basename(path), sha256, size: st.size, buildNumber: Number(buildNumberRaw) } };
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  return { artifact: { name: basename(path), sha256, size: bytes.length, buildNumber: Number(buildNumberRaw) } };
 }
 
 /** `{ symbols }` — r2-durable-copy.mjs's record, checked — or `{ refusal }`. */
