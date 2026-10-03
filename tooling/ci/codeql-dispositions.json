@@ -42,6 +42,18 @@
       "reason": "The manual refund tool records the money event it just made: the rail's answer reaches the operator's own --ledger file (refused inside any git work tree; the response cannot choose the path), and the only value it contributes is the refund id, written only when it matches REFUND_ID (letters, digits, _ and -, at most 64; else null) and JSON-encoded on one line. The request goes only to the fixed RAILS bases (Paddle live/sandbox, Razorpay), never to a URL from input. Pinned by ops-refund.test.mjs (a forged id is recorded as null)."
     },
     {
+      "alert": 613,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/ops/refund.mjs",
+      "disposition": "by-design",
+      "host": [
+        "api.paddle.com",
+        "sandbox-api.paddle.com",
+        "api.razorpay.com"
+      ],
+      "reason": "#595's flow, re-keyed when the review round (2026-10-03) made the ledger intent-first and keyed by token: the refund ledger records the rail's answer to the request it just made. From the response only `status` (a whole HTTP code 100-599, else 0) and `refund_id` (REFUND_ID-shaped, else null) reach the operator's own --ledger file (absolute, outside any git work tree; the response cannot choose the path), JSON-encoded on one line. The request goes only to the fixed RAILS bases (Paddle live/sandbox, Razorpay). Pinned by ops-refund.test.mjs (a forged id is recorded as null)."
+    },
+    {
       "alert": 70,
       "rule": "js/http-to-file-access",
       "path": "tooling/ops/safe-rerun.mjs",

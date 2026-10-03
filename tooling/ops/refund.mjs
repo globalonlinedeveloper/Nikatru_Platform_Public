@@ -32,6 +32,10 @@
 // `manual_refund` line keyed by (token, refund id). So no refund leaves without a
 // ledger row, and a crash between the two leaves the intent, which refuses the
 // re-run and sends the operator to the rail's dashboard instead.
+// From the rail's ANSWER only `status` (a whole HTTP code 100-599, else 0) and
+// `refund_id` (REFUND_ID-shaped, else null) reach the result line; every other
+// field is this run's own validated input (CodeQL #595 / #613, by-design in
+// tooling/ci/codeql-dispositions.json, hosts = the RAILS bases below).
 //
 // 🔴 NEVER IN CI: under GITHUB_ACTIONS=true it exits 2 with empty stdout, dry run
 // included — a refund is the owner's per-action yes, on the laptop.
@@ -245,7 +249,8 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
       body: JSON.stringify(plan.body),
       signal: AbortSignal.timeout(REFUND_TIMEOUT_MS),
     });
-    status = res.status;
+    // Only a whole HTTP status code (100–599) reaches the ledger; anything else is 0.
+    status = Number.isInteger(res.status) && res.status >= 100 && res.status <= 599 ? res.status : 0;
     try {
       id = refundIdOf(await res.json());
     } catch {
