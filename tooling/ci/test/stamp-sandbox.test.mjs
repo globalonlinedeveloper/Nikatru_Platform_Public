@@ -260,10 +260,13 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     const link = join(linkDir, 'repo');
     try {
       symlinkSync(root, link, 'junction');
-      // review 008cddae: some Windows hosts cannot create a directory THROUGH a junction (mkdir ENOENT), so the fake stamp could
-      // not run there. Probe it; where it fails, the comparator tests below (sameDir with a LOCALU~2-style input and an injected
-      // realpath) carry the short-name case on Windows, and this end-to-end leg runs on Linux CI.
+      // review 008cddae: some Windows hosts cannot create a directory THROUGH a junction, so the fake stamp could not run
+      // there. Measured on the lead's laptop 2026-10-03: mkdir answers EEXIST (not ENOENT, as first written). Probe it; where it
+      // fails ON WIN32, the comparator tests below (sameDir with a LOCALU~2-style input and an injected realpath) carry the
+      // short-name case, and this end-to-end leg runs on Linux CI. Anywhere else the error is re-thrown, so a Linux failure
+      // is a red test, never a silent skip (review of #1186, d83ffacb).
       try { mkdirSync(join(link, '.stamp-sandbox-probe')); rmSync(join(root, '.stamp-sandbox-probe'), { recursive: true, force: true }); } catch (e) {
+        if (process.platform !== 'win32') throw e;
         t.skip(`this host cannot create a directory through a junction (${e.code}); the sameDir comparator tests cover the short-name case`);
         return;
       }
