@@ -65,8 +65,11 @@ abstract final class DeviceIntegrityScope {
 ///
 /// [integrityProbe] null (web, desktop) checks nothing. The signer is checked
 /// on android only; [isDebugBuild] (default `kDebugMode`) exempts a debug build
-/// from it — a profile or release build is always checked.
+/// from it — a profile or release build is always checked. [appId]
+/// (`AppConfig.appId`) selects the app's own pins: Play holds one app signing
+/// key per app (⏱ 2026-10-03, ADR 030).
 Future<core.IntegritySession> checkDeviceIntegrity({
+  required String appId,
   required String releaseChannel,
   required core.DeviceIntegrityProbe? integrityProbe,
   DeviceIntegrityRecorder? record,
@@ -81,10 +84,11 @@ Future<core.IntegritySession> checkDeviceIntegrity({
       ? core.DeviceIntegrity.unchecked
       : await core.assessDeviceIntegrity(
           probe: integrityProbe,
+          appId: appId,
           releaseChannel: releaseChannel,
           isDebugBuild: isDebugBuild,
           checksSigner: isAndroid,
-          pinsFor: pinsFor ?? core.signerPinsFor,
+          pinsFor: pinsFor,
         );
   if (record != null) {
     try {
@@ -105,6 +109,7 @@ Future<core.IntegritySession> checkDeviceIntegrity({
 /// returns, so nothing that could reach the user's data is ever built.
 /// `bootstrapNikatru` calls it for every stamped app.
 Future<bool> modifiedCopyBlocked({
+  required String appId,
   required String releaseChannel,
   required core.DeviceIntegrityProbe? integrityProbe,
   DeviceIntegrityRecorder? record,
@@ -114,6 +119,7 @@ Future<bool> modifiedCopyBlocked({
   @visibleForTesting core.SignerPinsLookup? pinsFor,
 }) async {
   final core.IntegritySession session = await checkDeviceIntegrity(
+    appId: appId,
     releaseChannel: releaseChannel,
     integrityProbe: integrityProbe,
     record: record,

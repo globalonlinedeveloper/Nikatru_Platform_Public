@@ -89,6 +89,7 @@ void main() {
     test('an error map throws, so core records unreadable', () async {
       answer((_) => <String, Object?>{'error': true});
       final core.DeviceIntegrity i = await core.assessDeviceIntegrity(
+        appId: 'subscriptiontracker',
         probe: probe,
         releaseChannel: 'android-play',
         isDebugBuild: false,

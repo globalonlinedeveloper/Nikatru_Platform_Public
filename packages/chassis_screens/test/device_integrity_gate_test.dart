@@ -290,11 +290,14 @@ void main() {
     test('a rooted device is recorded and becomes the session', () async {
       final List<core.DeviceIntegrity> recorded = <core.DeviceIntegrity>[];
       final core.IntegritySession s = await checkDeviceIntegrity(
+        appId: 'subscriptiontracker',
         releaseChannel: 'android-play',
         integrityProbe: core.FixedDeviceIntegrityProbe(
           signals: const <core.RootSignal>{core.RootSignal.magiskPath},
           certificates: core.SigningCertificates(
-            sha256: core.signerPinsFor('android-play')!.digests,
+            sha256: core
+                .signerPinsFor('android-play', appId: 'subscriptiontracker')!
+                .digests,
           ),
         ),
         record: recorded.add,
@@ -311,6 +314,7 @@ void main() {
 
     test('a debug build is exempt from the signer, on android', () async {
       final core.IntegritySession s = await checkDeviceIntegrity(
+        appId: 'subscriptiontracker',
         releaseChannel: 'android-play',
         integrityProbe: core.FixedDeviceIntegrityProbe(
           certificates: core.SigningCertificates(sha256: <String>['AB' * 32]),
@@ -324,6 +328,7 @@ void main() {
 
     test('ios checks root only; no probe checks nothing', () async {
       final core.IntegritySession ios = await checkDeviceIntegrity(
+        appId: 'subscriptiontracker',
         releaseChannel: 'ios-appstore',
         integrityProbe: const core.FixedDeviceIntegrityProbe(
           signals: <core.RootSignal>{core.RootSignal.jailbreakArtifact},
@@ -336,6 +341,7 @@ void main() {
       expect(ios.integrity.signer, core.SignerVerdict.notChecked);
 
       final core.IntegritySession none = await checkDeviceIntegrity(
+        appId: 'subscriptiontracker',
         releaseChannel: 'web',
         integrityProbe: null,
         isDebugBuild: false,
@@ -346,10 +352,12 @@ void main() {
 
     test('modifiedCopyBlocked answers false for an incomplete set', () async {
       // An incomplete set reports a foreign signer and the app runs: the
-      // caller must NOT return. ⏱ 2026-10-03: android-play's real set is
-      // complete now, so the incomplete one is passed through the seam.
+      // caller must NOT return. ⏱ 2026-10-03: subscriptiontracker's real
+      // android-play set is complete now, so the incomplete one is passed
+      // through the seam.
       expect(
         await modifiedCopyBlocked(
+          appId: 'subscriptiontracker',
           releaseChannel: 'android-play',
           integrityProbe: core.FixedDeviceIntegrityProbe(
             certificates: core.SigningCertificates(sha256: <String>['AB' * 32]),
@@ -358,7 +366,9 @@ void main() {
           platform: TargetPlatform.android,
           isWeb: false,
           pinsFor: (_) => core.SignerPins(
-            digests: core.signerPinsFor('android-play')!.digests,
+            digests: core
+                .signerPinsFor('android-play', appId: 'subscriptiontracker')!
+                .digests,
             complete: false,
           ),
         ),
@@ -373,13 +383,14 @@ void main() {
     // THE BLOCKING BRANCH. No channel's real pin set is complete yet, so a
     // complete set is passed through the test seam: a foreign signer then runs
     // the modified-copy app and answers true, and the caller returns.
-    // ⏱ 2026-10-03: android-play's real set is complete; the case after this
-    // one blocks through the REAL generated table.
+    // ⏱ 2026-10-03: subscriptiontracker's real android-play set is complete;
+    // the case after this one blocks through the REAL generated table.
     testWidgets(
       'a foreign signer on a COMPLETE set runs the modified-copy app',
       (WidgetTester tester) async {
         final List<core.DeviceIntegrity> recorded = <core.DeviceIntegrity>[];
         final bool blocked = await modifiedCopyBlocked(
+          appId: 'subscriptiontracker',
           releaseChannel: 'apps-gov-in',
           integrityProbe: core.FixedDeviceIntegrityProbe(
             certificates: core.SigningCertificates(sha256: <String>['AB' * 32]),
@@ -400,9 +411,10 @@ void main() {
     );
 
     testWidgets(
-      'a foreign signer on the REAL android-play set runs the modified-copy app',
+      "a foreign signer on this app's REAL set runs the modified-copy app",
       (WidgetTester tester) async {
         final bool blocked = await modifiedCopyBlocked(
+          appId: 'subscriptiontracker',
           releaseChannel: 'android-play',
           integrityProbe: core.FixedDeviceIntegrityProbe(
             certificates: core.SigningCertificates(sha256: <String>['AB' * 32]),
@@ -425,6 +437,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final bool blocked = await modifiedCopyBlocked(
+        appId: 'subscriptiontracker',
         releaseChannel: 'apps-gov-in',
         integrityProbe: core.FixedDeviceIntegrityProbe(
           certificates: core.SigningCertificates(sha256: <String>['CD' * 32]),
@@ -442,6 +455,7 @@ void main() {
 
     test('a recorder that throws does not cost the user the app', () async {
       final core.IntegritySession s = await checkDeviceIntegrity(
+        appId: 'subscriptiontracker',
         releaseChannel: 'android-play',
         integrityProbe: const core.FixedDeviceIntegrityProbe(),
         record: (_) => throw StateError('sink down'),

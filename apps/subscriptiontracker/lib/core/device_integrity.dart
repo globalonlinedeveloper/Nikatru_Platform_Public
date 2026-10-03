@@ -31,6 +31,7 @@ import 'app_config.dart';
 Future<bool> integrityBootBlocks(TelemetryConfig telemetry) {
   final TelemetryClient sink = TelemetryBootstrap.clientFor(telemetry);
   return modifiedCopyBlocked(
+    appId: AppConfig.appId,
     releaseChannel: AppConfig.releaseChannel,
     integrityProbe: platformDeviceIntegrityProbe(),
     record: integrityRecorder(sink.addBreadcrumb, sink.captureMessage),

@@ -503,6 +503,7 @@ void main() {
       final _OrderRecorder notifications = _OrderRecorder();
       final List<String> steps = notifications.steps;
       await bootstrapNikatru(
+        appId: 'subscriptiontracker',
         releaseChannel: releaseChannel,
         integrityProbe: probe,
         recordIntegrity: probe == null
@@ -544,6 +545,7 @@ void main() {
       Future<bool>? emptyAtRun;
       final _OrderRecorder notifications = _OrderRecorder();
       await bootstrapNikatru(
+        appId: 'subscriptiontracker',
         releaseChannel: '',
         integrityProbe: null,
         notifications: notifications,
@@ -574,8 +576,9 @@ void main() {
     // incomplete today (the app signing pin is not set), so a hand-built
     // complete set stands in through a channel the generated table has, and
     // the incomplete real one must NOT block.
-    // ⏱ 2026-10-03: android-play's real set is COMPLETE (the Play app signing
-    // pin is set), so the real table blocks here and no stand-in is needed.
+    // ⏱ 2026-10-03: subscriptiontracker's real android-play set is COMPLETE
+    // (its Play app signing pin is set), so the real table blocks here and no
+    // stand-in is needed.
     testWidgets(
       'a re-signed copy stops before notifications, identity and the app',
       (WidgetTester tester) async {
@@ -605,7 +608,9 @@ void main() {
         releaseChannel: 'android-play',
         probe: core.FixedDeviceIntegrityProbe(
           certificates: core.SigningCertificates(
-            sha256: core.signerPinsFor('android-play')!.digests,
+            sha256: core
+                .signerPinsFor('android-play', appId: 'subscriptiontracker')!
+                .digests,
           ),
         ),
       );

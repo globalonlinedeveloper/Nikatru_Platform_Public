@@ -2246,11 +2246,24 @@
             "App Links' assetlinks.json requires it in plaintext. Paste it with the date.",
             "",
             "⏱ 2026-10-03: READ — off the Play Developer API rather than the console page (the same key: the",
-            "certificate Play re-signs every delivered .apk with). The upload certificate above is unchanged."
+            "certificate Play re-signs every delivered .apk with). The upload certificate above is unchanged.",
+            "",
+            "⏱ 2026-10-03 (ruling on PR #1198, ADR 030): THE VALUE IS PER APP AND LIVES IN THE APP, NOT HERE.",
+            "Play App Signing generates and holds ONE app signing key PER APP, so a channel-wide copy here",
+            "would hand app #1's key to every later app: their genuine installs would be called modified",
+            "copies. The fingerprint is apps/<id>/app.yaml `stores.android-play.appSigningSha256` (app #1:",
+            "98:FA:…:3A:3C, read 2026-10-03 off the Play Developer API generatedApks/1), and",
+            "assert-runtime-signer-check.mjs --write compiles each app's own into kSignerPinsByApp. This field",
+            "keeps the reasoning and names where the value is (`perApp`); it holds no sha256, so nothing reads",
+            "a second copy.",
+            "",
+            "⏱ 2026-10-03: CORRECTION to \"the upload pin … still signs … an internal-sharing install\" above.",
+            "Under Play App Signing, internal app sharing re-signs with a SEPARATE Google-generated internal",
+            "app sharing key (Play Console > App integrity lists its certificate) — not the upload key. Nothing",
+            "here uses internal app sharing today; runtimeSignerCheck.channels.android-play.internalAppSharing",
+            "says so, and the guard refuses a release path that would rely on it without its own pinned key."
           ],
-          "sha256": "98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C",
-          "asOf": "2026-10-03",
-          "source": "Play Developer API, GET applications/com.nikatru.subscriptiontracker/generatedApks/1 (version code 1, internal track release \"1 (2026-09-22)\", status completed) → certificateSha256Hash, read 2026-10-03 ~11:38Z with the vault service account"
+          "perApp": "apps/<id>/app.yaml stores.android-play.appSigningSha256"
         },
         "ciSecrets": {
           "_why": [
@@ -4495,11 +4508,21 @@
     "channels": {
       "android-play": {
         "pins": [
-          "signing.uploadCertificate.sha256",
-          "signing.appSigningCertificate.sha256"
+          "signing.uploadCertificate.sha256"
         ],
+        "perAppPin": "stores.android-play.appSigningSha256",
+        "internalAppSharing": {
+          "_why": [
+            "⏱ 2026-10-03: an internal-app-sharing install carries Google's internal app sharing key, which",
+            "is neither pin. `pin: null` says NO release path relies on internal app sharing, and",
+            "assert-runtime-signer-check.mjs (S9) fails while a workflow or release script under",
+            ".github/workflows, tooling/release or tooling/store uploads to it. To use it: read that",
+            "certificate (Play Console > App integrity), pin it per app, and make this a pin path."
+          ],
+          "pin": null
+        },
         "unpinnedReleaseBuild": "allowed",
-        "why": "A Play install carries the app signing key Google holds; the CI .apk and an internal-sharing install carry the upload key. Both are ours, and either may be what the device reports."
+        "why": "A Play install carries the app signing key Google holds; the CI .apk and an internal-sharing install carry the upload key. Both are ours, and either may be what the device reports. ⏱ 2026-10-03: CORRECTED — the CI .apk carries the upload key (factory-wide, `pins`); a Play install carries THIS APP's app signing key (per app, `perAppPin`, ADR 030); an internal-sharing install carries a third, Google-generated key no pin names (`internalAppSharing`)."
       },
       "apps-gov-in": {
         "pins": [

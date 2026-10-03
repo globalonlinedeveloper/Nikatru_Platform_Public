@@ -225,8 +225,17 @@ export function fieldAt(row, path) {
 /** The runtime signature check's pins for `channel`: `null` when the register's
  *  `runtimeSignerCheck` has no entry for it, else each declared pin path with
  *  the value it holds (`null` when the pin is not yet set). Throws when the
- *  entry names a path the row does not have. */
-export function signerPinsOf(register, channel) {
+ *  entry names a path the row does not have.
+ *
+ *  ⏱ 2026-10-03 (ruling on PR #1198, ADR 030: Play App Signing holds ONE KEY PER
+ *  APP). An entry may also name `perAppPin`, a dotted path into
+ *  apps/<app>/app.yaml (`stores.android-play.appSigningSha256`): a list of
+ *  fingerprints only that app's installs carry. The caller reads it and passes
+ *  it as `appPins` — an array, or null when the app records none. Without an
+ *  app (`appPins` undefined) the set is the CHANNEL DEFAULT: the factory-wide
+ *  pins only, and never complete while a per-app pin is declared, so no app is
+ *  ever blocked for lacking a key that is not its own. */
+export function signerPinsOf(register, channel, appPins = undefined) {
   const entry = register?.runtimeSignerCheck?.channels?.[channel];
   if (entry === undefined) return null;
   const row = (register.channels ?? []).find((c) => c.id === channel);
@@ -236,19 +245,42 @@ export function signerPinsOf(register, channel) {
     if (value === undefined) throw new Error(`runtimeSignerCheck.channels.${channel} names pin "${path}", which row "${channel}" does not have.`);
     return { path, value };
   });
-  return { pins, unpinnedReleaseBuild: entry.unpinnedReleaseBuild, complete: pins.length > 0 && pins.every((p) => p.value !== null) };
+  const perAppPin = typeof entry.perAppPin === 'string' && entry.perAppPin !== '' ? entry.perAppPin : null;
+  const own = perAppPin !== null && Array.isArray(appPins) && appPins.length > 0 ? appPins : null;
+  const factoryComplete = pins.length > 0 && pins.every((p) => p.value !== null);
+  return {
+    pins,
+    perAppPin,
+    appPins: own,
+    unpinnedReleaseBuild: entry.unpinnedReleaseBuild,
+    complete: factoryComplete && (perAppPin === null || own !== null),
+  };
+}
+
+/** The per-app pin `path` (a dotted path into apps/<app>/app.yaml) for `app`:
+ *  its list, or null when the app records none. Throws when app.yaml is absent
+ *  or does not parse — an app whose declaration cannot be read has no answer. */
+export function appPinsAt(root, app, path) {
+  const p = join(root, 'apps', app, 'app.yaml');
+  const decl = parseYaml(readFileSync(p, 'utf8'));
+  const v = fieldAt(decl, path);
+  return Array.isArray(v) && v.length > 0 ? v : null;
 }
 
 /** Why a RELEASE-SIGNED build of `channel` must not run, or null when it may.
  *  `env` is the build's environment; release-signed means every
  *  RELEASE_SIGNING_ENV name is set and non-empty. */
-export function unpinnedReleaseRefusal({ root, channel, env }) {
+export function unpinnedReleaseRefusal({ root, channel, env, app = null }) {
   const releaseSigned = RELEASE_SIGNING_ENV.every((n) => String(env?.[n] ?? '').trim() !== '');
   if (!releaseSigned) return null;
-  const pins = signerPinsOf(readJson(join(root, 'tooling', 'channel-register.json')), channel);
+  const register = readJson(join(root, 'tooling', 'channel-register.json'));
+  const perAppPin = register?.runtimeSignerCheck?.channels?.[channel]?.perAppPin;
+  const appPins = typeof perAppPin === 'string' && app !== null ? appPinsAt(root, app, perAppPin) : undefined;
+  const pins = signerPinsOf(register, channel, appPins);
   if (pins === null || pins.unpinnedReleaseBuild !== 'refused') return null;
   const unset = pins.pins.filter((p) => p.value === null).map((p) => p.path);
   if (pins.pins.length === 0) unset.push('(no pin declared)');
+  if (pins.perAppPin !== null && pins.appPins === null) unset.push(`apps/${app ?? '<app>'}/app.yaml ${pins.perAppPin}`);
   if (unset.length === 0) return null;
   return (
     `channel "${channel}" is being RELEASE-SIGNED and its runtime signature pin ${unset.join(', ')} is not set in ` +
@@ -310,7 +342,7 @@ function main(args) {
     return 0;
   }
 
-  const refusal = unpinnedReleaseRefusal({ root, channel, env: process.env });
+  const refusal = unpinnedReleaseRefusal({ root, channel, env: process.env, app });
   if (refusal !== null) {
     console.error(`FAIL ${refusal}`);
     return 1;

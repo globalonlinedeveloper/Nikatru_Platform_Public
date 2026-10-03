@@ -19,6 +19,7 @@ const String _play =
 const String _playHex =
     '98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C';
 final String _theirs = 'AB' * 32;
+const String _app = 'subscriptiontracker';
 final String _second = 'CD' * 32;
 
 const SignerPins _complete = SignerPins(
@@ -215,29 +216,44 @@ void main() {
   });
 
   group('the generated pins', () {
-    test('android-play compiles in both pins, and is complete', () {
-      final SignerPins? play = signerPinsFor('android-play');
+    // ⏱ 2026-10-03 (ruling on PR #1198, ADR 030): Play holds ONE app signing
+    // key PER APP, so the pins are keyed by app id as well as channel.
+    test("the app's own android-play set holds both pins, complete", () {
+      final SignerPins? play = signerPinsFor('android-play', appId: _app);
       expect(play, isNotNull);
       expect(play!.digests, contains(_oursHex));
-      // ⏱ 2026-10-03: the app signing pin, read off the Play Developer API.
+      // Its app signing pin, from apps/subscriptiontracker/app.yaml.
       expect(play.digests, contains(_playHex));
       expect(play.complete, isTrue);
     });
 
+    test('another app gets the channel default: the upload pin only, '
+        "INCOMPLETE — never app #1's key", () {
+      final SignerPins? other = signerPinsFor('android-play', appId: 'second');
+      expect(other, isNotNull);
+      expect(other!.digests, <String>[_oursHex]);
+      expect(other.digests, isNot(contains(_playHex)));
+      expect(other.complete, isFalse);
+    });
+
     test('apps-gov-in has a row and no pin yet', () {
-      final SignerPins? agi = signerPinsFor('apps-gov-in');
+      final SignerPins? agi = signerPinsFor('apps-gov-in', appId: _app);
       expect(agi, isNotNull);
       expect(agi!.digests, isEmpty);
       expect(agi.complete, isFalse);
     });
 
     test('a channel with no row has no pins', () {
-      expect(signerPinsFor('web'), isNull);
-      expect(signerPinsFor(''), isNull);
+      expect(signerPinsFor('web', appId: _app), isNull);
+      expect(signerPinsFor('', appId: _app), isNull);
     });
 
     test('every generated digest is already normalised', () {
-      for (final SignerPins p in kSignerPinsByChannel.values) {
+      for (final SignerPins p in <SignerPins>[
+        ...kSignerPinsByChannel.values,
+        for (final Map<String, SignerPins> m in kSignerPinsByApp.values)
+          ...m.values,
+      ]) {
         for (final String d in p.digests) {
           expect(normalizeCertificateDigest(d), d);
         }
@@ -249,11 +265,13 @@ void main() {
   group('assessDeviceIntegrity', () {
     Future<DeviceIntegrity> assess(
       DeviceIntegrityProbe probe, {
+      String app = _app,
       String channel = 'android-play',
       bool debug = false,
       bool android = true,
     }) => assessDeviceIntegrity(
       probe: probe,
+      appId: app,
       releaseChannel: channel,
       isDebugBuild: debug,
       checksSigner: android,
@@ -275,6 +293,28 @@ void main() {
       expect(i.blocksDataAccess, isFalse);
     });
 
+    test(
+      "ANOTHER app on android-play is never blocked for lacking app #1's key",
+      () async {
+        // The lockout the per-app keying prevents: app #2's genuine Play
+        // install carries ITS OWN app signing key, which no pin names yet.
+        final DeviceIntegrity i = await assess(
+          FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
+          app: 'second',
+        );
+        expect(i.signer, SignerVerdict.mismatchReported);
+        expect(i.blocksDataAccess, isFalse);
+      },
+    );
+
+    test("app #1's app signing key does not verify another app", () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_play])),
+        app: 'second',
+      );
+      expect(i.signer, SignerVerdict.mismatchReported);
+    });
+
     test('a foreign key on android-play blocks: its set is complete', () async {
       final DeviceIntegrity i = await assess(
         FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
@@ -291,6 +331,7 @@ void main() {
           probe: FixedDeviceIntegrityProbe(
             certificates: _signed(<String>[_theirs]),
           ),
+          appId: _app,
           releaseChannel: 'android-play',
           isDebugBuild: false,
           checksSigner: true,

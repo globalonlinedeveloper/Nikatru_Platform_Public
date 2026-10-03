@@ -27,11 +27,18 @@
 /// `tooling/channel-register.json` by
 /// `node tooling/ci/assert-runtime-signer-check.mjs --write`, and that guard
 /// fails CI when the generated file and the register disagree.
+///
+/// ⏱ 2026-10-03 (ruling on PR #1198; ADR 030): the pins are keyed by APP as
+/// well as channel. Play App Signing holds one app signing key PER APP, so an
+/// app's own key lives in its `apps/<id>/app.yaml` and is compiled into
+/// [kSignerPinsByApp]; [kSignerPinsByChannel] keeps only the factory-wide
+/// pins and never blocks for a per-app key it does not hold. Every check
+/// therefore takes the app id (`AppConfig.appId`).
 library;
 
 import 'signer_pins.g.dart';
 
-export 'signer_pins.g.dart' show kSignerPinsByChannel;
+export 'signer_pins.g.dart' show kSignerPinsByApp, kSignerPinsByChannel;
 
 /// One reason the platform side believes the device is rooted or jailbroken.
 /// The wire names are what `DeviceIntegrityHandler.kt` and the iOS plugin
@@ -179,16 +186,22 @@ final class SignerPins {
   final bool complete;
 }
 
-/// How a check finds a channel's pins: [signerPinsFor] in every build; a test
-/// passes a complete set through it, because no channel's real set is
-/// complete yet. ⏱ 2026-10-03: android-play's real set is complete (the Play
-/// app signing pin is set); a test passes an INCOMPLETE set through it now.
+/// How a check finds a channel's pins: [signerPinsFor] for the app in every
+/// build; a test passes a complete set through it, because no channel's real set is
+/// complete yet. ⏱ 2026-10-03: an app's own android-play set is complete once
+/// its app.yaml records its Play app signing pin; a test passes any set through
+/// this seam, complete or not.
 typedef SignerPinsLookup = SignerPins? Function(String releaseChannel);
 
-/// The pins compiled in for [releaseChannel] (`RELEASE_CHANNEL`), or null for
-/// a channel the generated table has no row for — a channel no signer check
+/// The pins compiled in for app [appId] (`AppConfig.appId`) on
+/// [releaseChannel] (`RELEASE_CHANNEL`): the app's own set
+/// ([kSignerPinsByApp]: the factory-wide pins plus its per-app app signing
+/// pin), else the channel default ([kSignerPinsByChannel]: the factory-wide
+/// pins only, never complete while the channel declares a per-app pin), or null
+/// for a channel neither table has a row for — a channel no signer check
 /// applies to (web, desktop, a build with no channel stamped).
-SignerPins? signerPinsFor(String releaseChannel) =>
+SignerPins? signerPinsFor(String releaseChannel, {required String appId}) =>
+    kSignerPinsByApp[appId]?[releaseChannel] ??
     kSignerPinsByChannel[releaseChannel];
 
 /// What the runtime signature check concluded.
@@ -291,14 +304,16 @@ final class DeviceIntegrity {
 /// Runs both checks. Never throws.
 ///
 /// [checksSigner] is true on android only — the one host with a signing
-/// certificate the app can read about itself. [pinsFor] is the generated
-/// table ([signerPinsFor]) outside tests.
+/// certificate the app can read about itself. [appId] selects the app's own
+/// pins. [pinsFor] is the generated tables ([signerPinsFor] for [appId])
+/// outside tests.
 Future<DeviceIntegrity> assessDeviceIntegrity({
   required DeviceIntegrityProbe probe,
+  required String appId,
   required String releaseChannel,
   required bool isDebugBuild,
   required bool checksSigner,
-  SignerPinsLookup pinsFor = signerPinsFor,
+  SignerPinsLookup? pinsFor,
 }) async {
   final RootReport root = await detectRoot(probe);
   if (!checksSigner) {
@@ -307,7 +322,8 @@ Future<DeviceIntegrity> assessDeviceIntegrity({
   if (isDebugBuild) {
     return DeviceIntegrity(root: root, signer: SignerVerdict.exemptDebug);
   }
-  final SignerPins? pins = pinsFor(releaseChannel);
+  final SignerPins? pins =
+      (pinsFor ?? (String c) => signerPinsFor(c, appId: appId))(releaseChannel);
   if (pins == null) {
     return DeviceIntegrity(root: root, signer: SignerVerdict.notChecked);
   }

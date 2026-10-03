@@ -44,6 +44,7 @@ Future<void> main() async {
 
   final TelemetryClient sink = TelemetryBootstrap.clientFor(config);
   await bootstrapNikatru(
+    appId: AppConfig.appId, // its own per-app signer pins
     releaseChannel: AppConfig.releaseChannel, // step 3½: root + signer check
     integrityProbe: platformDeviceIntegrityProbe(),
     recordIntegrity: integrityRecorder(sink.addBreadcrumb, sink.captureMessage),
