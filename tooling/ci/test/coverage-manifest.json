@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    12,
+    13,
 
   "agent-docs.test.mjs":
     21,
@@ -289,6 +289,9 @@
 
   "code-scanning-age.test.mjs":
     15,
+
+  "codeql-lite.test.mjs":
+    40,
 
   "codeql-pr-no-new-high.test.mjs":
     22,
