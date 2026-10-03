@@ -298,6 +298,7 @@ export function renderChassisBridge(chassisArb) {
 // The app reads every CHASSIS string through this bridge rather than
 // re-declaring it in its own ARB (lane i18n-pipeline, ARB hygiene): one key,
 // one translation, in one place. A key the app ARB still declares wins.
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations, lookupChassisLocalizations;
@@ -312,7 +313,9 @@ export 'app_localizations.dart';
 extension ChassisBridge on AppLocalizations {
   /// How the bridge finds the chassis strings for a locale. Only a test that
   /// pumps a pseudo locale (whose chassis strings no real lookup can give)
-  /// points it elsewhere, and restores it in tearDown.
+  /// points it elsewhere, and restores it in tearDown. \`@visibleForTesting\`:
+  /// the analyzer refuses a write from production code (#1161 nit 7a).
+  @visibleForTesting
   static ChassisLocalizations Function(Locale locale) lookup =
       lookupChassisLocalizations;
 
