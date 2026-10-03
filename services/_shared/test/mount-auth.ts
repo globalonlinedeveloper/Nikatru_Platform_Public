@@ -17,6 +17,7 @@
 // from services/_shared/node_modules, which holds only what the kit declares):
 // the tokens are minted with WebCrypto, which is what ES256 and HS256 are.
 // ─────────────────────────────────────────────────────────────────────────────
+import { revocationKey, type RevocationRecord } from '../src/auth';
 import { mountedEndpoints, probePath, type Endpoint, type MountedRoute } from './preflight';
 
 const b64url = (bytes: Uint8Array): string => {
@@ -99,6 +100,39 @@ export async function anonymousNotRefused(
   for (const e of guarded) {
     const res = await through(probePath(e.path), { method: e.method });
     if (res.status !== 401) out.push(`${e.method} ${e.path} answered ${res.status} to a caller with no credential`);
+  }
+  return out;
+}
+
+/**
+ * A SESSION_REVOKED stand-in holding ONE record: `sub`'s session `sid` signed
+ * out a minute ago. Only `get(key, 'json')` is read by the kit.
+ */
+export function revokedSessionKv(sub: string, sid: string) {
+  const record: RevocationRecord = { before: null, sids: [[sid, Math.floor(Date.now() / 1000) - 60]] };
+  return {
+    async get(key: string, type?: string): Promise<unknown> {
+      if (key !== revocationKey(sub)) return null;
+      return type === 'json' ? record : JSON.stringify(record);
+    },
+  };
+}
+
+/**
+ * ⏱ 2026-10-03 (review of #1152, minor 1). Every listed endpoint, requested with
+ * a token that VERIFIES but whose session the bindings' SESSION_REVOKED lists as
+ * signed out: one line per endpoint that did not answer 401. Empty is the pass.
+ * tooling/ci/assert-session-revocation.mjs sees that each kit boundary CALLS
+ * `sessionRevoked(`; only running it sees a call that is present but neutered
+ * (`if (false && await sessionRevoked(…))`). `probes` must name one endpoint
+ * behind each boundary the Worker mounts (`supabaseAuth` and `erasureAuth`).
+ */
+export async function revokedNotRefused(through: Through, token: string, probes: ReadonlyArray<Endpoint>): Promise<string[]> {
+  if (probes.length === 0) return ['no endpoint was probed with a revoked session'];
+  const out: string[] = [];
+  for (const e of probes) {
+    const res = await through(probePath(e.path), { method: e.method, headers: { Authorization: `Bearer ${token}` } });
+    if (res.status !== 401) out.push(`${e.method} ${e.path} answered ${res.status} to a signed-out session's token`);
   }
   return out;
 }

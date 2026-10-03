@@ -41,6 +41,8 @@
         "contracts/entitlement/*.js",
         "contracts/entitlement/*.d.ts",
         "contracts/entitlement/*.json",
+        "contracts/currency/*.js",
+        "contracts/currency/*.d.ts",
         "extensions/catalog/extensions.json",
         "packages/core/lib/src/analytics/analytics.dart",
         "tooling/channel-register.json",
@@ -196,6 +198,7 @@
       "services/_shared/**",
       "services/platform/src/lib/mor/contract.ts",
       "contracts/entitlement/*.js",
+      "contracts/currency/*.js",
       ".github/workflows/deploy-workers.yml"
     ],
     "nikatru-site": [
@@ -251,6 +254,7 @@
       "catalog/apps.json",
       "contracts/entitlement/*.js",
       "contracts/entitlement/*.json",
+      "contracts/currency/*.js",
       "catalog/bundles.json",
       "extensions/catalog/extensions.json",
       "tooling/channel-register.json",

@@ -22,6 +22,38 @@ void main() {
       expect(const Money(500, 'KWD').plainFormat(), 'KWD 0.500');
     });
 
+    // ⏱ 2026-10-01 · #1118 review finding 3. The table was JPY and KWD only, so
+    // the won and the Bahraini dinar read as two decimals here while the
+    // platform's reminder mail read them as ISO says: a KRW plan written as
+    // won × 100 mailed 100× too high, a BHD plan 10× too low. Both now come from
+    // contracts/currency/iso4217.js, as the Workers' do.
+    test('KRW round-trips with no minor unit (ISO 4217, the shared table)', () {
+      expect(Money.minorUnitDigitsFor('KRW'), 0);
+      final Money m = Money.fromMajorUnits(14900, 'KRW');
+      expect(m.minorUnits, 14900);
+      expect(m.plainFormat(), 'KRW 14900');
+      expect(Money.fromMajorUnits(m.minorUnits, 'KRW'), m);
+    });
+
+    test(
+      'BHD round-trips with three minor digits (ISO 4217, the shared table)',
+      () {
+        expect(Money.minorUnitDigitsFor('BHD'), 3);
+        final Money m = Money.fromMajorUnits(2.5, 'BHD');
+        expect(m.minorUnits, 2500);
+        expect(m.plainFormat(), 'BHD 2.500');
+        expect(Money.tryParseMajor('2.500', 'BHD'), m);
+      },
+    );
+
+    test('the table is the generated full ISO list, not a hand-kept pair', () {
+      // contracts/currency/generate-dart.mjs refuses to write fewer than 150.
+      expect(iso4217MinorUnitDigits.length, greaterThan(150));
+      expect(iso4217MinorUnitDigits['CLF'], 4);
+      expect(iso4217MinorUnitDigits['VND'], 0);
+      expect(iso4217MinorUnitDigits['OMR'], 3);
+    });
+
     test('an unknown code renders as the CODE, never a guessed symbol', () {
       expect(Money.symbolFor('ZZZ'), isNull);
       expect(const Money(499, 'ZZZ').plainFormat(), 'ZZZ 4.99');

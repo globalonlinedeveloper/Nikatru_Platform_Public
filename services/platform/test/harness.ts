@@ -35,7 +35,7 @@
 // tests keep passing after a migration changed the tree — and platform_db is the
 // one database the whole portfolio shares, so that drift is every app's.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
+import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
 import entitlements0001 from '../migrations/0001_entitlements.sql?raw';
 import analytics0002 from '../migrations/0002_analytics.sql?raw';
 import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
@@ -58,7 +58,8 @@ import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
-import providerPaymentLinks0025 from '../migrations/0025_provider_payment_links.sql?raw';
+import boxConfigManifest0025 from '../migrations/0025_box_config_manifest.sql?raw';
+import providerPaymentLinks0026 from '../migrations/0026_provider_payment_links.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -129,9 +130,12 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // token was issued to (the bundle id, for a native Apple sheet). ADD
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   providerTokenClient0024,
+  // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
+  // (routes/box-manifest.ts).
+  boxConfigManifest0025,
   // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
   // subscription, so a refund or dispute resolves by payment id.
-  providerPaymentLinks0025,
+  providerPaymentLinks0026,
 ];
 
 /**
@@ -183,158 +187,26 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   reminders0020,
   // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
   nativeAttest0022,
-  // 0025_provider_payment_links is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
-  providerPaymentLinks0025,
+  // 0025 is one CREATE TABLE IF NOT EXISTS — it replays.
+  boxConfigManifest0025,
+  // 0026_provider_payment_links is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  providerPaymentLinks0026,
 ];
 
-// `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
-// static import: Vite's builtin list does not yet know the module, so
-// `import ... from 'node:sqlite'` fails to resolve at transform time ("Failed to
-// load url sqlite"). This bypasses module resolution entirely and needs no
-// vitest config. The TYPES still come from the ambient declaration in
-// node-sqlite.d.ts, so this stays type-checked.
-type DatabaseSync = DatabaseSyncCtor;
-const SqliteCtor = (
-  globalThis as unknown as {
-    process: {
-      getBuiltinModule(id: 'node:sqlite'): {
-        DatabaseSync: new (path: string) => DatabaseSync;
-      };
-    };
-  }
-).process.getBuiltinModule('node:sqlite').DatabaseSync;
-
 /**
- * D1PreparedStatement over node:sqlite. `bind` returns a NEW statement, as D1's
- * does — the events route binds ONE prepared statement up to 100 times and
- * batches the results, so a `bind` that mutated in place would collapse the
- * whole batch onto the last row and every per-row assertion would still pass.
+ * The engine: platform_db's migrations over node:sqlite, executing AND
+ * recording, `batch` ONE transaction.
+ *
+ * ⏱ 2026-10-02 · port-sql. The engine that lived here is PROMOTED to
+ * services/_shared/src/ports/fakes/sql.ts — tooling/ports/sql.json adapter
+ * `sqlite`, held to the SQL port's conformance suite — so this Worker and
+ * subscriptiontracker-api run ONE engine, not two copies. `RealDb` stays here
+ * for one PR, under its old name and with its old default schema, so no test
+ * file had to change its import.
  */
-class SqliteStatement {
-  constructor(
-    private readonly owner: RealDb,
-    private readonly sql: string,
-    private readonly params: unknown[] = [],
-  ) {}
-
-  bind(...params: unknown[]): SqliteStatement {
-    this.owner.bound.push(params);
-    return new SqliteStatement(this.owner, this.sql, params);
-  }
-
-  private args(): SQLValue[] {
-    return this.params.map((p) => {
-      if (p === undefined) {
-        // D1 rejects undefined binds (D1_TYPE_ERROR). node:sqlite throws too;
-        // this makes the message recognisable in a failing test.
-        throw new TypeError('D1_TYPE_ERROR: undefined is not a supported bind value');
-      }
-      if (typeof p === 'boolean') return p ? 1 : 0;
-      return p as SQLValue;
-    });
-  }
-
-  /** Runs against the real engine. Kept internal so `run` can reuse it. */
-  exec(): { meta: { changes: number } } {
-    const r = this.owner.db.prepare(this.sql).run(...this.args());
-    return { meta: { changes: r.changes } };
-  }
-
-  /**
-   * What ONE statement contributes to a `batch()` answer — D1's shape, not a
-   * convenient subset of it.
-   *
-   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `exec()`,
-   * which carries `meta` and NO `results`, because every batch this harness had
-   * seen was a write. The erasure walk now sends its schema reads as a batch, and
-   * against the old shape every read came back empty — 44 tests red on a harness
-   * that was lying, not on the code. MEASURED against workerd's own D1 through
-   * this Worker's wrangler.jsonc binding (getPlatformProxy), 2026-09-18: a batch
-   * of SELECTs answers one result per statement, IN ORDER, each carrying its
-   * rows; a write answers `results: []` with `meta.changes`. So a row-returning
-   * statement returns its rows here, and a write returns `[]` beside its count.
-   * `columns()` decides which, so no SQL is pattern-matched.
-   */
-  batchResult(): { results: unknown[]; meta: { changes: number } } {
-    const stmt = this.owner.db.prepare(this.sql);
-    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
-    const r = stmt.run(...this.args());
-    return { results: [], meta: { changes: Number(r.changes) } };
-  }
-
-  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
-    return { results: this.owner.db.prepare(this.sql).all(...this.args()) as T[] };
-  }
-
-  async first<T = Record<string, unknown>>(): Promise<T | null> {
-    return (this.owner.db.prepare(this.sql).get(...this.args()) as T) ?? null;
-  }
-
-  async run(): Promise<{ meta: { changes: number } }> {
-    if (this.owner.throwOnWrite) throw new Error('d1 down');
-    return this.exec();
-  }
-}
-
-/**
- * D1Database over node:sqlite, which ALSO records every prepared statement and
- * every bound tuple. `batch` is ONE transaction, as D1's is.
- */
-export class RealDb {
-  readonly db: DatabaseSync;
-  /** Every SQL string the route asked to prepare, in order. */
-  readonly sql: string[] = [];
-  /** Every bound tuple, in order. Index `n` is the nth `.bind(...)` call. */
-  readonly bound: unknown[][] = [];
-  /** Total statements handed to `batch()`, summed across calls. */
-  batched = 0;
-  /**
-   * Force the DB layer to fail. The route must answer 503 and the CLIENT must
-   * keep its batch — a 200 here would lose the events. Named `throwOnWrite`
-   * rather than `throwOnBatch`: /v1/consent writes with `.run()`, not `.batch()`,
-   * and a flag that only covered one of the two write paths is a flag whose name
-   * over-promises.
-   */
-  throwOnWrite = false;
-
+export class RealDb extends SqliteDb {
   constructor(schema: readonly string[] = PLATFORM_MIGRATIONS) {
-    this.db = new SqliteCtor(':memory:');
-    for (const sql of schema) this.db.exec(sql);
-  }
-
-  prepare(sql: string): SqliteStatement {
-    this.sql.push(sql);
-    return new SqliteStatement(this, sql);
-  }
-
-  async batch(statements: SqliteStatement[]): Promise<unknown[]> {
-    if (this.throwOnWrite) throw new Error('d1 down');
-    this.batched += statements.length;
-    this.db.exec('BEGIN');
-    try {
-      const out: unknown[] = [];
-      for (const s of statements) out.push(s.batchResult());
-      this.db.exec('COMMIT');
-      return out;
-    } catch (err) {
-      this.db.exec('ROLLBACK');
-      throw err;
-    }
-  }
-
-  /** Direct read, bypassing the Worker — for asserting what actually landed. */
-  rows(sql: string, ...params: SQLValue[]): Array<Record<string, unknown>> {
-    return this.db.prepare(sql).all(...params);
-  }
-
-  /**
-   * `SELECT COUNT(*)` as a number. The whole point of this harness is that
-   * "wrote zero rows" is a QUERY rather than an inference from which methods the
-   * route happened to call, so the query gets a first-class helper.
-   */
-  count(table: string, where = '1=1', ...params: SQLValue[]): number {
-    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...params);
-    return Number((row as { n: number }).n);
+    super(schema);
   }
 }
 

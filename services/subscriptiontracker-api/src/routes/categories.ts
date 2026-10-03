@@ -17,10 +17,12 @@
 // an old client and a new one alike.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv, Category } from '../types';
 import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
 import { isBoundedString, isPlainObject } from '../lib/validate';
+import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
 
 const app = new Hono<AppEnv>();
 
@@ -35,6 +37,13 @@ const MAX_NAME = 120;
  * MAX_CATEGORIES, and sits at that same 200.
  */
 const MAX_OWN = 200;
+/**
+ * The most bytes a POST / or PATCH /:id body may be (rv2-services-025): `{name}`
+ * at MAX_NAME in the widest UTF-8, plus 1 KB. Read bounded (lib/json-body.ts).
+ *
+ * @ceiling none — a request-size bound derived from MAX_NAME.
+ */
+export const CATEGORY_BODY_MAX_BYTES = UTF8_MAX_BYTES_PER_CHAR * MAX_NAME + 1024;
 /**
  * The most statements any `.batch()` on this router sends: a rename and a
  * delete are three each (the category, its subscriptions, its cap). FIXED BY
@@ -65,14 +74,14 @@ function nameOf(body: unknown): { ok: true; name: string } | { ok: false; detail
 }
 
 /** The category this user may use under [id]: a built-in, or one of their own. */
-export function visibleCategory(db: D1Database, userId: string, id: string) {
+export function visibleCategory(db: SqlDb, userId: string, id: string) {
   return firstRow<Category>(
     db.prepare('SELECT * FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)').bind(id, userId),
   );
 }
 
 /** Another category (not [exceptId]) this user already sees under [name]. */
-function clash(db: D1Database, userId: string, name: string, exceptId: string | null) {
+function clash(db: SqlDb, userId: string, name: string, exceptId: string | null) {
   return firstRow<{ id: string }>(
     db
       .prepare(
@@ -96,14 +105,9 @@ app.get('/', async (c) => {
 });
 
 // POST / — a category of the user's own.
-app.post('/', async (c) => {
+app.post('/', boundedJson(CATEGORY_BODY_MAX_BYTES), async (c) => {
   const userId = c.get('userId');
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
   const checked = nameOf(body);
   if (!checked.ok) return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   if (await clash(c.env.APP_DB, userId, checked.name, null)) {
@@ -128,15 +132,10 @@ app.post('/', async (c) => {
 
 // PATCH /:id — rename one of the user's own. The id, and so every cap and
 // subscription that points at it, stays.
-app.patch('/:id', async (c) => {
+app.patch('/:id', boundedJson(CATEGORY_BODY_MAX_BYTES), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
   const checked = nameOf(body);
   if (!checked.ok) return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
 

@@ -135,7 +135,7 @@
     22,
 
   "autopilot-issue-queue.test.mjs":
-    18,
+    20,
 
   "autopilot-land-gate.test.mjs":
     31,
@@ -176,6 +176,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "box-config-drift.test.mjs":
+    19,
+
   "boxes.test.mjs":
     50,
 
@@ -189,7 +192,7 @@
     4,
 
   "built-artifact-pr-lane.test.mjs":
-    27,
+    28,
 
   "built-info-plist.test.mjs":
     15,
@@ -222,7 +225,7 @@
     28,
 
   "capture-backend.test.mjs":
-    12,
+    15,
 
   "capture-fallback-fonts.test.mjs":
     12,
@@ -294,7 +297,7 @@
     65,
 
   "connect-origins.test.mjs":
-    38,
+    41,
 
   "consent-anon-id.test.mjs":
     35,
@@ -320,6 +323,9 @@
   "credential-origin.test.mjs":
     33,
 
+  "currency-table.test.mjs":
+    4,
+
   "d1-bindings.test.mjs":
     9,
 
@@ -330,7 +336,7 @@
     12,
 
   "d1-sql-inventory.test.mjs":
-    57,
+    59,
 
   "darwin-inputs.test.mjs":
     13,
@@ -411,10 +417,10 @@
     23,
 
   "enforcement-index.test.mjs":
-    36,
+    38,
 
   "ensure-monitors.test.mjs":
-    24,
+    26,
 
   "entitlement-contract.test.mjs":
     104,
@@ -423,7 +429,7 @@
     4,
 
   "erasure-reach.test.mjs":
-    53,
+    55,
 
   "ext-connect-dom.test.mjs":
     7,
@@ -567,7 +573,7 @@
     27,
 
   "land-next.test.mjs":
-    59,
+    96,
 
   "land-rules.test.mjs":
     23,
@@ -628,6 +634,9 @@
 
   "migration-numbers.test.mjs":
     8,
+
+  "migration-prefix-index.test.mjs":
+    12,
 
   "modal-detection.test.mjs":
     44,
@@ -714,7 +723,7 @@
     116,
 
   "ops-register.test.mjs":
-    441,
+    455,
 
   "ops-status.test.mjs":
     53,
@@ -759,7 +768,7 @@
     91,
 
   "platform-register.test.mjs":
-    107,
+    120,
 
   "play-declarations.test.mjs":
     186,
@@ -780,10 +789,10 @@
     19,
 
   "port-switch.test.mjs":
-    47,
+    56,
 
   "ports.test.mjs":
-    79,
+    110,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -825,7 +834,7 @@
     26,
 
   "prod-provenance-walk.test.mjs":
-    32,
+    34,
 
   "prod-provenance.test.mjs":
     154,
@@ -837,7 +846,7 @@
     12,
 
   "provision-backend.test.mjs":
-    28,
+    34,
 
   "pseudonymity-firewall.test.mjs":
     17,
@@ -947,6 +956,9 @@
   "sandbox-service-role.test.mjs":
     5,
 
+  "sandbox-twins.test.mjs":
+    18,
+
   "scan-dependencies.test.mjs":
     25,
 
@@ -972,7 +984,7 @@
     37,
 
   "session-revocation.test.mjs":
-    15,
+    18,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1014,7 +1026,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    36,
+    39,
 
   "snap-submission.test.mjs":
     48,
@@ -1134,7 +1146,7 @@
     46,
 
   "triage-failed-runs.test.mjs":
-    114,
+    115,
 
   "turnstile-hosts.test.mjs":
     14,
@@ -1197,13 +1209,13 @@
     24,
 
   "worker-set.test.mjs":
-    37,
+    40,
 
   "worker-shared-modules.test.mjs":
-    13,
+    17,
 
   "workflow-hardening.test.mjs":
-    11,
+    17,
 
   "workflow-readers.test.mjs":
     23,

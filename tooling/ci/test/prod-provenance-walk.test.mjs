@@ -367,7 +367,7 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
       const r = run(root, { consent_artifacts: [{ marker: '1.0.3850+c1c2c3c', n: 1 }] }, {
         'commits/c1c2c3c': commitOf(FULL_C),
         [ownAt('deploy-web.yml', FULL_C)]: listing([]),
-        [ciAt(FULL_C)]: listing([{ id: 38500000001, run_number: 3850, head_sha: FULL_C, conclusion: 'success' }]),
+        [ciAt(FULL_C)]: listing([{ id: 38500000001, run_number: 3850, head_sha: FULL_C, conclusion: 'success', event: 'workflow_dispatch', head_branch: 'main' }]),
         ...otherLanesEmpty(root, FULL_C),
       });
       assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -376,6 +376,24 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
         /point read · 1\.0\.3850\+c1c2c3c: GET commits\/c1c2c3c → 200 · GET actions\/workflows\/deploy-web\.yml\/runs\?[^ ]* → 200 · GET actions\/workflows\/ci\.yml\/runs\?head_sha=c1c2c3c4[0-9]*&branch=main&[^ ]* → 200 → FOUND ci\.yml run 3850/,
       );
       assert.match(r.stdout, /host-resolved build accepted: 1\.0\.3850\+c1c2c3c — resolved in ci\.yml run 3850/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // ⏱ 2026-10-02 (review of #1158, nit 11): `branch=main` also answers a fork PR from a
+  // branch named main; only a push or a dispatch of main is a caller run.
+  test('(i) 🔴 a ci.yml run 3850 at this head that is a PULL REQUEST run is not the run, exit 1', () => {
+    const root = calleeRoot();
+    try {
+      const r = run(root, { consent_artifacts: [{ marker: '1.0.3850+c1c2c3c', n: 1 }] }, {
+        'commits/c1c2c3c': commitOf(FULL_C),
+        [ownAt('deploy-web.yml', FULL_C)]: listing([]),
+        [ciAt(FULL_C)]: listing([{ id: 38500000001, run_number: 3850, head_sha: FULL_C, conclusion: 'success', event: 'pull_request', head_branch: 'main' }]),
+        ...otherLanesEmpty(root, FULL_C),
+      });
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /no release lane has a completed run numbered 3850 at it/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -771,5 +789,15 @@ describe('the caller filter reads every post-gate run of main, and nothing off m
   });
   test('a run off main never lists', () => {
     assert.equal(keep(run({ head_branch: 'feat/x', event: 'workflow_dispatch' })), false);
+  });
+  // ⏱ 2026-10-02 (review of #1158, nit 11): `branch=main` also lists a fork PR from a
+  // branch named main and a schedule run; the caller's rows are held to the post-gate class.
+  test('🔴 a listed caller run that is no push or dispatch of main is never admitted', () => {
+    assert.equal(monitor.hostRunAdmits(run({})), true);
+    assert.equal(monitor.hostRunAdmits(run({ event: 'workflow_dispatch' })), true);
+    for (const event of ['pull_request', 'pull_request_target', 'schedule', 'workflow_run']) {
+      assert.equal(keep(run({ event })), true, `the listing itself still answers a ${event} run on main`);
+      assert.equal(monitor.hostRunAdmits(run({ event })), false, event);
+    }
   });
 });

@@ -27,7 +27,7 @@
       "method": "GET",
       "path": "/v1/health",
       "auth": "public",
-      "purpose": "Deploy verification and dependency health for the stamped Worker. Answers `{ ok, status, app, version, time, checks }` after probing APP_DB (`SELECT 1 FROM records LIMIT 1`), PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). Stamped from the brick's Worker template.",
+      "purpose": "Deploy verification and dependency health for the stamped Worker. Answers `{ ok, status, app, version, build, time, checks }` (`build` is the deployed RELEASE, the field the deploy smoke joins on) after probing APP_DB (`SELECT 1 FROM records LIMIT 1`), PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). Stamped from the brick's Worker template.",
       "client": {
         "file": "tooling/ci/worker-set.mjs",
         "expression": "/\\/health$/.test(String(x?.path ?? ''))",

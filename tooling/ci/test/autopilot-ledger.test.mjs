@@ -274,6 +274,14 @@ describe('.github/workflows/autopilot-watch.yml', () => {
       assert.match(before, /# why:/, `${m[2]}: ${m[3]} has no # why: line above it`);
     }
     assert.equal((WF.match(/ref: main/g) ?? []).length, 2);
-    assert.doesNotMatch(WF, /github\.event\./);
+    // lead 7185eb 2026-10-03: the one place the triggering run may be read is the top-level `run-name:` (display only, never a shell),
+    // because assert-workflow-hardening limb 16 (#1168) requires a workflow_run workflow to name the verdict that woke it; main-healthy
+    // and redeploy-stranded read it the same way. Everywhere else stays free of github.event.*, and run-name may read only these fields.
+    const lines = WF.split('\n');
+    assert.doesNotMatch(lines.filter((l) => !/^run-name: /.test(l)).join('\n'), /github\.event\./);
+    const runName = lines.find((l) => /^run-name: /.test(l)) ?? '';
+    for (const m of runName.matchAll(/github\.event\.([a-z_.]+)/g)) {
+      assert.ok(['workflow_run.name', 'workflow_run.conclusion', 'workflow_run.head_sha'].includes(m[1]), `run-name reads github.event.${m[1]}`);
+    }
   });
 });

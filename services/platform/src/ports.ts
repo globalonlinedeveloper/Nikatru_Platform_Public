@@ -28,6 +28,14 @@
 // ⏱ 2026-10-01 · fix-india-rail-tax-data: which rail SELLS on web is `checkoutRailFor(market)`
 // below, from the rendered CHECKOUT_RAIL_BY_MARKET — a buyer-declared market, never a header.
 //
+// TELEMETRY (tooling/ports/telemetry.json) · ⏱ 2026-10-02 · port-telemetry, the Worker half:
+//   · `errorSinkFor(env)` — the `sentry-envelope` adapter (GLITCHTIP_DSN).
+//     `app.onError` still calls `reportWorkerError(` through lib/error-sink.ts, the
+//     port's one declared exception (tooling/ports/telemetry.json `handTables`).
+//   · `notifierFor(severity, env)` — the route in ports/telemetry.ts
+//     NOTIFIER_ROUTES: a primary and an off-Box-B fallback, tried once each.
+// Selecting another adapter is an edit to that table and to the switch below,
+// never to a caller.
 // AI (tooling/ports/ai.json). `aiFor(feature, env, { beforeCall })` is the
 // provider and the model for one feature, or why there is none:
 //   · the model of each feature is AI_FEATURE_TABLE below — a hand table
@@ -64,6 +72,12 @@ import { paddleRail } from './lib/mor/paddle-rail';
 import { razorpayRail } from './lib/mor/razorpay-rail';
 import { fakeVerifier, makeFakeRail } from '../../_shared/src/ports/fakes/payments';
 import { RAIL_PRICE_IDS } from './routes/rail-price-ids';
+import { NOTIFIER_ROUTES, withFallback } from '../../_shared/src/ports/telemetry';
+import type { AlertSeverity, ErrorSink, Notifier, NotifierId } from '../../_shared/src/ports/telemetry';
+import { sentryEnvelopeSink } from '../../_shared/src/adapters/telemetry/sentry-envelope';
+import { ntfyNotifier } from '../../_shared/src/adapters/telemetry/notify-ntfy';
+import { webhookNotifier } from '../../_shared/src/adapters/telemetry/notify-webhook';
+import { mailNotifier } from '../../_shared/src/adapters/telemetry/notify-mail';
 
 type MailSecret = 'RESEND_API_KEY' | 'RESEND_REMINDERS_API_KEY';
 
@@ -191,6 +205,29 @@ export function checkoutRailFor(market: string | null): PaymentsAdapterId | null
 export function portFor(port: 'payments', environment: PortEnvironment): readonly PaymentsAdapterId[] {
   if (port !== 'payments') return [];
   return PAYMENTS_ADAPTERS.filter((a) => a.environments.includes(environment)).map((a) => a.id);
+}
+
+/** One notifier adapter by its wire id (tooling/ports/telemetry.json). */
+export function notifierAdapter(id: NotifierId, env: Env): Notifier {
+  switch (id) {
+    case 'ntfy':
+      return ntfyNotifier(env);
+    case 'webhook':
+      return webhookNotifier(env, 'nikatru-platform');
+    case 'mail':
+      return mailNotifier();
+  }
+}
+
+/** The owner-alert channel for `severity`: its primary, then its fallback once. */
+export function notifierFor(severity: AlertSeverity, env: Env): Notifier {
+  const route = NOTIFIER_ROUTES[severity];
+  return withFallback(notifierAdapter(route.primary, env), route.fallback ? notifierAdapter(route.fallback, env) : null);
+}
+
+/** The telemetry port's ErrorSink adapter for this Worker. */
+export function errorSinkFor(env: Env): ErrorSink {
+  return sentryEnvelopeSink(env);
 }
 
 /**

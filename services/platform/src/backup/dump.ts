@@ -69,6 +69,8 @@
 // handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
 // subqueries of columnsOf are not a compound SELECT.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
+import type { KvStore } from '../../../_shared/src/ports/kv';
 
 /**
  * Rows read from ONE table per read round, at most.
@@ -156,7 +158,7 @@ export const SQL_FUNCTION_ARGS = 32;
 export const MAX_STATEMENT_BYTES = 90_000;
 
 /**
- * Keys listed per `KVNamespace.list()` call — the vendor's own page size.
+ * Keys listed per `KvStore.list()` call — the vendor's own page size.
  *
  * @ceiling none — this is the KV list API's maximum page, not a cap this code
  *   chooses. Asking for more returns 1000 anyway.
@@ -424,7 +426,7 @@ function columnsOf(reads: readonly string[]): string {
  * spends 0 and reports `truncated`, which is RED.
  */
 export async function dumpD1Database(
-  db: D1Database,
+  db: SqlDb,
   databaseName: string,
   queryBudget: number | D1QueryPool,
   nowIso: string,
@@ -805,7 +807,7 @@ export interface KvDumpResult {
  * change that must be made deliberately here rather than absorbed.
  */
 export async function dumpKvNamespace(
-  ns: KVNamespace,
+  ns: KvStore,
   namespaceName: string,
   maxKeys: number,
   nowIso: string,

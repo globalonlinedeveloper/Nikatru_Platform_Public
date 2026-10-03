@@ -5,6 +5,7 @@
 //
 //   node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run
 //        [--env live|sandbox|test] [--from <adapter>] [--root <repoRoot>]
+//        [--export <file>]   (port `sql` only)
 //
 //   <port>      a tooling/ports/<port>.json registry.
 //   --to        the adapter id the port would switch to.
@@ -14,6 +15,8 @@
 //   --from      the adapter being replaced; default: selection.default[env],
 //               or — for a port selected per channel — every adapter that
 //               serves a channel today.
+//   --export    port `sql` only: ONE nightly D1 export (gzipped JSON lines,
+//               services/platform/src/backup/), given locally — never fetched.
 //
 // One line per check, `PASS | FAIL | LOST  C<n> <name>: <detail>`, after ONE
 // first line that names the check deciding the exit (the shape of
@@ -23,7 +26,7 @@
 //           or the invocation was refused;
 //   exit 0  every check PASS.
 //
-// The eight:
+// The eight, and for `sql` a ninth:
 //   C1 target     the target row exists, carries the environment, and is not a
 //                 `fake` for live
 //   C2 status     its status (draft and retired cannot take traffic)
@@ -75,6 +78,20 @@
 //   C13 warming   sending reputation does not move; the target's warm-up is written
 //   C14 cost      the per-stream monthly cost from tooling/ceilings.json's rows for
 //                 the vendors; LOST when it records none (never a guess)
+// A TELEMETRY switch adds one (port-telemetry, PORT_PLANS):
+//   C9  plan      what else the switch moves: the DSN of every app build per
+//                 channel — COMPILE-TIME by owner decision, so a crash-sink switch
+//                 is an APP RELEASE on each of them — and of every Worker (a deploy
+//                 var, so a redeploy); the release artefacts to re-upload (native
+//                 symbols, web source maps); the monitors to recreate from
+//                 tooling/monitor-register.json; and the owner-alert routes.
+//                 LOST when a source cannot be read or yields nothing.
+// A SQL switch adds one (port-sql, ⏱ 2026-10-02):
+//   C9  replay    the --export file is loaded into a node:sqlite file built from
+//                 the migrations of the database it names, and its table list and
+//                 row counts are compared (tooling/ops/sql-export-replay.mjs). Each
+//                 mismatch is a FAIL; no --export is LOST — the export duty
+//                 unrehearsed is not a pass.
 //
 // An AI switch (a port with `features`, tooling/ports/ai.json) adds three, and
 // `--to` may name a MODEL instead of an adapter (`--to claude-opus-5-5`): the
@@ -115,9 +132,12 @@ import { readSecretSources, callsRunner, declares } from '../ci/assert-ports.mjs
 import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER, RAILS } from '../catalog/render-rail-prices.mjs';
 import { railsOf, billsThroughStore, storeBilledRails } from '../ports/render.mjs';
+import { readExportFile, replayExport } from './sql-export-replay.mjs';
 
 export const NO_VALUE_FLAGS = new Set(['--dry-run']);
-export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root']);
+export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root', '--export']);
+/** The ports whose dry run replays an export (C9). */
+export const EXPORT_REPLAY_PORTS = new Set(['sql']);
 export const HOUSE_IDENTITY = 'tooling/house-identity.json';
 export const WORKER_SECRETS_TOOL = 'tooling/ops/worker-secrets.mjs';
 const ENVS = new Set(['live', 'sandbox', 'test']);
@@ -126,7 +146,7 @@ const money = (minor) => `${minor < 0 ? '-' : ''}${Math.trunc(Math.abs(minor) / 
 
 /** Parse argv. Every flag is declared; a no-value flag never eats the next argument (shell-13). */
 export function parseArgs(argv) {
-  const out = { port: null, to: null, env: 'live', from: null, root: null, dryRun: false };
+  const out = { port: null, to: null, env: 'live', from: null, root: null, export: null, dryRun: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -147,6 +167,7 @@ export function parseArgs(argv) {
   if (!out.dryRun) return { error: '--dry-run is required: this tool only ever rehearses a switch, and says so on the command line' };
   if (!out.to) return { error: '--to <adapter> is required' };
   if (!ENVS.has(out.env)) return { error: `--env must be live, sandbox or test, not ${JSON.stringify(out.env)}` };
+  if (out.export !== null && !EXPORT_REPLAY_PORTS.has(out.port)) return { error: `--export is for ${[...EXPORT_REPLAY_PORTS].join(', ')}; the ${out.port} port has no export to replay` };
   return out;
 }
 
@@ -382,9 +403,105 @@ export function run(opts) {
     for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
   }
   if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
+  // C9 — the export duty, rehearsed (port `sql`)
+  if (EXPORT_REPLAY_PORTS.has(opts.port)) {
+    if (!opts.export) add(9, 'replay', 'LOST', 'no --export <file>: the nightly export was not replayed, so the export duty is unrehearsed');
+    else {
+      let text = null;
+      try { text = readExportFile(resolve(root, opts.export)); } catch (e) { add(9, 'replay', 'LOST', `${opts.export} could not be read (${e.message})`); }
+      if (text !== null) {
+        const r = replayExport({ root, jsonl: text });
+        add(9, 'replay', r.verdict, r.detail);
+        extra.push(...r.lines);
+      }
+    }
+  }
+  // C9 — a port's own switch plan, when it has one (PORT_PLANS)
+  const planFor = Object.hasOwn(PORT_PLANS, opts.port) ? PORT_PLANS[opts.port] : undefined;
+  if (planFor) {
+    const p = planFor(root, doc, target, current);
+    add(9, 'plan', p.verdict, p.detail);
+    extra.push(...p.lines);
+  }
   const aiLines = isObj(doc.features) ? aiChecks(root, doc, target, model, add) : [];
   return finish(checks, [...extra, ...aiLines]);
 }
+
+export const PLATFORM_REGISTER = 'tooling/platform-register.json';
+export const MONITOR_REGISTER = 'tooling/monitor-register.json';
+/** The release artefacts a crash sink needs re-uploaded to make old releases readable. */
+export const TELEMETRY_UPLOADERS = ['tooling/ops/upload-native-symbols.mjs', 'tooling/ops/upload-web-sourcemaps.mjs'];
+
+/**
+ * C9 for `telemetry`: everything a crash-sink or alert switch moves besides the
+ * registry row. Reads tooling/channel-register.json (crashSink per channel),
+ * tooling/platform-register.json (dsnSecret per Worker), tooling/monitor-register.json
+ * (the monitors) and the port's own Notifier rows. Never a DSN value — names only.
+ */
+export function telemetryPlan(root, doc, target, current) {
+  const lines = [];
+  const lost = [];
+  const read = (rel) => { try { return JSON.parse(readFileSync(join(root, rel), 'utf8')); } catch (e) { lost.push(`${rel} could not be read (${e.message})`); return null; } };
+  const ch = read(CHANNEL_REGISTER);
+  const plat = read(PLATFORM_REGISTER);
+  const mon = read(MONITOR_REGISTER);
+  const lang = (a) => (/\.dart$/.test(a?.impl?.file ?? '') ? 'dart' : /\.ts$/.test(a?.impl?.file ?? '') ? 'ts' : null);
+  const touches = new Set([target, ...current].map(lang).filter(Boolean));
+
+  // the app half: one DSN per build, compile-time
+  const appRows = (ch?.channels ?? []).filter((c) => (c?.crashSink?.layers ?? []).includes('dart'));
+  lines.push(`    ── app builds (${touches.has('dart') ? 'TOUCHED by this switch' : 'not touched: the target is a Worker adapter'}) ──`);
+  lines.push('    GLITCHTIP_DSN is COMPILE-TIME (owner decision 2026-07-27, capability-register glitchtip.configKeyed): a new crash sink for the apps is an APP RELEASE on every channel below, and builds already in the field keep reporting to the old sink until users update.');
+  for (const c of appRows) lines.push(`      ${c.id.padEnd(16)} GLITCHTIP_DSN (--dart-define) → release this channel`);
+  for (const c of (ch?.channels ?? []).filter((x) => !(x?.crashSink?.layers ?? []).includes('dart'))) lines.push(`      ${String(c.id).padEnd(16)} no Dart crash sink declared (${c.crashSink ? 'crashSink.layers is empty' : 'no crashSink row'}) — nothing to repoint`);
+  if (ch && !appRows.length) lost.push(`${CHANNEL_REGISTER} names no channel whose crashSink carries the dart layer`);
+
+  // the Worker half: one DSN per Worker, a deploy var
+  const workers = [plat?.servingWorker, ...(plat?.appWorkers ?? [])].filter((w) => w && typeof w.dsnSecret === 'string');
+  lines.push(`    ── Workers (${touches.has('ts') ? 'TOUCHED by this switch' : 'not touched: the target is an app adapter'}) ──`);
+  for (const w of workers) lines.push(`      ${String(w.worker ?? w.id ?? w.name ?? '?').padEnd(24)} ${w.dsnSecret} (deploy var) → set it and REDEPLOY; no app release`);
+  if (plat && !workers.length) lost.push(`${PLATFORM_REGISTER} names no Worker with a dsnSecret`);
+
+  // releases and symbols
+  lines.push('    ── release artefacts to re-upload to the new sink, per release still in the field ──');
+  for (const u of TELEMETRY_UPLOADERS) {
+    if (existsSync(join(root, u))) lines.push(`      node ${u}`);
+    else lost.push(`${u} does not exist; the symbol re-upload path is unknown`);
+  }
+
+  // monitors
+  const hosts = Array.isArray(mon?.hosts) ? mon.hosts : [];
+  const withMonitor = hosts.filter((h) => h?.monitor && h.monitor.id !== undefined && h.monitor.id !== null);
+  lines.push(`    ── monitors to recreate from ${MONITOR_REGISTER} (node tooling/ops/ensure-monitors.mjs --apply, through tooling/ops/monitor-api/) ──`);
+  const byId = new Map();
+  for (const h of withMonitor) byId.set(h.monitor.id, { type: h.monitor.type, hosts: [...(byId.get(h.monitor.id)?.hosts ?? []), h.hostname] });
+  for (const [id, m] of byId) lines.push(`      #${String(id).padEnd(4)} ${String(m.type ?? '?').padEnd(9)} ${m.hosts.join(', ')}`);
+  const pending = hosts.length - withMonitor.length;
+  if (pending) lines.push(`      (${pending} host row(s) with no monitor yet — ensure-monitors creates those too)`);
+  lines.push('      the heartbeat URLs (PLATFORM_CRON_HEARTBEAT_URL, OPS_WATCHDOG_HEARTBEAT_URL, OPS_STUCK_RUNS_HEARTBEAT_URL) are Worker secrets: re-set each to the new monitor\'s URL.');
+  if (mon && !withMonitor.length) lost.push(`${MONITOR_REGISTER} holds no monitor id`);
+
+  // owner alerts
+  const notifiers = (doc.adapters ?? []).filter((a) => (a.capabilities ?? []).includes('notify'));
+  lines.push('    ── owner alerts (services/_shared/src/ports/telemetry.ts NOTIFIER_ROUTES; a route change, never a caller change) ──');
+  for (const n of notifiers) lines.push(`      ${n.id.padEnd(14)} ${n.status.padEnd(6)} ${(n.secrets ?? []).join(', ') || 'no secret'}`);
+
+  // cost and history
+  const unit = (a) => (a?.cost?.unit ? `${a.cost.unit.usd} USD per ${a.cost.unit.per} (asOf ${a.cost.unit.asOf})` : 'no unit cost recorded');
+  lines.push(`    ── cost delta: ${current.map((c) => `${c.id}: ${unit(c)}`).join('; ') || 'no current adapter'} → ${target.id}: ${unit(target)} ──`);
+  lines.push('    ── export: the issue history is a diagnostic stream — export it optionally; never block the switch on it ──');
+
+  if (lost.length) return { verdict: 'LOST', detail: lost[0], lines };
+  return {
+    verdict: 'PASS',
+    detail: `${appRows.length} app build(s) need a release if the app sink moves; ${workers.length} Worker(s) a redeploy; ${TELEMETRY_UPLOADERS.length} uploader(s); ${byId.size} monitor(s) to recreate`,
+    lines,
+  };
+}
+
+/** Port-specific C9 plans, by port. */
+export const PORT_PLANS = Object.freeze({ telemetry: telemetryPlan });
+
 
 /** C9 · the webhook URL to register: the platform Worker's own custom domain for `env`. */
 export function webhook(root, env, target) {
@@ -617,7 +734,10 @@ export function aiChecks(root, doc, target, model, add) {
     }
   }
   if (lost17.length) add(17, 'floor', 'LOST', `${lost17.length} floor(s) not derived — first: ${lost17[0]}`);
-  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below)`);
+  // A call that falls back also bills its declined attempt; C is the dearest
+  // SINGLE attempt, so on a refused call the margin can be under the multiple
+  // (the hard cap is unaffected). Said, not hidden (review of #1136, nit 1).
+  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below); a refusal's declined attempt is excluded`);
   return lines;
 }
 
@@ -707,7 +827,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.error) {
     console.error(`port-switch: REFUSED — ${opts.error}`);
-    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>]');
+    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>] [--export <file>]');
     process.exit(2);
   }
   const { code, out } = run(opts);

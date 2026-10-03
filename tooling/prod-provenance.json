@@ -241,6 +241,10 @@
           "resolver": "extension-catalogue",
           "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
         },
+        "box_config_manifest": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-01 · PB-27. NO app_version COLUMN AND NO OTHER MARKER: 0025_box_config_manifest.sql gives this table `box`, `manifest` and `posted_at` — one row per box, replaced whole by POST /v1/ops/box-manifest, which a box's own cron calls with a secret scoped to that box (services/platform/src/routes/box-manifest.ts). `box` is a closed set of two the route enforces, `manifest` is sha256 hashes of box config files and `posted_at` is the server's instant; no row is written by an app, a build or a live verification, and none names a build, an app or a money world a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+        },
         "ext_link_floor": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-30 · EXA-11. NO app_version COLUMN AND NO OTHER MARKER: 0021_ext_link_floor.sql gives this table `user_id`, `not_before`, `recovery_session` and `updated_at` — a per-account singleton written by POST /v1/sessions/revoke-all and by the recovery door in middleware/auth.ts from the authenticated session. `user_id` is a Supabase subject this database cannot resolve, `not_before` and `updated_at` are server instants, and `recovery_session` is a GoTrue session id; none names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
