@@ -86,6 +86,8 @@ extension ChassisBridge on AppLocalizations {
   String authRetryAfterMinutes(int count) =>
       _chassis.authRetryAfterMinutes(count);
 
+  String get authSessionsNotRevoked => _chassis.authSessionsNotRevoked;
+
   String get authShow => _chassis.authShow;
 
   String get authShowPassword => _chassis.authShowPassword;
