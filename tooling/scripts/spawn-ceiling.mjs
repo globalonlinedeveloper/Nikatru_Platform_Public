@@ -3,7 +3,12 @@
 // `node --test` run starts. A PRELOAD, not a test: every `node --test` in
 // .github/workflows/ and preflight.mjs loads it with
 //
-//   node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test ...
+//   node --import "$SPAWN_CEILING" --test-timeout=600000 --test ...
+//
+// where SPAWN_CEILING is this file's ABSOLUTE file URL (.github/actions/setup-node
+// writes it to $GITHUB_ENV; preflight.mjs substitutes the same URL for {SPAWN_CEILING}).
+// A relative `--import ./tooling/...` resolves against
+// the cwd and works only from the repository root (review of #1160, nit 5).
 //
 // 🔴 WHY. ⏱ 2026-09-25 · main CI for #934 (run 36106900356, sha c02e6d33) was
 // CANCELLED, not red: job 107981386553's `node --test "tooling/ci/test/*.test.mjs"`
