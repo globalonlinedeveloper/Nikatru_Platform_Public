@@ -18,7 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { BUNDLES_REGISTER } from '../../catalog/read.mjs';
-import { netAfterFee, EXTENSION_REGISTER, RAILS, RAIL_PRICE_MAP, railPriceMapFor } from '../../catalog/render-rail-prices.mjs';
+import { netAfterFee, EXTENSION_REGISTER, RAILS, RAIL_PRICE_MAP, railPriceMapFor, railTaxModes, TAX_MODE_READ_BACK } from '../../catalog/render-rail-prices.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'catalog', 'render-rail-prices.mjs');
@@ -283,6 +283,111 @@ describe('limb D — an extension is web-only', () => {
     const r = run(root, '--check');
     assert.equal(r.code, 1, r.all);
     assert.match(r.err, /apps\.fullshot serves offering "pro_yearly" and prices\.apps\.fullshot has no entry/);
+  });
+});
+
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · O-TAX-TREATMENT-STATED-TWO-WAYS: the tax mode is data,
+// one per rail, and the published tax sentences render from it (generate-discovery.mjs).
+describe('limb I — one tax mode per rail', () => {
+  test('green control: the real tree states paddle unread and razorpay inclusive, one mode each', () => {
+    const data = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    const { modes, problems } = railTaxModes(data);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(modes, { paddle: 'unread', razorpay: 'inclusive' });
+    assert.deepEqual([...TAX_MODE_READ_BACK], ['paddle']);
+    const r = run(null, '--check');
+    assert.match(r.out, /⬜ tax mode paddle: unread/);
+    assert.match(r.out, /✓ tax mode razorpay: inclusive/);
+  });
+
+  test('RED CONTROL (the row): a read-back rail with no taxMode is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete monthly(d).rails.paddle.taxMode;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly\.rails\.paddle has no `taxMode`/);
+  });
+
+  test('a pending rail with no taxMode is exit 1 (the mode is the rail\'s, not the price\'s)', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete lifetime(d).rails.razorpay.taxMode;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_lifetime\.rails\.razorpay has no `taxMode`/);
+  });
+
+  test('a taxMode outside the vocabulary is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      monthly(d).rails.razorpay.taxMode = 'gst';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /rails\.razorpay\.taxMode is "gst"; it is one of inclusive, exclusive, unread/);
+  });
+
+  test('"unread" on a rail whose mode is decided (razorpay) is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      for (const e of Object.values(d.prices.apps).flatMap((a) => Object.values(a))) e.rails.razorpay.taxMode = 'unread';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /razorpay\.taxMode is "unread", but razorpay's mode is decided/);
+  });
+
+  test('two modes on one rail is exit 1, naming both', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      monthly(d).rails.paddle.taxMode = 'exclusive';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /paddle states 2 tax modes \(.*exclusive: prices\.apps\.subscriptiontracker\.pro_monthly/);
+  });
+
+  test('every entry of a rail agreeing on a decided mode is green', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      for (const e of Object.values(d.prices.apps).flatMap((a) => Object.values(a))) e.rails.paddle.taxMode = 'exclusive';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 0, r.all);
+    assert.match(r.out, /✓ tax mode paddle: exclusive/);
+  });
+});
+
+// ⏱ 2026-10-02 · PR #1149 ruling item 5: the India book prices exactly what the India rail can sell.
+describe('limb J — the India book', () => {
+  test('green control: the real tree leaves the lifetime plan out of the India book (no webInrMinor)', () => {
+    const real = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    assert.equal(lifetime(real).plan, 'single-lifetime');
+    assert.equal(lifetime(real).webInrMinor, undefined);
+    assert.ok(Number.isInteger(monthly(real).webInrMinor));
+  });
+
+  test('RED CONTROL: a one-time offering carrying webInrMinor is exit 1 while the order path is not built', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      lifetime(d).webInrMinor = 249900;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_lifetime is a one-time offering and carries webInrMinor/);
+  });
+
+  test('a recurring offering with no webInrMinor is exit 1 (the India rail sells it as a plan)', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete monthly(d).webInrMinor;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly has no integer webInrMinor/);
   });
 });
 

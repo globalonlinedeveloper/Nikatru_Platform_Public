@@ -21,9 +21,15 @@ import { fileURLToPath } from 'node:url';
 import {
   CANARIES,
   CoverageLost,
+  EXPIRY_WARN_DAYS,
   LOCKFILE_NAMES,
+  expiringIgnores,
+  ignoredVulnsFrom,
   lockfilesFrom,
+  parseArgs,
   parseFindings,
+  prChangedFiles,
+  prScopeFrom,
   parseScanned,
   relativeTo,
   scanDependencies,
@@ -209,6 +215,204 @@ describe('scan-dependencies — exit 2 is COVERAGE LOST, never a pass', () => {
   });
 });
 
+// PR #1154 ruling item 4: an ignore WARNS before it expires, so 90 ids expiring on
+// one day are not first seen as a red ops-watch page.
+describe('scan-dependencies — an osv-scanner.toml ignore warns before it expires', () => {
+  const NOW = new Date('2026-10-02T12:00:00Z');
+  const toml = (entries) =>
+    entries
+      .map(([id, until]) => `[[IgnoredVulns]]\nid = "${id}"\n${until ? `ignoreUntil = ${until}\n` : ''}reason = "x" # note`)
+      .join('\n\n');
+  const withConfig = (text, fn) => {
+    writeFileSync(join(ROOT, 'osv-expiry.toml'), text);
+    try {
+      return fn();
+    } finally {
+      rmSync(join(ROOT, 'osv-expiry.toml'), { force: true });
+    }
+  };
+
+  test('RED CONTROL — an ignore expiring in 7 days warns, naming its id and date; the exit code is unchanged', () => {
+    const r = withConfig(toml([['GHSA-seven-days-0000', '2026-10-09T00:00:00Z']]), () =>
+      scan(fakeOsv(), { config: 'osv-expiry.toml', now: NOW }),
+    );
+    assert.equal(r.code, 0, 'a warning, never a finding');
+    assert.equal(r.expiring.length, 1);
+    const line = r.lines.find((l) => l.startsWith('⚠'));
+    assert.ok(line, r.lines.join('\n'));
+    assert.match(line, /GHSA-seven-days-0000/);
+    assert.match(line, /expire on 2026-10-09 \(in 7 days\)/);
+  });
+
+  test('GREEN CONTROL — an ignore 30 days out does not warn', () => {
+    const r = withConfig(toml([['GHSA-thirty-days-000', '2026-11-01T12:00:00Z']]), () =>
+      scan(fakeOsv(), { config: 'osv-expiry.toml', now: NOW }),
+    );
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.expiring, []);
+    assert.ok(!r.lines.some((l) => l.startsWith('⚠')), r.lines.join('\n'));
+  });
+
+  test('the window edge is EXPIRY_WARN_DAYS (14): 14 days warns, 15 does not; past and undated warn', () => {
+    assert.equal(EXPIRY_WARN_DAYS, 14);
+    const entries = ignoredVulnsFrom(
+      toml([
+        ['GHSA-at-14', '2026-10-16T12:00:00Z'],
+        ['GHSA-at-15', '2026-10-17T12:00:00Z'],
+        ['GHSA-past', '2026-09-30T00:00:00Z'],
+        ['GHSA-undated', null],
+        ['GHSA-bad-date', 'soon'],
+      ]),
+    );
+    const groups = expiringIgnores(entries, NOW);
+    const ids = groups.flatMap((g) => g.ids).sort();
+    assert.deepEqual(ids, ['GHSA-at-14', 'GHSA-bad-date', 'GHSA-past', 'GHSA-undated']);
+  });
+
+  test('ids sharing one date are ONE warning (the 2026-10-31 cohort)', () => {
+    const text = toml(Array.from({ length: 90 }, (_, i) => [`GHSA-cohort-${i}`, '2026-10-31T00:00:00Z']));
+    const groups = expiringIgnores(ignoredVulnsFrom(text), new Date('2026-10-24T00:00:00Z'));
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].ids.length, 90);
+    assert.equal(groups[0].daysLeft, 7);
+  });
+
+  test('the REAL osv-scanner.toml parses: every entry has an id and a readable ignoreUntil', () => {
+    const entries = ignoredVulnsFrom(readFileSync(join(REPO, 'osv-scanner.toml'), 'utf8'));
+    assert.ok(entries.length > 0);
+    for (const e of entries) {
+      assert.match(e.id ?? '', /^GHSA-/);
+      assert.ok(e.until instanceof Date, `${e.id} has no readable ignoreUntil`);
+    }
+  });
+});
+
+// [rv2-security-004, part 1] The PR gate grades only the lockfiles the PR changed.
+// `prDiff` stands in for git: it returns what `git diff --name-only -z` would.
+describe('scan-dependencies — a pull request is graded on the lockfiles IT changed', () => {
+  const MB = 'b'.repeat(40);
+  const HEAD = 'c'.repeat(40);
+  const RANGE = `${'a'.repeat(40)}..${HEAD}`;
+  const diff = (...paths) => () => ({ from: MB, head: HEAD, diffZ: paths.map((p) => `${p}\0`).join('') });
+  const MARKDOWN_IT = { path: 'sites/_shared/package-lock.json', name: 'markdown-it', version: '14.3.0', ids: ['GHSA-253c-mchw-3w2r'] };
+  const LINE = 'sites/_shared/package-lock.json: markdown-it@14.3.0 (npm) — GHSA-253c-mchw-3w2r';
+
+  test('RED CONTROL — a PR that bumps a lockfile to a vulnerable version exits 1 and names it', () => {
+    const r = scan(fakeOsv({ tree: { findings: [MARKDOWN_IT] } }), { prRange: RANGE, prDiff: diff('sites/_shared/package-lock.json', 'sites/_shared/package.json') });
+    assert.equal(r.code, 1, r.lines.join('\n'));
+    assert.ok(r.lines.includes(`✗ ${LINE}`), r.lines.join('\n'));
+    assert.match(r.lines.at(-1), /1 vulnerable package\(s\) in lockfile\(s\) this pull request changed/);
+  });
+
+  test('GREEN CONTROL — the SAME advisory in a lockfile the PR did not change exits 0, and is PRINTED', () => {
+    const r = scan(fakeOsv({ tree: { findings: [MARKDOWN_IT] } }), { prRange: RANGE, prDiff: diff('apps/x/lib/main.dart', 'pubspec.lock') });
+    assert.equal(r.code, 0, r.lines.join('\n'));
+    assert.equal(r.deferred, 1);
+    assert.ok(r.lines.includes(`· not this pull request's: ${LINE}`), r.lines.join('\n'));
+    assert.ok(r.lines.some((l) => /did not change — printed, not graded here\. ops-watch\.yml's dependency-advisories job grades main daily/.test(l)), r.lines.join('\n'));
+    assert.ok(r.lines.some((l) => /2 file\(s\) changed, 1 of them lockfile\(s\) \(pubspec\.lock\)/.test(l)), r.lines.join('\n'));
+  });
+
+  test('a mix: the changed lockfile\'s advisory fails, the unchanged one is printed beside it', () => {
+    const r = scan(fakeOsv({ tree: { findings: [MARKDOWN_IT, { path: 'pnpm-lock.yaml', name: 'qs', version: '6.0.0', ids: ['GHSA-qs'] }] } }), { prRange: RANGE, prDiff: diff('pnpm-lock.yaml') });
+    assert.equal(r.code, 1, r.lines.join('\n'));
+    assert.ok(r.lines.includes('✗ pnpm-lock.yaml: qs@6.0.0 (npm) — GHSA-qs'));
+    assert.ok(r.lines.includes(`· not this pull request's: ${LINE}`));
+    assert.ok(!r.lines.includes(`✗ ${LINE}`));
+  });
+
+  test('a PR that changes osv-scanner.toml (or this script) is graded on EVERY lockfile', () => {
+    for (const p of ['osv-scanner.toml', 'tooling/ci/scan-dependencies.mjs']) {
+      const r = scan(fakeOsv({ tree: { findings: [MARKDOWN_IT] } }), { prRange: RANGE, prDiff: diff(p) });
+      assert.equal(r.code, 1, `${p}\n${r.lines.join('\n')}`);
+      assert.ok(r.lines.some((l) => l.includes(`changes ${p}, so EVERY lockfile is graded`)), r.lines.join('\n'));
+    }
+  });
+
+  test('the canary and the floor still run in full on a PR — an unchanged lockfile OSV did not read is still exit 2', () => {
+    const fake = fakeOsv({ tree: { skip: ['pubspec.lock'] } });
+    const r = scan(fake, { prRange: RANGE, prDiff: diff('pnpm-lock.yaml') });
+    assert.equal(r.code, 2, r.lines.join('\n'));
+    assert.match(r.lines.at(-1), /Not read: pubspec\.lock\./);
+    assert.equal(fake.calls.length, 2, 'one canary run, one tree run');
+    const missed = scan(fakeOsv({ canary: { miss: ['pubspec.lock'] } }), { prRange: RANGE, prDiff: diff('README.md') });
+    assert.equal(missed.code, 2, missed.lines.join('\n'));
+  });
+
+  test('a range git cannot resolve is COVERAGE LOST before OSV is asked anything', () => {
+    const fake = fakeOsv({ tree: { findings: [MARKDOWN_IT] } });
+    const r = scan(fake, { prRange: RANGE, prDiff: () => { throw new Error('--pr-range base aaaa is not in this clone'); } });
+    assert.equal(r.code, 2, r.lines.join('\n'));
+    assert.match(r.lines.at(-1), /COVERAGE LOST — --pr-range base aaaa is not in this clone/);
+    assert.equal(fake.calls.length, 0);
+  });
+
+  test('no prRange (a push, the daily scan of main) grades every lockfile, exactly as before', () => {
+    const r = scan(fakeOsv({ tree: { findings: [MARKDOWN_IT] } }));
+    assert.equal(r.code, 1);
+    assert.ok(r.lines.includes(`✗ ${LINE}`));
+    assert.ok(!r.lines.some((l) => l.startsWith('· not this pull request')));
+  });
+
+  test('prScopeFrom keeps lockfiles by basename and widens on the config or the script', () => {
+    assert.deepEqual([...prScopeFrom('a/package-lock.json\0a/package.json\0x/pubspec.lock\0').lockfiles], ['a/package-lock.json', 'x/pubspec.lock']);
+    assert.equal(prScopeFrom('a/package.json\0').all, false);
+    assert.equal(prScopeFrom('osv-scanner.toml\0').all, true);
+    assert.equal(prScopeFrom('cfg/osv.toml\0', { config: 'cfg/osv.toml' }).all, true, 'a --config elsewhere widens too');
+  });
+
+  test('parseArgs reads --pr-range, and refuses one given with no value (an empty event field)', () => {
+    assert.equal(parseArgs(['--osv', 'o', '--pr-range', RANGE, '/r']).prRange, RANGE);
+    assert.equal(parseArgs(['--osv', 'o']).prRange, null);
+    assert.equal(parseArgs(['--osv', 'o', '--pr-range']), null);
+    assert.equal(parseArgs(['--osv', 'o', '--pr-range', '']), null);
+  });
+});
+
+// prChangedFiles against a REAL git repository: main moves on after the PR forks,
+// and the PR's range must be merge-base..head, not base..head.
+describe('scan-dependencies — prChangedFiles reads merge-base..head from git', () => {
+  let G;
+  const git = (...args) => {
+    const r = spawnSync('git', args, { cwd: G, encoding: 'utf8' });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const commit = (files, msg) => {
+    for (const [p, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(G, p)), { recursive: true });
+      writeFileSync(join(G, p), body);
+    }
+    git('add', '-A');
+    git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', msg);
+    return git('rev-parse', 'HEAD');
+  };
+  let BASE_TIP;
+  let PR_HEAD;
+  before(() => {
+    G = join(TMP, 'git');
+    mkdirSync(G, { recursive: true });
+    git('init', '-q', '-b', 'main');
+    commit({ 'a/package-lock.json': '{"v":1}\n', 'pubspec.lock': 'v1\n', 'README.md': 'x\n' }, 'root');
+    git('checkout', '-q', '-b', 'pr');
+    PR_HEAD = commit({ 'a/package-lock.json': '{"v":2}\n', 'a/package.json': '{}\n' }, 'pr bumps a lockfile');
+    git('checkout', '-q', 'main');
+    BASE_TIP = commit({ 'pubspec.lock': 'v2\n' }, 'main moves on');
+  });
+
+  test('the PR\'s own change only — main\'s later lockfile change is not the PR\'s', () => {
+    const r = prChangedFiles(G, `${BASE_TIP}..${PR_HEAD}`);
+    assert.deepEqual(r.diffZ.split('\0').filter(Boolean).sort(), ['a/package-lock.json', 'a/package.json']);
+    assert.deepEqual([...prScopeFrom(r.diffZ).lockfiles], ['a/package-lock.json']);
+  });
+
+  test('a malformed or empty range, and a sha not in the clone, each throw (COVERAGE LOST upstream)', () => {
+    assert.throws(() => prChangedFiles(G, `..${PR_HEAD}`), /is not <40-hex base>\.\.<40-hex head>/);
+    assert.throws(() => prChangedFiles(G, ''), /is not <40-hex base>/);
+    assert.throws(() => prChangedFiles(G, `${'d'.repeat(40)}..${PR_HEAD}`), /base d{40} is not in this clone/);
+  });
+});
+
 describe('scan-dependencies — the parsers', () => {
   test('parseScanned reads OSV 2.6.0\'s line, singular and plural, and nothing else', () => {
     const got = parseScanned([
@@ -313,6 +517,40 @@ describe('scan-dependencies — the REAL tree', () => {
     const opened = text.replace(/(package-ecosystem: pub[\s\S]*?open-pull-requests-limit: )0/, '$15');
     assert.notEqual(opened, text, 'the mutation did not apply');
     assert.deepEqual(dependabotProblems(opened, real), ['an entry opens version-update PRs (no open-pull-requests-limit: 0): - package-ecosystem: pub']);
+  });
+
+  // [rv2-security-004 part 3] The PR half of advisory coverage: Renovate reads OSV itself and
+  // raises the fix PR outside the weekly window. Pinned so the line cannot leave quietly.
+  const renovateOsvProblems = (cfg) => {
+    const out = [];
+    if (cfg.osvVulnerabilityAlerts !== true) out.push('osvVulnerabilityAlerts is not true');
+    if (!(cfg.vulnerabilityAlerts?.schedule ?? []).includes('at any time')) out.push('vulnerabilityAlerts PRs wait for the weekly window');
+    if (!/RE-CHECK BY \d{4}-\d{2}-\d{2}/.test([].concat(cfg.vulnerabilityAlerts?.description ?? []).join(' '))) out.push('the experimental option carries no dated re-check');
+    return out;
+  };
+  test('GREEN — renovate.json raises OSV-sourced fix PRs at any time, with a dated re-check; RED when switched off', () => {
+    const cfg = JSON.parse(readFileSync(join(REPO, 'renovate.json'), 'utf8'));
+    assert.deepEqual(renovateOsvProblems(cfg), []);
+    assert.deepEqual(renovateOsvProblems({ ...cfg, osvVulnerabilityAlerts: false }), ['osvVulnerabilityAlerts is not true']);
+    assert.deepEqual(renovateOsvProblems({ ...cfg, vulnerabilityAlerts: { ...cfg.vulnerabilityAlerts, schedule: ['on monday'] } }), ['vulnerabilityAlerts PRs wait for the weekly window']);
+  });
+
+  test('the CLI: a malformed --pr-range is COVERAGE LOST (exit 2) before OSV is started', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, '--osv', join(TMP, 'no-such-osv'), '--pr-range', 'nope'], { encoding: 'utf8', cwd: REPO });
+    assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stderr, /COVERAGE LOST — --pr-range "nope" is not <40-hex base>\.\.<40-hex head>/);
+  });
+
+  // The wiring: without it the scope above is code no gate runs.
+  test('GREEN — ci.yml passes --pr-range on pull_request only, and ops-watch grades main in full', () => {
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const calls = ci.split('\n').filter((l) => /node tooling\/ci\/scan-dependencies\.mjs/.test(l) && !/^\s*#/.test(l));
+    assert.equal(calls.filter((l) => /--pr-range "\$\{SCAN_BASE\}\.\.\$\{SCAN_HEAD\}"/.test(l)).length, 1, calls.join('\n'));
+    assert.equal(calls.filter((l) => !/--pr-range/.test(l)).length, 1, 'the push path runs the scan with no range');
+    assert.match(ci, /if \[ "\$SCAN_KIND" = pr \]; then\n\s+node tooling\/ci\/scan-dependencies\.mjs [^\n]*--pr-range/);
+    assert.match(ci, /SCAN_KIND: \$\{\{ github\.event_name == 'pull_request' && 'pr' \|\| 'push' \}\}/);
+    const ops = readFileSync(join(REPO, '.github', 'workflows', 'ops-watch.yml'), 'utf8');
+    assert.ok(/node tooling\/ci\/scan-dependencies\.mjs --osv/.test(ops) && !/scan-dependencies\.mjs[^\n]*--pr-range/.test(ops), 'the daily scan of main must grade every lockfile');
   });
 
   test('the CLI refuses without --osv (exit 2), and an OSV that does not exist is COVERAGE LOST (exit 2)', () => {

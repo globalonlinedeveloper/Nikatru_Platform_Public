@@ -127,7 +127,7 @@
 
 <main id="main">
   <h1>Terms of Service</h1>
-  <p class="updated">Last updated: 9 September 2026</p>
+  <p class="updated">Last updated: 2 October 2026</p>
 
   <p>These Terms of Service ("Terms") govern your use of the website <a href="https://nikatru.com">nikatru.com</a>
   and the applications and games published by <b>Nikatru</b> ("Nikatru", "we", "us", "our") &mdash; a
@@ -188,7 +188,14 @@
     <!--email_off--><a href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off-->. Cancelling stops future renewals; your
     current paid period runs to its end. Refunds are governed by the
     <a href="/refund">Refund &amp; Cancellation Policy</a>.</li>
-    <li>Prices are inclusive of applicable taxes unless stated otherwise.</li>
+    <!-- ⏱ 2026-10-01 · fix-india-rail-tax-data (business-004): one tax sentence per rail, spliced by
+         tooling/sites/generate-discovery.mjs from each rail's `taxMode` in the price book. This item
+         said "Prices are inclusive of applicable taxes unless stated otherwise" while pricing.html said
+         tax is added at checkout. assert-discovery-surface.mjs limb T fails a differing sentence. -->
+    <!-- TAX:sentences -->
+    <li>Outside India, prices on nikatru.com are in US dollars (USD). Paddle, our Merchant of Record, works out any sales tax, VAT or GST due where you live and shows it at checkout before you pay.</li>
+    <li>In India, prices on nikatru.com are in Indian rupees (INR) and include GST. Nikatru is the seller and Razorpay processes the payment.</li>
+    <!-- /TAX:sentences -->
     <li>Our products are digital and are delivered electronically. Nothing is physically shipped &mdash;
     see the <a href="/shipping">Shipping &amp; Delivery Policy</a>.</li>
   </ul>

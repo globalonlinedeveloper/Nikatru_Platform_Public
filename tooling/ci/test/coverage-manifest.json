@@ -342,7 +342,7 @@
     13,
 
   "data-inventory.test.mjs":
-    55,
+    60,
 
   "dead-repo-names.test.mjs":
     17,
@@ -369,7 +369,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    168,
+    179,
 
   "dod-sync.test.mjs":
     20,
@@ -597,7 +597,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    29,
+    30,
 
   "licence-register.test.mjs":
     80,
@@ -759,7 +759,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    13,
+    23,
 
   "personal-site.test.mjs":
     20,
@@ -786,13 +786,13 @@
     35,
 
   "policy-claims.test.mjs":
-    62,
+    63,
 
   "port-render.test.mjs":
-    16,
+    19,
 
   "port-switch.test.mjs":
-    55,
+    56,
 
   "ports.test.mjs":
     110,
@@ -879,7 +879,7 @@
     136,
 
   "rail-prices.test.mjs":
-    61,
+    71,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -966,7 +966,7 @@
     18,
 
   "scan-dependencies.test.mjs":
-    25,
+    44,
 
   "scan-secrets.test.mjs":
     22,
@@ -996,7 +996,7 @@
     4,
 
   "signing-inputs-pinned.test.mjs":
-    14,
+    26,
 
   "signing-seam-census.test.mjs":
     9,
@@ -1074,7 +1074,7 @@
     39,
 
   "stamp-properties.test.mjs":
-    30,
+    32,
 
   "stamp-text-fidelity.test.mjs":
     44,
