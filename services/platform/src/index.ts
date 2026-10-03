@@ -81,6 +81,8 @@ import nativeHandoff from './routes/native-handoff';
 import reminders from './routes/reminders';
 import calendar from './routes/calendar';
 import boxManifest from './routes/box-manifest';
+import feedback from './routes/feedback';
+import feedbackOps from './routes/feedback-ops';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -391,6 +393,12 @@ app.route('/v1', calendar);
 // user. The route authenticates the bearer against the secret of the ONE box the
 // body names, and middleware/cors.ts refuses `Origin` on `/v1/ops/`.
 app.route('/v1', boxManifest);
+// ⏱ 2026-10-03 · lanes feedback-intake and feedback-triage. "Report a problem":
+// the intake (optional auth, checked in the route), the one-click unsubscribe pair,
+// and the triage tool's status moves behind FEEDBACK_OPS_SECRET (no CORS: the
+// `/v1/ops/` prefix is refused to browsers in middleware/cors.ts).
+app.route('/v1/feedback', feedback);
+app.route('/v1/ops/feedback', feedbackOps);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.
@@ -446,3 +454,7 @@ export default { fetch: app.fetch, scheduled };
 // live. The default export above is still the only thing the runtime serves;
 // a bundle with this export was loaded in workerd and answered its preflight.
 export { app };
+// ⏱ 2026-10-03 · lane feedback-intake: the ONE read path of the screenshot bucket
+// and the per-user export, a NAMED entrypoint reached only over a Service Binding
+// (src/feedback/internal.ts). Not `fetch`: no URL reaches it.
+export { FeedbackInternal } from './feedback/internal';

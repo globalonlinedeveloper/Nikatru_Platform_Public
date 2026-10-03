@@ -198,7 +198,9 @@ function plant(db: RealDb, table: string, userId: string, tag: string): void {
     const allowed = checkedValue(db, table, c.name);
     if (allowed !== null) return allowed;
     const numeric = /INT|REAL|NUM|DOUB|FLOA/i.test(c.type);
-    return numeric ? i : `filler-${table}-${tag}-${i}`;
+    // ⏱ 2026-10-03 · 0025's `feedback_rate_salts` keys on one INTEGER column, so a
+    // numeric filler must be unique per tag too, as the text filler always was.
+    return numeric ? i + 1000 * tag.charCodeAt(0) : `filler-${table}-${tag}-${i}`;
   });
   db.db
     .prepare(

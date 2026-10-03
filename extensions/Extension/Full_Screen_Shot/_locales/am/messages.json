@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "በታሪክዎ ውስጥ ያለውን እያንዳንዱን ቅጽበታዊ ገጽ እይታ እና የተቋረጡ ቀረጻዎች ያስቀሩትን ሁሉ ያስወግዳል። ቅንብሮችዎ እንዳሉ ይቆያሉ።"
   },
+  "optionsSectionReport": {
+    "message": "ችግርን ሪፖርት ያድርጉ"
+  },
+  "optionsReport": {
+    "message": "ምን እንደተበላሸ ይንገሩን"
+  },
+  "optionsReportDesc": {
+    "message": "በnikatru.com ላይ ያለውን የሪፖርት ቅጽ በአዲስ ትር ይከፍታል፤ የFullShot ስሪት፣ ቋንቋ እና አሳሽ ብቻ ተሞልተው።"
+  },
+  "optionsReportBtn": {
+    "message": "የሪፖርት ቅጹን ክፈት"
+  },
+  "optionsSectionHelp": {
+    "message": "እገዛ"
+  },
+  "optionsHelpSearch": {
+    "message": "እገዛ ይፈልጉ"
+  },
+  "optionsHelpNone": {
+    "message": "የሚዛመድ መልስ የለም።"
+  },
+  "optionsHelpAsk": {
+    "message": "አሁንም ተቸግረዋል? ይጠይቁን"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot በዚህ መሣሪያ ላይ ያከማቸውን ሁሉ ይሰረዝ?\n\nበታሪክዎ ውስጥ ያሉ ቅጽበታዊ ገጽ እይታዎች፦ $COUNT$\nከተቋረጡ ቀረጻዎች የቀሩ፦ $LEFTOVER$\nየሚለቀቅ ቦታ፦ $SIZE$\n\nቅንብሮችዎ አይነኩም። ይህ መቀልበስ አይቻልም።",
     "placeholders": {

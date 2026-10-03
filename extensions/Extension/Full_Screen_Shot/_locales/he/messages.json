@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "מסיר כל צילום מסך מההיסטוריה שלך וכל מה שהשאירו אחריהם צילומים שנקטעו. ההגדרות שלך נשארות כמו שהן."
   },
+  "optionsSectionReport": {
+    "message": "דיווח על בעיה"
+  },
+  "optionsReport": {
+    "message": "ספרו לנו מה השתבש"
+  },
+  "optionsReportDesc": {
+    "message": "פותח את טופס הדיווח באתר nikatru.com בכרטיסייה חדשה, כשרק הגרסה של FullShot, השפה והדפדפן ממולאים."
+  },
+  "optionsReportBtn": {
+    "message": "פתיחת טופס הדיווח"
+  },
+  "optionsSectionHelp": {
+    "message": "עזרה"
+  },
+  "optionsHelpSearch": {
+    "message": "חיפוש בעזרה"
+  },
+  "optionsHelpNone": {
+    "message": "אין תשובה מתאימה."
+  },
+  "optionsHelpAsk": {
+    "message": "עדיין תקועים? שאלו אותנו"
+  },
   "optionsDeleteAllConfirm": {
     "message": "למחוק את כל מה ש־FullShot אחסן במכשיר הזה?\n\nצילומי מסך בהיסטוריה שלך: $COUNT$\nשאריות מצילומים שנקטעו: $LEFTOVER$\nמקום שיתפנה: $SIZE$\n\nההגדרות שלך לא יושפעו. אי אפשר לבטל את הפעולה.",
     "placeholders": {

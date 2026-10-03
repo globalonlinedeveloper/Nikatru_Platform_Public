@@ -85,6 +85,7 @@
     $('sweepBtn').addEventListener('click', sweepLeftovers);
     $('resetBtn').addEventListener('click', resetSettings);
     $('deleteAllBtn').addEventListener('click', deleteEverything);
+    $('reportBtn').addEventListener('click', openReportForm);
     await showStorage();
     await showExportSize();
   });
@@ -320,6 +321,21 @@
       bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     }
     return 'data:' + (blob.type || 'application/octet-stream') + ';base64,' + btoa(bin);
+  }
+
+  /* Report a problem (lane feedback-intake): the site's form, in a new tab, with
+     ONLY FullShot's own facts in the link. SKREPORT (vendor/core/report-link.js)
+     builds it from a closed key list; nothing about a page is passed in, and
+     policy-check gate 10 proves nothing about one can get out. */
+  function openReportForm() {
+    const url = SKREPORT.link({
+      app: 'fullshot',
+      version: chrome.runtime.getManifest().version,
+      uiLocale: chrome.i18n.getUILanguage(),
+      userAgent: navigator.userAgent,
+      category: 'bug'
+    });
+    chrome.tabs.create({ url });
   }
 
   async function exportEverything() {

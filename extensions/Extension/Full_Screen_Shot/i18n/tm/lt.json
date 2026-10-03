@@ -441,5 +441,13 @@
   "optionsDeleteAllDesc": "Pašalina visas ekrano kopijas iš jūsų istorijos ir viską, ką paliko nutrūkę fiksavimai. Jūsų nustatymai lieka tokie, kokie buvo.",
   "optionsDeleteAllConfirm": "Ištrinti viską, ką „FullShot“ išsaugojo šiame įrenginyje?\n\nEkrano kopijų jūsų istorijoje: $COUNT$\nNutrūkusių fiksavimų likučių: $LEFTOVER$\nBus atlaisvinta vietos: $SIZE$\n\nJūsų nustatymams tai neturi įtakos. To atšaukti negalima.",
   "optionsDeleteAllDone": "Ištrinta. „FullShot“ šiame įrenginyje nebesaugo jokių ekrano kopijų.",
-  "errStorageFull": "Nebeliko vietos šiam fiksavimui išsaugoti. Ištrinkite kelias ekrano kopijas iš istorijos ir bandykite dar kartą."
+  "errStorageFull": "Nebeliko vietos šiam fiksavimui išsaugoti. Ištrinkite kelias ekrano kopijas iš istorijos ir bandykite dar kartą.",
+  "optionsSectionReport": "Pranešti apie problemą",
+  "optionsReport": "Papasakokite, kas nutiko",
+  "optionsReportDesc": "Naujame skirtuke atidaro nikatru.com pranešimo formą, kurioje užpildyta tik FullShot versija, kalba ir naršyklė.",
+  "optionsReportBtn": "Atidaryti pranešimo formą",
+  "optionsSectionHelp": "Pagalba",
+  "optionsHelpSearch": "Ieškoti pagalboje",
+  "optionsHelpNone": "Atitinkančio atsakymo nėra.",
+  "optionsHelpAsk": "Vis dar nepavyksta? Klauskite mūsų"
 }

@@ -208,7 +208,7 @@ describe('the guard says YES on the tree as it is', () => {
     // that ENFORCES rather than reports.
     // FIVE since 2026-10-01 (T16): packages/app_lock declares flutter_test and a
     // public widget (the lock screen), and measures both of its surfaces.
-    assert.match(out, /5 root\(s\) DERIVED, never listed/);
+    assert.match(out, /7 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 feedback-intake: packages/feedback; help-search: packages/help; merged over T16: 7
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
     assert.match(
       out,
@@ -252,7 +252,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 38 → 36 of 43 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 43 → 37 of 43 — ForceUpdateGate, pumped at 375 / 768 / 1280 by system_screens_text_scale_test.dart.
     // ⏱ 2026-10-01 · train st-entry: 37 of 43 → 37 of 44 — SwallowSystemBack (paints nothing) is printed unmeasured.
-    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED and not failed/);
+    assert.match(out, /packages\/design_system: 37 of 45 surface\(s\) measured — 8 PRINTED and not failed/); // ⏱ 2026-10-03 feedback-intake: 44 -> 45 surfaces, 7 -> 8 printed (ScreenCaptureBoundary, a passthrough with no width decision of its own)
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -611,7 +611,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the surfaces floor.
     // ⏱ 2026-10-01 · train st-entry: 41 of 43 → 42 of 44 — SwallowSystemBack raised the floor.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 42 responsive surface\(s\).*floor is 44/s);
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 43 responsive surface\(s\).*floor is 44/s); // ⏱ 2026-10-03: design_system 44 -> 45 surfaces (ScreenCaptureBoundary), so one file out leaves 43
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -646,7 +646,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 39 → 36 of 44 — six more measured; the probe is the one new unmeasured surface.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 44 → 37 of 44 — ForceUpdateGate measured; the probe is still the one new unmeasured surface.
     // ⏱ 2026-10-01 · train st-entry: 37 of 44 → 37 of 45 — SwallowSystemBack is printed beside the probe.
-    assert.match(out, /packages\/design_system: 37 of 45 surface\(s\) measured — 8 PRINTED/);
+    assert.match(out, /packages\/design_system: 37 of 46 surface\(s\) measured — 9 PRINTED/); // ⏱ 2026-10-03: +1 (ScreenCaptureBoundary, a passthrough, printed in report mode)
   });
 });
 

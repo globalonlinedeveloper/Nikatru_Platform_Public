@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Αφαιρεί κάθε στιγμιότυπο από το ιστορικό σας και όλα όσα άφησαν πίσω τους οι λήψεις που διακόπηκαν. Οι ρυθμίσεις σας παραμένουν ως έχουν."
   },
+  "optionsSectionReport": {
+    "message": "Αναφορά προβλήματος"
+  },
+  "optionsReport": {
+    "message": "Πείτε μας τι πήγε στραβά"
+  },
+  "optionsReportDesc": {
+    "message": "Ανοίγει τη φόρμα αναφοράς στο nikatru.com σε νέα καρτέλα, με συμπληρωμένα μόνο την έκδοση του FullShot, τη γλώσσα και το πρόγραμμα περιήγησης."
+  },
+  "optionsReportBtn": {
+    "message": "Άνοιγμα φόρμας αναφοράς"
+  },
+  "optionsSectionHelp": {
+    "message": "Βοήθεια"
+  },
+  "optionsHelpSearch": {
+    "message": "Αναζήτηση στη βοήθεια"
+  },
+  "optionsHelpNone": {
+    "message": "Δεν βρέθηκε αντίστοιχη απάντηση."
+  },
+  "optionsHelpAsk": {
+    "message": "Ακόμα κολλημένοι; Ρωτήστε μας"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Να διαγραφούν όλα όσα έχει αποθηκεύσει το FullShot σε αυτήν τη συσκευή;\n\nΣτιγμιότυπα στο ιστορικό σας: $COUNT$\nΥπολείμματα από λήψεις που διακόπηκαν: $LEFTOVER$\nΧώρος που ελευθερώνεται: $SIZE$\n\nΟι ρυθμίσεις σας δεν επηρεάζονται. Αυτό δεν αναιρείται.",
     "placeholders": {

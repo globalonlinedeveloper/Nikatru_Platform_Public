@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Noņem visus ekrānuzņēmumus no jūsu vēstures un visu, ko atstājušas pārtrauktās tveršanas. Jūsu iestatījumi paliek nemainīgi."
   },
+  "optionsSectionReport": {
+    "message": "Ziņot par problēmu"
+  },
+  "optionsReport": {
+    "message": "Pastāstiet, kas nogāja greizi"
+  },
+  "optionsReportDesc": {
+    "message": "Jaunā cilnē atver nikatru.com ziņošanas veidlapu, kurā aizpildīta tikai FullShot versija, valoda un pārlūks."
+  },
+  "optionsReportBtn": {
+    "message": "Atvērt ziņošanas veidlapu"
+  },
+  "optionsSectionHelp": {
+    "message": "Palīdzība"
+  },
+  "optionsHelpSearch": {
+    "message": "Meklēt palīdzībā"
+  },
+  "optionsHelpNone": {
+    "message": "Nav atbilstošas atbildes."
+  },
+  "optionsHelpAsk": {
+    "message": "Joprojām neizdodas? Jautājiet mums"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vai dzēst visu, ko FullShot saglabājis šajā ierīcē?\n\nEkrānuzņēmumi jūsu vēsturē: $COUNT$\nPārtrauktu tveršanu atliekas: $LEFTOVER$\nAtbrīvotā vieta: $SIZE$\n\nJūsu iestatījumus tas neietekmē. To nevar atsaukt.",
     "placeholders": {

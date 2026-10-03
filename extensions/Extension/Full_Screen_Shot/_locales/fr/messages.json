@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Supprime toutes les captures de votre historique ainsi que tout ce qu’ont laissé les captures interrompues. Vos réglages restent tels quels."
   },
+  "optionsSectionReport": {
+    "message": "Signaler un problème"
+  },
+  "optionsReport": {
+    "message": "Dites-nous ce qui n'a pas fonctionné"
+  },
+  "optionsReportDesc": {
+    "message": "Ouvre le formulaire de signalement de nikatru.com dans un nouvel onglet, avec seulement la version de FullShot, la langue et le navigateur renseignés."
+  },
+  "optionsReportBtn": {
+    "message": "Ouvrir le formulaire"
+  },
+  "optionsSectionHelp": {
+    "message": "Aide"
+  },
+  "optionsHelpSearch": {
+    "message": "Rechercher dans l'aide"
+  },
+  "optionsHelpNone": {
+    "message": "Aucune réponse correspondante."
+  },
+  "optionsHelpAsk": {
+    "message": "Toujours bloqué ? Posez-nous la question"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Supprimer tout ce que FullShot a stocké sur cet appareil ?\n\nCaptures dans votre historique : $COUNT$\nRésidus de captures interrompues : $LEFTOVER$\nEspace ainsi libéré : $SIZE$\n\nVos réglages ne sont pas concernés. Cette action est irréversible.",
     "placeholders": {

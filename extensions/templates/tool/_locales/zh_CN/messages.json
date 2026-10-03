@@ -439,6 +439,34 @@
     "message": "生成一个描述本扩展程序状态的小文件。保存之前你会看到里面的全部内容，而且不会发送到任何地方。",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "向支持团队发送报告",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "在新标签页中打开 nikatru.com 上的报告表单，只预先填写此扩展的信息：名称、版本、语言和浏览器。",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "打开报告表单",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "帮助",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "搜索帮助",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "没有匹配的答案。",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "仍未解决？向我们提问",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "准备报告",
     "description": "en: Prepare a report"

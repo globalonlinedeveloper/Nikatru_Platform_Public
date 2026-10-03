@@ -439,6 +439,34 @@
     "message": "ينشئ ملفًا صغيرًا يصف حالة هذه الإضافة. ترى بالضبط ما بداخله قبل حفظه، ولا يُرسَل أي شيء إلى أي جهة.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "إرسال بلاغ إلى الدعم",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "يفتح نموذج الإبلاغ على nikatru.com في علامة تبويب جديدة، مع ملء معلومات هذه الإضافة فقط: اسمها وإصدارها ولغتها والمتصفح.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "فتح نموذج الإبلاغ",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "مساعدة",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "البحث في المساعدة",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "لا توجد إجابة مطابقة.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "هل ما زلت بحاجة إلى مساعدة؟ اسألنا",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "إعداد تقرير",
     "description": "en: Prepare a report"

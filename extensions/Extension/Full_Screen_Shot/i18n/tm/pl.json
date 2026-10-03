@@ -441,5 +441,13 @@
   "optionsDeleteAllDesc": "Usuwa wszystkie zrzuty ekranu z historii oraz wszystko, co pozostawiły przerwane przechwytywania. Twoje ustawienia pozostają bez zmian.",
   "optionsDeleteAllConfirm": "Usunąć wszystko, co FullShot zapisał na tym urządzeniu?\n\nZrzuty ekranu w historii: $COUNT$\nPozostałości po przerwanych przechwytywaniach: $LEFTOVER$\nZwalniane miejsce: $SIZE$\n\nTwoje ustawienia pozostaną bez zmian. Tego nie można cofnąć.",
   "optionsDeleteAllDone": "Usunięto. FullShot nie przechowuje już żadnych zrzutów ekranu na tym urządzeniu.",
-  "errStorageFull": "Nie ma już miejsca na zapisanie tego przechwytywania. Usuń kilka zrzutów ekranu z historii i spróbuj ponownie."
+  "errStorageFull": "Nie ma już miejsca na zapisanie tego przechwytywania. Usuń kilka zrzutów ekranu z historii i spróbuj ponownie.",
+  "optionsSectionReport": "Zgłoś problem",
+  "optionsReport": "Powiedz nam, co poszło nie tak",
+  "optionsReportDesc": "Otwiera formularz zgłoszenia na nikatru.com w nowej karcie, w którym wypełnione są tylko wersja FullShot, język i przeglądarka.",
+  "optionsReportBtn": "Otwórz formularz",
+  "optionsSectionHelp": "Pomoc",
+  "optionsHelpSearch": "Szukaj w pomocy",
+  "optionsHelpNone": "Brak pasującej odpowiedzi.",
+  "optionsHelpAsk": "Nadal masz problem? Zapytaj nas"
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Nikatru incidents</title>
+  <id>https://status.nikatru.com/feed.xml</id>
+  <link rel="self" href="https://status.nikatru.com/feed.xml"/>
+  <link href="https://status.nikatru.com/"/>
+  <updated>2026-10-03T00:00:00Z</updated>
+  <author><name>Nikatru</name></author>
+</feed>

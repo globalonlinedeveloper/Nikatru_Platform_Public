@@ -439,6 +439,27 @@
     "message": "இந்த நீட்டிப்பின் நிலையை விவரிக்கும் ஒரு சிறிய கோப்பை உருவாக்கும். அது சேமிக்கப்படுவதற்கு முன்பே அதில் என்ன இருக்கிறது என்பதை நீங்களே பார்ப்பீர்கள்; எதுவும் எங்கும் அனுப்பப்படுவதில்லை.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Help"
+  },
+  "optHelpSearch": {
+    "message": "Search help"
+  },
+  "optHelpNone": {
+    "message": "No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "அறிக்கையைத் தயாரி",
     "description": "en: Prepare a report"

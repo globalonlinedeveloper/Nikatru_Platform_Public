@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Pašalina visas ekrano kopijas iš jūsų istorijos ir viską, ką paliko nutrūkę fiksavimai. Jūsų nustatymai lieka tokie, kokie buvo."
   },
+  "optionsSectionReport": {
+    "message": "Pranešti apie problemą"
+  },
+  "optionsReport": {
+    "message": "Papasakokite, kas nutiko"
+  },
+  "optionsReportDesc": {
+    "message": "Naujame skirtuke atidaro nikatru.com pranešimo formą, kurioje užpildyta tik FullShot versija, kalba ir naršyklė."
+  },
+  "optionsReportBtn": {
+    "message": "Atidaryti pranešimo formą"
+  },
+  "optionsSectionHelp": {
+    "message": "Pagalba"
+  },
+  "optionsHelpSearch": {
+    "message": "Ieškoti pagalboje"
+  },
+  "optionsHelpNone": {
+    "message": "Atitinkančio atsakymo nėra."
+  },
+  "optionsHelpAsk": {
+    "message": "Vis dar nepavyksta? Klauskite mūsų"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ištrinti viską, ką „FullShot“ išsaugojo šiame įrenginyje?\n\nEkrano kopijų jūsų istorijoje: $COUNT$\nNutrūkusių fiksavimų likučių: $LEFTOVER$\nBus atlaisvinta vietos: $SIZE$\n\nJūsų nustatymams tai neturi įtakos. To atšaukti negalima.",
     "placeholders": {

@@ -73,6 +73,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { normaliseForMatch, visibleText } from './text-reductions.mjs';
 import { fullshotPro, dropGated, FULLSHOT_TOOL_REL, APP_CONFIG_REL } from '../../contracts/legal/pro-gate.mjs';
+import { withoutFullshotChrome } from '../../contracts/legal/fullshot-chrome.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -95,7 +96,7 @@ const DOCUMENTS = [
     renderer: 'contracts/legal/render-fullshot-privacy.mjs',
     /** ⏱ 2026-09-25 (EXT-4, Q2) — the files the renderer reads to decide which
      *  `when=pro|sells|free` paragraphs are published; copied into the scratch tree. */
-    rendererReads: ['contracts/legal/pro-gate.mjs', FULLSHOT_TOOL_REL, APP_CONFIG_REL],
+    rendererReads: ['contracts/legal/pro-gate.mjs', 'contracts/legal/fullshot-chrome.mjs', FULLSHOT_TOOL_REL, APP_CONFIG_REL],
     copies: [
       {
         file: 'sites/nikatru/fullshot/privacy.html',
@@ -213,7 +214,10 @@ function htmlBody(html, file) {
     coverageLost(`${file} has no <body>…</body>, so there is no published text to compare.`);
     return null;
   }
-  return m[1];
+  // ⏱ 2026-10-03 · lane a11y-statement. The served copy's skip link and nav are
+  // site chrome, not policy text; exactly the strings contracts/legal/
+  // fullshot-chrome.mjs defines are removed, so any other word still compares.
+  return withoutFullshotChrome(m[1]);
 }
 
 /** The first place two strings differ, with a window either side. Printing the

@@ -439,6 +439,34 @@
     "message": "Vytvorí malý súbor s opisom stavu tohto rozšírenia. Ešte pred uložením presne vidíte, čo v ňom je, a nikam sa nič neodosiela.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Odoslať hlásenie podpore",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Otvorí formulár na nahlásenie na nikatru.com na novej karte, v ktorom sú vyplnené iba údaje tohto rozšírenia: názov, verzia, jazyk a prehliadač.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Otvoriť formulár",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Pomocník",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Hľadať v pomocníkovi",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Žiadna zodpovedajúca odpoveď.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Stále neviete? Opýtajte sa nás",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Pripraviť hlásenie",
     "description": "en: Prepare a report"

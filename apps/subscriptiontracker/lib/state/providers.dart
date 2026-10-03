@@ -65,6 +65,7 @@ export 'providers/categories.dart';
 export 'providers/config.dart';
 export 'providers/content_pack.dart';
 export 'providers/device_surfaces.dart';
+export 'providers/feedback.dart';
 export 'providers/force_update.dart';
 export 'providers/fx.dart';
 export 'providers/legal.dart';

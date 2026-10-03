@@ -37,6 +37,11 @@
     "APP_ID": "platform",
     "SUPABASE_URL": "https://auth-api.nikatru.com",
     "API_VERSION": "v1",
+    // ⏱ 2026-10-03 · lane feedback-intake. THE GO-LIVE FLAG of POST /v1/feedback
+    // (src/routes/feedback.ts): anything but "true" answers 503 `intake_closed`, so
+    // a client keeps the report in its outbox and offers the support mail. The lead
+    // flips it once the SCREENSHOTS bucket exists and the first deploy is green.
+    "INTAKE_OPEN": "false",
     // WHICH MONEY WORLD THIS DEPLOY IS — [pipeline 5]M-12. Exactly "live" or
     // "sandbox"; POST /v1/money/:provider answers 503 for anything else, because
     // a default would either honour sandbox money as real or stop honouring real
@@ -244,7 +249,12 @@
   // `manifests/`) — the same rule the removed per-app `<app>-exports` buckets
   // broke. A second backup bucket is a second lifecycle policy to forget.
   "r2_buckets": [
-    { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups" }
+    { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups" },
+    // ⏱ 2026-10-03 · lane feedback-intake. The PRIVATE "Report a problem"
+    // screenshot bucket (src/routes/feedback.ts writes, src/feedback/internal.ts
+    // is the one read path, src/feedback/cron.ts deletes at purge). No public
+    // access and no custom domain: the lead creates it before the first deploy.
+    { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback" }
   ],
   "ratelimits": [
     {
@@ -490,6 +500,15 @@
       "name": "CHECKOUT_USER_LIMITER",
       "namespace_id": "1029",
       "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-10-03 · lane feedback-intake. The per-network burst bound of POST
+      // /v1/feedback and the unsubscribe pair, ahead of the hourly windows in D1.
+      // FAILS CLOSED (strictEdgeCeiling): an absent binding is a 503. 1201: the
+      // first id of a new hundred, so no existing namespace is reused.
+      "name": "FEEDBACK_EDGE_LIMITER",
+      "namespace_id": "1201",
+      "simple": { "limit": 30, "period": 60 }
     }
   ],
   "triggers": {
@@ -648,6 +667,8 @@
         // why: ../_shared/src/cors.ts:20, copied from the top level. Web stays
         // exactly as production's.
         "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev,http://localhost:3000",
+        // why: src/routes/feedback.ts — the go-live flag, closed as at the top level.
+        "INTAKE_OPEN": "false",
         // why: src/routes/money.ts:97 — THIS is the sandbox money world. The
         // top level's value stays "live" (limb 1), and this one must be
         // exactly "sandbox" (limb 1b).
@@ -729,7 +750,10 @@
       // unresolvable bucket binding fails the sandbox deploy, so the bucket must
       // exist before any sandbox dispatch.
       "r2_buckets": [
-        { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups-sandbox" }
+        { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups-sandbox" },
+        // why: src/routes/feedback.ts — the sandbox twin of the screenshot bucket,
+        // created by the lead with the production one.
+        { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback-sandbox" }
       ],
       "ratelimits": [
         {
@@ -840,6 +864,13 @@
           "name": "CHECKOUT_USER_LIMITER",
           "namespace_id": "1030",
           "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/feedback.ts. The top level's FEEDBACK_EDGE_LIMITER
+          // (1201), same limit; it FAILS CLOSED.
+          "name": "FEEDBACK_EDGE_LIMITER",
+          "namespace_id": "1202",
+          "simple": { "limit": 30, "period": 60 }
         }
       ]
     }

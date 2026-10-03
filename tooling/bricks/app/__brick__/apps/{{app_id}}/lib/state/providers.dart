@@ -34,6 +34,8 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show PersistedValue;
 import 'package:nikatru_external_links/nikatru_external_links.dart'
     show UrlLauncherExternalLinks;
+import 'package:nikatru_feedback/nikatru_feedback.dart'
+    show FeedbackHost, buildFeedbackHost;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_platform_storage/age_signals.dart'
@@ -615,6 +617,25 @@ final Provider<core.ContentReportTransport> contentReportTransportProvider =
       }
       return DioContentReportTransport(platformBaseUrl: kPlatformBaseUrl);
     });
+
+/// "Report a problem" (lane feedback-intake): packages/feedback's one host,
+/// over this app's store, the shared intake, and the signed-in session if any.
+/// Hermetic like the content report when the backend is not live.
+final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
+  (ref) => buildFeedbackHost(
+    appId: AppConfig.appId,
+    appVersion: AppConfig.appVersion,
+    channel: AppConfig.releaseChannel,
+    store: ref.watch(keyValueStoreProvider.future),
+    transport: AppConfig.isBackendLive
+        ? DioFeedbackTransport(platformBaseUrl: kPlatformBaseUrl)
+        : const core.UnavailableFeedbackTransport(),
+    accessToken: ref.watch(authTokenProvider),
+    userId: () => ref.read(authUserProvider).value?.id,
+    supportEmail: AppConfig.supportEmail,
+    openMail: externalLinks.open,
+  ),
+);
 
 /// The marketing version stamped on BOTH events and consent artifacts.
 ///

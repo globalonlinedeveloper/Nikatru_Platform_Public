@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "আপনার ইতিহাসের প্রতিটি স্ক্রিনশট এবং থেমে যাওয়া ক্যাপচারের ফেলে যাওয়া সবকিছু সরিয়ে দেয়। আপনার সেটিংস যেমন আছে তেমনই থাকে।"
   },
+  "optionsSectionReport": {
+    "message": "সমস্যা জানান"
+  },
+  "optionsReport": {
+    "message": "কী ভুল হয়েছে আমাদের জানান"
+  },
+  "optionsReportDesc": {
+    "message": "nikatru.com-এর রিপোর্ট ফর্মটি নতুন ট্যাবে খোলে, যেখানে শুধু FullShot-এর সংস্করণ, ভাষা ও ব্রাউজার পূরণ করা থাকে।"
+  },
+  "optionsReportBtn": {
+    "message": "রিপোর্ট ফর্ম খুলুন"
+  },
+  "optionsSectionHelp": {
+    "message": "সাহায্য"
+  },
+  "optionsHelpSearch": {
+    "message": "সাহায্যে খুঁজুন"
+  },
+  "optionsHelpNone": {
+    "message": "মেলে এমন কোনো উত্তর নেই।"
+  },
+  "optionsHelpAsk": {
+    "message": "এখনও সমস্যা? আমাদের জিজ্ঞাসা করুন"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot এই ডিভাইসে যা কিছু সঞ্চয় করেছে সব মুছে ফেলবেন?\n\nআপনার ইতিহাসে স্ক্রিনশট: $COUNT$\nথেমে যাওয়া ক্যাপচারের অবশিষ্ট: $LEFTOVER$\nএতে খালি হবে: $SIZE$\n\nআপনার সেটিংসে প্রভাব পড়বে না। এটি ফিরিয়ে আনা যাবে না।",
     "placeholders": {

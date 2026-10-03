@@ -277,6 +277,26 @@
         "native_attest_counters": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). NO app_version COLUMN AND NO OTHER MARKER: 0022_native_attest.sql gives this table `day`, `scope` and `calls` — a count per UTC day per scope (Play Integrity decodes across every app, or key registrations per network), written by the Worker's own ceiling code, never by a client, naming no app and no build."
+        },
+        "feedback_reports": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lanes feedback-intake/-triage. NO BUILD MARKER, ON PURPOSE: a problem report is accepted from ANY build that can send one — a dev or sideloaded build, the nikatru.com form and an extension's link included, none of which is a released app build — so `reported_version` (the version the reporter's own diagnostics name, NULL from the site) is deliberately not `app_version`, which the gate's limb 5 would hold to `released-build` and the ingest to refusing unreleased builds. 0027_feedback.sql gives this table `id`, `idempotency_key`, `user_id`, `app_id` (an app, `nikatru` for the site, or an extension id: no single catalogue resolves all three), `reported_version`, `surface`, `category`, `description`, `steps`, `diagnostics`, `contact_email`, `reply_ok`, `notify_fixed`, `screenshot_key`, `status`, `created_at`, `purge_at`, `status_at`, `status_history`, `duplicate_of`, `fix_pr`, `fixed_version`, `receipt_at`, `notified_at` and `unsubscribe_hash`. Its rows are purged at `purge_at` (90 days) by services/platform/src/feedback/cron.ts, so residue cannot outlive the period; a marker column added later re-opens this rule."
+        },
+        "feedback_counts": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane feedback-intake. NO BUILD MARKER: the anonymised stub a purged report leaves (0027_feedback.sql), one row per `day`, `app_id`, `reported_version` (the report's own, or '' when it had none — not a build stamp, for the reason the feedback_reports rule gives), `category` and `status`, with a count `n`, written only by the nightly purge (services/platform/src/feedback/cron.ts). No row names a released build or a money world a resolver could check; a marker column added later re-opens this rule."
+        },
+        "feedback_rate_windows": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane feedback-intake. NO app_version COLUMN AND NO OTHER MARKER: 0027_feedback.sql gives this table `window_start`, `key_hash` and `n` — an hour or day window, a salted truncated hash of a caller key and a count, written by the intake's limiter (services/platform/src/feedback/window-limiter.ts) and pruned nightly. No row names a build, an app or a money world a resolver could check, so it is exempt; a marker column added later re-opens this rule."
+        },
+        "feedback_rate_salts": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane feedback-intake. NO app_version COLUMN AND NO OTHER MARKER: 0027_feedback.sql gives this table `window_start` and `salt` — one random salt per live rate-limit window, deleted with it. Nothing about a build, an app or a money world, so it is exempt; a marker column added later re-opens this rule."
+        },
+        "feedback_mail_suppressed": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane feedback-triage. NO app_version COLUMN AND NO OTHER MARKER: 0027_feedback.sql gives this table `address_hash` and `created_at` — the SHA-256 of an address that pressed unsubscribe on a feedback mail, and when (services/platform/src/feedback/notify.ts). No row names a build, an app or a money world, so it is exempt; a marker column added later re-opens this rule."
         }
       }
     },

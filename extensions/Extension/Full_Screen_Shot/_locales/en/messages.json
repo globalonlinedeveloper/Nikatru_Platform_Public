@@ -749,6 +749,38 @@
     "message": "Removes every screenshot in your History, and everything left behind by interrupted captures. Your settings stay as they are.",
     "description": "Explains the delete-everything button, including what it does NOT do."
   },
+  "optionsSectionReport": {
+    "message": "Report a problem",
+    "description": "Heading of the options section that opens the Report a problem form."
+  },
+  "optionsReport": {
+    "message": "Tell us what went wrong",
+    "description": "Title of the row that opens the report form."
+  },
+  "optionsReportDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only FullShot's version, language and browser filled in.",
+    "description": "Explains the report button: it opens a web form on nikatru.com in a new tab and fills in only the extension's own facts."
+  },
+  "optionsReportBtn": {
+    "message": "Open the report form",
+    "description": "The button that opens the report form in a new tab."
+  },
+  "optionsSectionHelp": {
+    "message": "Help",
+    "description": "Heading of the options page section that searches FullShot's help articles."
+  },
+  "optionsHelpSearch": {
+    "message": "Search help",
+    "description": "Label of the search box in the Help section. The search runs on the device; nothing is sent."
+  },
+  "optionsHelpNone": {
+    "message": "No matching answer.",
+    "description": "Shown under the Help search box when no article matches what was typed."
+  },
+  "optionsHelpAsk": {
+    "message": "Still stuck? Ask us",
+    "description": "Button that opens the report form on nikatru.com with the question category and the search words filled in."
+  },
   "optionsDeleteAllConfirm": {
     "message": "Delete everything FullShot has stored on this device?\n\nScreenshots in your History: $COUNT$\nLeftovers from interrupted captures: $LEFTOVER$\nSpace this frees: $SIZE$\n\nYour settings are not affected. This cannot be undone.",
     "description": "The confirmation shown before anything is destroyed. It must state plainly what will go, how much of it there is, and what will NOT be touched. Keep the blank lines and the line breaks, and keep the final warning. $COUNT$ and $LEFTOVER$ are whole numbers, $SIZE$ an already-formatted size.",

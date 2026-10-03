@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "移除历史记录中的所有截图，以及中断的抓取留下的一切。你的设置保持不变。"
   },
+  "optionsSectionReport": {
+    "message": "报告问题"
+  },
+  "optionsReport": {
+    "message": "告诉我们出了什么问题"
+  },
+  "optionsReportDesc": {
+    "message": "在新标签页中打开 nikatru.com 上的报告表单，只预先填写 FullShot 的版本、语言和浏览器。"
+  },
+  "optionsReportBtn": {
+    "message": "打开报告表单"
+  },
+  "optionsSectionHelp": {
+    "message": "帮助"
+  },
+  "optionsHelpSearch": {
+    "message": "搜索帮助"
+  },
+  "optionsHelpNone": {
+    "message": "没有匹配的答案。"
+  },
+  "optionsHelpAsk": {
+    "message": "仍未解决？向我们提问"
+  },
   "optionsDeleteAllConfirm": {
     "message": "要删除 FullShot 在本设备上存储的全部内容吗？\n\n历史记录中的截图：$COUNT$\n中断抓取的残留：$LEFTOVER$\n可释放的空间：$SIZE$\n\n你的设置不受影响。此操作无法撤销。",
     "placeholders": {

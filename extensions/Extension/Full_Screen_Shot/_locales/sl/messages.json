@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Odstrani vse posnetke zaslona iz zgodovine in vse, kar so pustila prekinjena zajemanja. Vaše nastavitve ostanejo take, kot so."
   },
+  "optionsSectionReport": {
+    "message": "Prijavi težavo"
+  },
+  "optionsReport": {
+    "message": "Povejte nam, kaj je šlo narobe"
+  },
+  "optionsReportDesc": {
+    "message": "Odpre obrazec za prijavo na nikatru.com v novem zavihku, v katerem so izpolnjeni samo različica FullShot, jezik in brskalnik."
+  },
+  "optionsReportBtn": {
+    "message": "Odpri obrazec"
+  },
+  "optionsSectionHelp": {
+    "message": "Pomoč"
+  },
+  "optionsHelpSearch": {
+    "message": "Iskanje po pomoči"
+  },
+  "optionsHelpNone": {
+    "message": "Ni ustreznega odgovora."
+  },
+  "optionsHelpAsk": {
+    "message": "Še vedno ne gre? Vprašajte nas"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ali želite izbrisati vse, kar je FullShot shranil v tej napravi?\n\nPosnetki zaslona v zgodovini: $COUNT$\nOstanki prekinjenih zajemanj: $LEFTOVER$\nProstor, ki se sprosti: $SIZE$\n\nNa vaše nastavitve to ne vpliva. Tega ni mogoče razveljaviti.",
     "placeholders": {

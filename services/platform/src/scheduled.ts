@@ -14,6 +14,7 @@
 // silently stopped, and every extra scheduler is another thing to notice. State
 // it as a choice, so nobody re-derives a constraint that has been paid off.
 // ─────────────────────────────────────────────────────────────────────────────
+import { FEEDBACK_CRON_JOB, FEEDBACK_STATEMENT_BUDGET, runFeedbackCron } from './feedback/cron';
 import type { AppTarget, Env } from './types';
 import type { KvStore } from '../../_shared/src/ports/kv';
 import type { SqlDb } from '../../_shared/src/ports/sql';
@@ -2703,10 +2704,15 @@ export const SPLIT_FIRINGS: ReadonlyMap<string, { jobs: readonly string[]; run: 
   [
     RETENTION_CRON,
     {
-      jobs: [EVENTS_ROLLUP_JOB, RETENTION_SWEEP_JOB],
+      jobs: [EVENTS_ROLLUP_JOB, RETENTION_SWEEP_JOB, FEEDBACK_CRON_JOB],
       run: async (env: Env) => {
         await eventsRollup(env);
         await retentionSweep(env);
+        // ⏱ 2026-10-03 · lanes feedback-intake/-triage: the "fixed in" notices,
+        // the 90-day purge, the orphan sweep and the window prune, each limb its
+        // own heartbeat row (src/feedback/cron.ts). After the sweep, like it a
+        // retention limb.
+        await runFeedbackCron(env);
       },
     },
   ],
@@ -3062,6 +3068,8 @@ export const JOB_STATEMENT_BUDGET: Readonly<Record<string, number>> = {
   [RETENTION_SWEEP_JOB]: 2 + MAX_SWEEP_STATEMENTS_PER_RUN,
   // The export's own pool and its eight heartbeat rows (batchCallSites).
   [BACKUP_JOB]: MAX_D1_QUERIES_PER_RUN + 8,
+  // Summed from its limb caps in src/feedback/cron.ts.
+  [FEEDBACK_CRON_JOB]: FEEDBACK_STATEMENT_BUDGET,
 };
 
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {

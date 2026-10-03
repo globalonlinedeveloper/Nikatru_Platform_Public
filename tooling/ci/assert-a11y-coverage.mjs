@@ -988,12 +988,22 @@ const REQUIRED_COVERAGE = [
     //   surfaces  44 → 44 (SwallowSystemBack stays unswept: it paints nothing)
     //   a11yFiles 14 → 16
     //   cases     28 → 40
-    surfaces: 44,
-    a11yFiles: 16,
-    cases: 40,
+    surfaces: 45, // ⏱ 2026-10-03 · feedback-intake, MEASURED: 44 -> 45 (ScreenCaptureBoundary)
+    a11yFiles: 17, // ⏱ 2026-10-03: 16 -> 17 (test/a11y_screen_capture_test.dart)
+    cases: 41, // ⏱ 2026-10-03: 40 -> 41
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
+  },
+  {
+    // ⏱ 2026-10-03 · lane feedback-intake. MEASURED, not chosen: 3 reachable
+    // surfaces (ReportProblemPage, MarkupEditorPage, ShotPreview), all 3 swept by
+    // test/a11y_report_test.dart's 3 cases (tap target, label, contrast each).
+    dir: 'packages/feedback',
+    surfaces: 3,
+    a11yFiles: 1,
+    cases: 3,
+    label: 'the "Report a problem" sheet, its markup editor and its screenshot preview, mounted by every app',
   },
   // ⏱ 2026-10-01 · T16 XP-03: the app lock, derived as a root the day it
   // landed. Measured, not guessed: 2 surfaces (the gate and its screen), one

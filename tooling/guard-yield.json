@@ -26,6 +26,11 @@
       "firstSeen": "2026-07-18",
       "evidence": []
     },
+    "tooling/a11y/scan.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/app-yaml/render-privacy.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
@@ -125,6 +130,11 @@
     "tooling/ci/assert-a11y-primitives.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-a11y-statement.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/assert-adapter-capabilities.mjs": {
@@ -1385,6 +1395,11 @@
         "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-incidents.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-input-contract.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
@@ -1394,6 +1409,11 @@
         "basis": "exposure",
         "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/assert-known-issues.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
     },
     "tooling/ci/assert-lane-coverage.mjs": {
       "catches": 0,
@@ -2812,6 +2832,11 @@
         "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-status-components.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-stop-copy.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
@@ -3728,7 +3753,7 @@
     },
     "tooling/ops/check-box-config-drift.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-01",
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ops/check-cloudflare-usage.mjs": {
@@ -4058,9 +4083,19 @@
       "firstSeen": "2026-10-01",
       "evidence": []
     },
+    "tooling/sites/gen-accessibility-statement.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/sites/gen-auth-mail.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/sites/gen-help-centre.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/sites/generate-apps-data.mjs": {
@@ -4112,6 +4147,11 @@
     "tooling/smoke/web-a11y-tree.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
+      "evidence": []
+    },
+    "tooling/status/build-status.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/store/capture-backend.mjs": {

@@ -45,5 +45,15 @@
       "binding": "SIGNUPS",
       "id": "__NIKATRU_SIGNUPS_KV_ID__"
     }
+  ],
+  "services": [
+    {
+      // ⏱ 2026-10-03 · lane feedback-intake. functions/api/report.js forwards the
+      // /support "Report a problem" form to the platform Worker's POST /v1/feedback
+      // over this binding, so the request keeps the reporter's network for the
+      // intake's anonymous limit, and nothing leaves Cloudflare.
+      "binding": "PLATFORM",
+      "service": "platform"
+    }
   ]
 }

@@ -186,6 +186,37 @@
       <button class="btn" id="reportBtn" type="button"
               aria-describedby="reportBtn-desc" data-i18n="optReportButton">Prepare a report</button>
     </div>
+    <!-- The second path SENDS, but not from here: it opens nikatru.com's report
+         form in a new tab with only lib/report-link.js's closed list filled in
+         (never the browsed page), and the person sends the form themselves. -->
+    <div class="opt">
+      <div class="text">
+        <b id="reportSendBtn-label" data-i18n="optReportSendTitle">Send a report to support</b>
+        <small id="reportSendBtn-desc" data-i18n="optReportSendDesc">Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser.</small>
+      </div>
+      <button class="btn" id="reportSendBtn" type="button"
+              aria-describedby="reportSendBtn-desc" data-i18n="optReportSendButton">Open the report form</button>
+    </div>
+  </div>
+
+  <!-- HELP (lane help-search). Searches the help articles BUNDLED with the
+       extension (lib/help-index.js, built from content/help/ by
+       tooling/help/build-index.mjs) on this device: no request, nothing sent.
+       "Still stuck? Ask us" opens the report form with the question category
+       and the search words, which the person reads before sending.
+       data-app is PLACEHOLDER(id) — the tool.json id, as in pages/options.js.
+       scripts/policy-check.mjs gate 11 fails the build if the index is missing. -->
+  <div class="section" id="helpSection" data-app="skeleton">
+    <h2 data-i18n="optHelpSection">Help</h2>
+    <div class="opt">
+      <div class="text">
+        <label for="helpQuery"><b data-i18n="optHelpSearch">Search help</b></label>
+        <input type="search" id="helpQuery" autocomplete="off">
+        <ul id="helpResults"></ul>
+        <small id="helpNone" role="status" data-i18n="optHelpNone" hidden>No matching answer.</small>
+      </div>
+      <button class="btn" id="helpAskBtn" type="button" data-i18n="optHelpAsk">Still stuck? Ask us</button>
+    </div>
   </div>
 
   <div class="section">
@@ -211,7 +242,9 @@
 
 <script src="../lib/settings.js"></script>
 <script src="../lib/storage.js"></script>
+<script src="../lib/report-link.js"></script>
 <script src="common.js"></script>
 <script src="options.js"></script>
+<script type="module" src="help-panel.js"></script>
 </body>
 </html>

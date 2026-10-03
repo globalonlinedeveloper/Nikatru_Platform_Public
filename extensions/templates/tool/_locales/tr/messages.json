@@ -439,6 +439,34 @@
     "message": "Bu uzantının durumunu anlatan küçük bir dosya oluşturur. Kaydedilmeden önce içinde tam olarak ne olduğunu görürsünüz ve hiçbir yere hiçbir şey gönderilmez.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Desteğe rapor gönder",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "nikatru.com'daki bildirim formunu yeni bir sekmede açar; formda yalnızca bu uzantının bilgileri doldurulmuştur: adı, sürümü, dili ve tarayıcı.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Bildirim formunu aç",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Yardım",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Yardımda ara",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Eşleşen yanıt yok.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Hâlâ takıldınız mı? Bize sorun",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Rapor hazırla",
     "description": "en: Prepare a report"

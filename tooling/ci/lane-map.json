@@ -81,11 +81,13 @@
     "sites": {
       "globs": [
         "sites/**",
+        "content/**",
         "packages/tokens/**",
         "contracts/tokens/**",
         "catalog/apps-landing.json",
         "tooling/sites/**",
-        "tooling/content_pipeline/**"
+        "tooling/content_pipeline/**",
+        "ops/incidents/**"
       ]
     },
     "apps": {
@@ -247,6 +249,32 @@
       "tooling/store/store-record.mjs",
       "tooling/ci/store-key-secret.mjs",
       "tooling/wrangler/**",
+      "tooling/a11y/exceptions.json",
+      "tooling/help/**",
+      "content/help/**",
+      "content/known-issues/**",
+      "tooling/ci/assert-known-issues.mjs",
+      "tooling/i18n/locales.json",
+      ".github/workflows/deploy-web.yml"
+    ],
+    "status-site": [
+      "sites/status/**",
+      "tooling/status/**",
+      "tooling/monitor-register.json",
+      "ops/incidents/**",
+      "tooling/ops/status.mjs",
+      "tooling/ops/bounded-retry.mjs",
+      "tooling/sites/lastmod.mjs",
+      "tooling/ci/tree-walk.mjs",
+      "tooling/ci/check-site-integrity.mjs",
+      "tooling/ci/text-reductions.mjs",
+      "tooling/ci/record-deployment.mjs",
+      "tooling/ci/deployment-record.mjs",
+      "tooling/ci/plan-deploy.mjs",
+      "tooling/ci/assert-deploy-ref.mjs",
+      "tooling/ci/deploy-globs.mjs",
+      "tooling/ci/lane-map.json",
+      "tooling/channel-register.json",
       ".github/workflows/deploy-web.yml"
     ],
     "platform": [

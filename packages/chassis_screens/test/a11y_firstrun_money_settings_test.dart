@@ -779,7 +779,7 @@ void main() {
   });
 
   // ── SettingsHeading + helpCard (audit D8, D12/F53) ────────────────────────
-  // A heading node over the ONE Help section, its four rows drawn by a
+  // A heading node over the ONE Help section, its five rows drawn by a
   // ListTile the way an app's own row widget is passed in.
   group('a11y: help-section', () {
     for (final Brightness b in Brightness.values) {
@@ -798,13 +798,15 @@ void main() {
                       context,
                       decoration: const BoxDecoration(),
                       row: _HelpRow.new,
+                      helpCentreLabel: 'Help',
+                      openHelpCentre: _noop,
                       contactPageLabel: 'Help & support',
                       openContactPage: _noop,
                       contactSupportLabel: 'Contact support',
                       supportEmail: 'support@example.com',
                       supportSubject: 'App support',
-                      feedbackLabel: 'Send feedback',
-                      feedbackSubject: 'App feedback',
+                      reportProblemLabel: 'Report a problem',
+                      onReportProblem: () {},
                       openMail: (Uri mail) async {},
                       canRate: true,
                       rateLabel: 'Rate App',
@@ -820,8 +822,9 @@ void main() {
           expectSweepHadSubjects(
             tester,
             'help-section (${b.name})',
-            tappable: 4,
-            labelled: 5,
+            // ⏱ 2026-10-03 · lane help-search: the help centre row (4 → 5, 5 → 6).
+            tappable: 5,
+            labelled: 6,
           );
           await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

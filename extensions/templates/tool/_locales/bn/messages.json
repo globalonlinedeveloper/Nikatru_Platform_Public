@@ -439,6 +439,27 @@
     "message": "এই এক্সটেনশনের অবস্থা জানিয়ে একটি ছোট ফাইল তৈরি করে। সেভ হওয়ার আগে তাতে ঠিক কী আছে তা আপনি দেখে নিতে পারেন, আর কিছুই কোথাও পাঠানো হয় না।",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Help"
+  },
+  "optHelpSearch": {
+    "message": "Search help"
+  },
+  "optHelpNone": {
+    "message": "No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "রিপোর্ট তৈরি করুন",
     "description": "en: Prepare a report"

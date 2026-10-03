@@ -896,6 +896,118 @@
       ]
     },
     {
+      "id": "table:platform_db.feedback_reports",
+      "kind": "d1-table",
+      "name": "feedback_reports",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT). One row per \"Report a problem\" report from an app, nikatru.com or an extension: the reporter's Supabase `sub` when signed in (NULL otherwise), the app, the surface, a category from a closed set, the description and optional steps the person typed (PII-masked before storage: e-mail addresses, phone numbers, card-like and UPI-id-like strings), the diagnostics the client showed in its preview (app version, build, channel, platform, OS version, device CLASS, locale, text scale, theme, recent error CODES, the crash event id only with crash-reporting consent, and log lines only on opt-in), the contact address ONLY when \"you may reply to me\" or \"tell me when it is fixed\" was ticked, both flags, the private screenshot's key, the triage lifecycle (status, its timestamped history, a duplicate-of id, the fix PR number, the fixed version; lane feedback-triage), when the receipt and the one \"fixed in\" notice were claimed, the hash of that notice's unsubscribe token, and the purge time. No network address and no device model or identifier: the route refuses any key it does not know.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 90,
+        "sweptBy": "services/platform/src/feedback/cron.ts",
+        "reason": "90 days from `created_at` (`purge_at`), enforced by the feedback Worker's nightly cron (FEEDBACK_RETENTION_DAYS in services/platform/src/feedback/limits.ts, held equal to this row and to tooling/ops/register.json by services/platform/test/feedback-retention.test.ts). A report is a support conversation: long enough to triage, fix and tell the reporter, and no longer. The purge deletes the row and its screenshot and counts an anonymised stub into `feedback_counts`. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A report is the reporter's own words; it leaves with the account. The column is spelled `user_id` ON PURPOSE (0027_feedback.sql), so the shared erasure walk DELETES the row; the platform Worker's nightly feedback orphan sweep then deletes the screenshot the row named. Verified rather than assumed: adding the table turned services/platform/test/erasure-derivation.test.ts's pinned set red. An anonymous report (user_id NULL) is reachable only by its 90-day purge."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_feedback.sql",
+        "services/platform/src/routes/feedback.ts",
+        "services/platform/src/feedback/cron.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you use \"Report a problem\""
+      }
+    },
+    {
+      "id": "table:platform_db.feedback_counts",
+      "kind": "d1-table",
+      "name": "feedback_counts",
+      "personalData": false,
+      "holds": "⏱ 2026-10-03 · lane feedback-intake. The anonymised stub a purged report leaves: one count per (day, app, app version, category, status). No text, no account, no contact, no screenshot, no time finer than the day.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Counts only: how many reports of which kind an app version drew, the one thing a purged report is still useful for. Nothing in it is about a person."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A day, an app id, a version, a category, a status and a number. No user id, no install id, no free text."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_feedback.sql",
+        "services/platform/src/feedback/cron.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.feedback_rate_windows",
+      "kind": "d1-table",
+      "name": "feedback_rate_windows",
+      "personalData": false,
+      "holds": "⏱ 2026-10-03 · lane feedback-intake. The intake's rate-limit counts: one row per (window start, key hash) where the hash is SHA-256 of the window's random salt and the caller key (an account id, or the Cloudflare colo and ASN of a signed-out request — never an address, which no Worker reads), truncated to 16 hex characters. The key itself is never written (C-NO-NETWORK-ADDRESS-COLUMN).",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 2,
+        "sweptBy": "services/platform/src/feedback/cron.ts",
+        "reason": "An hour window is deleted two hours after it starts and the day window two days after, by the nightly cron's `windows` limb (pruneWindows), together with the window's salt: once the salt is gone no hash can be recomputed from any address or account."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A count under a salted, truncated hash whose salt is deleted with its window; no column holds an account, an address or anything user-shaped."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_feedback.sql",
+        "services/platform/src/feedback/window-limiter.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.feedback_rate_salts",
+      "kind": "d1-table",
+      "name": "feedback_rate_salts",
+      "personalData": false,
+      "holds": "⏱ 2026-10-03 · lane feedback-intake. One random 32-byte salt per live rate-limit window. Nothing about anybody.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 2,
+        "sweptBy": "services/platform/src/feedback/cron.ts",
+        "reason": "Deleted with its window by the nightly cron's `windows` limb (pruneWindows): two hours after an hour window starts, two days after the day window starts."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "Random bytes and a window start."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_feedback.sql",
+        "services/platform/src/feedback/window-limiter.ts"
+      ]
+    },
+    {
+      "id": "r2:nikatru-feedback",
+      "kind": "r2-bucket",
+      "name": "nikatru-feedback",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane feedback-intake. The PRIVATE screenshot bucket: one PNG or WebP per report that attached one (`shots/<report id>.<png|webp>`), at most 2 MB, captured with every text field and every `Sensitive`-marked widget blurred on the device before it was sent, and with its metadata chunks (PNG tEXt/iTXt/zTXt/eXIf, WebP EXIF/XMP/ICCP) stripped by the Worker before it was stored. No public access and no route serves it: the read path is the feedback Worker's `FeedbackInternal` Service Binding entrypoint.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 90,
+        "sweptBy": "services/platform/src/feedback/cron.ts",
+        "reason": "Deleted with its report at `purge_at` (90 days, FEEDBACK_RETENTION_DAYS) by the nightly cron's `purge` limb, object before row. `swept`, not `ttl`: R2 has no expiry of its own."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "An object has no `user_id` for the erasure walk to read; it is named by its report row. DELETE /v1/account deletes the row (`table:platform_db.feedback_reports`, purge), and the platform Worker's nightly feedback orphan sweep (sweepOrphans) deletes every object no row names, so an erased person's screenshots are gone within a day without an operator step."
+      },
+      "writtenBy": [
+        "services/platform/wrangler.jsonc"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you use \"Report a problem\""
+      }
+    },
+    {
       "id": "table:subscriptiontracker_db.subscriptions",
       "kind": "d1-table",
       "name": "subscriptions",
@@ -1214,6 +1326,29 @@
         "quote": "salted, one-way fingerprint"
       },
       "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address."
+    },
+    {
+      "id": "table:platform_db.feedback_mail_suppressed",
+      "kind": "d1-table",
+      "name": "feedback_mail_suppressed",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane feedback-triage (O-FEEDBACK-NOTIFY-FIXED-UNBUILT). One row per address that pressed \"unsubscribe\" on a feedback mail (the receipt or the \"fixed in\" notice): SHA-256 of the lower-cased address and the time. Never the address itself; nothing else.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A suppression is a person's standing \"stop\": deleting it would let the feedback Worker mail them again, which is the one thing they asked for not to happen. It holds only a hash, and it is read only to refuse a send (services/platform/src/feedback/notify.ts `isSuppressed`)."
+      },
+      "erasure": {
+        "kind": "pseudonymous",
+        "reason": "No column names an account: the row is a hash of an address, deliberately not keyed on `user_id`, so an account deletion leaves it and the stop outlives the account. Erasing it would re-enable mail to the person who asked for none."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_feedback.sql",
+        "services/platform/src/feedback/notify.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "each mail has an unsubscribe link"
+      }
     }
   ]
 }

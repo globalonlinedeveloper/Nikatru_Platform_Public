@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "మీ చరిత్రలోని ప్రతి స్క్రీన్‌షాట్‌ను, ఆగిపోయిన క్యాప్చర్‌లు వదిలిన అన్నిటినీ తీసివేస్తుంది. మీ సెట్టింగ్‌లు ఉన్నట్టే ఉంటాయి."
   },
+  "optionsSectionReport": {
+    "message": "సమస్యను నివేదించండి"
+  },
+  "optionsReport": {
+    "message": "ఏమి తప్పు జరిగిందో మాకు చెప్పండి"
+  },
+  "optionsReportDesc": {
+    "message": "nikatru.com లోని నివేదిక ఫారమ్‌ను కొత్త ట్యాబ్‌లో తెరుస్తుంది, అందులో FullShot వెర్షన్, భాష, బ్రౌజర్ మాత్రమే నింపబడి ఉంటాయి."
+  },
+  "optionsReportBtn": {
+    "message": "నివేదిక ఫారమ్‌ను తెరవండి"
+  },
+  "optionsSectionHelp": {
+    "message": "సహాయం"
+  },
+  "optionsHelpSearch": {
+    "message": "సహాయంలో వెతకండి"
+  },
+  "optionsHelpNone": {
+    "message": "సరిపోలే సమాధానం లేదు."
+  },
+  "optionsHelpAsk": {
+    "message": "ఇంకా సమస్యా? మమ్మల్ని అడగండి"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot ఈ పరికరంలో నిల్వ చేసినదంతా తొలగించాలా?\n\nమీ చరిత్రలో స్క్రీన్‌షాట్‌లు: $COUNT$\nఆగిపోయిన క్యాప్చర్‌ల అవశేషాలు: $LEFTOVER$\nఇది ఖాళీ చేసే స్థలం: $SIZE$\n\nమీ సెట్టింగ్‌లపై ప్రభావం ఉండదు. దీన్ని వెనక్కి తీసుకోలేరు.",
     "placeholders": {

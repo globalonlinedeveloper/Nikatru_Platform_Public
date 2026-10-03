@@ -12,6 +12,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/ci.yml#web-artifacts"
+    ],
+    "kind": "script",
+    "ref": "tooling/a11y/scan.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 037",
       "ADR 045"
@@ -191,6 +202,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-a11y-primitives.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-a11y-statement.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -907,6 +928,7 @@
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-web.yml#status-site",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
@@ -1269,6 +1291,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-incidents.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 006",
       "ADR 080",
@@ -1282,6 +1314,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-input-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-known-issues.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2601,6 +2643,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-status-components.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
@@ -3010,7 +3062,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
-      ".github/workflows/deploy-web.yml#site"
+      ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-web.yml#status-site"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-site-integrity.mjs",
@@ -3286,6 +3339,7 @@
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-web.yml#status-site",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
@@ -3340,6 +3394,7 @@
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-web.yml#status-site",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
@@ -4260,6 +4315,7 @@
       "O-2"
     ],
     "invokedBy": [
+      ".github/workflows/deploy-web.yml#status-site",
       ".github/workflows/ops-watch.yml#digest",
       ".github/workflows/ops-watch.yml#status"
     ],
@@ -4592,7 +4648,27 @@
       ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "script",
+    "ref": "tooling/sites/gen-accessibility-statement.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
     "ref": "tooling/sites/gen-auth-mail.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/gen-help-centre.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4708,6 +4784,17 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/web-a11y-tree.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#status-site"
+    ],
+    "kind": "script",
+    "ref": "tooling/status/build-status.mjs",
     "references": [],
     "state": "WIRED"
   },

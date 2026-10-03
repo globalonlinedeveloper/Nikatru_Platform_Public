@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { memoryRateLimiter } from '../../_shared/src/ports/fakes/ratelimit';
 import type { RateLimiter } from '../../_shared/src/ports/ratelimit';
-import { admit } from '../src/limit';
+import { admit, SHIELD_HEADER } from '../src/limit';
 import type { Env, RateLimiterBinding } from '../src/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,10 +29,13 @@ describe("the shield's limiter is the rate-limiter port", () => {
   it('a limiter over budget refuses the request — through the port fake', async () => {
     const limiter = memoryRateLimiter({ budget: 2 });
     const env: Env = { AUTH_PASSWORD_GLOBAL_LIMITER: limiter };
-    expect(await admit('auth-password', env, 'test-release')).toBeNull();
-    expect(await admit('auth-password', env, 'test-release')).toBeNull();
-    const refused = await admit('auth-password', env, 'test-release');
+    // `mark` is required since review 1 of #1115 (src/limit.ts): the release the refusal names.
+    const mark = 'test-release';
+    expect(await admit('auth-password', env, mark)).toBeNull();
+    expect(await admit('auth-password', env, mark)).toBeNull();
+    const refused = await admit('auth-password', env, mark);
     expect(refused?.status).toBe(429);
+    expect(refused?.headers.get(SHIELD_HEADER)).toBe(mark);
     expect(limiter.keys).toEqual(['global:auth-password', 'global:auth-password', 'global:auth-password']);
   });
 });

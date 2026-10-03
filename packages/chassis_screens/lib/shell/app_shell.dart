@@ -156,8 +156,11 @@ class NikatruApp extends StatelessWidget {
         darkTheme: darkTheme,
         themeMode: themeMode,
         routerConfig: routerConfig,
-        builder: (BuildContext context, Widget? child) =>
-            MediaQuery.withClampedTextScaling(
+        // [feedback-intake] The ONE root boundary a "Report a problem"
+        // screenshot is taken from (design_system ScreenCaptureBoundary), above
+        // the router's Navigator so the screen the person was on is captured.
+        builder: (BuildContext context, Widget? child) => ScreenCaptureBoundary(
+          child: MediaQuery.withClampedTextScaling(
               minScaleFactor: minTextScale,
               maxScaleFactor: maxTextScale,
               // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT — in EVERY
@@ -179,6 +182,7 @@ class NikatruApp extends StatelessWidget {
                 child: shell(child ?? const SizedBox.shrink()),
               ),
             ),
+        ),
       ),
     );
   }

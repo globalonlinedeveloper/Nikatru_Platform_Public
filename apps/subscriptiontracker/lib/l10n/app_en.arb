@@ -1570,20 +1570,6 @@
   "@rateAppUnavailable": {
     "description": "ST-Y4: the SnackBar after a Rate tap the store did not answer (no store id in this build, or the store threw). Never shown as success."
   },
-  "sendFeedback": "Send feedback",
-  "@sendFeedback": {
-    "description": "ST-Y4 (audit D12/F53): the Help row that opens a mail to the support address with a feedback subject."
-  },
-  "feedbackMailSubject": "{appName} feedback",
-  "@feedbackMailSubject": {
-    "description": "The subject line pre-filled in the feedback mail, so a suggestion arrives already labelled.",
-    "placeholders": {
-      "appName": {
-        "type": "String",
-        "example": "Subscriptions"
-      }
-    }
-  },
   "overBudgetTitle": "Over your monthly budget",
   "@overBudgetTitle": {
     "description": "ST-I2 (audit C14): the title of the notification posted when the monthly subscription average passes the budget the user set on Insights."

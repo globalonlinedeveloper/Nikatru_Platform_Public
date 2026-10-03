@@ -439,6 +439,34 @@
     "message": "Создаёт небольшой файл с описанием состояния этого расширения. Вы видите ровно то, что в нём есть, до сохранения, и никуда ничего не отправляется.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Отправить сообщение в поддержку",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Открывает форму сообщения на nikatru.com в новой вкладке, где заполнены только данные этого расширения: название, версия, язык и браузер.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Открыть форму",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Справка",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Поиск по справке",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Подходящих ответов нет.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Всё ещё не получается? Спросите нас",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Подготовить отчёт",
     "description": "en: Prepare a report"

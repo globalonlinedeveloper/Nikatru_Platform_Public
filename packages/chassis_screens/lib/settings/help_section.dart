@@ -51,7 +51,12 @@ abstract final class HelpKeys {
   static const Key contactPage = Key('settings.help.contactPage');
   static const Key contactSupport = Key('settings.help.contactSupport');
   static const Key rate = Key('settings.help.rate');
-  static const Key feedback = Key('settings.help.feedback');
+  /// "Report a problem" (lane feedback-intake): the row that used to be a
+  /// "Send feedback" mail.
+  static const Key reportProblem = Key('settings.help.reportProblem');
+  /// "Help" (lane help-search): packages/help's centre — articles searched
+  /// on the device, known issues, the accessibility statement, "Ask us".
+  static const Key helpCentre = Key('settings.help.helpCentre');
 }
 
 /// A mail to [email] with [subject] pre-filled, so it arrives labelled.
@@ -59,8 +64,9 @@ Uri supportMailUri(String email, String subject) =>
     Uri.parse('mailto:$email?subject=${Uri.encodeComponent(subject)}');
 
 /// Settings' ONE Help section (audit D12/F53) as a card in [decoration], top
-/// to bottom: the contact page, the support mail, Rate, Send feedback — each
-/// drawn by [row]. The two support routes used to sit in two different cards,
+/// to bottom: the help centre (when [helpCentreLabel] and [openHelpCentre] are
+/// given; lane help-search), the contact page, the support mail, Rate, Report a problem —
+/// each drawn by [row]. The two support routes used to sit in two different cards,
 /// and there was no way to rate the app or send a suggestion at all.
 ///
 /// * The contact PAGE and the support MAIL both stay: they fail in different
@@ -69,19 +75,25 @@ Uri supportMailUri(String email, String subject) =>
 ///   and is absent unless [canRate] — a platform with no listing (web,
 ///   Linux) gets no dead row. Anything but `opened` shows [rateUnavailable]
 ///   in a SnackBar: a tap that did nothing is said out loud.
-/// * **Feedback** is the support mail with its own subject, so a suggestion
-///   is told apart from a bug report before it is opened.
+/// * **Report a problem** opens packages/feedback's sheet (lane
+///   feedback-intake): a category, a description, an optional blurred
+///   screenshot and the diagnostics the person previews, sent to the private
+///   intake. It replaced "Send feedback", which was the support mail with its
+///   own subject and carried no diagnostics at all; the support MAIL row above
+///   stays as the fallback, and the sheet offers it when a report cannot go.
 Widget helpCard(
   BuildContext context, {
   required Decoration decoration,
   required HelpRowBuilder row,
+  String? helpCentreLabel,
+  VoidCallback? openHelpCentre,
   required String contactPageLabel,
   required VoidCallback openContactPage,
   required String contactSupportLabel,
   required String supportEmail,
   required String supportSubject,
-  required String feedbackLabel,
-  required String feedbackSubject,
+  required String reportProblemLabel,
+  required VoidCallback onReportProblem,
   required Future<void> Function(Uri mail) openMail,
   required bool canRate,
   required String rateLabel,
@@ -98,6 +110,8 @@ Widget helpCard(
 
   final List<(Key, String, String, String?, VoidCallback)> links =
       <(Key, String, String, String?, VoidCallback)>[
+        if (helpCentreLabel != null && openHelpCentre != null)
+          (HelpKeys.helpCentre, 'ⓘ', helpCentreLabel, null, openHelpCentre),
         (HelpKeys.contactPage, '?', contactPageLabel, null, openContactPage),
         (
           HelpKeys.contactSupport,
@@ -108,11 +122,11 @@ Widget helpCard(
         ),
         if (canRate) (HelpKeys.rate, '☆', rateLabel, null, rate),
         (
-          HelpKeys.feedback,
-          '✎',
-          feedbackLabel,
+          HelpKeys.reportProblem,
+          '⚑',
+          reportProblemLabel,
           null,
-          () => openMail(supportMailUri(supportEmail, feedbackSubject)),
+          onReportProblem,
         ),
       ];
   return Container(

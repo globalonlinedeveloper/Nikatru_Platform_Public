@@ -117,6 +117,12 @@
     },
     {
       "page": "privacy.html",
+      "claim": "Problem reports",
+      "type": "descriptive",
+      "why": "⏱ 2026-10-03 · lane feedback-intake. A list-item heading naming the category. The stores that hold it are enumerated in tooling/legal/data-inventory.json (`table:platform_db.feedback_reports`, `r2:nikatru-feedback`, `table:platform_db.feedback_mail_suppressed`), with their 90-day period, their erasure and their writers; that is where the checkable claim lives."
+    },
+    {
+      "page": "privacy.html",
       "claim": "Information collected automatically",
       "type": "descriptive",
       "why": "A section heading. Same as above — the inventory carries the store-level facts."

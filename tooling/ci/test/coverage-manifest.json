@@ -5,6 +5,9 @@
   "a11y-primitives.test.mjs":
     28,
 
+  "a11y-statement.test.mjs":
+    23,
+
   "adapter-capabilities.test.mjs":
     32,
 
@@ -366,7 +369,7 @@
     7,
 
   "deployment-record.test.mjs":
-    129,
+    130,
 
   "derived-sets.test.mjs":
     14,
@@ -467,6 +470,9 @@
   "failure-ledger-lane.test.mjs":
     29,
 
+  "feedback-triage.test.mjs":
+    31,
+
   "finish-capture.test.mjs":
     12,
 
@@ -542,6 +548,9 @@
   "heavy-lock.test.mjs":
     46,
 
+  "help-search.test.mjs":
+    21,
+
   "hook-messages.test.mjs":
     5,
 
@@ -609,7 +618,7 @@
     62,
 
   "legal-text-parity.test.mjs":
-    30,
+    32,
 
   "legal-tripwires.test.mjs":
     30,
@@ -1047,10 +1056,13 @@
     57,
 
   "site-bindings.test.mjs":
-    32,
+    35,
 
   "site-integrity.test.mjs":
-    129,
+    138,
+
+  "site-report-form.test.mjs":
+    6,
 
   "site-set.test.mjs":
     6,
@@ -1121,6 +1133,9 @@
   "start-here.test.mjs":
     9,
 
+  "status-page.test.mjs":
+    24,
+
   "stop-copy.test.mjs":
     10,
 
@@ -1152,7 +1167,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    93,
+    96,
 
   "store-vocabulary.test.mjs":
     28,

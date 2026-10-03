@@ -19,6 +19,7 @@
      6  i18n integrity      default_locale resolves, every __MSG_ key resolves
      7  icons               16/32/48/128 present, real PNGs, declared size
      8  no _underscore      no root entry starting with _ except _locales
+    10  report payload      a packaged report-link.js carries no page URL (below)
 
    And gate 9, added 2026-10-01 and not in the spec either: a packaged file that
    looks third-party (a .min name, an @license/@preserve tag, a foreign SPDX
@@ -84,6 +85,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { geckoIdFor, isPlaceholderValue, isPlaceholderIdentity } from './lib/tool-identity.mjs';
 import {
@@ -1904,6 +1906,112 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
   } else {
     r.pass('no reserved underscore paths at the package root',
       roots.has('_locales') ? '_locales is the one permitted exception, and it is present' : undefined);
+  }
+}
+
+/* ---------------- 10. a problem report carries no page ----------------
+   Lane feedback-intake (Do 9), 2026-10-03. Every tool's options page opens
+   "Report a problem" through core/v1/report-link.js (SKREPORT): a link to the
+   report form on nikatru.com with the tool's OWN state filled in. Its promise is
+   "never the browsed page, never its URL", and a promise in a comment is not a
+   gate. So the shipped copy is RUN here, in a sandbox, on a probe state that
+   carries a page URL, a title and a host under keys a careless edit would pass
+   through, and a URL under a key the list allows — and the build fails if any
+   of it survives into the payload or the link. A tool that packages no
+   report-link.js has no report path to grade, and is told so. */
+{
+  const reporters = files.filter(f => path.basename(f) === 'report-link.js');
+  if (reporters.length === 0) {
+    r.note('no packaged report-link.js, so there is no problem-report payload to grade (gate 10)');
+  }
+  const SECRET = 'secret-page.example';
+  const probes = [
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', userAgent: 'Mozilla/5.0 Chrome/130.0', category: 'bug',
+      url: 'https://' + SECRET + '/inbox', tabUrl: 'https://' + SECRET + '/', href: 'https://' + SECRET + '/a',
+      pageTitle: 'Inbox of ' + SECRET, title: SECRET, host: SECRET },
+    { app: tool.id, version: 'https://' + SECRET + '/x', uiLocale: SECRET, userAgent: 'Mozilla/5.0 Firefox/131.0', category: 'bug' },
+    // ⏱ 2026-10-03 · lane help-search: `q` carries what the person typed into the Help panel's
+    // search. A query that is a URL, a host or an address is dropped whole.
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'https://' + SECRET + '/inbox' },
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'why is ' + SECRET + ' blank' },
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'me@' + SECRET }
+  ];
+  for (const rel of reporters) {
+    const sandbox = { self: {} };
+    sandbox.globalThis = sandbox.self;
+    let api = null;
+    try {
+      vm.runInNewContext(read(rel), sandbox, { filename: rel, timeout: 1000 });
+      api = sandbox.self.SKREPORT || null;
+    } catch (e) {
+      r.fail('the report payload builder loads', rel + ' threw while loading: ' + (e && e.message));
+      continue;
+    }
+    if (!api || typeof api.payload !== 'function' || typeof api.link !== 'function') {
+      r.fail('the report payload builder loads', rel + ' does not attach SKREPORT.payload and SKREPORT.link');
+      continue;
+    }
+    const leaks = [];
+    for (const probe of probes) {
+      const payload = api.payload(probe);
+      const link = String(api.link(probe));
+      for (const [k, v] of Object.entries(payload || {})) {
+        if (/^(url|href|uri|taburl|pageurl|title|pagetitle|host|origin)$/i.test(k)) leaks.push('payload key `' + k + '`');
+        if (String(v).includes(SECRET)) leaks.push('payload value of `' + k + '` carries the page (' + JSON.stringify(v) + ')');
+      }
+      if (link.includes(SECRET)) leaks.push('the link carries the page: ' + link);
+      if (!/^https:\/\/nikatru\.com\/support\b/.test(link)) leaks.push('the link is not the nikatru.com report form: ' + link);
+    }
+    // The query itself must still arrive when it is words: "Ask us" is worthless if it never does.
+    const asked = api.payload({ app: tool.id, category: 'question', query: 'capture is blank' });
+    if (!asked || asked.q !== 'capture is blank') leaks.push('a plain-words query does not reach the link as `q` (got ' + JSON.stringify(asked && asked.q) + '), so "Ask us" loses what was typed');
+    if (leaks.length) {
+      r.fail('a problem report carries no page URL',
+        rel + ':\n  ' + [...new Set(leaks)].join('\n  ') + '\n' +
+        'A report is the extension\'s OWN state (its id, version, locale and coarse platform). The page the user\n' +
+        'was on, its URL, title or host, must never leave in it: the options page promises exactly that.');
+    } else {
+      r.pass('a problem report carries no page URL', rel + ' — ' + probes.length + ' probe state(s) carrying a page, none of it in the payload or the link');
+    }
+  }
+}
+
+/* ---------------- 11. a Help panel ships its index ----------------
+   Lane help-search (Do 5), 2026-10-03. The options page's Help panel searches
+   an index BUNDLED with the tool (help-index.js, written with the ranker
+   help-search.js by tooling/help/build-index.mjs): no request, so no index in
+   the package is a panel that finds nothing, silently. A tool whose packaged
+   pages load help-panel.js must package both files, the index must be the
+   builder's shape and carry at least one article, and the ranker must export
+   `search`. A tool with no Help panel is told so. */
+{
+  const panels = files.filter(f => path.basename(f) === 'help-panel.js');
+  if (panels.length === 0) r.note('no packaged help-panel.js, so there is no bundled help index to grade (gate 11)');
+  for (const rel of panels) {
+    const src = read(rel);
+    const problems = [];
+    const imports = [...src.matchAll(/^import\s+[^'"]*['"]([^'"]+)['"]/gm)].map(m => path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1])));
+    const indexRel = imports.find(p => path.basename(p) === 'help-index.js');
+    const searchRel = imports.find(p => path.basename(p) === 'help-search.js');
+    if (!indexRel || !files.includes(indexRel)) problems.push('the bundled index ' + (indexRel || 'help-index.js') + ' is not in the package');
+    if (!searchRel || !files.includes(searchRel)) problems.push('the ranker ' + (searchRel || 'help-search.js') + ' is not in the package');
+    if (indexRel && files.includes(indexRel)) {
+      let index = null;
+      try {
+        index = JSON.parse(read(indexRel).replace(/^\/\/.*\n/gm, '').replace(/^export default\s*/, '').replace(/;\s*$/, ''));
+      } catch (e) {
+        problems.push(indexRel + ' is not `export default <the index JSON>`: ' + (e && e.message));
+      }
+      if (index && (!Array.isArray(index.docs) || index.docs.length === 0 || !index.postings || typeof index.avgdl !== 'number')) {
+        problems.push(indexRel + ' carries no article (docs ' + (Array.isArray(index && index.docs) ? index.docs.length : 'absent') + ')');
+      }
+    }
+    if (searchRel && files.includes(searchRel) && !/export function search\(/.test(read(searchRel))) problems.push(searchRel + ' exports no `search`');
+    if (problems.length) {
+      r.fail('the Help panel ships its index', rel + ':\n  ' + problems.join('\n  ') + '\nRun node tooling/help/build-index.mjs, and keep both files inside the package include rules.');
+    } else {
+      r.pass('the Help panel ships its index', rel + ' — ' + indexRel + ' and ' + searchRel + ' are packaged');
+    }
   }
 }
 

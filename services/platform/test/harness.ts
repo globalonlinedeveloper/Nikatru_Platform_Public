@@ -60,6 +60,7 @@ import providerTokenEncryption0023 from '../migrations/0023_provider_token_encry
 import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
 import boxConfigManifest0025 from '../migrations/0025_box_config_manifest.sql?raw';
 import providerPaymentLinks0026 from '../migrations/0026_provider_payment_links.sql?raw';
+import feedback0027 from '../migrations/0027_feedback.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -136,6 +137,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
   // subscription, so a refund or dispute resolves by payment id.
   providerPaymentLinks0026,
+  // ⏱ 2026-10-03 · lane feedback-intake — the "Report a problem" intake's tables,
+  // WRITTEN by src/routes/feedback.ts and src/feedback/ (lane feedback-intake).
+  feedback0027,
 ];
 
 /**
@@ -191,6 +195,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   boxConfigManifest0025,
   // 0026_provider_payment_links is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   providerPaymentLinks0026,
+  // 0027 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  feedback0027,
 ];
 
 /**

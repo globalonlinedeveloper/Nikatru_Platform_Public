@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Tar bort alla skärmbilder i din historik och allt som avbrutna inspelningar har lämnat efter sig. Dina inställningar förblir som de är."
   },
+  "optionsSectionReport": {
+    "message": "Rapportera ett problem"
+  },
+  "optionsReport": {
+    "message": "Berätta vad som gick fel"
+  },
+  "optionsReportDesc": {
+    "message": "Öppnar rapportformuläret på nikatru.com i en ny flik, där bara FullShots version, språk och webbläsare är ifyllda."
+  },
+  "optionsReportBtn": {
+    "message": "Öppna rapportformuläret"
+  },
+  "optionsSectionHelp": {
+    "message": "Hjälp"
+  },
+  "optionsHelpSearch": {
+    "message": "Sök i hjälpen"
+  },
+  "optionsHelpNone": {
+    "message": "Inget matchande svar."
+  },
+  "optionsHelpAsk": {
+    "message": "Fortfarande fast? Fråga oss"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vill du radera allt som FullShot har lagrat på den här enheten?\n\nSkärmbilder i din historik: $COUNT$\nRester från avbrutna inspelningar: $LEFTOVER$\nUtrymme som frigörs: $SIZE$\n\nDina inställningar påverkas inte. Detta går inte att ångra.",
     "placeholders": {

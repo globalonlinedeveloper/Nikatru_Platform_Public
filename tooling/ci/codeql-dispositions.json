@@ -576,6 +576,17 @@
       "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
+      "alert": 558,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/e2e/magic_link.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "sha256:4d544c2d8e55934aab155541e14e74be2d4fd60cee9d653a241b23218b288edb"
+      ],
+      "reason": "The same send as #533, re-raised at a new location on 2026-10-02 (PR #1140): the generate_link request moved into a mint() closure so a Cloudflare origin fault (520-529) is asked once more. Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
       "alert": 589,
       "rule": "js/file-access-to-http",
       "path": "tooling/e2e/magic_link.mjs",

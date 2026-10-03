@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "履歴にあるすべてのスクリーンショットと、中断されたキャプチャが残したものをすべて削除します。設定はそのまま残ります。"
   },
+  "optionsSectionReport": {
+    "message": "問題を報告"
+  },
+  "optionsReport": {
+    "message": "何が起きたか教えてください"
+  },
+  "optionsReportDesc": {
+    "message": "nikatru.com の報告フォームを新しいタブで開きます。入力済みなのは FullShot のバージョン、言語、ブラウザーだけです。"
+  },
+  "optionsReportBtn": {
+    "message": "報告フォームを開く"
+  },
+  "optionsSectionHelp": {
+    "message": "ヘルプ"
+  },
+  "optionsHelpSearch": {
+    "message": "ヘルプを検索"
+  },
+  "optionsHelpNone": {
+    "message": "一致する回答はありません。"
+  },
+  "optionsHelpAsk": {
+    "message": "解決しない場合はお問い合わせください"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot がこのデバイスに保存したものをすべて削除しますか？\n\n履歴のスクリーンショット: $COUNT$\n中断されたキャプチャの残り: $LEFTOVER$\n解放される容量: $SIZE$\n\n設定には影響しません。この操作は取り消せません。",
     "placeholders": {

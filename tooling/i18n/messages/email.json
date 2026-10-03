@@ -15,7 +15,11 @@
     "⚠️ The ta and hi copy was written by an agent session (2026-10-02) from the app's own ARB",
     "terminology and is UNREVIEWED: it needs a native reader before it is relied on (the owner-review",
     "rule for published copy; C-OWNER-APPROVAL-BOUNDARY). tooling/i18n/translation-qa.mjs writes the",
-    "review sheet. `{name}`-style placeholders are filled by the renderer, never translated."
+    "review sheet. `{name}`-style placeholders are filled by the renderer, never translated.",
+    "",
+    "feedbackMail: the feedback Worker's two consented mails about a person's own problem report",
+    "(services/platform/src/feedback/notify.ts; lane feedback-triage): the receipt and the one \"fixed in",
+    "version X\" notice. The locale is the report's own `diagnostics.locale`; the same fallbacks."
   ],
   "digest": {
     "en": {
@@ -112,6 +116,38 @@
         "button": "पासवर्ड रीसेट करें",
         "ignore": "पासवर्ड रीसेट आपने नहीं माँगा? आप इस ईमेल को अनदेखा कर सकते हैं — आपका पासवर्ड नहीं बदला है।"
       }
+    }
+  },
+  "feedbackMail": {
+    "en": {
+      "receiptSubject": "We got your report {id}",
+      "receiptBody": "Thank you. Your problem report {id} has reached us, and a person will read it. If we need more detail, we will reply to this address.",
+      "fixedSubject": "Fixed in version {version}: your report {id}",
+      "fixedBody": "The problem you reported as {id} is fixed in version {version} of {app}.",
+      "update": "To get the fix, update to version {version} or later:",
+      "why": "You get this because you ticked \"tell me when it is fixed\" when you sent the report. This is the only mail we send about it.",
+      "receiptWhy": "You get this because you ticked \"you may reply to me\" when you sent the report.",
+      "stop": "Stop mail about my reports"
+    },
+    "ta": {
+      "receiptSubject": "உங்கள் புகார் {id} கிடைத்தது",
+      "receiptBody": "நன்றி. உங்கள் சிக்கல் புகார் {id} எங்களை வந்தடைந்தது; ஒருவர் அதைப் படிப்பார். கூடுதல் விவரம் தேவைப்பட்டால், இந்த முகவரிக்குப் பதில் அனுப்புவோம்.",
+      "fixedSubject": "பதிப்பு {version}-இல் சரிசெய்யப்பட்டது: உங்கள் புகார் {id}",
+      "fixedBody": "{id} என நீங்கள் புகாரளித்த சிக்கல் {app}-இன் பதிப்பு {version}-இல் சரிசெய்யப்பட்டது.",
+      "update": "சரிசெய்தலைப் பெற, பதிப்பு {version} அல்லது அதற்குப் பிந்தையதற்குப் புதுப்பிக்கவும்:",
+      "why": "புகாரை அனுப்பும்போது \"சரிசெய்யப்பட்டதும் எனக்குத் தெரிவிக்கவும்\" என்பதைத் தேர்ந்தெடுத்ததால் இது உங்களுக்கு வருகிறது. இதைப் பற்றி நாங்கள் அனுப்பும் ஒரே மின்னஞ்சல் இதுதான்.",
+      "receiptWhy": "புகாரை அனுப்பும்போது \"எனக்குப் பதில் அனுப்பலாம்\" என்பதைத் தேர்ந்தெடுத்ததால் இது உங்களுக்கு வருகிறது.",
+      "stop": "என் புகார்கள் பற்றிய மின்னஞ்சலை நிறுத்து"
+    },
+    "hi": {
+      "receiptSubject": "हमें आपकी रिपोर्ट {id} मिल गई",
+      "receiptBody": "धन्यवाद। आपकी समस्या रिपोर्ट {id} हम तक पहुँच गई है, और कोई व्यक्ति इसे पढ़ेगा। अगर हमें और जानकारी चाहिए, तो हम इसी पते पर जवाब देंगे।",
+      "fixedSubject": "संस्करण {version} में ठीक किया गया: आपकी रिपोर्ट {id}",
+      "fixedBody": "आपने जिस समस्या की रिपोर्ट {id} के रूप में की थी, वह {app} के संस्करण {version} में ठीक कर दी गई है।",
+      "update": "सुधार पाने के लिए संस्करण {version} या उसके बाद के संस्करण पर अपडेट करें:",
+      "why": "आपको यह इसलिए मिल रहा है क्योंकि रिपोर्ट भेजते समय आपने \"ठीक होने पर मुझे बताएँ\" चुना था। इसके बारे में हम केवल यही एक मेल भेजते हैं।",
+      "receiptWhy": "आपको यह इसलिए मिल रहा है क्योंकि रिपोर्ट भेजते समय आपने \"आप मुझे जवाब दे सकते हैं\" चुना था।",
+      "stop": "मेरी रिपोर्ट के बारे में मेल बंद करें"
     }
   }
 }

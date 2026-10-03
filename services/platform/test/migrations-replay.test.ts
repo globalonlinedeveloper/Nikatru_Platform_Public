@@ -222,6 +222,14 @@ describe('platform_db migrations re-apply cleanly', () => {
       'ext_link_floor',
       'feature_set_members',
       'feature_sets',
+      // ⏱ 2026-10-03 · migration 0025 — the "Report a problem" intake (lane
+      // feedback-intake), written by src/routes/feedback.ts.
+      'feedback_counts',
+      // ⏱ 2026-10-03 · lane feedback-triage: the unsubscribe list.
+      'feedback_mail_suppressed',
+      'feedback_rate_salts',
+      'feedback_rate_windows',
+      'feedback_reports',
       // ⏱ 2026-09-29 · migration 0022 — native sign-in attestation (ADR no.NNN);
       // ⏱ 2026-09-30 stateless challenges: redeemed nonces, keys, daily counters.
       'native_attest_counters',

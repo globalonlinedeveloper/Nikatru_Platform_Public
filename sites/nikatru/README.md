@@ -33,6 +33,7 @@ reads and the job's `pages secret put`:
 |---|---|---|
 | D1 | `PLATFORM_DB` | `platform_db` |
 | KV | `SIGNUPS` | `nikatru-signups` |
+| service | `PLATFORM` | `platform` |
 | secret | `SUBSCRIBE_RATE_LIMIT_SALT` | the HMAC key of the rate-limit counter, never in a file |
 
 > rajasekarselvam.com is a **separate** site in the same monorepo at `sites/rajasekarselvam/`

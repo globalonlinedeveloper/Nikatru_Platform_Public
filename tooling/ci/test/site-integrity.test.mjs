@@ -257,8 +257,17 @@ function selfHosted(dir, { root = 'a' } = {}) {
     join(site, 'index.html'),
     `<html><head><link rel="canonical" href="${FIXTURE_ORIGIN}"></head><body>` +
       `<p data-policy-version="${FIXTURE_VERSION}">${FIXTURE_PROMISE}</p>` +
-      `${EMPTY_GRID}</body></html>\n`,
+      // ⏱ 2026-10-03 · lane a11y-statement: the shared chrome footer, which on a
+      // REQUIRED_LEGAL_ROOTS root must link the accessibility statement.
+      `${EMPTY_GRID}${FIXTURE_FOOTER}</body></html>\n`,
   );
+  // …and the statement itself, noindex like every page but the homepage here.
+  writeFileSync(join(site, 'accessibility.html'), realPage('Accessibility statement').replace('<html', '<meta name="robots" content="noindex"><html'));
+  // ⏱ 2026-10-03 · lane help-search: the help centre, FullShot's own support page and the known issues.
+  for (const rel of ['help/index.html', 'help/fullshot/index.html', 'help/known-issues.html']) {
+    mkdirSync(dirname(join(site, rel)), { recursive: true });
+    writeFileSync(join(site, rel), realPage('Help').replace('<html', '<meta name="robots" content="noindex"><html'));
+  }
   writeFixtureFile(
     dir,
     join(site, 'sitemap.xml'),
@@ -334,6 +343,8 @@ const fixtureDutyMatrix = (root) => ({
 });
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
+/** The shared footer region tooling/sites/chrome.mjs splices into every page. */
+const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="https://status.nikatru.com/">Status</a> <a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
 
 /** A policy page that clears the floor: an <h1> plus >1000 visible characters. */
@@ -1392,6 +1403,42 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
   // Mutation-proven against the real tree as well (6/6): removing the name from
   // terms.html, from privacy.html, burying it in an HTML comment, and emptying
   // MUST_NAME_SELLER each turn the real run red.
+  // ── lane a11y-statement: the statement exists, and every footer reaches it ──
+  test('🔴 a missing accessibility statement FAILS', () => {
+    const r = afterEdit('cf-no-a11y', (d) => rmSync(join(d, 'sites/nikatru/accessibility.html')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing sites\/nikatru\/accessibility\.html — the accessibility statement/);
+  });
+
+  test('🔴 a footer that does not link /accessibility FAILS', () => {
+    const r = afterEdit('cf-footer-a11y', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/accessibility">Accessibility</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link \/accessibility/);
+  });
+
+  test('🔴 a missing /help/fullshot/ page FAILS (lane help-search)', () => {
+    const r = afterEdit('cf-no-help-fs', (d) => rmSync(join(d, 'sites/nikatru/help/fullshot'), { recursive: true }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing sites\/nikatru\/help\/fullshot\/index\.html — the help centre/);
+  });
+
+  test('🔴 a footer that does not link /help/ FAILS (lane help-search)', () => {
+    const r = afterEdit('cf-footer-help', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/help/">Help</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link \/help\//);
+  });
+
+  test('🔴 a footer that does not link the status page FAILS (lane status-page)', () => {
+    const r = afterEdit('cf-footer-status', (d) => patch(d, 'sites/nikatru/index.html', '<a href="https://status.nikatru.com/">Status</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link https:\/\/status\.nikatru\.com\//);
+  });
+
+  test('a root with no chrome footer at all is COVERAGE LOST for that limb', () => {
+    const r = afterEdit('cf-no-footer', (d) => patch(d, 'sites/nikatru/index.html', '<!-- CHROME:footer -->', ''));
+    assert.match(r.out, /COVERAGE LOST — no page under sites\/nikatru carries the chrome footer/);
+  });
+
   test('terms.html that names only the brand FAILS', () => {
     const r = afterEdit('cf-noseller-terms', (d) =>
       patch(d, 'sites/nikatru/terms.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
@@ -2022,5 +2069,34 @@ describe('check-site-integrity · a duty the matrix says a page discharges is st
     for (const id of ['grievance-contact-published', 'ecommerce-rules-4-2-display']) {
       assert.equal(real.duties.find((d) => d.id === id).siteText.page, 'sites/nikatru/contact.html');
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · lane feedback-intake (Do 9): a same-origin POST form needs the
+// Pages Function that receives it. nikatru.com's /support "Report a problem" form
+// posts to /api/report; deleting that Function must fail the build.
+describe('check-site-integrity · a same-origin form has its Function', () => {
+  const form = (action) =>
+    `<html><body><form class="report" method="post" action="${action}"><textarea name="description"></textarea></form></body></html>\n`;
+
+  test('PASSES when the form posts to a Function that exists', () => {
+    const dir = build('form-ok', { extra: { 'sites/a/support.html': form('/api/handler') } });
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+  });
+
+  test('🔴 FAILS when the form posts to /api/report and functions/api/report.js is missing', () => {
+    const dir = build('form-missing', { extra: { 'sites/a/support.html': form('/api/report') } });
+    const { code, out } = run(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /support\.html has a form that POSTs to \/api\/report, and sites\/a\/functions\/api\/report\.js does not exist/);
+  });
+
+  test('an off-origin or GET form is not this limb\'s business', () => {
+    const page =
+      '<html><body><form method="get" action="/search"></form><form method="post" action="https://example.com/x"></form></body></html>\n';
+    const { code, out } = run(build('form-skip', { extra: { 'sites/a/support.html': page } }));
+    assert.equal(code, 0, out);
   });
 });

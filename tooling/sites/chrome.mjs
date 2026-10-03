@@ -175,7 +175,7 @@ export function footer(ctx = loadContext()) {
   const t = (s) => renderTemplate(s, ctx, { escape: 'html', where: 'tooling/sites/chrome.mjs footer()' });
   const msme = ctx.udyam ? t(' &middot; Registered MSME {{udyam}}') : '';
   return `<footer>
-  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/about">About</a> &middot; <a href="/support">Support</a> &middot; <a href="/contact">Contact</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/shipping">Shipping</a> &middot; <a href="/delete-account">Delete account</a><br><br>
+  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/about">About</a> &middot; <a href="/support">Support</a> &middot; <a href="/help/">Help</a> &middot; <a href="https://status.nikatru.com/">Status</a> &middot; <a href="/contact">Contact</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/shipping">Shipping</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/accessibility">Accessibility</a><br><br>
   <span class="foot-em">Nikatru&trade;</span> &middot; ${t('{{office.city}}, {{office.state}}, {{office.country}}')}${msme}<br>
   Developed by <a href="${t('{{founder.url}}')}" target="_blank" rel="noopener"><span class="foot-em">${t('{{founder.name}}')}</span></a><br>
   &copy; ${t('{{copyright.years}} {{copyright.holder}}')}. All rights reserved.
@@ -398,7 +398,15 @@ export function a11yCss() {
      needs no selector at all, and is the property actually designed for a fixed
      header — so the two limbs never have to be traded off against each other. */
   html{scroll-padding-top:var(--focus-scroll-margin,84px)}
-  :target{scroll-margin-top:var(--focus-scroll-margin,84px)}`;
+  :target{scroll-margin-top:var(--focus-scroll-margin,84px)}
+  /* ⏱ 2026-10-03 · lane a11y-statement (SC 2.4.11). On a 375px phone the nav
+     wraps to 145px, over the 84px padding above, so every in-page target landed
+     about 61px UNDER it (the 2026-10-02 audit, §2i). Below 720px the nav is not
+     sticky at all, so nothing can cover a target and the padding is zero. No JS.
+     !important because a page may declare its own sticky nav AFTER this region
+     (the apps/ pages do); a late page rule must not re-cover the target.
+     tooling/a11y/scan.mjs's focus-not-obscured-sticky rule reds without this. */
+  @media(max-width:720px){nav{position:static!important}html{scroll-padding-top:0}:target{scroll-margin-top:0}}`;
 }
 
 // ── THE SPLICE ───────────────────────────────────────────────────────────────

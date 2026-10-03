@@ -20,6 +20,7 @@ library;
 export 'src/telemetry_capabilities.dart';
 export 'src/noop_telemetry_client.dart';
 export 'src/pii_scrubber.dart';
+export 'src/recent_activity.dart';
 export 'src/sentry_telemetry_client.dart';
 export 'src/telemetry_bootstrap.dart';
 export 'src/telemetry_client.dart';

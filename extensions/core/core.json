@@ -49,6 +49,12 @@
       "owns": "The account-checked Pro entitlement every extension holds (decisions/ext/013; design research/session-2026-09-23/extension-account-check §3.2-§3.3): the fail-closed isPro decision (7-day offline ceiling, paid-through, lifetime), what each answer to GET /v1/entitlements does (false drops Pro on the same tick, a 401/403 carrying OUR API JSON code (invalid_link / wrong_product) deletes the credential and cache while any other 401/403 (a WAF page, a captive portal) is held as a retry, anything else holds), the daily on-demand check, the PKCE sign-in URL and returned-code check, and sign-out that deletes locally first. NO NETWORK: the one call is the adopting tool's, handed in as a transport, and requests are built only from three paths and four keys.",
       "caveat": "WRITTEN HERE, not promoted — no tool had an entitlement client to promote. ⏱ 2026-10-01 (EXM-01): FullShot adopts it — its pro/account.js network file, the manifest connect-src and the Upgrade control. Its sign-in (the identity permission and the connect flow) is the rest of O-EXTENSION-ACCOUNT-CHECK-UNBUILT, and waits on a registered extensionRedirectUri per channel."
     },
+    "v1/report-link.js": {
+      "status": "built",
+      "specified": false,
+      "owns": "\"Report a problem\" for every tool (lane feedback-intake): the link the options page opens — the report form on nikatru.com/support with ONLY the tool's own id, version, UI locale, coarse platform and a category filled in. Nothing about a page. NO NETWORK: the form posts same-origin to the site's Pages Function, which forwards to the private intake.",
+      "caveat": "WRITTEN HERE, not promoted — no tool had a report link to promote. scripts/policy-check.mjs gate 10 RUNS the shipped copy on a probe state carrying a page URL, title and host and fails the build if any of it reaches the payload or the link."
+    },
 
     "v1/ns.js": {
       "status": "planned",
@@ -155,9 +161,9 @@
     "specifiedV1ModuleFiles": 13,
     "specifiedV1ModulesBuilt": 1,
     "specifiedV1ModulesNotBuilt": 10,
-    "unspecifiedV1FilesBuilt": 4,
+    "unspecifiedV1FilesBuilt": 5,
     "devHelpersBuilt": 3,
-    "coreTestSims": 5
+    "coreTestSims": 6
   },
 
   "countsVerifiedBy": "core/test/coverage.node.js. Every number in `counts` above is recomputed from this file's own `modules` map and from the tree on disk, on every CI run, and a mismatch fails the core job. Mind the unit when reading a mismatch: specifiedV1Modules/Built/NotBuilt are in MODULES (11), specifiedV1ModuleFiles is in FILES (13), and counting built/not-built in the wrong unit produces 1/12 instead of 1/10 — which looks like an error in this file and is an error in the counter.",
