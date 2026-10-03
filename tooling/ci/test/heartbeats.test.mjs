@@ -45,7 +45,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -60,6 +60,10 @@ import {
   firstOnMainMs,
   detailToken,
   cappedTargets,
+  owedSlot,
+  jobTimeline,
+  readDeployLedger,
+  SCHEDULE_LOOKBACK_MS,
 } from '../../ops/check-heartbeats.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1067,5 +1071,239 @@ describe('check-heartbeats — a store capped night after night is RED', () => {
     const r = run(fixture(rows));
     assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
     assert.match(r.stderr, /reminder_mail: target t carried `prune_capped=` above 0/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · A SLOT IS OWED BY THE SCHEDULE THAT WAS LIVE WHEN IT FELL DUE.
+//
+// Ops watch 37137496614 (16:38:38Z) judged seven platform jobs ABSENT: #1165 moved
+// reminder_mail to `10 6`, money_rederive to `20 6`, erasure_retry to `30 6`, the
+// rollup and sweep to `40 6`, and put both reachability probes on the six-hourly
+// grid. It merged 15:29:59Z; the Worker carrying it went live 16:17:38Z
+// (Cloudflare schedules `created_on` 16:17:39Z for the four new triggers). Every
+// one of the seven had run inside the 06:00Z firing that morning, ok=1, and the
+// 12:00Z firing ran the release before (version cce72547), which probed nothing.
+// The fixtures below are those instants.
+//
+// MUTATIONS, run 2026-10-03 against check-heartbeats.mjs, each caught by this block
+// and restored byte-identical: M1 drop `s >= fromMs` (a new cron's pre-deploy slot
+// is owed) · M2 read only the oldest release · M3 a slot AT a release instant goes
+// to the release before · M4 an unreadable release register owes nothing instead
+// of main's schedule.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('⏱ 2026-10-03 — a slot is owed by the schedule of the release live when it fell due', () => {
+  const T = (iso) => Date.parse(iso);
+  const DEPLOY = T('2026-10-03T16:17:41Z'); // the ledger row for release 6da6d21f
+  const OLD = 'a'.repeat(40);
+  const NEW = 'b'.repeat(40);
+  const split = (oldCrons, newCrons) => [
+    { fromMs: -Infinity, crons: oldCrons, sha: OLD },
+    { fromMs: DEPLOY, crons: newCrons, sha: NEW },
+  ];
+  const at = (job, iso, over = {}) => row({ job, ran_at: iso, ...over });
+
+  test('one entry from -Infinity is the old rule exactly: the newest slot past the grace over every cron', () => {
+    const now = T('2026-10-03T16:38:38Z');
+    const crons = ['0 0 * * *', '0 6 * * *', '0 12 * * *', '0 18 * * *'];
+    const o = owedSlot([{ fromMs: -Infinity, crons, sha: null }], now);
+    assert.equal(new Date(o.dueMs).toISOString(), '2026-10-03T12:00:00.000Z');
+    assert.equal(o.cron, '0 12 * * *');
+    assert.deepEqual(owedSlot([{ fromMs: -Infinity, crons: ['*/5 * * * *'], sha: null }], now), { unreadable: '*/5 * * * *' });
+    assert.equal(owedSlot([], now), null);
+  });
+
+  test('🔴 the measured red — main\'s schedule alone calls reminder_mail ABSENT for a slot no live release had', () => {
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-03T06:00:28.450Z')], ['10 6 * * *'], T('2026-10-03T16:38:38Z'));
+    assert.equal(v.kind, 'absent');
+    assert.match(v.reason, /the run due at 2026-10-03T06:10:00\.000Z \(cron `10 6 \* \* \*`\) left NO row/);
+  });
+
+  test('✅ …and judged by the release live at each slot it is GREEN: the 06:00 slot was owed, and recorded', () => {
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-03T06:00:28.450Z')], ['10 6 * * *'], T('2026-10-03T16:38:38Z'), null, null, split(['0 6 * * *'], ['10 6 * * *']));
+    assert.equal(v.ok, true, v.reason);
+    assert.match(v.reason, /the run due 2026-10-03T06:00:00\.000Z \(cron `0 6 \* \* \*`, owed by release aaaaaaaaaaaa\) is recorded/);
+  });
+
+  test('✅ the probes: the 12:00 slot was the old release\'s, which kept them on 06:00 only — green on the 06:00 row', () => {
+    const grid = ['0 0 * * *', '0 6 * * *', '0 12 * * *', '0 18 * * *'];
+    const v = evaluateJob('boxb_reachability', [at('boxb_reachability', '2026-10-03T06:00:14.729Z')], grid, T('2026-10-03T16:38:38Z'), null, null, split(['0 6 * * *'], grid));
+    assert.equal(v.ok, true, v.reason);
+    assert.match(v.reason, /due 2026-10-03T06:00:00\.000Z \(cron `0 6 \* \* \*`/);
+  });
+
+  test('🔴 RED CONTROL — a real miss AFTER the deploy still fails: the new release owes 06:10 the next morning', () => {
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-03T06:00:28.450Z')], ['10 6 * * *'], T('2026-10-04T09:00:00Z'), null, null, split(['0 6 * * *'], ['10 6 * * *']));
+    assert.equal(v.kind, 'absent', v.reason);
+    assert.match(v.reason, /the run due at 2026-10-04T06:10:00\.000Z \(cron `10 6 \* \* \*`, owed by release bbbbbbbbbbbb live since 2026-10-03T16:17:41\.000Z\) left NO row/);
+  });
+
+  test('🔴 RED CONTROL — and the probes\' first new slot, 18:00, is owed once its grace ends', () => {
+    const grid = ['0 0 * * *', '0 6 * * *', '0 12 * * *', '0 18 * * *'];
+    const v = evaluateJob('boxa_reachability', [at('boxa_reachability', '2026-10-03T06:00:15.787Z')], grid, T('2026-10-03T20:30:00Z'), null, null, split(['0 6 * * *'], grid));
+    assert.equal(v.kind, 'absent', v.reason);
+    assert.match(v.reason, /due at 2026-10-03T18:00:00\.000Z \(cron `0 18 \* \* \*`, owed by release bbbbbbbbbbbb/);
+  });
+
+  test('🔴 RED CONTROL — a miss BEFORE the deploy, under the old schedule, still fails', () => {
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-02T06:00:28Z')], ['10 6 * * *'], T('2026-10-03T16:38:38Z'), null, null, split(['0 6 * * *'], ['10 6 * * *']));
+    assert.equal(v.kind, 'absent', v.reason);
+    assert.match(v.reason, /due at 2026-10-03T06:00:00\.000Z \(cron `0 6 \* \* \*`, owed by release aaaaaaaaaaaa\)/);
+  });
+
+  test('✅ hours AFTER the deploy, before its first new slot: the new crons\' earlier slots are still nobody\'s', () => {
+    // 20:30Z: the grace window now ends after the deploy, so the new release's entry
+    // is read — and its newest `10 6` slot (06:10Z today) fell BEFORE it went live.
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-03T06:00:28.450Z')], ['10 6 * * *'], T('2026-10-03T20:30:00Z'), null, null, split(['0 6 * * *'], ['10 6 * * *']));
+    assert.equal(v.ok, true, v.reason);
+    assert.match(v.reason, /due 2026-10-03T06:00:00\.000Z \(cron `0 6 \* \* \*`, owed by release aaaaaaaaaaaa\)/);
+  });
+
+  test('a slot AT a release\'s instant belongs to that release, not the one before', () => {
+    // Both releases keep the cron, so only the boundary decides which one the slot is.
+    const o = owedSlot([{ fromMs: -Infinity, crons: ['10 6 * * *'], sha: OLD }, { fromMs: T('2026-10-03T06:10:00Z'), crons: ['10 6 * * *'], sha: NEW }], T('2026-10-03T09:00:00Z'));
+    assert.equal(o.sha, NEW);
+    assert.equal(new Date(o.dueMs).toISOString(), '2026-10-03T06:10:00.000Z');
+  });
+
+  test('an unreadable cron in ANY release\'s schedule fails closed — the refusal is not narrowed by the timeline', () => {
+    const v = evaluateJob('reminder_mail', [at('reminder_mail', '2026-10-03T06:00:28Z')], ['10 6 * * *'], T('2026-10-03T16:38:38Z'), null, null, split(['0 */6 * * *'], ['10 6 * * *']));
+    assert.equal(v.kind, 'unknown');
+    assert.match(v.reason, /`0 \*\/6 \* \* \*` yields no computable occurrence/);
+  });
+
+  test('⬜ no release has owed a slot yet → NOT YET OWED, and a failing newest row is STILL red', () => {
+    const tl = [{ fromMs: -Infinity, crons: [], sha: OLD }, { fromMs: T('2026-10-03T16:00:00Z'), crons: ['0 6 * * *'], sha: NEW }];
+    const now = T('2026-10-03T16:38:38Z');
+    const g = evaluateJob('new_job', [at('new_job', '2026-10-03T16:05:00Z')], ['0 6 * * *'], now, null, null, tl);
+    assert.equal(g.ok, true);
+    assert.equal(g.pending, true);
+    assert.match(g.reason, /NOT YET OWED/);
+    const r = evaluateJob('new_job', [at('new_job', '2026-10-03T16:05:00Z', { ok: 0, detail: 'HTTP 500' })], ['0 6 * * *'], now, null, null, tl);
+    assert.equal(r.kind, 'red', r.reason);
+  });
+
+  test('jobTimeline — a release whose register cannot be read is judged by MAIN\'s crons and named once', () => {
+    const regs = { [NEW]: { rows: [{ id: 'duty.platform-cron', watchedJobs: { reminder_mail: ['10 6 * * *'] } }] } };
+    const { timeline, notes } = jobTimeline('duty.platform-cron', 'reminder_mail', ['10 6 * * *'], [{ sha: OLD, liveFromMs: T('2026-10-01T00:00:00Z') }, { sha: NEW, liveFromMs: DEPLOY }], (s) => regs[s] ?? null, T('2026-10-03T16:38:38Z'));
+    assert.deepEqual(timeline.map((s) => s.crons), [['10 6 * * *'], ['10 6 * * *']]);
+    assert.equal(timeline[0].fromMs, -Infinity);
+    assert.equal(notes.length, 1);
+    assert.match(notes[0], /release aaaaaaaaaaaa .* could not be read, so its slots are judged by main's schedule/);
+  });
+
+  test('jobTimeline — a job its release did not watch owed nothing then; an ARRAY watchedJobs is unreadable', () => {
+    const regs = {
+      [OLD]: { rows: [{ id: 'duty.platform-cron', watchedJobs: { other: ['0 6 * * *'] } }] },
+      [NEW]: { rows: [{ id: 'duty.platform-cron', watchedJobs: ['reminder_mail'] }] },
+    };
+    const { timeline, notes } = jobTimeline('duty.platform-cron', 'reminder_mail', ['10 6 * * *'], [{ sha: OLD, liveFromMs: 1 }, { sha: NEW, liveFromMs: DEPLOY }], (s) => regs[s], DEPLOY + 3_600_000);
+    assert.deepEqual(timeline.map((s) => s.crons), [[], ['10 6 * * *']]);
+    assert.match(notes[0], /release bbbbbbbbbbbb .* has no watchedJobs MAP/);
+  });
+
+  test('jobTimeline — only the lookback window is read, and the newest release before it runs from -Infinity', () => {
+    const now = T('2026-10-03T16:38:38Z');
+    const old1 = { sha: '1'.repeat(40), liveFromMs: now - SCHEDULE_LOOKBACK_MS - 2 * 86_400_000 };
+    const old2 = { sha: '2'.repeat(40), liveFromMs: now - SCHEDULE_LOOKBACK_MS - 86_400_000 };
+    const inWin = { sha: '3'.repeat(40), liveFromMs: now - 86_400_000 };
+    const asked = [];
+    const reg = { rows: [{ id: 'r', watchedJobs: { j: ['0 6 * * *'] } }] };
+    const { timeline } = jobTimeline('r', 'j', ['0 6 * * *'], [inWin, old1, old2], (s) => (asked.push(s), reg), now);
+    assert.deepEqual(timeline.map((s) => s.sha), [old2.sha, inWin.sha]);
+    assert.equal(timeline[0].fromMs, -Infinity);
+    assert.deepEqual(asked.sort(), [old2.sha, inWin.sha].sort());
+    assert.deepEqual(jobTimeline('r', 'j', ['0 6 * * *'], [], () => reg, now), { timeline: null, notes: [] });
+  });
+
+  test('readDeployLedger — rows of THIS environment with a full sha, mapped to their instant; no token is CouldNotLook', async () => {
+    const body = [
+      { environment: 'platform', sha: NEW, created_at: '2026-10-03T16:17:41Z' },
+      { environment: 'platform-dry-run', sha: OLD, created_at: '2026-10-03T16:00:00Z' },
+      { environment: 'platform', sha: 'not-a-sha', created_at: '2026-10-03T15:00:00Z' },
+    ];
+    const seen = [];
+    const fetchImpl = async (url) => (seen.push(url), { ok: true, status: 200, json: async () => body, headers: new Map() });
+    const rows = await readDeployLedger('platform', { env: { GITHUB_TOKEN: 'x', GITHUB_REPOSITORY: 'o/r' }, fetchImpl });
+    assert.deepEqual(rows, [{ sha: NEW, liveFromMs: DEPLOY }]);
+    assert.match(seen[0], /^https:\/\/api\.github\.com\/repos\/o\/r\/deployments\?environment=platform&per_page=100$/);
+    await assert.rejects(readDeployLedger('platform', { env: {}, fetchImpl }), /no GITHUB_REPOSITORY/);
+  });
+
+  // ── END TO END through the real register and the CLI ───────────────────────
+  // Generic over the register: J is the first watched job keeping ONE daily cron,
+  // moved one hour LATER by the release under test. Every other job is fresh.
+  describe('end to end — --releases-file', () => {
+    const REG_PATH = join(REPO, 'tooling/ops/register.json');
+    const real = () => JSON.parse(readFileSync(REG_PATH, 'utf8'));
+    const jobs = deriveWatchedJobs(REPO).jobs;
+    const J = jobs.find((j) => j.cron.length === 1 && cronIntervalHours(j.cron[0]) === 24);
+    const NOW_E = T('2026-10-03T16:38:38Z');
+    const GRACE = 2 * 3_600_000;
+    const mainSlot = (j, now) => Math.max(...j.cron.map((c) => lastExpectedFireMs(c, now - GRACE)));
+    const iso = (ms) => new Date(ms).toISOString();
+    const rowsAt = (now, overJ) =>
+      Object.fromEntries(jobs.map((j) => [j.job, [row({ job: j.job, ran_at: j.job === J.job && overJ ? overJ : iso(mainSlot(j, now) + 30_000) })]]));
+    // The old release kept J one hour EARLIER than main does now.
+    const jSlot = mainSlot(J, NOW_E);
+    const oldCron = `${new Date(jSlot - 3_600_000).getUTCMinutes()} ${new Date(jSlot - 3_600_000).getUTCHours()} * * *`;
+    const oldRegister = () => {
+      const r = real();
+      const rowJ = r.rows.find((x) => x.id === J.id);
+      rowJ.watchedJobs[J.job] = [oldCron];
+      return r;
+    };
+    const releasesFile = (releases, registers) => {
+      const p = join(TMP, `rel${seq++}.json`);
+      writeFileSync(p, JSON.stringify({ ledger: { [J.worker]: releases }, registers }));
+      return p;
+    };
+    const rowsFile = (rows) => {
+      const p = join(TMP, `rows${seq++}.json`);
+      writeFileSync(p, JSON.stringify(rows));
+      return p;
+    };
+    const cli = (args, now) => spawnSync(process.execPath, [READER, ...args, '--now', iso(now)], { cwd: REPO, encoding: 'utf8' });
+    const ledgerRows = [{ sha: OLD, created_at: '2026-07-01T00:00:00Z' }, { sha: NEW, created_at: iso(NOW_E - 30 * 60_000) }];
+
+    test('the fixture stands on something: a single-daily-cron job exists and its Worker is named', () => {
+      assert.ok(J, 'no watched job keeps exactly one daily cron');
+      assert.equal(typeof J.worker, 'string');
+      assert.ok(jSlot - 3_600_000 < jSlot);
+    });
+
+    test('🔴 without the ledger, the job whose cron moved is ABSENT — the measured red, reproduced', () => {
+      const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E, iso(jSlot - 3_600_000 + 30_000)))], NOW_E);
+      assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stderr, new RegExp(`${J.job}: the run due at ${iso(jSlot).replace(/[.]/g, '\\.')}`));
+    });
+
+    test('✅ with the ledger, the slot the OLD release owed is the one judged — exit 0', () => {
+      const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E, iso(jSlot - 3_600_000 + 30_000))), '--releases-file', releasesFile(ledgerRows, { [OLD]: oldRegister(), [NEW]: real() })], NOW_E);
+      assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /OFFLINE LEDGER/);
+      assert.match(r.stdout, new RegExp(`ok  ${J.job}: the run due ${iso(jSlot - 3_600_000).replace(/[.]/g, '\\.')} \\(cron \`${oldCron.replace(/\*/g, '\\*')}\`, owed by release aaaaaaaaaaaa\\)`));
+    });
+
+    test('🔴 RED CONTROL — the NEW release\'s next slot, missed, exits 1 naming that release', () => {
+      const next = jSlot + 86_400_000 + GRACE + 60_000;
+      const rows = rowsAt(next, iso(jSlot - 3_600_000 + 30_000));
+      const r = cli(['--rows-file', rowsFile(rows), '--releases-file', releasesFile(ledgerRows, { [OLD]: oldRegister(), [NEW]: real() })], next);
+      assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stderr, new RegExp(`${J.job}: the run due at ${iso(jSlot + 86_400_000).replace(/[.]/g, '\\.')} \\(cron \`[^\`]+\`, owed by release bbbbbbbbbbbb`));
+    });
+
+    test('⚠ a release whose register cannot be read falls back to main\'s schedule — red again, and said', () => {
+      const unknown = 'c'.repeat(40);
+      const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E, iso(jSlot - 3_600_000 + 30_000))), '--releases-file', releasesFile([{ sha: unknown, created_at: '2026-07-01T00:00:00Z' }, { sha: NEW, created_at: iso(NOW_E - 30 * 60_000) }], { [NEW]: real() })], NOW_E);
+      assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /⚠ {3}release cccccccccccc .* could not be read, so its slots are judged by main's schedule/);
+    });
+
+    test('an unreadable --releases-file is COVERAGE LOST, not an empty ledger', () => {
+      const r = cli(['--rows-file', rowsFile(rowsAt(NOW_E)), '--releases-file', join(TMP, 'does-not-exist.json')], NOW_E);
+      assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stderr, /could not read releases fixture/);
+    });
   });
 });
