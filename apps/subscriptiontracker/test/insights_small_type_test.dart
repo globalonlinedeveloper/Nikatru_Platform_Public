@@ -76,7 +76,9 @@ Future<void> _pump(WidgetTester tester, Locale locale) async {
 }
 
 void main() {
-  for (final Locale locale in const <Locale>[Locale('en'), Locale('ta')]) {
+  for (final Locale locale in kSupportedLocales.map(
+    (RegisteredLocale r) => r.locale,
+  )) {
     testWidgets('no text on Insights is painted under '
         '${AppTypeRamp.minimumSize} px (${locale.languageCode})', (
       WidgetTester tester,

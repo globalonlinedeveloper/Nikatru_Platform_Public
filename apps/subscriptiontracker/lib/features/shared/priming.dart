@@ -7,7 +7,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart'
     show NotificationCapabilities;
 
 import '../../core/windows_notification_identity.g.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 
 /// Subly's words for the design system's permission PRIMING (train ST-D8).
 ///

@@ -43,7 +43,7 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
