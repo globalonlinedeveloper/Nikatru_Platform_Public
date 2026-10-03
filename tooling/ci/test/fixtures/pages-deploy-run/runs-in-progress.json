@@ -1,0 +1,18 @@
+{
+  "_recorded": "Recorded 2026-10-02 from the GitHub REST API (CI run 37020790032, head fcf77f1e), trimmed to the fields check-pages-deployments.mjs reads. The same run as ops-watch 37024343900 met it at 15:04Z: status in_progress, conclusion null (its deploy-web jobs started 15:48Z).",
+  "total_count": 1,
+  "workflow_runs": [
+    {
+      "id": 37020790032,
+      "name": "CI on main by @globalonlinedeveloper",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "fcf77f1ea3ad9ca37e013e5ce06f4db2f40bd1bd",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2026-10-02T14:34:16Z",
+      "run_started_at": "2026-10-02T14:34:16Z",
+      "html_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/37020790032"
+    }
+  ]
+}
