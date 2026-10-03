@@ -72,6 +72,9 @@ jobs:
     # why: 15, not 10 — the daily OSV steps below carry their own 3 + 5 minute bounds on top of the readers.
     timeout-minutes: 15
     permissions:
+      # why: the checkout, and the laptop heartbeat (`beat.json` on ref refs/lead/heartbeat, not a branch)
+      # assert-ops-register reads through the contents API when a laptop duty is
+      # failing, to grade it DEGRADED during a proven outage (O-LAPTOP-OUTAGE-READS-AS-RED).
       contents: read
       actions: read
       issues: read
@@ -336,6 +339,10 @@ jobs:
     name: The Cloudflare Pages builds nobody else can see actually landed
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # why: actions read lets the reader ask the CI run for a stale direct project's expected commit whether its
+    # deploy has run yet, so a deploy queued behind GitHub's runners reads PENDING instead of a failed one.
+    permissions:
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -364,6 +371,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set +e
           node tooling/ops/check-pages-deployments.mjs

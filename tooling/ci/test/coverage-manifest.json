@@ -128,14 +128,41 @@
   "auth-cutover-preflight.test.mjs":
     100,
 
+  "autopilot-contract.test.mjs":
+    5,
+
+  "autopilot-heartbeat.test.mjs":
+    22,
+
   "autopilot-issue-queue.test.mjs":
     18,
+
+  "autopilot-land-gate.test.mjs":
+    31,
+
+  "autopilot-ledger.test.mjs":
+    29,
+
+  "autopilot-outage.test.mjs":
+    14,
+
+  "autopilot-post-verdict.test.mjs":
+    11,
+
+  "autopilot-prompts.test.mjs":
+    2,
 
   "autopilot-queue-doc.test.mjs":
     2,
 
   "autopilot-queue-migrate.test.mjs":
     11,
+
+  "autopilot-review-gate.test.mjs":
+    18,
+
+  "autopilot-runner.test.mjs":
+    16,
 
   "availability.test.mjs":
     33,
@@ -708,7 +735,7 @@
     25,
 
   "pages-deployments.test.mjs":
-    111,
+    120,
 
   "pages-origin.test.mjs":
     26,
@@ -744,7 +771,7 @@
     112,
 
   "policy-archive.test.mjs":
-    31,
+    35,
 
   "policy-claims.test.mjs":
     63,
