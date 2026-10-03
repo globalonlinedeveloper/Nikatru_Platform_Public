@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { check, renderSignerPins, WIRING, REGISTER } from '../assert-runtime-signer-check.mjs';
 import { unpinnedReleaseRefusal, signerPinsOf, RELEASE_SIGNING_ENV } from '../flutter-release-build.mjs';
+import { appSignerPinsOf, renderAppSignerPinsDart, SIGNER_PINS_DART } from '../../app-yaml/render.mjs';
+import { parseYaml } from '../../app-yaml/yaml.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -26,6 +28,7 @@ const GUARD = join(CI_DIR, 'assert-runtime-signer-check.mjs');
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const BRICK_MAIN = `${BRICK}/lib/main.dart`;
 const APP = 'apps/subscriptiontracker';
+const PLAY_LANE = '.github/workflows/submit-play.yml';
 const RELEASE_ENV = Object.fromEntries(RELEASE_SIGNING_ENV.map((n) => [n, 'x']));
 
 const realRegister = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
@@ -37,7 +40,9 @@ function filesToCopy() {
   const set = new Set([
     REGISTER, realRegister.runtimeSignerCheck.generated, ...WIRING.map((w) => w.file),
     BRICK_MAIN, `${BRICK}/lib/app.dart`,
-    `${APP}/app.yaml`, `${APP}/lib/main.dart`, `${APP}/lib/app.dart`, `${APP}/lib/core/device_integrity.dart`,
+    `${APP}/app.yaml`, `${APP}/lib/main.dart`, `${APP}/lib/app.dart`, `${APP}/lib/core/device_integrity.dart`, `${APP}/${SIGNER_PINS_DART}`,
+    // S9 judges the Play upload steps, read through workflow-scan.mjs.
+    PLAY_LANE,
   ]);
   for (const row of realRegister.channels) for (const a of row.storeReview?.answers ?? []) for (const f of a.evidence ?? []) set.add(f);
   return [...set];
@@ -139,10 +144,18 @@ describe('S2 coverage', () => {
   });
 
   test('a pin the row carries and the entry does not list', () => {
+    // ⏱ 2026-10-03: the row's app-signing value moved to each app's app.yaml
+    // (ADR 030, one key per app), so a channel-row pin is planted here.
     const r = readReg();
-    r.runtimeSignerCheck.channels['android-play'].pins = ['signing.uploadCertificate.sha256'];
+    r.channels.find((c) => c.id === 'android-play').signing.extraCertificate = { sha256: null };
     writeReg(r);
-    assert.match(findings(), /S2 channel "android-play" carries pin signing\.appSigningCertificate\.sha256/);
+    assert.match(findings(), /S2 channel "android-play" carries pin signing\.extraCertificate\.sha256/);
+  });
+
+  test('the row holds NO app-signing value: it lives per app, in app.yaml (one source)', () => {
+    const asc = realRegister.channels.find((c) => c.id === 'android-play').signing.appSigningCertificate;
+    assert.equal(Object.hasOwn(asc, 'sha256'), false);
+    assert.match(asc.perApp, /apps\/<id>\/app\.yaml stores\.android-play\.appSigningSha256/);
   });
 });
 
@@ -171,10 +184,134 @@ describe('S3 the generated pins are the register', () => {
     assert.match(gen, /'apps-gov-in': SignerPins\(\n {4}digests: <String>\[\n {6}'(AB){32}',\n {4}\],\n {4}complete: true,/);
   });
 
-  test('the rendering marks a set incomplete while any pin is null', () => {
+  test('the channel default carries the factory pins only, and says the app\'s own pin completes it', () => {
     const text = renderSignerPins(realRegister);
-    assert.match(text, /'android-play': SignerPins\([\s\S]*?complete: false,/);
-    assert.match(text, /signing\.appSigningCertificate\.sha256 — not set/);
+    assert.match(text, /'android-play': SignerPins\(\n {4}digests: <String>\[\n {6}'43C84D11[0-9A-F]+',\n {4}\],\n {4}complete: false,\n {4}appPinCompletes: true,\n {2}\),/);
+    assert.doesNotMatch(text, /98FA5FDC/);
+    assert.match(text, /\+ per app: stores\.android-play\.appSigningSha256/);
+    // ...and it names no app ([C-10]: shared code carries no app vocabulary).
+    assert.doesNotMatch(text, /subscriptiontracker/);
+  });
+
+  test('the real app\'s OWN file holds ITS app signing pin — and is unchanged', () => {
+    const own = readFileSync(join(REPO, APP, SIGNER_PINS_DART), 'utf8');
+    assert.match(own, /const Map<String, List<String>> kAppSignerPins = <String, List<String>>\{\n {2}'android-play': <String>\[\n {4}'98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',\n {2}\],\n\};/);
+  });
+
+  test('🔴 an app whose own pins file is missing', () => {
+    rmSync(join(ROOT, APP, SIGNER_PINS_DART));
+    assert.match(findings(), /S3 apps\/subscriptiontracker\/lib\/core\/signer_pins\.g\.dart does not exist/);
+  });
+});
+
+// ── ⏱ 2026-10-03 · S8: ONE APP SIGNING KEY PER APP (ruling on PR #1198, ADR 030) ──
+// A second app is stamped into the copy from the real app's files, so every
+// other limb grades it exactly as it grades app #1.
+const SECOND = 'apps/second';
+const KEY2 = Array(32).fill('CD').join(':');
+function stampSecond(storesPlay, listing = null) {
+  for (const rel of ['app.yaml', 'lib/main.dart', 'lib/app.dart', 'lib/core/device_integrity.dart', SIGNER_PINS_DART]) {
+    mkdirSync(dirname(join(ROOT, SECOND, rel)), { recursive: true });
+    copyFileSync(join(ROOT, APP, rel), join(ROOT, SECOND, rel));
+  }
+  const p = join(ROOT, SECOND, 'app.yaml');
+  let y = readFileSync(p, 'utf8');
+  const play = /\n {2}android-play:\n(?: {4}.*\n)+/;
+  assert.match(y, play, 'the real app.yaml no longer has an android-play record to replace');
+  y = y.replace(play, `\n  android-play:\n${storesPlay.map((l) => `    ${l}\n`).join('')}`);
+  if (listing !== null) {
+    assert.match(y, /\nlistings:\n/);
+    y = y.replace('\nlistings:\n', `\nlistings:\n  play: ${listing}\n`);
+  }
+  writeFileSync(p, y);
+  // Its own pins file, as tooling/app-yaml/render.mjs writes it.
+  writeFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), renderAppSignerPinsDart(appSignerPinsOf(realRegister, parseYaml(y))));
+  return y;
+}
+
+describe('S8 per-app pins', () => {
+  test('a second app with ITS OWN key gets its own pin, and app #1\'s is unchanged', () => {
+    stampSecond(['state: issued', 'declaredOn: null', 'appSigningSha256:', `  - "${KEY2}"`]);
+    assert.equal(findings(), '');
+    const second = readFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), 'utf8');
+    assert.match(second, /'android-play': <String>\[\n {4}'(CD){32}',\n {2}\],/);
+    assert.doesNotMatch(second, /98FA5FDC/);
+    const first = readFileSync(join(ROOT, APP, SIGNER_PINS_DART), 'utf8');
+    assert.equal(first, readFileSync(join(REPO, APP, SIGNER_PINS_DART), 'utf8'));
+    assert.doesNotMatch(first, /CDCDCDCD/);
+    // The shared channel default carries neither app's key.
+    assert.doesNotMatch(readFileSync(join(ROOT, realRegister.runtimeSignerCheck.generated), 'utf8'), /98FA5FDC|CDCDCDCD/);
+  });
+
+  test('a second app with no key renders an EMPTY own-pins file', () => {
+    stampSecond(['state: pending', 'declaredOn: null']);
+    assert.match(readFileSync(join(ROOT, SECOND, SIGNER_PINS_DART), 'utf8'), /kAppSignerPins = <String, List<String>>\{\};/);
+  });
+
+  test('🔴 a second app ON Play (a listing) with no recorded key FAILS', () => {
+    stampSecond(['state: pending', 'declaredOn: null'], 'https://play.google.com/store/apps/details?id=com.nikatru.second');
+    assert.match(findings(), /S8 apps\/second\/app\.yaml says the app is on android-play \(listings\.play is .*\) and records no stores\.android-play\.appSigningSha256/);
+  });
+
+  test('🔴 a second app with an issued Play record and no key FAILS', () => {
+    stampSecond(['state: issued', 'declaredOn: null']);
+    assert.match(findings(), /S8 apps\/second\/app\.yaml says the app is on android-play \(stores\.android-play\.state is issued\)/);
+  });
+
+  test('a second app NOT yet on Play, with no key, is green: it compiles the channel default and reports only', () => {
+    stampSecond(['state: pending', 'declaredOn: null']);
+    assert.equal(findings(), '');
+  });
+
+  test('🔴 two apps recording the SAME app signing key: one is a copy', () => {
+    stampSecond(['state: issued', 'declaredOn: null', 'appSigningSha256:', '  - "98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C"']);
+    assert.match(findings(), /S8 apps\/subscriptiontracker\/app\.yaml and apps\/second\/app\.yaml record the same stores\.android-play\.appSigningSha256|S8 apps\/second\/app\.yaml and apps\/subscriptiontracker\/app\.yaml record the same/);
+  });
+
+  test('🔴 a per-app pin that is not a SHA-256', () => {
+    stampSecond(['state: issued', 'declaredOn: null', 'appSigningSha256:', '  - "abc"']);
+    assert.match(findings(), /S8 apps\/second\/app\.yaml stores\.android-play\.appSigningSha256 holds "abc"/);
+  });
+
+  test('signerPinsOf: the channel default is incomplete; with the app\'s own pin it is complete', () => {
+    assert.equal(signerPinsOf(realRegister, 'android-play').complete, false);
+    assert.equal(signerPinsOf(realRegister, 'android-play', null).complete, false);
+    assert.equal(signerPinsOf(realRegister, 'android-play', [KEY2]).complete, true);
+  });
+});
+
+describe('S9 internal app sharing', () => {
+  test('🔴 a workflow uploading to internal app sharing while no key for it is pinned', () => {
+    writeFileSync(join(ROOT, '.github/workflows/share.yml'), 'jobs:\n  share:\n    steps:\n      - run: curl https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/x/artifacts/bundle\n');
+    assert.match(findings(), /S9 \.github\/workflows\/share\.yml:4 uploads to Play's internal app sharing/);
+  });
+
+  test('a COMMENT naming internal app sharing is not an upload (workflow-scan blanks comments)', () => {
+    writeFileSync(join(ROOT, '.github/workflows/share.yml'), '# internal app sharing is not used here\njobs:\n  share:\n    steps:\n      - run: echo ok\n');
+    assert.equal(findings(), '');
+  });
+
+  test('🔴 COVERAGE LOST (exit 2): no workflow step runs the Play upload S9 judges', () => {
+    rmSync(join(ROOT, PLAY_LANE));
+    const out = run();
+    assert.equal(out.status, 2, out.stderr + out.stdout);
+    assert.match(out.stderr, /S9 cannot see the Play upload steps it judges: 0 workflow\(s\) parsed/);
+  });
+
+  test('🔴 COVERAGE LOST (exit 2): the Play lane no longer runs submit-play.mjs', () => {
+    const lane = readFileSync(join(ROOT, PLAY_LANE), 'utf8');
+    assert.ok(lane.includes('node tooling/release/submit-play.mjs'), 'fixture anchor');
+    writeFileSync(join(ROOT, PLAY_LANE), lane.replaceAll('node tooling/release/submit-play.mjs', 'node tooling/release/elsewhere.mjs'));
+    const out = run();
+    assert.equal(out.status, 2, out.stderr + out.stdout);
+    assert.match(out.stderr, /no step runs tooling\/release\/submit-play\.mjs/);
+  });
+
+  test('🔴 a per-app channel that does not say whether internal sharing is used', () => {
+    const r = readReg();
+    delete r.runtimeSignerCheck.channels['android-play'].internalAppSharing;
+    writeReg(r);
+    assert.match(findings(), /S1 runtimeSignerCheck\.channels\.android-play names a perAppPin and no internalAppSharing/);
   });
 });
 
@@ -193,6 +330,7 @@ describe('S4 the build-time refusal, and only for that channel\'s release build'
   });
 
   test('android-play, release-signed, app signing pin null: allowed', () => {
+    // ⏱ 2026-10-03: with no app the per-app pin is null — the channel default.
     assert.equal(unpinnedReleaseRefusal({ root: ROOT, channel: 'android-play', env: RELEASE_ENV }), null);
   });
 
@@ -280,6 +418,21 @@ describe('S6 wiring', () => {
   test('the app helper stops passing the platform probe', () => {
     edit(`${APP}/lib/core/device_integrity.dart`, 'integrityProbe: platformDeviceIntegrityProbe()', 'integrityProbe: null');
     assert.match(findings(), /S6 apps\/subscriptiontracker: integrityBootBlocks\(\) .*platformDeviceIntegrityProbe/);
+  });
+
+  test('🔴 the app helper stops passing ITS OWN pins', () => {
+    edit(`${APP}/lib/core/device_integrity.dart`, 'appPins: kAppSignerPins', 'appPins: const <String, List<String>>{}');
+    assert.match(findings(), /S6 apps\/subscriptiontracker: integrityBootBlocks\(\) .*appPins/);
+  });
+
+  test('🔴 the brick main() stops passing its own pins', () => {
+    edit(BRICK_MAIN, 'appPins: kAppSignerPins', 'appPins: const <String, List<String>>{}');
+    assert.match(findings(), /S6 tooling\/bricks\/.*main\.dart: \/appPins/);
+  });
+
+  test('🔴 the comparison stops adding the app\'s own pins', () => {
+    edit('packages/core/lib/src/integrity/device_integrity.dart', 'appPins[releaseChannel]', 'const <String, List<String>>{}[releaseChannel]');
+    assert.match(findings(), /S6 .*device_integrity\.dart lacks .*appPins/);
   });
 
   test('the app app.dart stops mounting the rooted notice', () => {

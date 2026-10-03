@@ -32,6 +32,7 @@
       "ADR 085",
       "ADR 093",
       "ADR 099",
+      "C-10",
       "D-5"
     ],
     "invokedBy": [
@@ -2376,7 +2377,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "C-10"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store"
     ],

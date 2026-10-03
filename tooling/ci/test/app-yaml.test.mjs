@@ -116,6 +116,9 @@ function tree() {
     // lib/core/, so a fixture that carries lib/core/ must carry its rendering,
     // or --check reads it as stale on every case.
     'apps/subscriptiontracker/lib/core/windows_notification_identity.g.dart',
+    // ⏱ 2026-10-03 (ruling on PR #1198, ADR 030): render.mjs owns the app's own
+    // signer pins file the same way, for every app with a lib/core/.
+    'apps/subscriptiontracker/lib/core/signer_pins.g.dart',
     // ⏱ 2026-10-02 (SYN-P2): limb 10 holds the identity store's address
     // columns to the trigger file, and refuses (2) a run with no register.
     'tooling/legal/identity-address-columns.json',
@@ -2797,7 +2800,9 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       // ⏱ 2026-09-28 (ST-R4): 4 -> 5, the fixture carries the rendered
       // lib/core/windows_notification_identity.g.dart now (see tree()).
       // ⏱ 2026-09-30 (ADR no.NNN): 5 -> 6, the second exempt importer, native_attest.dart.
-      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 6 shipped Dart file\(s\) carry no cipher class/);
+      // ⏱ 2026-10-03 (ruling on PR #1198): 6 -> 7, the fixture carries the
+      // rendered lib/core/signer_pins.g.dart now (see tree()).
+      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 7 shipped Dart file\(s\) carry no cipher class/);
     } finally { kill(root); }
   });
 

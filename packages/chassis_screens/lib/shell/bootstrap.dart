@@ -153,6 +153,7 @@ Future<void> bootstrapNikatru({
   required TelemetryZoneRunner runGuarded,
   required IdentityInitialiser initialiseIdentity,
   required VoidCallback run,
+  required Map<String, List<String>> appPins,
   required String releaseChannel,
   required core.DeviceIntegrityProbe? integrityProbe,
   DeviceIntegrityRecorder? recordIntegrity,
@@ -169,6 +170,7 @@ Future<void> bootstrapNikatru({
   await runGuarded(() async {
     AppErrorScreen.install();
     if (await modifiedCopyBlocked(
+      appPins: appPins,
       releaseChannel: releaseChannel,
       integrityProbe: integrityProbe,
       record: recordIntegrity,

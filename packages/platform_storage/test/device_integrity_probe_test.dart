@@ -9,6 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
+// An app that records no per-app pin of its own.
+const Map<String, List<String>> _appPins = <String, List<String>>{};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final TestDefaultBinaryMessenger messenger =
@@ -89,6 +92,7 @@ void main() {
     test('an error map throws, so core records unreadable', () async {
       answer((_) => <String, Object?>{'error': true});
       final core.DeviceIntegrity i = await core.assessDeviceIntegrity(
+        appPins: _appPins,
         probe: probe,
         releaseChannel: 'android-play',
         isDebugBuild: false,

@@ -13,7 +13,17 @@ const String _ours =
     '43:C8:4D:11:62:C4:D1:9C:0F:A0:C5:E0:01:90:5B:89:52:3D:C0:82:A6:80:83:C9:93:06:9B:86:3C:28:A6:16';
 const String _oursHex =
     '43C84D1162C4D19C0FA0C5E001905B89523DC082A68083C993069B863C28A616';
+// Play's app signing certificate: what a Play-delivered install carries.
+const String _play =
+    '98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C';
+const String _playHex =
+    '98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C';
 final String _theirs = 'AB' * 32;
+// ⏱ 2026-10-03 (ADR 030): the app's OWN pins, as its generated
+// `kAppSignerPins` hands them over — app #1's Play app signing digest.
+const Map<String, List<String>> _appPins = <String, List<String>>{
+  'android-play': <String>[_playHex],
+};
 final String _second = 'CD' * 32;
 
 const SignerPins _complete = SignerPins(
@@ -210,24 +220,54 @@ void main() {
   });
 
   group('the generated pins', () {
-    test('android-play compiles in the upload pin, and is incomplete', () {
-      final SignerPins? play = signerPinsFor('android-play');
+    // ⏱ 2026-10-03 (ruling on PR #1198, ADR 030): Play holds ONE app signing
+    // key PER APP, so the pins are keyed by app id as well as channel.
+    test("the app's own android-play set holds both pins, complete", () {
+      final SignerPins? play = signerPinsFor('android-play', appPins: _appPins);
       expect(play, isNotNull);
       expect(play!.digests, contains(_oursHex));
-      // The app signing pin is not set: a Play install must not be blocked.
+      // Its app signing pin, from apps/subscriptiontracker/app.yaml.
+      expect(play.digests, contains(_playHex));
+      expect(play.complete, isTrue);
+    });
+
+    test('another app gets the channel default: the upload pin only, '
+        "INCOMPLETE — never app #1's key", () {
+      final SignerPins? other = signerPinsFor('android-play');
+      expect(other, isNotNull);
+      expect(other!.digests, <String>[_oursHex]);
+      expect(other.digests, isNot(contains(_playHex)));
+      expect(other.complete, isFalse);
+    });
+
+    test('an app pin on a channel that takes none is ignored', () {
+      final SignerPins? agi = signerPinsFor(
+        'apps-gov-in',
+        appPins: <String, List<String>>{
+          'apps-gov-in': <String>[_playHex],
+        },
+      );
+      expect(agi!.digests, isEmpty);
+      expect(agi.complete, isFalse);
+    });
+
+    test('the channel default never carries an app\'s own key', () {
+      final SignerPins play = kSignerPinsByChannel['android-play']!;
+      expect(play.digests, <String>[_oursHex]);
       expect(play.complete, isFalse);
+      expect(play.appPinCompletes, isTrue);
     });
 
     test('apps-gov-in has a row and no pin yet', () {
-      final SignerPins? agi = signerPinsFor('apps-gov-in');
+      final SignerPins? agi = signerPinsFor('apps-gov-in', appPins: _appPins);
       expect(agi, isNotNull);
       expect(agi!.digests, isEmpty);
       expect(agi.complete, isFalse);
     });
 
     test('a channel with no row has no pins', () {
-      expect(signerPinsFor('web'), isNull);
-      expect(signerPinsFor(''), isNull);
+      expect(signerPinsFor('web', appPins: _appPins), isNull);
+      expect(signerPinsFor('', appPins: _appPins), isNull);
     });
 
     test('every generated digest is already normalised', () {
@@ -243,11 +283,13 @@ void main() {
   group('assessDeviceIntegrity', () {
     Future<DeviceIntegrity> assess(
       DeviceIntegrityProbe probe, {
+      Map<String, List<String>> appPins = _appPins,
       String channel = 'android-play',
       bool debug = false,
       bool android = true,
     }) => assessDeviceIntegrity(
       probe: probe,
+      appPins: appPins,
       releaseChannel: channel,
       isDebugBuild: debug,
       checksSigner: android,
@@ -261,11 +303,57 @@ void main() {
       expect(i.blocksDataAccess, isFalse);
     });
 
+    test('Play\'s app signing key on android-play is verified', () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_play])),
+      );
+      expect(i.signer, SignerVerdict.verified);
+      expect(i.blocksDataAccess, isFalse);
+    });
+
     test(
-      'a foreign key on android-play is reported while it is incomplete',
+      "ANOTHER app on android-play is never blocked for lacking app #1's key",
       () async {
+        // The lockout the per-app keying prevents: app #2's genuine Play
+        // install carries ITS OWN app signing key, which no pin names yet.
         final DeviceIntegrity i = await assess(
           FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
+          appPins: const <String, List<String>>{},
+        );
+        expect(i.signer, SignerVerdict.mismatchReported);
+        expect(i.blocksDataAccess, isFalse);
+      },
+    );
+
+    test("app #1's app signing key does not verify another app", () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_play])),
+        appPins: const <String, List<String>>{},
+      );
+      expect(i.signer, SignerVerdict.mismatchReported);
+    });
+
+    test('a foreign key on android-play blocks: its set is complete', () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
+      );
+      expect(i.signer, SignerVerdict.mismatch);
+      expect(i.reportsSigner, isTrue);
+      expect(i.blocksDataAccess, isTrue);
+    });
+
+    test(
+      'a foreign key on an INCOMPLETE set is reported, never blocked',
+      () async {
+        final DeviceIntegrity i = await assessDeviceIntegrity(
+          probe: FixedDeviceIntegrityProbe(
+            certificates: _signed(<String>[_theirs]),
+          ),
+          appPins: _appPins,
+          releaseChannel: 'android-play',
+          isDebugBuild: false,
+          checksSigner: true,
+          pinsFor: (_) => _incomplete,
         );
         expect(i.signer, SignerVerdict.mismatchReported);
         expect(i.reportsSigner, isTrue);

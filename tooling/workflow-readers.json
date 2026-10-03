@@ -232,6 +232,11 @@
       "reads": "every workflow env name and secret/var/env reference"
     },
     {
+      "path": "tooling/ci/assert-runtime-signer-check.mjs",
+      "property": "workflow-scan",
+      "reads": "S9 only: every workflow through parseAllWorkflows, for a step running node tooling/release/submit-play.mjs (the Play upload it judges) and any reference to Play internal app sharing. No such step found is COVERAGE LOST (exit 2): a \"no internal app sharing\" verdict about no upload step is about nothing."
+    },
+    {
       "path": "tooling/ci/assert-seams-wired.mjs",
       "property": "workflow-scan"
     },

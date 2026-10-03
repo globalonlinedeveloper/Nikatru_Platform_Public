@@ -5,17 +5,20 @@
 // The expected signing-certificate digests (SHA-256, uppercase hex) each
 // Android channel's build compiles in. `complete` is true only when EVERY pin
 // the channel declares is set; an incomplete set reports and never blocks.
+// A per-app pin (Play holds one app signing key per app) is never here: each
+// app renders its own, and `appPinCompletes` says whether it completes the set.
 import 'device_integrity.dart' show SignerPins;
 
-/// The pins by `RELEASE_CHANNEL`.
+/// The pins by `RELEASE_CHANNEL`: the factory-wide CHANNEL DEFAULT.
 const Map<String, SignerPins> kSignerPinsByChannel = <String, SignerPins>{
   // signing.uploadCertificate.sha256
-  // signing.appSigningCertificate.sha256 — not set
+  // + per app: stores.android-play.appSigningSha256 (the app's kAppSignerPins)
   'android-play': SignerPins(
     digests: <String>[
       '43C84D1162C4D19C0FA0C5E001905B89523DC082A68083C993069B863C28A616',
     ],
     complete: false,
+    appPinCompletes: true,
   ),
   // signing.signingCertificate.sha256 — not set
   'apps-gov-in': SignerPins(digests: <String>[], complete: false),

@@ -10,6 +10,7 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 
 import 'app.dart';
 import 'core/app_config.dart';
+import 'core/signer_pins.g.dart';
 import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
@@ -44,6 +45,7 @@ Future<void> main() async {
 
   final TelemetryClient sink = TelemetryBootstrap.clientFor(config);
   await bootstrapNikatru(
+    appPins: kAppSignerPins, // its own per-app signer pins
     releaseChannel: AppConfig.releaseChannel, // step 3½: root + signer check
     integrityProbe: platformDeviceIntegrityProbe(),
     recordIntegrity: integrityRecorder(sink.addBreadcrumb, sink.captureMessage),

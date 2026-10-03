@@ -414,7 +414,7 @@
       },
       "configKeyed": {
         "kind": "runtime-secret",
-        "reason": "OWNER-PROVISIONED and NOT YET PRESENT: the Play Console self-managed response keys (`wrangler secret put PLAY_INTEGRITY_DECRYPTION_KEY` and `PLAY_INTEGRITY_VERIFICATION_KEY`) and the Play app-signing certificate digest (the PLAY_INTEGRITY_CERT_DIGESTS var). Until both exist `play-integrity` is not listed in NATIVE_AUTH_ATTEST_KINDS, and a listed-but-unconfigured kind answers 503."
+        "reason": "OWNER-PROVISIONED and NOT YET PRESENT: the Play Console self-managed response keys (`wrangler secret put PLAY_INTEGRITY_DECRYPTION_KEY` and `PLAY_INTEGRITY_VERIFICATION_KEY`) and the Play app-signing certificate digest (the PLAY_INTEGRITY_CERT_DIGESTS var). Until both exist `play-integrity` is not listed in NATIVE_AUTH_ATTEST_KINDS, and a listed-but-unconfigured kind answers 503. ⏱ 2026-10-03: the digest is READ (Play Developer API generatedApks/1) and is app #1's own, in apps/subscriptiontracker/app.yaml `stores.android-play.appSigningSha256` (one app signing key per app, ADR 030). DONE: the lead set PLAY_INTEGRITY_CERT_DIGESTS on the platform Worker at 2026-10-03T13:55Z to {subscriptiontracker:{play:[98:FA:…:3A:3C],sideload:[]}}."
       },
       "ownTheRecord": "N/A — nothing of ours is stored at Google through this surface; each verdict is read once and discarded, and nothing about it is written.",
       "exportPath": {

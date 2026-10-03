@@ -27,6 +27,13 @@
 /// `tooling/channel-register.json` by
 /// `node tooling/ci/assert-runtime-signer-check.mjs --write`, and that guard
 /// fails CI when the generated file and the register disagree.
+///
+/// ⏱ 2026-10-03 (ruling on PR #1198; ADR 030): Play App Signing holds one app
+/// signing key PER APP, so that pin is the APP's. [kSignerPinsByChannel] keeps
+/// only the factory-wide pins and never blocks for a per-app key it lacks;
+/// each app renders its own (`kAppSignerPins` in its lib/core/
+/// signer_pins.g.dart, from its app.yaml — shared code names no app) and hands
+/// it to every check as `appPins`, which [signerPinsFor] adds to the default.
 library;
 
 import 'signer_pins.g.dart';
@@ -168,7 +175,11 @@ String? normalizeCertificateDigest(String raw) {
 
 /// The expected signer digests one channel's build compiles in.
 final class SignerPins {
-  const SignerPins({required this.digests, required this.complete});
+  const SignerPins({
+    required this.digests,
+    required this.complete,
+    this.appPinCompletes,
+  });
 
   /// Normalised SHA-256 digests ([normalizeCertificateDigest]).
   final List<String> digests;
@@ -177,18 +188,43 @@ final class SignerPins {
   /// block: a missing pin is a key the check cannot recognise yet, and a
   /// recognisable install it would flag is a paying user locked out.
   final bool complete;
+
+  /// ⏱ 2026-10-03: null for a channel that takes no per-app pin; otherwise
+  /// whether the APP's own pin (one app signing key per app, ADR 030), added to
+  /// these factory-wide digests, makes the set complete.
+  final bool? appPinCompletes;
 }
 
 /// How a check finds a channel's pins: [signerPinsFor] in every build; a test
 /// passes a complete set through it, because no channel's real set is
-/// complete yet.
+/// complete yet. ⏱ 2026-10-03: an app's own android-play set is complete once
+/// its app.yaml records its Play app signing pin; a test passes any set through
+/// this seam, complete or not.
 typedef SignerPinsLookup = SignerPins? Function(String releaseChannel);
 
 /// The pins compiled in for [releaseChannel] (`RELEASE_CHANNEL`), or null for
 /// a channel the generated table has no row for — a channel no signer check
 /// applies to (web, desktop, a build with no channel stamped).
-SignerPins? signerPinsFor(String releaseChannel) =>
-    kSignerPinsByChannel[releaseChannel];
+///
+/// ⏱ 2026-10-03: [appPins] is the app's OWN pins by channel (its
+/// `kAppSignerPins`). On a channel that takes one ([SignerPins.appPinCompletes]
+/// not null) they are added to the factory-wide default, and complete it when
+/// the default says so; without them the default is incomplete and never
+/// blocks — so no app is locked out for lacking another app's key.
+SignerPins? signerPinsFor(
+  String releaseChannel, {
+  Map<String, List<String>> appPins = const <String, List<String>>{},
+}) {
+  final SignerPins? channel = kSignerPinsByChannel[releaseChannel];
+  final List<String> own = appPins[releaseChannel] ?? const <String>[];
+  if (channel == null || channel.appPinCompletes == null || own.isEmpty) {
+    return channel;
+  }
+  return SignerPins(
+    digests: <String>[...channel.digests, ...own],
+    complete: channel.appPinCompletes!,
+  );
+}
 
 /// What the runtime signature check concluded.
 enum SignerVerdict {
@@ -290,14 +326,16 @@ final class DeviceIntegrity {
 /// Runs both checks. Never throws.
 ///
 /// [checksSigner] is true on android only — the one host with a signing
-/// certificate the app can read about itself. [pinsFor] is the generated
-/// table ([signerPinsFor]) outside tests.
+/// certificate the app can read about itself. [appPins] is the app's own
+/// pins (its `kAppSignerPins`). [pinsFor] is the generated table
+/// ([signerPinsFor] with [appPins]) outside tests.
 Future<DeviceIntegrity> assessDeviceIntegrity({
   required DeviceIntegrityProbe probe,
+  required Map<String, List<String>> appPins,
   required String releaseChannel,
   required bool isDebugBuild,
   required bool checksSigner,
-  SignerPinsLookup pinsFor = signerPinsFor,
+  SignerPinsLookup? pinsFor,
 }) async {
   final RootReport root = await detectRoot(probe);
   if (!checksSigner) {
@@ -306,7 +344,10 @@ Future<DeviceIntegrity> assessDeviceIntegrity({
   if (isDebugBuild) {
     return DeviceIntegrity(root: root, signer: SignerVerdict.exemptDebug);
   }
-  final SignerPins? pins = pinsFor(releaseChannel);
+  final SignerPins? pins =
+      (pinsFor ?? (String c) => signerPinsFor(c, appPins: appPins))(
+        releaseChannel,
+      );
   if (pins == null) {
     return DeviceIntegrity(root: root, signer: SignerVerdict.notChecked);
   }
