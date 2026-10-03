@@ -208,12 +208,16 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
     // from three values no PR author writes: the conclusion, the sha, and the triggering
     // run's event, so a fork PR from the fork's own `main` (which posts nothing) does not
     // read as a posted verdict (#1168 review, minor 1). The job itself reads no event field.
+    // Every `github.event` reference counts, bracket forms and a bare `github.event`
+    // included (#1168 review, nit 4): `github.event['workflow_run']` and
+    // `toJSON(github.event)` have no `github.event.` for a dotted pattern to find.
     const runName = wf.match(/^run-name:.*$/m)?.[0] ?? '';
+    const EVENT_REF = /\bgithub\.event\b(?:\.\w+|\[[^\]]*\])*/g;
     assert.deepEqual(
-      [...runName.matchAll(/github\.event\.[\w.]+/g)].map((m) => m[0]).sort(),
+      [...runName.matchAll(EVENT_REF)].map((m) => m[0]).sort(),
       ['github.event.workflow_run.conclusion', 'github.event.workflow_run.event', 'github.event.workflow_run.head_sha'],
     );
-    assert.doesNotMatch(wf.replace(runName, ''), /\$\{\{[^}]*github\.event\./, 'the event is read from GITHUB_EVENT_PATH by the script, never by an expression');
+    assert.doesNotMatch(wf.replace(runName, ''), /\$\{\{(?:(?!\}\}).)*\bgithub\.event\b/, 'the event is read from GITHUB_EVENT_PATH by the script, never by an expression');
   });
 });
 
