@@ -199,7 +199,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       // of the copy into `provider_tokens`; ⏱ 2026-09-30 the provider-token
       // backfill re-runs that copy and empties its tokens (migration 0023).
       'apple_provider_tokens',
-      // 0024 — what each box says its live config hashes are (PB-27).
+      // 0025 — what each box says its live config hashes are (PB-27).
       'box_config_manifest',
       // 0009 — the bundle purchase ([ADR 057]). Four tables, and the list is
       // spelled out here rather than counted so a migration silently dropped

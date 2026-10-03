@@ -3345,7 +3345,7 @@
       "detector": "assert-ops-register.mjs: the exercise date is bounded by this row's cadence, so a revert path drilled once never stays green.",
       "response": "Dispatch the workflow at the previous SHA and confirm /v1/health.",
       "cadence": "365d",
-      "lastDone": null,
+      "lastDone": "2026-10-02",
       "mechanism": {
         "substrate": "github-actions",
         "anchor": ".github/workflows/deploy-workers.yml",
@@ -3359,7 +3359,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Deliberately re-deploying an older SHA over live production is a destructive act against a live surface; it is not something an agent performs unasked.",
-      "source": "verified"
+      "source": "verified",
+      "verifiedHow": "⏱ 2026-10-02 · PB-09 drill (PR #1115): Actions ▸ Rollback, unit = platform, re-promoted the newest ledger Deployment 6801839308 through rollback.mjs → `wrangler rollback`; the re-promotion, the unit's smoke and the ledger record were all green in run 36970507126. That run is this row's `lastDone`. The Pages revert rows stay undated: their drills (runs 36970520119, 36970542712) were refused by Cloudflare 8000039 and are re-drilled once the already-live no-op lands."
     },
     {
       "id": "revert.worker.subscriptiontracker-api",
@@ -4976,7 +4977,7 @@
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0024_box_config_manifest.sql",
+        "anchor": "services/platform/migrations/0025_box_config_manifest.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

@@ -280,7 +280,10 @@ export function plaintextReadsOpen(env: Pick<Env, 'PROVIDER_TOKEN_PLAINTEXT_READ
 }
 
 /** What a (subject, provider) read found. `unreadable` is a refusal, never a guess. */
-export type StoredToken = { kind: 'none' } | { kind: 'token'; token: string } | { kind: 'unreadable'; why: string };
+export type StoredToken =
+  | { kind: 'none' }
+  | { kind: 'token'; token: string; clientId: string | null }
+  | { kind: 'unreadable'; why: string };
 
 /**
  * The stored refresh token for a (subject, provider), decrypted.
@@ -298,17 +301,18 @@ export async function storedProviderToken(
   const open = plaintextReadsOpen(env, nowMs);
   // Closed, the plain-text column is not even selected: the ciphertext is the ONLY read.
   const statement = open
-    ? env.PLATFORM_DB.prepare('SELECT token_ct, token_key_id, refresh_token FROM provider_tokens WHERE subject_ref = ? AND provider = ?')
-    : env.PLATFORM_DB.prepare('SELECT token_ct, token_key_id FROM provider_tokens WHERE subject_ref = ? AND provider = ?');
+    ? env.PLATFORM_DB.prepare('SELECT token_ct, token_key_id, client_id, refresh_token FROM provider_tokens WHERE subject_ref = ? AND provider = ?')
+    : env.PLATFORM_DB.prepare('SELECT token_ct, token_key_id, client_id FROM provider_tokens WHERE subject_ref = ? AND provider = ?');
   const row = await statement
     .bind(subjectRef, provider)
-    .first<{ token_ct: string | null; token_key_id: string | null; refresh_token?: string }>();
+    .first<{ token_ct: string | null; token_key_id: string | null; client_id: string | null; refresh_token?: string }>();
   if (row === null) return { kind: 'none' };
+  const clientId = typeof row.client_id === 'string' && row.client_id !== '' ? row.client_id : null;
   // Plain text is present only in a row no Worker of this version wrote — one
   // stored before 0023, or by the old Worker in the deploy window — so it is
   // the newest value the row holds.
   if (open && typeof row.refresh_token === 'string' && row.refresh_token !== '') {
-    return { kind: 'token', token: row.refresh_token };
+    return { kind: 'token', token: row.refresh_token, clientId };
   }
   if (row.token_ct === null || row.token_key_id === null) {
     return {
@@ -324,13 +328,19 @@ export async function storedProviderToken(
   if (token === null) {
     return { kind: 'unreadable', why: `the stored ${provider} token does not decrypt under key ${row.token_key_id} (wrong key, or the row was altered)` };
   }
-  return { kind: 'token', token };
+  return { kind: 'token', token, clientId };
 }
 
 /**
  * Keep (or replace) the token this subject's last sign-in with `provider`
  * produced, ENCRYPTED. `appId` is the provenance marker the monitor attributes
  * the row by.
+ *
+ * ⏱ 2026-10-02 · review of #1155, finding 1 (migration 0024). `clientId` is
+ * the OAuth client the token was ISSUED TO, when that is not the Worker's
+ * `APPLE_REVOKE_CLIENT_ID`: an Apple token from the native sheet belongs to
+ * the app's bundle id, and Apple revokes a token only for its own client.
+ * Null — every web and Google token — revokes as it always has.
  *
  * 🔴 THROWS rather than store plain text when the current key cannot be used:
  * the route answers 503 and nothing is written.
@@ -342,22 +352,26 @@ export async function putProviderToken(
   appId: string,
   refreshToken: string,
   nowIso: string,
+  clientId: string | null = null,
 ): Promise<void> {
   const key = await tokenKey(env, CURRENT_TOKEN_KEY_ID);
   if ('refused' in key) throw new Error(`refusing to store a ${provider} token: ${key.refused}`);
   const sealed = await encryptToken(key.key, CURRENT_TOKEN_KEY_ID, { subjectRef, provider }, refreshToken);
   // `refresh_token` is written as the literal '' on both branches — never bound.
+  // `client_id` is replaced on every write: a web sign-in after a native one
+  // holds the web client's token, and must not keep the native client's name.
   await env.PLATFORM_DB.prepare(
-    `INSERT INTO provider_tokens (subject_ref, provider, app_id, refresh_token, token_ct, token_key_id, stored_at)
-       VALUES (?,?,?,'',?,?,?)
+    `INSERT INTO provider_tokens (subject_ref, provider, app_id, refresh_token, token_ct, token_key_id, client_id, stored_at)
+       VALUES (?,?,?,'',?,?,?,?)
        ON CONFLICT (subject_ref, provider) DO UPDATE SET
          app_id = excluded.app_id,
          refresh_token = '',
          token_ct = excluded.token_ct,
          token_key_id = excluded.token_key_id,
+         client_id = excluded.client_id,
          stored_at = excluded.stored_at`,
   )
-    .bind(subjectRef, provider, appId, sealed, CURRENT_TOKEN_KEY_ID, nowIso)
+    .bind(subjectRef, provider, appId, sealed, CURRENT_TOKEN_KEY_ID, clientId, nowIso)
     .run();
 }
 
@@ -495,19 +509,19 @@ async function readToken(
   subjectRef: string,
   provider: ProviderName,
   rid: string,
-): Promise<{ token: string | null } | { failed: RevokeOutcome }> {
+): Promise<{ token: string | null; clientId: string | null } | { failed: RevokeOutcome }> {
   let stored: StoredToken;
   try {
     stored = await storedProviderToken(env, subjectRef, provider);
   } catch (err) {
     return { failed: { kind: 'transient', why: `${provider} token read failed: ${err instanceof Error ? err.message : 'unknown'}` } };
   }
-  if (stored.kind === 'none') return { token: null };
+  if (stored.kind === 'none') return { token: null, clientId: null };
   if (stored.kind === 'unreadable') {
     console.error(`[${provider}-revoke] rid=${rid} REFUSING to revoke: ${stored.why}. The deletion stays pending and is retried; it is NOT reported as done.`);
     return { failed: { kind: 'blocked', why: `stored token unreadable: ${stored.why}` } };
   }
-  return { token: stored.token };
+  return { token: stored.token, clientId: stored.clientId };
 }
 
 /** Forget the token once its provider has settled it, or say why that failed. */
@@ -552,9 +566,13 @@ export async function revokeAppleToken(env: Env, subjectRef: string, rid: string
     return { kind: 'blocked', why: `missing ${creds.missing.join(',')}` };
   }
 
+  // The client the token was issued to: the bundle id for a native-sheet
+  // token (⏱ 2026-10-02, migration 0024), the web Services ID otherwise. A
+  // secret minted for the wrong client is refused by Apple as `invalid_client`.
+  const client: AppleRevokeCredentials = { ...creds.ok, clientId: read.clientId ?? creds.ok.clientId };
   let secret: string;
   try {
-    secret = await appleClientSecret(creds.ok, Math.floor(Date.now() / 1000));
+    secret = await appleClientSecret(client, Math.floor(Date.now() / 1000));
   } catch (err) {
     console.error(`[apple-revoke] rid=${rid} could not mint the client secret`, err instanceof Error ? err.message : err);
     return { kind: 'blocked', why: 'client secret could not be minted' };
@@ -566,7 +584,7 @@ export async function revokeAppleToken(env: Env, subjectRef: string, rid: string
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: creds.ok.clientId,
+        client_id: client.clientId,
         client_secret: secret,
         token,
         token_type_hint: 'refresh_token',
@@ -592,6 +610,81 @@ export async function revokeAppleToken(env: Env, subjectRef: string, rid: string
     return { kind: 'blocked', why: `apple answered ${res.status}` };
   }
   return { kind: 'transient', why: `apple answered ${res.status}` };
+}
+
+/** Apple's token endpoint: where an authorization code is exchanged. */
+export const APPLE_TOKEN_URL = 'https://appleid.apple.com/auth/token';
+
+/**
+ * The OAuth client a NATIVE Sign in with Apple sheet issues its code to: the
+ * app's bundle id, `com.nikatru.<appId>` — the same derivation the app's
+ * widget, entitlements and provisioning use (`com.nikatru.${AppConfig.appId}`).
+ */
+export function appleNativeClientId(appId: string): string {
+  return `com.nikatru.${appId}`;
+}
+
+/** What one code exchange did. A token only on `ok`; it is never logged. */
+export type AppleCodeExchange =
+  | { kind: 'ok'; refreshToken: string; clientId: string }
+  | { kind: 'refused'; why: string }
+  | { kind: 'blocked'; why: string }
+  | { kind: 'transient'; why: string };
+
+/**
+ * ⏱ 2026-10-02 · review of #1155, finding 1 — THE NATIVE SHEET'S HALF OF
+ * O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE.
+ *
+ * The browser door ends in a session GoTrue hands a `provider_refresh_token`;
+ * the native sheet ends in `signInWithIdToken`, which carries none. What the
+ * sheet DOES return is a one-time `authorizationCode`, valid for five minutes,
+ * and Apple's token endpoint turns it into the refresh token a deletion
+ * revokes with. That exchange needs the Sign in with Apple key, which only
+ * this Worker holds — so the app posts the code here and never the token.
+ *
+ * Same four owner-provisioned values as the revoke; the client is the app's
+ * bundle id, minted into the client secret's `sub`.
+ */
+export async function exchangeAppleAuthorizationCode(env: Env, appId: string, code: string): Promise<AppleCodeExchange> {
+  const creds = appleRevokeCredentials(env);
+  if ('missing' in creds) return { kind: 'blocked', why: `missing ${creds.missing.join(',')}` };
+  const client: AppleRevokeCredentials = { ...creds.ok, clientId: appleNativeClientId(appId) };
+  let secret: string;
+  try {
+    secret = await appleClientSecret(client, Math.floor(Date.now() / 1000));
+  } catch {
+    return { kind: 'blocked', why: 'client secret could not be minted' };
+  }
+  let res: Response;
+  try {
+    res = await fetch(APPLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: client.clientId,
+        client_secret: secret,
+        code,
+        grant_type: 'authorization_code',
+      }).toString(),
+      signal: AbortSignal.timeout(PROVIDER_REVOKE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    return { kind: 'transient', why: `apple unreachable: ${err instanceof Error ? err.message : 'unknown'}` };
+  }
+  if (!res.ok) {
+    // `invalid_grant` (a used, expired or foreign code) and `invalid_client`
+    // are refusals a retry cannot change; 429 and 5xx can.
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+      return { kind: 'refused', why: `apple answered ${res.status}` };
+    }
+    return { kind: 'transient', why: `apple answered ${res.status}` };
+  }
+  const body = (await res.json().catch(() => null)) as { refresh_token?: unknown } | null;
+  const refreshToken = body?.refresh_token;
+  if (typeof refreshToken !== 'string' || refreshToken.trim().length < 8) {
+    return { kind: 'refused', why: 'apple answered 200 with no refresh token' };
+  }
+  return { kind: 'ok', refreshToken: refreshToken.trim(), clientId: client.clientId };
 }
 
 /**

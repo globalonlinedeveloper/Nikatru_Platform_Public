@@ -6125,7 +6125,13 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     }
   };
   /** Pinned, because the rule below turns on the REAL clock and a test whose
-   *  verdict changes with the hour it runs at is not a test. */
+   *  verdict changes with the hour it runs at is not a test. ⏱ 2026-10-02 · PB-09:
+   *  only the PURE cases below use it. The two SPAWNED replays serve the COMMITTED
+   *  register, whose own records are dated up to today (revert.worker.platform's
+   *  lastDone 2026-10-02): a pinned clock older than them left those unnormalised,
+   *  and the replay red on the fixture's age, never on the register. They take the
+   *  real clock, replayRegisterFile's default; their lane drills (2026-09-17/20)
+   *  and the 2099 control sit on the same side of it at any hour this suite runs. */
   const REAL_NOW = Date.parse('2026-09-20T23:59:59Z');
 
   test('drill-date replay fixture · a record the freeze CANNOT have seen is dated at the freeze; one it did see, and every dated tripwire, is untouched', () => {
@@ -6168,7 +6174,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
   test('drill-date replay fixture · the three drills dated 2026-09-17 and 2026-09-20 replay GREEN, and the guard READS each one as an observed down-transition', () => {
     const clean = replay(HOST.PR);
     assert.equal(clean.code, 0, `green control: today's register replays clean\n${clean.problems.join('\n')}`);
-    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(), realNowMs: REAL_NOW }) });
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills() }) });
     assert.equal(r.code, 0, `a record written after the freeze must not read as a break:\n${r.problems.join('\n')}\n${r.out.slice(-3000)}`);
     assert.deepEqual(r.problems, []);
     // …and NOT vacuously: each drill is read, graded and PRINTED. Without the
@@ -6185,7 +6191,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
 
   test('drill-date replay fixture · RED CONTROL — a drill dated past the REAL clock is NOT normalised and the spawned replay goes red on it', () => {
     const over = { 'duty.laptop.nikatru-pipeline-driver': { ...LANE_DRILLS['duty.laptop.nikatru-pipeline-driver'], date: '2099-01-01' } };
-    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over), realNowMs: REAL_NOW }) });
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over) }) });
     assert.equal(r.code, 1, `a date nothing has reached must still BLOCK:\n${r.out.slice(-3000)}`);
     assert.equal(r.problems.length, 1, `the other two records — later than the freeze, earlier than the clock — must still be clean:\n${r.problems.join('\n')}`);
     assert.match(

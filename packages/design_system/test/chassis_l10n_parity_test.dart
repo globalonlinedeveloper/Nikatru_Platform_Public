@@ -251,6 +251,15 @@ void main() {
       'languageHindi':
           'the language picker names each language in itself: "हिन्दी" is '
           'Hindi written in Hindi, in every file (T20, XP-06)',
+      'connectedAccountsApple':
+          'a provider\'s own brand name, written as the provider writes it '
+          '(SE-04, Connected accounts)',
+      'connectedAccountsGoogle':
+          'a provider\'s own brand name, written as the provider writes it '
+          '(SE-04, Connected accounts)',
+      'reacceptTermsNoteLine':
+          'a bullet around a placeholder: the line itself comes from the legal '
+          'register, already in the reader\'s language (EN-23)',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',

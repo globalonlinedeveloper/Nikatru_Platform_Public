@@ -7,7 +7,7 @@
 // SSH and re-vendored by hand, and nothing compared the live files with the
 // vendored copies. The box pushes; CI never SSHes in:
 //   box cron (tooling/ops/boxes/post-config-manifest.sh)
-//     → this route (one row per box, migrations/0024_box_config_manifest.sql)
+//     → this route (one row per box, migrations/0025_box_config_manifest.sql)
 //     → tooling/ops/check-box-config-drift.mjs in ops-watch, against the
 //       vendored hashes in tooling/ops/box-config-vendored.json.
 //
