@@ -941,6 +941,9 @@
   "self-host-fallback-fonts.test.mjs":
     25,
 
+  "self-review.test.mjs":
+    37,
+
   "session-revocation.test.mjs":
     15,
 
