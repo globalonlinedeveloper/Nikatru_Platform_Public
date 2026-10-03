@@ -2044,6 +2044,102 @@ function checkApp(app) {
     }
   }
 
+  // (c) ACCOUNTS — Play's account-creation question, RE-DERIVED from the app's own Dart.
+  //     ⏱ 2026-10-03 · the form's PSL_SUPPORTED_ACCOUNT_CREATION_METHODS went to the renderer blank
+  //     for an app that lets users create an account, the one case Play requires it. "Has accounts"
+  //     is the predicate assert-deletion-control.mjs derives (the app programs against
+  //     `AuthRepository` and has a `signInWithEmail(` door); for such an app `accounts` must answer
+  //     every method in every posture, and the two methods the code decides are compared, in the
+  //     `backend-live` column, against what the code offers:
+  //       · email + password  ⇔ the app calls `signUpWithEmail(`;
+  //       · OAuth             ⇔ the app calls `signInWithApple(` or `signInWithGoogle(`, AND
+  //         AuthProviders.configured enables that provider, AND the set the app passes as
+  //         `registeredCallbacks:` holds TargetPlatform.android (otherwise oauthRedirect is false on
+  //         the Play artefact and the buttons are not drawn — packages/auth_supabase auth_capabilities).
+  const ACM_KEYS = ['userIdPassword', 'userIdOtherAuth', 'userIdPasswordOtherAuth', 'oauth', 'other', 'none'];
+  const ACCOUNT_POSTURE = 'backend-live';
+  const PROVIDERS_REL = 'packages/auth_supabase/lib/src/auth_providers.dart';
+  const appLibFiles = walk(`${APP_DIR}/lib`).filter((f) => f.endsWith('.dart'));
+  const appDart = appLibFiles.map((f) => stripSourceComments(read(f) ?? '', '.dart')).join('\n');
+  const hasAccounts = /\bAuthRepository\b/.test(appDart) && appDart.includes('signInWithEmail(');
+  const accounts = ds.accounts;
+  if (!hasAccounts) {
+    prints.push(
+      `accounts — ${APP_DIR}/lib shows no account surface (AuthRepository + signInWithEmail( over ${appLibFiles.length} Dart file(s)); ` +
+        'the account-creation answers are not required here. Derived from the code, not from a list.',
+    );
+  } else if (!accounts?.creationMethods || typeof accounts.creationMethods !== 'object') {
+    problems.push(
+      `🔴 ${APP_DIR} lets users create an account (it programs against AuthRepository and calls signInWithEmail) and ${DS_REL} declares no \`accounts.creationMethods\`. Play requires the account-creation methods of an app with accounts; the renderer would leave the question blank.`,
+    );
+  } else {
+    const cm = accounts.creationMethods;
+    for (const k of ACM_KEYS) {
+      if (!cm[k] || typeof cm[k] !== 'object') {
+        problems.push(`${DS_REL} accounts.creationMethods has no \`${k}\` answer. Every method Play offers is answered, true or false, so a missing one is never read as "no".`);
+        continue;
+      }
+      for (const p of POSTURES) {
+        if (typeof cm[k][p] !== 'boolean') problems.push(`${DS_REL} accounts.creationMethods.${k}["${p}"] is ${JSON.stringify(cm[k][p])}; an account-creation method is true or false, and a null one is a form field nobody has derived.`);
+      }
+      if (typeof cm[k].basis !== 'string' || cm[k].basis.trim() === '') problems.push(`${DS_REL} accounts.creationMethods.${k} records no \`basis\`.`);
+    }
+    for (const k of Object.keys(cm)) if (!ACM_KEYS.includes(k)) problems.push(`${DS_REL} accounts.creationMethods.${k} is not one of Play's methods (${ACM_KEYS.join(', ')}).`);
+    for (const p of POSTURES) {
+      const out = accounts.outsideAppAccounts?.[p];
+      if (typeof out !== 'boolean') problems.push(`${DS_REL} accounts.outsideAppAccounts["${p}"] is ${JSON.stringify(out)}; the form asks a yes/no question.`);
+    }
+
+    if (POSTURES.includes(ACCOUNT_POSTURE)) {
+      const live = (k) => cm[k]?.[ACCOUNT_POSTURE];
+      const chosen = ACM_KEYS.filter((k) => live(k) === true);
+      if (chosen.length === 0 || chosen.includes('none')) {
+        problems.push(
+          `🔴 ${DS_REL} accounts.creationMethods answers ${chosen.length ? '`none`' : 'no method'} for "${ACCOUNT_POSTURE}", and ${APP_DIR} lets users create an account there. Play asks how; "none" would be a false statement.`,
+        );
+      }
+      const derivedPassword = appDart.includes('signUpWithEmail(');
+      if (typeof live('userIdPassword') === 'boolean' && live('userIdPassword') !== derivedPassword) {
+        problems.push(
+          `🔴 ${DS_REL} accounts.creationMethods.userIdPassword["${ACCOUNT_POSTURE}"] is ${live('userIdPassword')} and ${APP_DIR}/lib ${derivedPassword ? 'calls' : 'never calls'} signUpWithEmail(. The answer and the sign-up door disagree.`,
+        );
+      }
+      const doors = { apple: appDart.includes('signInWithApple('), google: appDart.includes('signInWithGoogle(') };
+      let derivedOauth = false;
+      if (doors.apple || doors.google) {
+        const provText = read(PROVIDERS_REL);
+        const m = provText && stripSourceComments(provText, '.dart').match(/static\s+const\s+AuthProviders\s+configured\s*=\s*AuthProviders\(([^)]*)\)/);
+        const flag = (name) => m?.[1].match(new RegExp(`\\b${name}\\s*:\\s*(true|false)\\b`))?.[1];
+        if (!m || flag('apple') === undefined || flag('google') === undefined) {
+          coverageLost([
+            `${APP_DIR}/lib calls an OAuth door and ${PROVIDERS_REL} yields no \`AuthProviders.configured\` with both flags.`,
+            'Whether the server accepts Apple or Google is read there; without it the OAuth answer is compared to nothing.',
+          ]);
+        }
+        const cbName = appDart.match(/registeredCallbacks:\s*([A-Za-z_]\w*)/)?.[1];
+        let android = false;
+        if (cbName) {
+          const set = appDart.match(new RegExp(`\\b${cbName}\\s*=\\s*<TargetPlatform>\\{([^}]*)\\}`));
+          if (!set) {
+            coverageLost([
+              `${APP_DIR}/lib passes \`registeredCallbacks: ${cbName}\` and no \`${cbName} = <TargetPlatform>{…}\` literal was found.`,
+              'Whether the Play artefact can complete an OAuth hop is read off that set; unread, the OAuth answer is compared to nothing.',
+            ]);
+          }
+          android = /\bTargetPlatform\.android\b/.test(set[1]);
+        }
+        derivedOauth = android && ((doors.apple && flag('apple') === 'true') || (doors.google && flag('google') === 'true'));
+      }
+      if (typeof live('oauth') === 'boolean' && live('oauth') !== derivedOauth) {
+        problems.push(
+          `🔴 ${DS_REL} accounts.creationMethods.oauth["${ACCOUNT_POSTURE}"] is ${live('oauth')} and the code ${derivedOauth ? 'OFFERS' : 'does not offer'} an OAuth sign-in on Android ` +
+            `(doors: apple ${doors.apple}, google ${doors.google}; ${PROVIDERS_REL} configured; registeredCallbacks holding TargetPlatform.android). The answer and the button disagree.`,
+        );
+      }
+      prints.push(`accounts — "${ACCOUNT_POSTURE}" methods ${chosen.join(', ') || 'none'}; email+password ${derivedPassword} and OAuth ${derivedOauth} re-derived from ${APP_DIR}/lib`);
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 9 · THE CONTENT RATING RECORD.
   // ─────────────────────────────────────────────────────────────────────────────

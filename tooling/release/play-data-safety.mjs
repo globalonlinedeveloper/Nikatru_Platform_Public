@@ -243,24 +243,48 @@ export const PLAY_ID_MAP = Object.freeze({
     deletionNo: 'DATA_DELETION_NO',
     /** dataSecurity.deletionRequestSupported.webDeletionUrl — the delete-ACCOUNT page. */
     accountDeletionUrl: 'PSL_ACCOUNT_DELETION_URL',
+    /** The SAME webDeletionUrl, filled only when the deletion answer is YES: the page is where a
+     *  user requests deletion of their data (its title is "Delete your account and data"). */
+    dataDeletionUrl: 'PSL_DATA_DELETION_URL',
     /** dataSecurity.independentSecurityReview.answer */
     independentlyValidated: 'PSL_INDEPENDENTLY_VALIDATED',
     /** dataSecurity.playFamiliesPolicy.answer — rendered ONLY when true: the question says
      *  "Only answer this question if … your app's target age group includes children". */
     familiesPolicy: 'PSL_DATA_COLLECTION_COMPLIES_FAMILY_POLICY',
   }),
+  /** data-safety.json `accounts` — every value is read per posture. */
+  accounts: Object.freeze({
+    methodsQuestion: 'PSL_SUPPORTED_ACCOUNT_CREATION_METHODS',
+    /** accounts.creationMethods.<key>[posture]: true → the response is chosen. */
+    methods: Object.freeze({
+      userIdPassword: 'PSL_ACM_USER_ID_PASSWORD',
+      userIdOtherAuth: 'PSL_ACM_USER_ID_OTHER_AUTH',
+      userIdPasswordOtherAuth: 'PSL_ACM_USER_ID_PASSWORD_OTHER_AUTH',
+      oauth: 'PSL_ACM_OAUTH',
+      other: 'PSL_ACM_OTHER',
+      none: 'PSL_ACM_NONE',
+    }),
+    /** accounts.otherDescription — only when `other` is chosen. */
+    otherSpecify: 'PSL_ACM_SPECIFY',
+    /** accounts.outsideAppAccounts[posture] */
+    outsideApp: 'PSL_HAS_OUTSIDE_APP_ACCOUNTS',
+    outsideAppTypesQuestion: 'PSL_OUTSIDE_APP_ACCOUNT_TYPES',
+    /** accounts.outsideAppAccounts.types[] → the type Response ID. */
+    outsideAppTypes: Object.freeze({
+      'outside-app-id': 'PSL_LOGIN_WITH_OUTSIDE_APP_ID',
+      'employment-or-enterprise': 'PSL_LOGIN_THROUGH_EMPLOYMENT_OR_ENTERPRISE_ACCOUNT',
+      other: 'PSL_OUTSIDE_APP_ACCOUNT_TYPE_OTHER',
+    }),
+    /** accounts.outsideAppAccounts.description — only when type `other` is chosen. */
+    outsideAppSpecify: 'PSL_OUTSIDE_APP_ACCOUNT_TYPE_SPECIFY',
+  }),
 });
 
-/** Questions data-safety.json does not answer. Left blank, printed, never guessed. */
-export const NOT_DECLARED_BY_THE_SWORN_FILE = Object.freeze([
-  'PSL_SUPPORTED_ACCOUNT_CREATION_METHODS',
-  'PSL_ACM_SPECIFY',
-  'PSL_DATA_DELETION_URL',
-  'PSL_UPI_BADGE_OPT_IN',
-  'PSL_HAS_OUTSIDE_APP_ACCOUNTS',
-  'PSL_OUTSIDE_APP_ACCOUNT_TYPES',
-  'PSL_OUTSIDE_APP_ACCOUNT_TYPE_SPECIFY',
-]);
+/** Questions data-safety.json does not answer. Left blank, printed, never guessed.
+ *  PSL_UPI_BADGE_OPT_IN is OPTIONAL and asks whether the app uses UPI to move money; this app's
+ *  only payment rail is store billing (app.yaml `billing.mobileIap`), and nothing in the sworn file
+ *  records a UPI answer, so it stays blank rather than being inferred here. */
+export const NOT_DECLARED_BY_THE_SWORN_FILE = Object.freeze(['PSL_UPI_BADGE_OPT_IN']);
 
 export class Refusal extends Error {
   constructor(problems) {
@@ -399,12 +423,59 @@ export function render(ds, posture, { idMap = PLAY_ID_MAP, template = PLAY_TEMPL
   const fam = bool('dataSecurity.playFamiliesPolicy.answer', sec.playFamiliesPolicy?.answer);
   if (fam === true) set(d.familiesPolicy, '', 'true', 'dataSecurity.playFamiliesPolicy');
 
+  // ── accounts ── one answer per posture, never inferred from another field.
+  const acc = idMap.accounts;
+  const accounts = { methods: [], outsideApp: null, outsideAppTypes: [] };
+  const methods = ds.accounts?.creationMethods;
+  if (!methods || typeof methods !== 'object') {
+    problems.push('data-safety.json has no `accounts.creationMethods`; Play asks which account-creation methods the app supports, and an unanswered method is never guessed.');
+  } else {
+    for (const [k, id] of Object.entries(acc.methods)) {
+      const v = methods[k]?.[posture];
+      if (typeof v !== 'boolean') problems.push(`data-safety.json accounts.creationMethods.${k}["${posture}"] is ${JSON.stringify(v)}; the form needs true or false.`);
+      else if (v) {
+        set(acc.methodsQuestion, id, 'true', `accounts.creationMethods.${k}`);
+        accounts.methods.push(k);
+      }
+    }
+    for (const k of Object.keys(methods)) if (!(k in acc.methods)) problems.push(`accounts.creationMethods.${k} has no entry in PLAY_ID_MAP.accounts.methods.`);
+    const other = ds.accounts.otherDescription;
+    if (accounts.methods.includes('other')) {
+      if (typeof other !== 'string' || other.trim() === '') problems.push('accounts.creationMethods.other is true and accounts.otherDescription is empty; Play asks to describe the method.');
+      else set(acc.otherSpecify, '', other, 'accounts.otherDescription');
+    }
+  }
+  const out = ds.accounts?.outsideAppAccounts;
+  const outside = out?.[posture];
+  if (typeof outside !== 'boolean') {
+    problems.push(`data-safety.json accounts.outsideAppAccounts["${posture}"] is ${JSON.stringify(outside)}; the form needs true or false.`);
+  } else {
+    accounts.outsideApp = outside;
+    set(acc.outsideApp, '', String(outside), 'accounts.outsideAppAccounts');
+    const types = Array.isArray(out.types) ? out.types : [];
+    if (outside && types.length === 0) problems.push('accounts.outsideAppAccounts is true and names no `types`; Play asks how those accounts are created.');
+    if (!outside && types.length > 0) problems.push('accounts.outsideAppAccounts is false and names `types`; an answer to a question that does not apply is an invented one.');
+    for (const t of outside ? types : []) {
+      const id = acc.outsideAppTypes[t];
+      if (!id) problems.push(`accounts.outsideAppAccounts.types names ${JSON.stringify(t)}, which has no entry in PLAY_ID_MAP.accounts.outsideAppTypes.`);
+      else {
+        set(acc.outsideAppTypesQuestion, id, 'true', `accounts.outsideAppAccounts.types "${t}"`);
+        accounts.outsideAppTypes.push(t);
+      }
+    }
+    if (accounts.outsideAppTypes.includes('other')) {
+      if (typeof out.description !== 'string' || out.description.trim() === '') problems.push('accounts.outsideAppAccounts.types includes "other" and `description` is empty; Play asks to describe how those accounts are created.');
+      else set(acc.outsideAppSpecify, '', out.description, 'accounts.outsideAppAccounts.description');
+    }
+  }
+  if (del === true && delUrl != null && isHttps(delUrl)) set(d.dataDeletionUrl, '', delUrl, 'dataSecurity.deletionRequestSupported.webDeletionUrl (data deletion)');
+
   if (problems.length) throw new Refusal(problems);
 
   const rows = template.map((r) => ({ ...r, value: values.get(key(r.question, r.response)) ?? '' }));
   const v = validate(rows);
   if (v.length) throw new Refusal(v);
-  return { csv: toCsv(rows), rows, declared, notDeclared: [...NOT_DECLARED_BY_THE_SWORN_FILE] };
+  return { csv: toCsv(rows), rows, declared, accounts, notDeclared: [...NOT_DECLARED_BY_THE_SWORN_FILE] };
 }
 
 /** The hard checks over a rendered row set. Returns problems (empty = valid). */
@@ -431,6 +502,19 @@ export function validate(rows, template = PLAY_TEMPLATE) {
   const singleChoice = new Map();
   for (const r of rows) if (r.requirement === 'SINGLE_CHOICE' && r.value === 'true') singleChoice.set(r.question, (singleChoice.get(r.question) ?? 0) + 1);
   for (const [q, n] of singleChoice) if (n > 1) problems.push(`SINGLE_CHOICE question ${q} has ${n} responses chosen.`);
+
+  // Accounts: the methods question is answered, NONE stands alone, and an app that lets users create an
+  // account carries the account-deletion link Play requires of it.
+  const acc = PLAY_ID_MAP.accounts;
+  const chosen = Object.values(acc.methods).filter((id) => get(acc.methodsQuestion, id) === 'true');
+  if (chosen.length === 0) problems.push(`${acc.methodsQuestion} has no method chosen (PSL_ACM_NONE is the answer for an app without accounts).`);
+  if (chosen.includes(acc.methods.none) && chosen.length > 1) problems.push(`${acc.methodsQuestion} chooses ${acc.methods.none} beside ${chosen.length - 1} method(s).`);
+  if (chosen.some((id) => id !== acc.methods.none) && get(PLAY_ID_MAP.dataSecurity.accountDeletionUrl) === undefined) problems.push(`${acc.methodsQuestion} says users can create an account and ${PLAY_ID_MAP.dataSecurity.accountDeletionUrl} is blank.`);
+  if ((get(acc.otherSpecify) !== undefined) !== chosen.includes(acc.methods.other)) problems.push(`${acc.otherSpecify} must be filled exactly when ${acc.methods.other} is chosen.`);
+  if (get(PLAY_ID_MAP.dataSecurity.deletionQuestion, PLAY_ID_MAP.dataSecurity.deletionYes) === 'true' && get(PLAY_ID_MAP.dataSecurity.dataDeletionUrl) === undefined) problems.push(`${PLAY_ID_MAP.dataSecurity.deletionQuestion} is YES and ${PLAY_ID_MAP.dataSecurity.dataDeletionUrl} is blank.`);
+  const outsideTypes = Object.values(acc.outsideAppTypes).filter((id) => get(acc.outsideAppTypesQuestion, id) === 'true');
+  if (get(acc.outsideApp) !== 'true' && outsideTypes.length) problems.push(`${acc.outsideAppTypesQuestion} is answered and ${acc.outsideApp} is not true.`);
+  if (get(acc.outsideApp) === 'true' && !outsideTypes.length) problems.push(`${acc.outsideApp} is true and ${acc.outsideAppTypesQuestion} is unanswered.`);
 
   const collects = get(PLAY_ID_MAP.collectsPersonalData) === 'true';
   if (collects && get(PLAY_ID_MAP.dataSecurity.encryptedInTransit) === undefined) problems.push(`${PLAY_ID_MAP.dataSecurity.encryptedInTransit} is unanswered and the app collects data.`);
@@ -670,7 +754,13 @@ async function cli() {
   console.log(`  · encrypted in transit: ${sec.encryptedInTransit.answer}`);
   console.log(`  · deletion request supported: ${sec.deletionRequestSupported.answer} — account deletion URL ${sec.deletionRequestSupported.webDeletionUrl}`);
   console.log(`  · independent security review: ${sec.independentSecurityReview.answer}`);
+  console.log(`  · data deletion URL: ${result.rows.find((r) => r.question === PLAY_ID_MAP.dataSecurity.dataDeletionUrl)?.value || '(blank)'}`);
   console.log(`  · Families policy badge: ${sec.playFamiliesPolicy.answer}${sec.playFamiliesPolicy.answer ? '' : ' (left blank: the question is only for apps whose target age group includes children)'}`);
+  console.log('Accounts:');
+  console.log(`  · creation methods: ${result.accounts.methods.map((k) => PLAY_ID_MAP.accounts.methods[k]).join(', ')}`);
+  console.log(`  · accounts created outside the app: ${result.accounts.outsideApp}${result.accounts.outsideAppTypes.length ? ` (${result.accounts.outsideAppTypes.join(', ')})` : ''}`);
+  const na = result.rows.filter((r) => r.value === '' && [PLAY_ID_MAP.accounts.otherSpecify, PLAY_ID_MAP.accounts.outsideAppTypesQuestion, PLAY_ID_MAP.accounts.outsideAppSpecify].includes(r.question));
+  console.log(`  · left blank because they do not apply to these answers: ${[...new Set(na.map((r) => r.question))].join(', ') || 'none'}`);
   console.log(`Privacy policy (${ppRel}, set on the listing — the CSV has no row for it): ${privacyUrl}`);
   console.log(`⬜   NOT declared by ${dsRel}, left blank: ${result.notDeclared.join(', ')}`);
 
