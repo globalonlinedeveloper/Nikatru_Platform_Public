@@ -317,15 +317,17 @@ test('T19 the brick package.json moves a range the lockfile does not: exit 1 nam
   // ⏱ 2026-09-27 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M2; rv-c27 F4): the moved range is DERIVED,
   // one major above the committed one. It was the literal "^6.0.0", which jose 6 made the committed
   // range: the mutation became a no-op and replaceIn refused the case as testing nothing.
+  // ⏱ 2026-10-02 (rv2 SYN-S2): the brick no longer depends on jose (the worker kit,
+  // services/_shared, declares it), so the moved range is hono's, the brick's own dependency.
   let moved = '';
-  replaceIn(root, BRICK_PKG, /"jose": "\^(\d+)\.[^"]*"/, (_, major) => {
+  replaceIn(root, BRICK_PKG, /"hono": "\^(\d+)\.[^"]*"/, (_, major) => {
     moved = `^${Number(major) + 1}.0.0`;
-    return `"jose": "${moved}"`;
+    return `"hono": "${moved}"`;
   });
   const r = reach(root);
   assert.equal(r.code, 1, r.out + r.err);
   const want = moved.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  assert.match(r.err, new RegExp(`^ {4}dependencies\\.jose: package\\.json asks for "${want}"; packages\\[""\\] records "[^"]+"\\.$`, 'm'));
+  assert.match(r.err, new RegExp(`^ {4}dependencies\\.hono: package\\.json asks for "${want}"; packages\\[""\\] records "[^"]+"\\.$`, 'm'));
 });
 
 test('T20 the brick lockfile deleted: exit 1, it is missing', () => {

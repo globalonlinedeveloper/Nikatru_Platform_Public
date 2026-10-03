@@ -150,12 +150,12 @@ async function fakeCloudflare(live, { listBody = null } = {}) {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
-      const m = req.url.match(/\/accounts\/acct\/workers\/scripts\/([^/]+)\/secrets$/);
+      const m = req.url.match(/\/accounts\/acct\/workers\/scripts\/([^/]+)\/secrets(?:\?page=(\d+))?$/);
       res.setHeader('content-type', 'application/json');
       if (!m || req.headers.authorization !== 'Bearer tok') { res.statusCode = 403; res.end('{"success":false}'); return; }
       const script = decodeURIComponent(m[1]);
       if (!live.has(script)) { res.statusCode = 404; res.end('{"success":false,"errors":[{"code":10007,"message":"not found"}]}'); return; }
-      if (req.method === 'GET') { res.end(JSON.stringify(listBody ? listBody(script, [...live.get(script)]) : { success: true, result: [...live.get(script)].map((name) => ({ name })) })); return; }
+      if (req.method === 'GET') { res.end(JSON.stringify(listBody ? listBody(script, [...live.get(script)], Number(m[2] ?? 1)) : { success: true, result: [...live.get(script)].map((name) => ({ name })) })); return; }
       const j = JSON.parse(body);
       puts.push({ script, name: j.name, sha: sha256(j.text) });
       live.get(script).add(j.name);
@@ -296,14 +296,20 @@ describe('worker-secrets — the CLI over a loopback Cloudflare', () => {
       assert.equal(readFileSync(join(root, 'vault/secrets.env'), 'utf8'), before, 'the vault was written');
     } finally { cf.server.close(); }
   });
-  it('a paginated listing is read to its last page: a live name on page 2 still refuses generate', async () => {
+  // ⏱ 2026-10-02 · #1135 review 3, finding 1: this case once never served page 2. The double
+  // refused `?page=2` with a 403, so it passed on the 403's COVERAGE LOST whether or not the page
+  // loop ran. Now the live name is ONLY on page 2, there is no total_count to catch a short read,
+  // and the refusal asserted is the `is LIVE` one. A loop that reads page 1 alone goes red here.
+  it('🔴 RED CONTROL: a paginated listing is read to its last page — a live name ONLY on page 2 refuses generate (exit 1)', async () => {
     const root = tree();
     const cf = await fakeCloudflare(new Map([['w', new Set()], ['w-sandbox', new Set(['OUR_KEY'])]]), {
-      listBody: (_s, names) => ({ success: true, result: [{ name: 'OTHER' }], result_info: { page: 1, per_page: 1, total_pages: 2, total_count: names.length + 1 } }),
+      listBody: (_s, names, page) => ({ success: true, result: page === 1 ? [{ name: 'OTHER' }] : names.map((name) => ({ name })), result_info: { page, per_page: 1, total_pages: 2 } }),
     });
     try {
       const g = await cli(root, cf.base, ['generate', 'OUR_KEY']);
-      assert.notEqual(g.code, 0, g.out);
+      assert.equal(g.code, 1, g.out);
+      assert.match(g.out, /is LIVE/);
+      assert.doesNotMatch(g.out, /COVERAGE LOST/);
       assert.deepEqual(cf.puts, []);
     } finally { cf.server.close(); }
   });

@@ -235,18 +235,14 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     ChassisLocalizations l10n,
     AppLocalizations appL10n,
     CancellationOutcome o,
-  ) {
-    switch (o) {
-      case CancellationOutcome.executed:
-        return appL10n.cancelExecuted;
-      case CancellationOutcome.recorded:
-        return l10n.cancelRecorded;
-      case CancellationOutcome.noActivePlan:
-        return appL10n.cancelNoPlan;
-      case CancellationOutcome.failed:
-        return appL10n.cancelFailed;
-    }
-  }
+  ) => switch (o) {
+    CancellationOutcome.executed => appL10n.cancelExecuted,
+    CancellationOutcome.recorded => l10n.cancelRecorded,
+    CancellationOutcome.noActivePlan => appL10n.cancelNoPlan,
+    // AB-M4-03-client: the server's 409 — only the plan's store can cancel it.
+    CancellationOutcome.inStore => l10n.cancelInStore,
+    CancellationOutcome.failed => appL10n.cancelFailed,
+  };
 
   /// 🔒 THE SENTENCE FOLLOWS THE SERVER, NOT THE STORE. A plan the re-read
   /// shows is "found" whatever the store answered, because the plan row is

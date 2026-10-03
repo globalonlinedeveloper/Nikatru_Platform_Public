@@ -135,7 +135,7 @@
     "message": "Kötegelt"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Váltás FullShot Pro-ra"
   },
   "popupLinkOptions": {
     "message": "Beállítások"
@@ -441,10 +441,10 @@
     "message": "Egyből a jelölésnél kezd (csak egyrészes képeknél)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Egybillentyűs parancsok a szerkesztőben"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "A betűbillentyűk eszközt választanak, a + és a - nagyít és kicsinyít, a ? kilistázza a billentyűket. Kikapcsolva csak akkor működnek, ha a kép van fókuszban."
   },
   "optionsTheme": {
     "message": "Téma"
@@ -1247,7 +1247,7 @@
     "message": "Illeszt"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ nagyítás",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Piros"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Borostyán"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Zöld"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Kék"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Ibolya"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rózsaszín"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Fekete"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Fehér"
   },
   "editorZoomTipToHundred": {
     "message": "Ablakhoz illesztve — kattintson a 100%-hoz"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "Az $ENTER$ a teljes látható területet rögzíti",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "A Chrome Webáruház nem engedi, hogy bővítmények olvassák az oldalait, ezért ez nem rögzíthető."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "A Microsoft Edge Add-ons nem engedi, hogy bővítmények olvassák az oldalait, ezért ez nem rögzíthető."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "A Firefox Add-ons (addons.mozilla.org) nem engedi, hogy bővítmények olvassák az oldalait, ezért ez nem rögzíthető."
   },
   "errRestrictedGeneric": {
     "message": "Ezt az oldalt a böngésző védi, ezért nem rögzíthető."

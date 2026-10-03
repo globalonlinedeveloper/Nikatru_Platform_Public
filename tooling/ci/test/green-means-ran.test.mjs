@@ -623,7 +623,7 @@ describe('§A8 — every called-only workflow ends in one always-run verdict job
 // a third job and its callee are written onto a copy of the real workflows, directly
 // after ci-gate, so each case moves exactly one job the real two do not share.
 describe('§A9 — a post-gate job runs only after its aggregator, and only on a push to main', () => {
-  const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+  const POST_GATE_IF = "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'";
   const DEPLOY_X = [
     'name: Deploy X',
     'on:',
@@ -671,7 +671,14 @@ describe('§A9 — a post-gate job runs only after its aggregator, and only on a
     const r = run(withDeployX(POST_GATE.filter((l) => !l.startsWith('    needs:'))));
     caught(r, /job "deploy-x" carries the post-gate `if:` and does not need "ci-gate"/);
     assert.match(r.out, /job "ci-gate" does not `need` "deploy-x"/);
-    assert.match(r.out, /lane "deploy-x" carries a job-level `if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'`/);
+    assert.match(r.out, /lane "deploy-x" carries a job-level `if: \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && github\.ref == 'refs\/heads\/main'`/);
+  });
+
+  // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): land.yml starts main's run as a dispatch, so
+  // the push-only predicate this class was born with would SKIP every deploy of a land.yml merge.
+  test('RC-land: the push-only `if:` of 2026-09-25 is no longer post-gate — a deploy keeping it fails A9', () => {
+    const r = run(withDeployX(withIf("github.event_name == 'push' && github.ref == 'refs/heads/main'")));
+    caught(r, /job "deploy-x" needs "ci-gate" and its job-level `if:` is `github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'`, not exactly/);
   });
 
   test('RC6: widening the `if:` to every push fails A9, and A6 applies', () => {

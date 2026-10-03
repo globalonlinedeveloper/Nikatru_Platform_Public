@@ -282,7 +282,7 @@ jobs:
       # why: every store submitter (tooling/ports/channels.json) against the one dry-run
       # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
       - name: Every store submitter passes the dry-run contract, with no network
-        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
       - name: The Microsoft Store submission path still walks (dry run)
         run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The App Store submission path still walks — iOS (dry run)
@@ -487,8 +487,8 @@ jobs:
           --app ${{ matrix.app }}
           --posture debug
       # why: main writes the one entry every PR restores; a PR never writes one.
-      - name: Save the Gradle caches (push to main only, on a key miss)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+      - name: Save the Gradle caches (a run of main only, on a key miss)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -588,6 +588,13 @@ jobs:
       # there is no origin to probe; deploy-web.yml probes each one with its real value.
       - name: Launch the built bundle once
         run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+      # why: SYN-X1 C-16. Every a11y test runs on the Dart VM, where enableWebSemantics() is
+      # dead code (kIsWeb is false), so nothing else loads the SHIPPED bundle and reads the
+      # tree a screen reader reads. This boots it as the smoke above does and grades Chrome's
+      # own computed AX tree: flt-semantics present, no "Enable accessibility" placeholder,
+      # every interactive node named. Exit 2 is COVERAGE LOST, deliberately not a pass.
+      - name: The built bundle exposes a named accessibility tree in a real browser
+        run: node tooling/smoke/web-a11y-tree.mjs apps/${{ matrix.app }}/build/web
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs

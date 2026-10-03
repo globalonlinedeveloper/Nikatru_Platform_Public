@@ -6,11 +6,11 @@ run-name: "CI on ${{ github.event_name == 'pull_request' && format('PR #{0}', gi
 # docs/ci/README.md. Only `# why:` lines live here.
 
 on:
-  # why: main only. A branch-prefix list cannot cover branches nobody has named
-  # yet, and `pull_request:` (unfiltered) already covers every branch that opens
-  # a PR — so a commit on a PR branch used to run CI twice.
+  # why: main only; `pull_request:` (unfiltered) covers every branch that opens a PR.
   push:
     branches: [main]
+  # why: land.yml merges with GITHUB_TOKEN, whose push starts no run, so it dispatches this on main (POST_GATE_IF).
+  workflow_dispatch:
   pull_request:
     # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
     # The other three are GitHub's defaults, listed because `types:` replaces them.
@@ -114,7 +114,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/guard-tests"
           node tooling/ci/guard-test-shards.mjs --plan --shards 4 --shard ${{ matrix.shard }} --out "${{ runner.temp }}/guard-tests/files.txt" > /dev/null
-          node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests/guard-tests.junit.xml" $(cat "${{ runner.temp }}/guard-tests/files.txt")
+          node --import "$SPAWN_CEILING" --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests/guard-tests.junit.xml" $(cat "${{ runner.temp }}/guard-tests/files.txt")
       - name: Keep this shard's file list and junit for guard-tests-floor
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -752,6 +752,12 @@ jobs:
       - name: Both of an app's names are shippable — the store title and the icon label
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-naming.mjs
+      # why: C-18/C-20 (P38). The arbs are the locale set; every native bundle, every store
+      # channel and the launcher label are held against it. A missing listing prints with
+      # its dated exemption (store/listing-locales.json) rather than failing — owner-gated.
+      - name: Every bundle, listing and launcher label declares the locales the app ships
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-bundle-locales.mjs
       # why: OFFLINE. It reads apps/<app>/name-clearance.json and never dials out —
       # the networked probe that WRITES that record takes ~14 s and is a routine, not
       # a gate. docs/name-clearance.md carries the measurement and the split.
@@ -818,9 +824,13 @@ jobs:
       - name: No shipped client overrides TLS certificate trust
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-tls-pinning.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed sites are the set tooling/ci/site-set.mjs reads off sites/, never a
+      # typed list: a new site directory is claimed on its first run. Its own assignment, so -e stops on its exit 1/2.
       - name: The web channel declares a cache policy a deploy can be seen through
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/assert-web-cache-policy.mjs . $sites
       - name: Release lanes cover every app, and no guard hides a lane
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-lane-generic.mjs
@@ -1121,15 +1131,17 @@ jobs:
       # (a force-push) is COVERAGE LOST, exit 2 — never a pass. The values reach
       # the shell through `env:`, never `${{ }}` inside `run:` (zizmor's
       # template-injection rule). fetch-depth: 0 above is what puts both ends in
-      # the clone.
+      # the clone. A DISPATCH ON MAIN (land.yml's post-merge start) carries no
+      # before/after, so it scans first-parent..sha: for land.yml's squash merge
+      # that is exactly the before..after its push would have carried.
       - name: Secret scan (self-tests, then the tree, then the change's commits)
         env:
           SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
           SCAN_KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
-        run: >-
-          node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
-          --range "${SCAN_BASE}..${SCAN_HEAD}" --range-kind "${SCAN_KIND}"
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then SCAN_BASE="$(git rev-parse --verify "${SCAN_HEAD}^1")"; fi
+          node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks" --range "${SCAN_BASE}..${SCAN_HEAD}" --range-kind "${SCAN_KIND}"
       # ⚠️ THE ASSET NAME CARRIES NO VERSION — `zizmor-x86_64-unknown-linux-gnu.tar.gz`
       # is the same string at every release, and only the `/v${ver}/` path segment
       # differs. So on this lane the digest is not a second opinion about the
@@ -1343,7 +1355,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: The pipeline's own tests
-        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
+        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
       - name: The pipeline builds and signs the example pack, through the CLI
         run: |
           node tooling/content_pipeline/cli.mjs validate --recipe tooling/content_pipeline/examples/lingo-phrases/recipe.json
@@ -1396,8 +1408,12 @@ jobs:
       # reader below grades the bytes this writes. Needs the full history above (lastmod).
       - name: Generate the discovery surface (the sitemap is never committed)
         run: node tooling/sites/generate-discovery.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed deploy roots are the set tooling/ci/site-set.mjs reads off sites/;
+      # assert-lane-coverage.mjs claims each site through this pair of lines.
       - name: Site integrity
-        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/check-site-integrity.mjs . $sites
       - name: The published catalogue satisfies its contract
         run: node tooling/ci/assert-catalog-contract.mjs
       - name: Delete the feed so the generator has to produce it
@@ -1541,7 +1557,7 @@ jobs:
   platform-db-migrate:
     name: platform-db-migrate
     needs: [ci-gate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/migrate-platform-db.yml
     permissions:
       contents: read
@@ -1553,7 +1569,7 @@ jobs:
   deploy-web:
     name: deploy-web
     needs: [ci-gate, platform-db-migrate, deploy-workers]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-web.yml
     permissions:
       contents: read
@@ -1570,7 +1586,7 @@ jobs:
   deploy-workers:
     name: deploy-workers
     needs: [ci-gate, platform-db-migrate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-workers.yml
     permissions:
       contents: read

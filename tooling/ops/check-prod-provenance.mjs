@@ -408,9 +408,15 @@ function servedWitness(envs, lanes) {
 }
 
 /** The listing filter on a CALLER's runs: a lane called from ci.yml runs only
- *  on the post-gate class (POST_GATE_IF: a push to main), so a pull-request or
- *  branch run of the caller never carried a stamp of this lane. */
-const HOST_RUN_FILTER = 'branch=main&event=push';
+ *  on the post-gate class (POST_GATE_IF: a run of main), so a pull-request or
+ *  branch run of the caller never carried a stamp of this lane.
+ *  ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP) — `event=push` DROPPED. The class
+ *  is a push OR a dispatch of main (POST_GATE_EVENTS): land.yml merges with
+ *  GITHUB_TOKEN and starts main's run as a dispatch, and the listing takes one
+ *  event, so a push-only filter would leave every build it deploys unattributable.
+ *  A fork PR from a branch named main also lists here and is harmless: a hit needs
+ *  the stamp's run number AND its full head_sha, and such a run deploys nothing. */
+export const HOST_RUN_FILTER = 'branch=main';
 
 /** ⏱ 2026-09-25 [ADR 095 §4] WHICH WORKFLOW'S RUNS CARRY A LANE'S STAMPS.
  *  A workflow_call-only lane (deploy-web.yml once ci.yml calls it) has no runs
@@ -418,7 +424,7 @@ const HOST_RUN_FILTER = 'branch=main&event=push';
  *  so its stamps read `<line>.<ci run_number>+<sha7>` and its Deployment payloads
  *  name `ci.yml`. Each lane therefore carries `runWorkflows`:
  *    · a callee lane: [<its own file>, <its one caller>] — its own file for the
- *      runs from before the move, the caller's `branch=main&event=push` runs after;
+ *      runs from before the move, the caller's `branch=main` runs after;
  *    · every other lane: [<its own file>].
  *  The run number alone never binds: every footing also checks that the stamp's
  *  sha7 is the run's head_sha prefix, so a deploy-web.yml run and a ci.yml run
@@ -1574,7 +1580,7 @@ async function pointReadBuild({ value, read, lanes }) {
   const ordered = [...lanes.filter((l) => l.kind === 'served'), ...lanes.filter((l) => l.kind !== 'served')];
   const atCommit = [];
   // ⏱ 2026-09-25 [ADR 095 §4] — each lane's run workflows in order: its own
-  // file, then (for a callee lane) its caller's `branch=main&event=push` runs.
+  // file, then (for a callee lane) its caller's `branch=main` runs.
   // A hit needs the run number AND the full head_sha, so a same-numbered run of
   // the other workflow at another commit is never the one found.
   for (const lane of ordered) {

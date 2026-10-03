@@ -88,8 +88,10 @@ export const CONNECT_KEYS = ['platformBaseUrl', 'configBaseUrl'];
 /** app_config.dart constants that name an https origin and are only ever
  *  NAVIGATED to (openExternalUrl, the force-update button), never fetched.
  *  ⏱ 2026-09-29 · ST-D4: privacyNoticeUrl — the Settings privacy-notice row,
- *  opened with openExternalUrl like privacyUrl beside it. */
-export const LINK_KEYS = ['companyUrl', 'updateUrl', 'privacyUrl', 'privacyNoticeUrl', 'termsUrl', 'refundUrl', 'contactUrl'];
+ *  opened with openExternalUrl like privacyUrl beside it.
+ *  ⏱ 2026-10-01 · MO-03 (train st-money-ready): appleEulaUrl — Apple's standard
+ *  EULA, opened with openExternalUrl from the paywall of an Apple build only. */
+export const LINK_KEYS = ['companyUrl', 'updateUrl', 'privacyUrl', 'privacyNoticeUrl', 'termsUrl', 'refundUrl', 'contactUrl', 'appleEulaUrl'];
 
 /**
  * X — origins connect-src carries that neither D nor K names today.

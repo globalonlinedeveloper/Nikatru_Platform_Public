@@ -31,7 +31,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseAllWorkflows, workflowSteps, shellSegments, joinShellContinuations } from '../workflow-scan.mjs';
+import { parseAllWorkflows, workflowSteps, shellSegments, joinShellContinuations, POST_GATE_IF } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-channel-register.mjs');
@@ -2904,6 +2904,20 @@ describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: 
     assert.doesNotMatch(out, /8d:/);
   });
 
+  // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): POST_GATE_IF admits a dispatch of main beside a push.
+  test('8d: the post-gate `if:` (push OR dispatch, AND main) excludes pull requests, so the read is not graded as reachable', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({
+        rows: [repoRow, readRow],
+        files: { [PR_WORKFLOW]: prWorkflow({ on: ['  push:', '  workflow_dispatch:', '  pull_request:'], jobIf: POST_GATE_IF, secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8d:/);
+  });
+
   test('8d: a `||` excludes only when EVERY side does — `schedule || pull_request` is reachable', () => {
     const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
     delete repoRow.storedAt;
@@ -5018,5 +5032,109 @@ describe('assert-channel-register — 6b-v: a release build is composed, never t
     assert.equal(code, 1, out);
     assert.match(out, /deploy-web\.yml#deploy-web \(web\) carries a `handTyped` with no written reason/);
     assert.match(out, /types its release `flutter build` by hand/);
+  });
+});
+
+// ── ⏱ 2026-10-01 · O-SUBMIT-LANES-IGNORE-NATIVE-AUTH (SYN-R1, C-04) — --for-submission=<row> ──
+// The submission gate reads the register alone, so its fixture is a register alone: two surfaces and
+// the rows each case names. A real submission (--real-submission) of a row whose nativeAuth is not
+// true is refused on a PUBLIC step only (submit-preconditions.mjs PUBLIC_REACH), and a dry run never.
+describe('assert-channel-register --for-submission — a build that cannot sign in reaches no public step', () => {
+  const nativeRow = (id, nativeAuth) => ({ id, surface: 'app', kind: 'store', nativeAuth, submission: { workflow: `.github/workflows/submit-${id}.yml`, job: 'dry-run' } });
+  const submissionTree = (edit = (rows) => rows) => {
+    const root = join(TMP, `sub${seq++}`);
+    const register = {
+      surfaces: { app: { flutterApp: true, platforms: ['windows'] }, extension: { flutterApp: false, platforms: ['chrome'] } },
+      channels: edit([
+        { id: 'web', surface: 'app', kind: 'web' },
+        nativeRow('windows-store', false),
+        nativeRow('android-play', false),
+        nativeRow('linux-snap', false),
+        { id: 'chrome-webstore', surface: 'extension', kind: 'store' },
+      ]),
+    };
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register, null, 2));
+    return root;
+  };
+  /** The step environment is the case's: PLAY_TRACK and SNAP_CHANNEL are cleared unless it sets them. */
+  const gate = (root, args, env = {}) => {
+    const base = { ...process.env };
+    delete base.PLAY_TRACK;
+    delete base.SNAP_CHANNEL;
+    const r = spawnSync(process.execPath, [GUARD, ...args, root], { encoding: 'utf8', env: { ...base, ...env } });
+    return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  };
+
+  test('🔴 RED CONTROL: a fixture row with nativeAuth: false exits 1 on --for-submission=windows-store (the certification commit)', () => {
+    const { code, out } = gate(submissionTree(), ['--for-submission=windows-store', '--real-submission']);
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL windows-store: REAL SUBMISSION REACHES THE PUBLIC WITH A BUILD THAT CANNOT SIGN IN — the certification commit/, out);
+  });
+
+  test('GREEN CONTROL: the same row with nativeAuth: true is not refused', () => {
+    const root = submissionTree((rows) => rows.map((c) => (c.id === 'windows-store' ? { ...c, nativeAuth: true } : c)));
+    const { code, out } = gate(root, ['--for-submission=windows-store', '--real-submission']);
+    assert.equal(code, 0, out);
+    assert.match(out, /windows-store: nativeAuth is true/, out);
+  });
+
+  test('GREEN CONTROL: a dry run (no --real-submission) prints what a real one would be refused, and exits 0', () => {
+    const { code, out } = gate(submissionTree(), ['--for-submission=windows-store']);
+    assert.equal(code, 0, out);
+    assert.match(out, /DRY RUN — windows-store: nativeAuth is false[\s\S]*would be refused at the certification commit/, out);
+  });
+
+  test('GREEN CONTROL: android-play on the internal track is not refused — the sign-in proof needs that upload', () => {
+    for (const env of [{}, { PLAY_TRACK: 'internal' }, { PLAY_TRACK: 'qa' }]) {
+      const { code, out } = gate(submissionTree(), ['--for-submission=android-play', '--real-submission'], env);
+      assert.equal(code, 0, `${JSON.stringify(env)}\n${out}`);
+      assert.match(out, /reaches no public step/, out);
+    }
+  });
+
+  test('🔴 android-play on the production track is refused, a form-factor production track too', () => {
+    for (const track of ['production', 'wear:production']) {
+      const { code, out } = gate(submissionTree(), ['--for-submission=android-play', '--real-submission'], { PLAY_TRACK: track });
+      assert.equal(code, 1, `${track}\n${out}`);
+      assert.match(out, /a release to the production track \(PLAY_TRACK=/, out);
+    }
+  });
+
+  test('linux-snap: edge (the script default) and beta stay open; candidate and stable are refused', () => {
+    for (const [env, want] of [[{}, 0], [{ SNAP_CHANNEL: 'latest/beta' }, 0], [{ SNAP_CHANNEL: 'latest/candidate' }, 1], [{ SNAP_CHANNEL: 'latest/edge,stable' }, 1]]) {
+      const { code, out } = gate(submissionTree(), ['--for-submission=linux-snap', '--real-submission'], env);
+      assert.equal(code, want, `${JSON.stringify(env)}\n${out}`);
+    }
+  });
+
+  test('COVERAGE LOST: a bare flag, an undeclared row, a non-native row, a native row with no PUBLIC_REACH entry', () => {
+    const root = submissionTree((rows) => [...rows, nativeRow('zz-native', false)]);
+    for (const [args, re] of [
+      [['--for-submission'], /given without a channel/],
+      [['--for-submission=nope'], /names channel "nope", which tooling\/channel-register\.json does not declare/],
+      [['--for-submission=web'], /channel "web" is not a native row/],
+      [['--for-submission=chrome-webstore'], /channel "chrome-webstore" is not a native row/],
+      [['--for-submission=zz-native', '--real-submission'], /PUBLIC_REACH carries no entry for it/],
+    ]) {
+      const { code, out } = gate(root, args);
+      assert.equal(code, 2, `${args.join(' ')}\n${out}`);
+      assert.match(out, re, out);
+    }
+  });
+
+  test('the real register: every submitting native row passes a dry run, and a windows-store real submission follows its nativeAuth', () => {
+    const real = (args) => {
+      const r = spawnSync(process.execPath, [GUARD, ...args], { encoding: 'utf8', env: { ...process.env, PLAY_TRACK: '', SNAP_CHANNEL: '' } });
+      return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+    };
+    for (const id of ['android-play', 'ios-appstore', 'macos-appstore', 'windows-store', 'linux-snap']) {
+      const { code, out } = real([`--for-submission=${id}`]);
+      assert.equal(code, 0, `${id}\n${out}`);
+    }
+    const register = JSON.parse(readFileSync(join(CI_DIR, '..', 'channel-register.json'), 'utf8'));
+    const win = register.channels.find((c) => c.id === 'windows-store');
+    const { code, out } = real(['--for-submission=windows-store', '--real-submission']);
+    assert.equal(code, win.nativeAuth === true ? 0 : 1, out);
   });
 });

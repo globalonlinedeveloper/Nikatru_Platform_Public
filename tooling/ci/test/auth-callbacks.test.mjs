@@ -18,6 +18,8 @@ import {
   APP_INPUTS,
   REPO_INPUTS,
   MIN_LINK_CALLS,
+  allowListFor,
+  HANDOFF_DECL,
   authCallbacksShipped,
   msixProtocols,
   plistUrlSchemes,
@@ -331,6 +333,98 @@ describe('assert-auth-callbacks — allow list', () => {
 
   test('COVERAGE LOST (exit 2) when uri_allow_list is absent', () => {
     red((root) => mutate(root, MAIL, /"uri_allow_list": "[^"]*",\n/, ''), 2, /COVERAGE LOST — tooling\/mail-transport\.json supabaseAuth\.uri_allow_list/);
+  });
+
+  // ── ⏱ 2026-10-01 · THE WEB LIMB AND THE GENERATED LIST (rv2-newproduct-009) ──
+  // GoTrue does not refuse an unlisted redirect_to: it SUBSTITUTES the Site URL,
+  // which is app #1. The limb above read only native schemes, so a second app's
+  // web sign-up confirmation landed in app #1 with this guard green.
+
+  test('the generated list IS the real record, byte for byte', () => {
+    const live = JSON.parse(readFileSync(join(REPO, MAIL), 'utf8')).supabaseAuth.uri_allow_list;
+    assert.equal(allowListFor(REPO).join(','), live);
+  });
+
+  test('FAILS when an app\'s public web redirect is removed, naming the app', () => {
+    red(
+      (root) => mutate(root, MAIL, 'https://nikatru.com/subscriptiontracker/**,', ''),
+      1,
+      /uri_allow_list has no "https:\/\/nikatru\.com\/subscriptiontracker\/\*\*" \(apps\/subscriptiontracker\) — gotrue SILENTLY replaces/,
+      /is not the generated list \(allowListFor\) — 1 missing \[https:\/\/nikatru\.com\/subscriptiontracker\/\*\*\]/,
+    );
+  });
+
+  test('FAILS when an app\'s Pages preview redirect is removed', () => {
+    red(
+      (root) => mutate(root, MAIL, 'https://subscriptiontracker-7qg.pages.dev/**,', ''),
+      1,
+      /uri_allow_list has no "https:\/\/subscriptiontracker-7qg\.pages\.dev\/\*\*" \(apps\/subscriptiontracker\)/,
+    );
+  });
+
+  // ⏱ 2026-10-02 · THE PLATFORM'S OWN REDIRECT. #1138 recorded the desktop
+  // hand-off page (#1133) in the list by hand; it is generated from its one
+  // declaration now, in the live config's place: after the apex entries.
+  test('the hand-off page is generated from its declaration, after the apex entries', () => {
+    const list = allowListFor(REPO);
+    const i = list.indexOf('https://nikatru.com/app/connect');
+    assert.notEqual(i, -1, list.join(','));
+    assert.equal(list[i - 1], 'https://nikatru.com/subscriptiontracker/**');
+    assert.equal(list[i + 1], 'https://subscriptiontracker-7qg.pages.dev/**');
+  });
+
+  test('FAILS when the hand-off page is removed from the list', () => {
+    red(
+      (root) => mutate(root, MAIL, 'https://nikatru.com/app/connect,', ''),
+      1,
+      /uri_allow_list has no "https:\/\/nikatru\.com\/app\/connect" \(the platform's desktop hand-off page\)/,
+    );
+  });
+
+  test('COVERAGE LOST (exit 2) when the hand-off declaration cannot be read', () => {
+    red(
+      (root) => mutate(root, HANDOFF_DECL, /const String kHandoffConnectUrl = '[^']+';/, ''),
+      2,
+      /COVERAGE LOST — packages\/core\/lib\/src\/auth\/browser_handoff\.dart declares no kHandoffConnectUrl/,
+    );
+  });
+
+  test('FAILS on a hand-added entry the generation does not produce', () => {
+    red(
+      (root) => mutate(root, MAIL, 'http://localhost:8080/**', 'http://localhost:8080/**,https://evil.example/**'),
+      1,
+      /1 not generated \[https:\/\/evil\.example\/\*\*\]\. It is a stamp output, never a hand edit/,
+    );
+  });
+
+  /** A second, web-only app in scope: its declaration and its auth providers. */
+  function addWebOnlyApp(root, id, pages) {
+    for (const rel of ['app.yaml', 'lib/state/providers/auth.dart']) {
+      const to = join(root, 'apps', id, rel);
+      mkdirSync(dirname(to), { recursive: true });
+      cpSync(join(REPO, A, rel), to);
+    }
+    mutate(root, `apps/${id}/app.yaml`, /^id: subscriptiontracker$/m, `id: ${id}`);
+    mutate(root, `apps/${id}/app.yaml`, 'pagesOrigin: subscriptiontracker-7qg.pages.dev', `pagesOrigin: ${pages}`);
+    mutate(root, `apps/${id}/lib/state/providers/auth.dart`, /kAuthCallbackTargets = <TargetPlatform>\{[^}]*\}/, 'kAuthCallbackTargets = <TargetPlatform>{}');
+  }
+
+  test('a SECOND app is red until the stamp writes the list, then green', async () => {
+    const root = fixture();
+    addWebOnlyApp(root, 'second', 'second-x1y.pages.dev');
+    const r1 = run(root);
+    assert.equal(r1.code, 1, r1.out);
+    assert.match(r1.out, /uri_allow_list has no "https:\/\/nikatru\.com\/second\/\*\*" \(apps\/second\)/);
+    assert.match(r1.out, /uri_allow_list has no "https:\/\/second-x1y\.pages\.dev\/\*\*" \(apps\/second\)/);
+    const { planAuthAllowList } = await import('../../kit/stamp-shared.mjs');
+    const plan = planAuthAllowList(root);
+    assert.deepEqual(plan.lost, []);
+    assert.deepEqual(plan.added, ['https://nikatru.com/second/**', 'https://second-x1y.pages.dev/**']);
+    writeFileSync(join(root, MAIL), plan.after);
+    const r2 = run(root);
+    assert.equal(r2.code, 0, r2.out);
+    // Web only: no native target, so no custom-scheme entry was invented for it.
+    assert.ok(!plan.after.includes('com.nikatru.second'), 'a web-only app gained a native callback entry');
   });
 });
 

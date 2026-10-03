@@ -418,6 +418,7 @@ class IapRail
 
     final CancellationOutcome recorded = r.fold((core.CancellationReceipt rec) {
       if (!rec.hasActivePlan) return CancellationOutcome.noActivePlan;
+      if (rec.cancelAt != null) return CancellationOutcome.inStore;
       if (rec.executed) return CancellationOutcome.executed;
       if (rec.recorded) return CancellationOutcome.recorded;
       return CancellationOutcome.failed;

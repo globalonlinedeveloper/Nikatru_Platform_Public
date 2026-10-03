@@ -47,6 +47,8 @@ const INPUT_ROOTS = [
   'docs/platform/supabase/email-templates',
   'services/platform/src/app-config-data.json',
   'tooling/channel-register.json',
+  // ⏱ 2026-10-02 — generate-personal-site.mjs renders the founder's JSON-LD from the entity source.
+  'tooling/house-identity.json',
   'tooling/legal',
   'extensions/Extension/Full_Screen_Shot/publish',
   'extensions/templates/tool/publish',
@@ -190,9 +192,11 @@ describe('regen.mjs — one ordered chain over the site surface', () => {
     // Discovery walks sites/nikatru, the tree auth-mail and render-privacy write into.
     assert.ok(at('tooling/sites/gen-auth-mail.mjs') < at('tooling/sites/generate-discovery.mjs'), 'auth-mail must precede discovery');
     assert.ok(at('tooling/app-yaml/render-privacy.mjs') < at('tooling/sites/generate-discovery.mjs'), 'render-privacy must precede discovery');
+    // The site feed is also the founder's site's work list (generate-personal-site.mjs).
+    assert.ok(at('tooling/sites/generate-apps-data.mjs') < at('tooling/sites/generate-personal-site.mjs'), 'apps-data must precede personal-site');
     assert.deepEqual(
       ORDER.map((e) => `${e.id}:${e.kind}`),
-      ['render:check', 'render-privacy:check', 'apps-data:check', 'landing-payload:check', 'auth-mail:check', 'discovery:git-dated', 'well-known:plan'],
+      ['render:check', 'render-privacy:check', 'apps-data:check', 'landing-payload:check', 'auth-mail:check', 'discovery:git-dated', 'well-known:plan', 'personal-site:check'],
     );
   });
 

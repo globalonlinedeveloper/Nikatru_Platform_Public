@@ -56,10 +56,12 @@ const {
   headersFor,
   headerValue,
   probeOrigin,
+  OFFLINE_SHELL,
 } = await import(`file://${SMOKE.replaceAll('\\', '/')}`);
 
 const FIXTURE = join(ROOT, 'tooling', 'ci', 'test', 'fixtures', 'smoke-web-csp');
-const APP_HEADERS = readFileSync(join(ROOT, 'apps', 'subscriptiontracker', 'web', '_headers'), 'utf8');
+const APP_WEB = join(ROOT, 'apps', 'subscriptiontracker', 'web');
+const APP_HEADERS = readFileSync(join(APP_WEB, '_headers'), 'utf8');
 /** The CSP the app ships, as written on its one `Content-Security-Policy:` line. */
 const APP_CSP = APP_HEADERS.match(/^\s+Content-Security-Policy:\s*(.+?)\s*$/m)?.[1];
 const API = 'https://subscriptiontracker-api.nikatru.com';
@@ -94,8 +96,9 @@ describe('smoke-web-artifact.mjs — it refuses before it ever opens a browser',
   test('a newline inside a value cannot start a log line of its own — no forged workflow command (CodeQL #40)', () => {
     // --chrome REPLACES the candidate list, so this never launches a real browser: the spawn
     // fails, and both detail lines ("tried:" and "last error:") carry the value. The bundle
-    // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2).
-    const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', _headers: MINIMAL_HEADERS });
+    // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2),
+    // and a worker (2026-10-01: a bundle with no sw.js is refused before the launch).
+    const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', 'sw.js': '// x', _headers: MINIMAL_HEADERS });
     const r = run([dir, '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no headless Chrome could be started/);
@@ -314,10 +317,14 @@ describe('smoke-web-artifact.mjs — a bundle compiled for a path is served at t
 // read at test time, so the fixture carries no copy of it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The fixture bundle, copied, with `headers` as its `_headers` (none when null). */
+/** The fixture bundle, copied, with `headers` as its `_headers` (none when null).
+ *  ⏱ 2026-10-01 — and with the app's REAL offline shell beside it (web/sw.js and
+ *  web/sw-register.js, read at test time), so the offline leg runs the code that
+ *  ships, not a copy of it. */
 function cspBundle(headers) {
   const dir = join(TMP, `b${seq++}`);
   cpSync(FIXTURE, dir, { recursive: true });
+  for (const f of ['sw.js', 'sw-register.js']) cpSync(join(APP_WEB, f), join(dir, f));
   if (headers !== null) writeFileSync(join(dir, '_headers'), headers);
   return dir;
 }
@@ -440,9 +447,9 @@ function needChrome(t) {
 }
 
 /** The smoke, run WITHOUT blocking this process: the recording proxy below lives in it. */
-const runAsync = (args) =>
+const runAsync = (args, smoke = SMOKE) =>
   new Promise((done) => {
-    const child = spawn(process.execPath, [SMOKE, ...args]);
+    const child = spawn(process.execPath, [smoke, ...args]);
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });
@@ -457,9 +464,9 @@ const runAsync = (args) =>
  * by a wrapper script (`--chrome` replaces the binary), so on Windows, where a
  * shell wrapper cannot be spawned, `seen` is null and the proof cases skip.
  */
-async function smokeInChrome(dir, extra = []) {
+async function smokeInChrome(dir, extra = [], smoke = SMOKE) {
   const args = [dir, '--timeout-ms', '30000', ...extra];
-  if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME])), seen: null };
+  if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME], smoke)), seen: null };
   const seen = [];
   const proxy = createServer((req, res) => {
     seen.push(req.url);
@@ -479,7 +486,7 @@ async function smokeInChrome(dir, extra = []) {
   writeFileSync(wrapper, `#!/bin/sh\nexec ${quoted} --proxy-server=http://127.0.0.1:${proxy.address().port} "$@"\n`);
   chmodSync(wrapper, 0o755);
   try {
-    return { ...(await runAsync([...args, '--chrome', wrapper])), seen };
+    return { ...(await runAsync([...args, '--chrome', wrapper], smoke)), seen };
   } finally {
     proxy.close();
   }
@@ -492,6 +499,8 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /ok {3}no Content-Security-Policy violation/);
     assert.match(r.out, /ok {3}connect-src allows https:\/\/subscriptiontracker-api\.nikatru\.com — fetched from the page, paused and answered here/);
+    // ⏱ 2026-10-01 — and the GREEN CONTROL of the offline leg: the same boot, reloaded with the server shut down.
+    assert.match(r.out, /ok {3}offline: with the server shut down, flutter-first-frame reached again in \d+ ms, in a page sw\.js controls/);
     if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
     assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), [], `the probe reached the network: ${r.seen.join(', ')}`);
   });
@@ -536,6 +545,128 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
     const r = await smokeInChrome(cspBundle(appHeadersWith("worker-src 'self' blob:", "worker-src 'self'")));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /broke its own Content-Security-Policy while it booted: worker-src refused blob/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · THE OFFLINE LEG — [ADR 023] as amended 2026-09-30, rule 5 (row
+// O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR). Its green control is RC4 above: the
+// fixture, carrying the app's REAL web/sw.js and web/sw-register.js, is reloaded
+// with the server shut down and reaches its first frame again. The red controls
+// below each take ONE thing away from that same bundle.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('smoke-web-artifact.mjs — the artifact starts again with the network off', () => {
+  test('OFFLINE_SHELL polls the global the real web/sw-register.js sets, for the reply the real web/sw.js sends', () => {
+    const register = readFileSync(join(APP_WEB, 'sw-register.js'), 'utf8');
+    const worker = readFileSync(join(APP_WEB, OFFLINE_SHELL.worker), 'utf8');
+    assert.match(OFFLINE_SHELL.warmed, /window\.__nikatruShellWarm/);
+    assert.match(register, /window\.__nikatruShellWarm = event\.data/);
+    assert.match(OFFLINE_SHELL.warmed, /'nikatru-shell-warmed'/);
+    assert.match(worker, /type: 'nikatru-shell-warmed'/);
+  });
+
+  test('a bundle that ships no sw.js fails BEFORE a browser is launched, naming the file', () => {
+    const dir = cspBundle(APP_HEADERS);
+    rmSync(join(dir, 'sw.js'));
+    const r = run([dir, '--chrome', join(TMP, 'no-such-chrome')]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ships no sw\.js, so it cannot start offline/);
+  });
+
+  test("🔴 RED CONTROL — the same leg with NO worker registered is the browser's error page, and exits 1", { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    const index = readFileSync(join(dir, 'index.html'), 'utf8');
+    const tag = '<script src="sw-register.js"></script>';
+    assert.ok(index.includes(tag), 'the seam moved: the fixture index.html no longer loads sw-register.js');
+    writeFileSync(join(dir, 'index.html'), index.replace(tag, ''));
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--chrome', CHROME]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /with the network off, http:\/\/127\.0\.0\.1:\d+\/subscriptiontracker\/ is the browser's error page \(net::ERR_/);
+    assert.match(r.out, /the worker NEVER reported its cache warm/);
+    assert.doesNotMatch(r.out, /never reached the ready signal|while it booted/, 'the online boot itself must still pass: only the offline leg is red');
+  });
+
+  test('🔴 RED CONTROL — a worker that never answers from its cache is the error page too', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    const sw = readFileSync(join(dir, 'sw.js'), 'utf8');
+    const seam = '    if (cached) return cached;\n';
+    assert.ok(sw.includes(seam), 'the seam moved: web/sw.js no longer returns its cached copy on that line');
+    writeFileSync(join(dir, 'sw.js'), sw.replace(seam, ''));
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--chrome', CHROME]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is the browser's error page/);
+    assert.match(r.out, /the worker reported its cache warm/, 'registration still worked: what failed is the offline answer');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · THE PROBE IN A PAGE A SERVICE WORKER CONTROLS. After #1145 every
+// main deploy-web run failed "5 probe request(s) were NOT paused by the
+// interception": the real bundle's worker controls the page by the time the probe
+// runs, and a request the worker issues is not the page's to pause. The fixture
+// above reaches its ready signal before its worker takes control, so RC4 stayed
+// green. These cases hold the page until the worker controls it, and give the
+// worker a fetch handler that fetches every other-origin request itself.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The fixture with a worker that controls the page before its first frame and
+ *  fetches other-origin requests on the page's behalf. */
+function workerFetchingBundle() {
+  const dir = cspBundle(APP_HEADERS);
+  const sw = readFileSync(join(dir, 'sw.js'), 'utf8');
+  const seam = '  if (!ownsRequest(event.request)) return;\n';
+  assert.ok(sw.includes(seam), 'the seam moved: web/sw.js no longer returns early for a request it does not own');
+  writeFileSync(
+    join(dir, 'sw.js'),
+    sw.replace(seam, `  if (!event.request.url.startsWith(self.location.origin)) return event.respondWith(fetch(event.request));\n${seam}`),
+  );
+  const boot = readFileSync(join(dir, 'flutter_bootstrap.js'), 'utf8');
+  const ready = "  window.dispatchEvent(new Event('flutter-first-frame'));";
+  assert.ok(boot.includes(ready), 'the seam moved: the fixture no longer dispatches the ready signal on its own line');
+  writeFileSync(
+    join(dir, 'flutter_bootstrap.js'),
+    boot.replace(
+      ready,
+      '  await new Promise(function (done) { if (navigator.serviceWorker.controller) return done(); ' +
+        "navigator.serviceWorker.addEventListener('controllerchange', done); });\n" +
+        "  if (!navigator.serviceWorker.controller) throw new Error('fixture: no worker controls the page');\n" +
+        ready,
+    ),
+  );
+  return dir;
+}
+
+describe('smoke-web-artifact.mjs — the probe in a page its service worker controls', () => {
+  test('GREEN — the worker is bypassed: every probe is paused, none reaches the network, and offline still runs', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}connect-src allows https:\/\/subscriptiontracker-api\.nikatru\.com — fetched from the page, paused/);
+    // The bypass is switched off again: the offline leg is still answered by the worker.
+    assert.match(r.out, /ok {3}offline: .* in a page sw\.js controls/);
+    if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
+    assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), [], `the probe reached the network: ${r.seen.join(', ')}`);
+  });
+
+  test('🔴 RED CONTROL — the same smoke WITHOUT the bypass reports the probe unpaused (exit 1), as main did', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    // Without the recording proxy the worker's fetch would reach the real host.
+    if (process.platform === 'win32') return t.skip('needs the shell wrapper for Chrome, so the unpaused probe cannot leave');
+    const src = readFileSync(SMOKE, 'utf8');
+    const seam = "    const bypass = await send('Network.setBypassServiceWorker', { bypass: true }, session);\n";
+    assert.ok(src.includes(seam), 'the seam moved: the smoke no longer bypasses the service worker on that line');
+    const copy = join(TMP, `smoke-${seq++}`, 'tooling', 'smoke', 'smoke-web-artifact.mjs');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, src.replace(seam, '    const bypass = {};\n'));
+    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API], copy);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 probe request\(s\) were NOT paused by the interception/);
+    // The unpaused URL is named on a line of its own, compared whole (CodeQL #576).
+    assert.ok(r.out.split('\n').some((l) => l.trim() === `${API}/`), r.out);
+    // ...and the request it did not pause is the one the worker sent out, to the recording proxy.
+    assert.ok(r.seen.some((u) => hostOf(u) === API_HOST), `the recording proxy saw: ${r.seen.join(', ') || 'nothing'}`);
   });
 });
 

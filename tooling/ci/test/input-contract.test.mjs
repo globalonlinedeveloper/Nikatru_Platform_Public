@@ -105,11 +105,17 @@ import 'package:mason/mason.dart';
 // locked the wildcard. The words survive HERE, in prose, and must not count.
 void run(HookContext context) {
   final needsBackend = context.vars['needs_backend'] == true;
+  final dsnSecret = 'GLITCHTIP_DSN_X';
   if (needsBackend) {
     context.logger
       ..success('Stamped x. Owner checklist:')
       ..info('  1. Add store metadata.')
-      ..info('  2. NO DNS RECORD IS NEEDED — the wildcard already resolves; ATTACH the host.');
+      ..info('  2. NO DNS RECORD IS NEEDED — the wildcard already resolves; ATTACH the host.')
+      ..info('  6. Create the GitHub secret $dsnSecret, then deliver it BY NAME, never '
+          '\`secrets: inherit\`:')
+      ..info('       .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   $dsnSecret:')
+      ..info('       .github/workflows/ci.yml, in the deploy-workers: call\\'s secrets:        '
+          '$dsnSecret: \\\${{ secrets.$dsnSecret }}');
   } else {
     context.logger
       ..success('Stamped x (CLIENT-ONLY). Owner checklist:')
@@ -163,6 +169,10 @@ function tree({
     [POST]: post,
     [`${BACKEND}/wrangler.jsonc`]: wrangler,
     [`${BACKEND}/README.md`]: backendReadme,
+    // The two workflows the backend checklist's secret lines name. Real files, so the
+    // phantom-filename limb has nothing to say about a correct checklist.
+    '.github/workflows/deploy-workers.yml': 'on:\n  workflow_call:\n    secrets: {}\n',
+    '.github/workflows/ci.yml': 'jobs:\n  deploy-workers:\n    uses: ./.github/workflows/deploy-workers.yml\n',
   };
   for (const [f, body] of Object.entries(files)) {
     if (omit.includes(f)) continue;
@@ -375,6 +385,42 @@ describe('assert-input-contract', () => {
     // makes the step redundant now is `custom_domain` writing the record on deploy.
     assert.match(out, /custom_domain.*writes the record and the certificate on deploy/);
     assert.match(out, /\[ADR 080\]/);
+  });
+
+  // ⏱ 2026-10-01 — rv2-newproduct-004a. Step 6 told every needs_backend owner to "add a `$id-api` job
+  // to .github/workflows/deploy-workers.yml", a file whose app-Worker matrix has come from
+  // worker-set.mjs since O-SERVICE-KIT-UNBUILT: there is no job to add, and the edit the owner
+  // really owes (the crash-sink secret, delivered by name) went unprinted. The real hook WRAPS
+  // the instruction across two adjacent literals, so the fixture does too: a scan that reads one
+  // literal at a time never sees the sentence Dart prints.
+  test('FAILS when the checklist tells the owner to add a Worker job to deploy-workers.yml', () => {
+    const { code, out } = run(tree({
+      post: goodPostGen.replace(
+        "'  1. Add store metadata.')\n      ..info('  2. NO DNS",
+        "'  1. Add store metadata.')\n      ..info('  5. REQUIRED: add a `$id-api` job to '\n" +
+          "        '.github/workflows/deploy-workers.yml passing --var GLITCHTIP_DSN:.')\n      ..info('  2. NO DNS",
+      ),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /prints a retired instruction — telling the owner to add a Worker job to deploy-workers\.yml/);
+    assert.match(out, /worker-set\.mjs/);
+  });
+
+  test('FAILS when the backend checklist no longer prints how the crash-sink secret is delivered', () => {
+    const { code, out } = run(tree({
+      post: goodPostGen.replace(/under on\.workflow_call\.secrets/, 'somewhere'),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /prints no line delivering the Worker's crash-sink secret — deploy-workers\.yml's `on\.workflow_call\.secrets`/);
+    assert.match(out, /assert-worker-error-sink\.mjs limb 5/);
+  });
+
+  test('FAILS when the ci.yml delivery line is gone, even with the declaration line kept', () => {
+    const { code, out } = run(tree({
+      post: goodPostGen.replace("in the deploy-workers: call\\'s secrets:", 'nowhere:'),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /prints no line delivering the Worker's crash-sink secret — ci\.yml's `deploy-workers:` call/);
   });
 
   // 🔴 THE PROSE TRAP. The fixture's header comment quotes "Add DNS for <host>"

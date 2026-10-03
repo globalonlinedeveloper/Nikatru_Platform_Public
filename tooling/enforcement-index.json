@@ -466,7 +466,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 075"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],
@@ -506,6 +508,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-bundle-availability.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-bundle-locales.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -643,7 +655,14 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-channel-register.mjs",
@@ -1880,8 +1899,13 @@
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
       ".github/workflows/store-screenshots.yml#capture-linux",
+      ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
-      ".github/workflows/submit-play.yml#submit"
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-play-device-coverage.mjs",
@@ -3129,6 +3153,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/land.yml#land"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/land-next.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 095"
     ],
@@ -3369,6 +3403,17 @@
     "ref": "tooling/ci/single-threaded-relaunch.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/site-set.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [],
@@ -3730,6 +3775,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/lane-brick.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/stamp-service.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 035",
       "C-6",
@@ -3787,6 +3842,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-edge-shield.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-edge-zone.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4371,6 +4436,7 @@
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
+      ".github/workflows/extensions-ci.yml#ops-tooling",
       ".github/workflows/extensions-ci.yml#selftest",
       ".github/workflows/lane-apps.yml#app-dryrun"
     ],
@@ -4437,6 +4503,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/lane-brick.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-personal-site.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
@@ -4470,6 +4546,7 @@
   },
   {
     "claims": [
+      "ADR 023",
       "ADR 075",
       "O-7",
       "R-13"
@@ -4480,6 +4557,16 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/lane-apps.yml#web-artifacts"
+    ],
+    "kind": "script",
+    "ref": "tooling/smoke/web-a11y-tree.mjs",
     "references": [],
     "state": "WIRED"
   },

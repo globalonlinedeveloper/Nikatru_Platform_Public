@@ -468,7 +468,7 @@
       "path": "/v1/health",
       "auth": "public",
       "owningFile": "services/platform/src/index.ts",
-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:153-199).",
+      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:160-196).",
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
     },
@@ -930,11 +930,10 @@
       "binding": "JWKS_CACHE",
       "kind": "kv_namespaces",
       "scope": "shared",
-      "purpose": "Caches the Supabase JWKS document so an ES256 verify does not fetch it per request. One identity project portfolio-wide, so one cache.",
+      "purpose": "Caches the Supabase JWKS document so an ES256 verify does not fetch it per request. One identity project portfolio-wide, so one cache. Read by the kit's auth plumbing (services/_shared/src/auth-middleware.ts, since 2026-10-01 the one home every Worker and the brick bind) with the binding services/platform passes it.",
       "readers": [
-        "services/platform/src/middleware/auth.ts",
-        "services/subscriptiontracker-api/src/middleware/auth.ts",
-        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
+        "services/_shared/src/auth-middleware.ts",
+        "services/platform/src/middleware/auth.ts"
       ]
     },
     {
@@ -943,10 +942,9 @@
       "scope": "shared",
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The signed-out-session list, `rev:<sub>` → `{ before, sids }`. Every auth middleware reads it AFTER verifying a token and refuses (401) a token whose session_id is listed or whose iat precedes `before`; the read FAILS OPEN (a KV incident must not become a portfolio-wide 401). services/platform/src/routes/sessions.ts is the ONLY writer, every put with `expirationTtl: REVOCATION_TTL_SECONDS`. One namespace portfolio-wide — see sharedValues.",
       "readers": [
+        "services/_shared/src/auth-middleware.ts",
         "services/platform/src/middleware/auth.ts",
-        "services/platform/src/routes/sessions.ts",
-        "services/subscriptiontracker-api/src/middleware/auth.ts",
-        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
+        "services/platform/src/routes/sessions.ts"
       ]
     },
     {
@@ -1077,10 +1075,46 @@
         ]
       },
     {
-      "binding": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
+      "binding": "CHECKOUT_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The server-derived ceiling for POST /v1/checkout, keyed `edge:<colo>:<asn>` — never a client address. `simple: { limit: 60, period: 60 }`. Every accepted request mints a Paddle transaction that can be canceled but never deleted. Fails OPEN like the other edge ceilings; CHECKOUT_USER_LIMITER is the half that fails closed. Its own namespace (1027; the sandbox's is 1028).",
+      "readers": [
+        "services/platform/src/routes/checkout.ts"
+      ]
+    },
+    {
+      "binding": "CHECKOUT_USER_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The per-USER bucket for POST /v1/checkout, keyed `checkout:<sub>` on the VERIFIED subject (the route sits behind platformAuth). `simple: { limit: 5, period: 60 }`. FAILS CLOSED (strictRateLimit, services/platform/src/lib/edge-ceiling.ts): an absent binding or a limiter fault is a 503, never an admit. Its own namespace (1029; the sandbox's is 1030).",
+      "readers": [
+        "services/platform/src/routes/checkout.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_PASSWORD_GLOBAL_LIMITER",
       "kind": "ratelimits",
       "scope": "edge",
-      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's auth-credential limiter, keyed global:auth-credential, all clients together: GoTrue calls that prove, mint or mail a credential on Box C (password/pkce/id_token grants, otp, signup, recover, resend, verify, magiclink, reauthenticate, MFA verify/challenge). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-password limiter, keyed global:auth-password, all clients together: GoTrue /token grants on Box C other than refresh_token (password, pkce, id_token, or none). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-signup-recover limiter, keyed global:auth-signup-recover, all clients together: GoTrue calls on Box C that mint an account, mail a credential or redeem what was mailed (signup, otp, recover, resend, verify, magiclink). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_FACTOR_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-factor limiter, keyed global:auth-factor, all clients together: GoTrue MFA calls on Box C (factors/<id>/verify and /challenge) and reauthenticate. Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
       ]
@@ -1137,7 +1171,7 @@
     {
       "_why": [
         "services/edge-shield — the Cloudflare edge in front of Box C (self-hosted GoTrue, auth-api.nikatru.com) and",
-        "Box B (GlitchTip, glitchtip.nikatru.com). It counts four request classes against one GLOBAL cap each and",
+        "Box B (GlitchTip, glitchtip.nikatru.com). It counts six request classes against one GLOBAL cap each and",
         "answers 429 with Retry-After over a cap, or 503 for the refresh grant (LEAD RULING SHIELD-R2); it reads no",
         "client address (SHIELD-R3), and the per-IP limit on the credential paths is the zone's own rate-limiting",
         "rule, tooling/edge-ratelimit-rule.json. It serves the GoTrue JWKS from the edge cache for 300 s, and passes",

@@ -2,6 +2,8 @@
 /// packs. Pure Dart — safe to depend on from any app or package.
 library;
 
+// ⏱ 2026-10-02 · port-ai: the AI port's client seam (bring-your-own-key).
+export 'src/ai/ai_provider.dart';
 export 'src/analytics/analytics.dart';
 export 'src/auth/account_deletion.dart';
 export 'src/auth/age_signal.dart';
@@ -34,6 +36,7 @@ export 'src/content/ed25519_pack_verifier.dart';
 export 'src/content/pack_verifier.dart';
 export 'src/content/service_catalogue.dart';
 export 'src/cancellation_transport.dart';
+export 'src/checkout_session_transport.dart';
 export 'src/content_report_transport.dart';
 export 'src/dates/recurrence_schedule.dart';
 export 'src/entitlement_cache.dart';

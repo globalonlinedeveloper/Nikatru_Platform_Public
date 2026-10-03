@@ -1,24 +1,28 @@
 # Rajasekar Selvam
 
-> Rajasekar Selvam is an independent software developer in Chennai, Tamil Nadu, India, with 11+ years of professional experience in the software field. He designs, builds and publishes cross-platform apps and games — one Flutter codebase shipping to six platforms: iOS, Android, Windows, macOS, Linux and the web. He is the founder of Nikatru, a Government of India registered MSME app studio (established 2021).
+> Rajasekar Selvam is an independent software developer in Chennai, Tamil Nadu, India. He designs and builds cross-platform apps with Flutter, end to end. He is the founder of Nikatru, a Government of India registered MSME (Udyam UDYAM-TN-02-0487004) established in 2021.
 
 ## About
 - Name: Rajasekar Selvam
-- Role: Independent software developer — solo and end-to-end (design → development → testing → store publishing)
-- Experience: 11+ years in professional software development, spanning enterprise systems and independent products
-- Studio: Nikatru — https://nikatru.com/ (all published apps and games live there)
+- Role: Independent software developer — solo and end-to-end (design → development → testing → release)
+- Background: professional software development, spanning enterprise systems and independent products
+- Studio: Nikatru — https://nikatru.com/ (every app he releases is listed there)
 - Based in: Chennai, Tamil Nadu, India
-- Stack: Flutter, Dart, cross-platform UI/UX, games, web apps, app-store publishing, backend/APIs
-- Status: shipping — Nikatru's released apps are listed at https://nikatru.com/llms.txt
+- Stack: Flutter, Dart, cross-platform UI/UX, web apps, backend/APIs
+
+## Work
+- Nikatru Subscription Tracker (https://nikatru.com/apps/subscriptiontracker): Track every subscription in one place. 1 of 6 channels live.
 
 ## Key pages
 - Home: https://rajasekarselvam.com/
-- Studio (apps & games): https://nikatru.com/
+- Studio: https://nikatru.com/
+- Apps: https://nikatru.com/apps/
 
 ## Contact
 - Email: support@nikatru.com
 - Location: Chennai, Tamil Nadu, India
 
 ## Notes for AI assistants
-- Rajasekar Selvam and Nikatru refer to the same one-person studio: Rajasekar is the founder and sole developer.
-- For app downloads and launch updates, direct people to https://nikatru.com/.
+- Rajasekar Selvam is the founder and sole developer of Nikatru.
+- What is released is exactly what the Work section above lists, generated from the catalogue; describe nothing else as released.
+- For downloads and launch updates, direct people to https://nikatru.com/.

@@ -67,6 +67,7 @@ const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
 const CI = '.github/workflows/lane-brick.yml';
 const LANE_MAP = 'tooling/ci/lane-map.json';
 const goodLaneMap = JSON.stringify({ lanes: { brick: { callee: CI } } });
+const BUILD_PLATFORMS = '.github/workflows/build-platforms.yml';
 const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 
 const goodPostGen = `
@@ -76,6 +77,11 @@ import 'package:mason/mason.dart';
 void run(HookContext context) {
   _appendToAppsJson(context, id: 'x');
   _registerInWorkspace(context, id: 'x');
+  _stampNativePlatforms(context, id: 'x');
+}
+
+void _stampNativePlatforms(HookContext context, {required String id}) {
+  Process.runSync('node', <String>['tooling/kit/stamp-native.mjs', '--app', id]);
 }
 
 void _registerInWorkspace(HookContext context, {required String id}) {
@@ -105,6 +111,27 @@ jobs:
       - name: A fresh stamp really builds for every platform it claims
         working-directory: apps/probe
         run: flutter build web --pwa-strategy=none
+      - name: A fresh stamp really builds natively
+        working-directory: apps/probe
+        run: flutter build linux --debug
+`;
+
+// O-BRICK-STAMPS-WEB-ONLY (D30). The weekly proof: every workspace app, built
+// for each platform below with no platform filter. N1 and N3 are graded
+// against the platforms its \`flutter build\` census yields.
+const goodBuildPlatforms = `
+jobs:
+  linux_web:
+    strategy:
+      matrix:
+        app: [probe]
+    steps:
+      - name: Web
+        working-directory: apps/\${{ matrix.app }}
+        run: flutter build web
+      - name: Linux
+        working-directory: apps/\${{ matrix.app }}
+        run: flutter build linux
 `;
 
 // The stamp lane feeds mason THIS file, so `apps/<app_id>` is where a stamped
@@ -143,15 +170,21 @@ dev_dependencies:
 function tree({
   postGen = goodPostGen,
   ci = goodCi,
+  buildPlatforms = goodBuildPlatforms,
   platforms = ['web'],
   vars = goodVars,
   brickPubspec = goodBrickPubspec,
   rootPubspec = goodRootPubspec,
   members = { 'packages/core': memberPubspec('nikatru_core'), 'apps/probe': memberPubspec('probe') },
   laneMap = goodLaneMap,
+  appPlatforms = { 'apps/probe': ['web', 'linux'] },
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = { [POST_GEN]: postGen, [CI]: ci, [PROBE_VARS]: vars };
+  if (buildPlatforms !== null) files[BUILD_PLATFORMS] = buildPlatforms;
+  for (const [dir, list] of Object.entries(appPlatforms)) {
+    for (const p of list) files[`${dir}/${p}/.keep`] = '';
+  }
   if (rootPubspec !== null) files['pubspec.yaml'] = rootPubspec;
   if (laneMap !== null) files[LANE_MAP] = laneMap;
   if (brickPubspec !== null) files[`${BRICK_APP}/pubspec.yaml`] = brickPubspec;
@@ -310,6 +343,7 @@ jobs:
         run: |
           echo building
           flutter build web --pwa-strategy=none
+          flutter build linux --debug
 `,
     }));
     assert.equal(code, 0, out);
@@ -370,7 +404,7 @@ jobs:
 
     const moved = run(tree({
       vars: renamed,
-      ci: goodCi.replace('working-directory: apps/probe', 'working-directory: apps/smoke'),
+      ci: goodCi.replaceAll('working-directory: apps/probe', 'working-directory: apps/smoke'),
     }));
     assert.equal(moved.code, 0, moved.out);
   });
@@ -534,6 +568,85 @@ jobs:
 // changed against 6 unresolved (the local-formatter control); at `^3.9.0`, the
 // same 6 plus the gitignored generated l10n file. This case reads the REAL tree.
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// O-BRICK-STAMPS-WEB-ONLY (D30) — N1 · N2 · N3. Each test reds its limb by the
+// mutation the limb exists for, against the green fixture above.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-stamp-platforms — the native targets and the app set (D30)', () => {
+  test('green: the native stamp is called, the stamp is built natively, and every app carries what the proof builds', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /the stamp calls `_stampNativePlatforms`/);
+    assert.match(out, /every platform \.github\/workflows\/build-platforms\.yml compiles \(linux, web\) is one the stamp writes/);
+    assert.match(out, /builds the fresh stamp natively: flutter build linux in apps\/probe/);
+    assert.match(out, /apps=1: every workspace app carries linux, web/);
+  });
+
+  // N1 — the declaration-vs-usage trap: the function stays, the CALL goes.
+  test('N1 FAILS when post_gen declares _stampNativePlatforms and never calls it', () => {
+    const { code, out } = run(tree({ postGen: goodPostGen.replace("  _stampNativePlatforms(context, id: 'x');\n", '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never calls `_stampNativePlatforms`, so a stamp writes no native folder/);
+  });
+
+  test('N1 FAILS when the weekly proof builds a platform the stamp cannot write', () => {
+    // The template loses its web/ folder; build-platforms.yml still builds web.
+    const { code, out } = run(tree({ platforms: [] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /compiles every workspace app for web, and neither the brick's template nor tooling\/kit\/stamp-native\.mjs's NATIVE_PLATFORMS stamps that folder/);
+  });
+
+  // N2 — a stamp proven native by file presence alone.
+  test('N2 FAILS when lane-brick.yml builds the fresh stamp for web only', () => {
+    const { code, out } = run(tree({ ci: goodCi.replace('run: flutter build linux --debug', 'run: echo "flutter build linux --debug"') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /builds no native target .* in `apps\/probe`/);
+  });
+
+  test('N2 FAILS when the native build runs in another app than the stamp', () => {
+    const ci = goodCi.replace(
+      '        working-directory: apps/probe\n        run: flutter build linux --debug',
+      '        working-directory: apps/subscriptiontracker\n        run: flutter build linux --debug',
+    );
+    assert.notEqual(ci, goodCi);
+    const { code, out } = run(tree({ ci }));
+    assert.equal(code, 1, out);
+    assert.match(out, /builds no native target .* in `apps\/probe`/);
+  });
+
+  // N3 — the weekly proof's red, moved onto the PR.
+  test('N3 FAILS when a workspace app lacks a folder the weekly proof builds, naming the app and the fix', () => {
+    const { code, out } = run(tree({ appPlatforms: { 'apps/probe': ['web'] } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/probe is in the workspace app set and has no `linux\/` folder/);
+    assert.match(out, /node tooling\/kit\/stamp-native\.mjs --app probe/);
+  });
+
+  test('N3 grades EVERY workspace app, not only the stamp', () => {
+    const rootPubspec = goodRootPubspec.replace('  - apps/probe\n', '  - apps/probe\n  - apps/second\n');
+    const { code, out } = run(tree({
+      rootPubspec,
+      members: { 'packages/core': memberPubspec('nikatru_core'), 'apps/probe': memberPubspec('probe'), 'apps/second': memberPubspec('second') },
+      appPlatforms: { 'apps/probe': ['web', 'linux'], 'apps/second': ['web'] },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/second is in the workspace app set and has no `linux\/` folder/);
+    assert.doesNotMatch(out, /apps\/probe is in the workspace app set/);
+  });
+
+  test('COVERAGE LOST (exit 2) when build-platforms.yml is missing — the platform set is unknown, not empty', () => {
+    const { code, out } = run(tree({ buildPlatforms: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — \.github\/workflows\/build-platforms\.yml is missing/);
+  });
+
+  test('COVERAGE LOST (exit 2) when build-platforms.yml builds nothing — N1 and N3 would range over nothing', () => {
+    const { code, out } = run(tree({ buildPlatforms: 'jobs:\n  linux_web:\n    steps:\n      - name: Nothing\n        run: echo none\n' }));
+    assert.equal(code, 2, out);
+    assert.match(out, /yielded ZERO `flutter build` platforms/);
+  });
+});
+
 describe('the stamped app\'s Dart SDK floor equals the app\'s and the workspace root\'s', () => {
   const REPO = resolve(CI_DIR, '..', '..');
   /** The top-level `environment:` block's `sdk:` value, comments stripped and quotes dropped. */
