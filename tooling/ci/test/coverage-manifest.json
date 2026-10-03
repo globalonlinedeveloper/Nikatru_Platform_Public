@@ -351,7 +351,7 @@
     17,
 
   "deletion-control.test.mjs":
-    39,
+    54,
 
   "deploy-ref.test.mjs":
     31,
@@ -390,7 +390,7 @@
     27,
 
   "e2e-legs.test.mjs":
-    52,
+    59,
 
   "e2e-parity.test.mjs":
     37,
@@ -675,7 +675,7 @@
     41,
 
   "native-auth-proof.test.mjs":
-    42,
+    51,
 
   "native-symbol-upload.test.mjs":
     26,

@@ -82,6 +82,7 @@ import {
   readHeaders,
   redeemChallenge,
   registerKey,
+  releaseNonce,
   requestTarget,
   verifyOp,
   type AttestKind,
@@ -447,31 +448,46 @@ const TOKEN_HASH = /^[0-9a-f]{40,128}$/;
  * `/verify` with that token hash, which answers a session. The user is read by
  * id first, so a changed address follows the account, a deleted or banned one
  * is refused, and the session must name the same id or it is withheld.
- * ⚠️ The magic-link token is one per user: an unused one emailed earlier is
- * replaced (tooling/e2e/magic_link.mjs says the same).
+ * ⚠️ ONE TOKEN SLOT, SHARED WITH PASSWORD RESET. GoTrue keeps one recovery token
+ * per user, and a magic link is written INTO it: an unused magic link AND an
+ * unused password-reset link emailed earlier both stop working. Measured live
+ * 2026-10-01 (GoTrue v2.197.0, throwaway users): a recovery token verifies alone
+ * (200); issued before a magiclink, it answers 403 otp_expired. No admin call
+ * mints a session without that slot (signup and invite refuse an existing user,
+ * email_change changes the address), so the hand-off keeps this pair, and the
+ * reset is the user's to request again.
+ * 🔴 A GoTrue FAULT BEFORE A SESSION EXISTS GIVES THE CODE BACK (`release`,
+ * releaseNonce): the code was redeemed first, and a transient 5xx used to burn
+ * it, so the app's retry read "used" (review of #1133, finding 3).
  */
-async function handoffSession(c: Context<AppEnv>, user: string): Promise<Response> {
+async function handoffSession(c: Context<AppEnv>, user: string, release: () => Promise<void>): Promise<Response> {
   const key = c.env.SUPABASE_SERVICE_ROLE_KEY;
   const down = () => gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
+  const retryable = async () => {
+    await release();
+    return down();
+  };
+  let minted = false;
   if (!key) {
     console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} SUPABASE_SERVICE_ROLE_KEY is not set`);
-    return down();
+    return retryable();
   }
   try {
     const u = await gotrueAdmin(c, key, `/admin/users/${encodeURIComponent(user)}`, { method: 'GET' });
     if (u.status === 404) return handoffInvalid();
-    if (!u.ok) return down();
+    if (!u.ok) return retryable();
     const account = (await u.json()) as Record<string, unknown>;
     const banned = typeof account.banned_until === 'string' && Date.parse(account.banned_until) > Date.now();
     if (account.id !== user || banned || typeof account.email !== 'string' || account.email === '') return handoffInvalid();
 
     const link = await gotrueAdmin(c, key, '/admin/generate_link', { method: 'POST', body: { type: 'magiclink', email: account.email } });
-    if (!link.ok) return down();
+    if (!link.ok) return retryable();
     const hashed = ((await link.json()) as Record<string, unknown>).hashed_token;
-    if (typeof hashed !== 'string' || !TOKEN_HASH.test(hashed)) return down();
+    if (typeof hashed !== 'string' || !TOKEN_HASH.test(hashed)) return retryable();
 
     const verified = await gotrueAdmin(c, key, '/verify', { method: 'POST', body: { type: 'magiclink', token_hash: hashed } });
-    if (!verified.ok) return down();
+    if (!verified.ok) return retryable();
+    minted = true;
     const session = (await verified.json()) as Record<string, unknown>;
     const who = isPlainObject(session.user) ? session.user.id : undefined;
     if (who !== user || typeof session.access_token !== 'string' || typeof session.refresh_token !== 'string') return down();
@@ -481,7 +497,7 @@ async function handoffSession(c: Context<AppEnv>, user: string): Promise<Respons
     });
   } catch (err) {
     console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} hand-off session failed (${err instanceof Error ? err.name : typeof err})`);
-    return down();
+    return minted ? down() : retryable();
   }
 }
 
@@ -612,7 +628,8 @@ export function createNativeAuth(apps: readonly string[]): Hono<AppEnv> {
       console.warn(`[native-auth] rid=${c.get('requestId') ?? '-'} hand-off refused (${r.why})`);
       return logged(c, 'handoff', handoffInvalid());
     }
-    return logged(c, 'handoff', await handoffSession(c, r.user));
+    const app = c.get('appId') as string;
+    return logged(c, 'handoff', await handoffSession(c, r.user, () => releaseNonce(c.env, app, r.nonce)));
   });
 
   return nativeAuth;

@@ -25,6 +25,8 @@
 // RENDERED table (src/generated/ports.ts, from payments.json by tooling/ports/render.mjs).
 // The two binding records below are typed by the rendered id union: a rendered adapter
 // with no binding, or a binding for an id the registry does not list, fails `tsc`.
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: which rail SELLS on web is `checkoutRailFor(market)`
+// below, from the rendered CHECKOUT_RAIL_BY_MARKET — a buyer-declared market, never a header.
 //
 // TELEMETRY (tooling/ports/telemetry.json) · ⏱ 2026-10-02 · port-telemetry, the Worker half:
 //   · `errorSinkFor(env)` — the `sentry-envelope` adapter (GLITCHTIP_DSN).

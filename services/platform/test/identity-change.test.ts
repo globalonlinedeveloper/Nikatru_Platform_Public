@@ -86,7 +86,7 @@ describe('POST /v1/account/identity-change', () => {
 
   it('the rule itself: missing recency, a future timestamp beyond the skew', () => {
     expect(identityChangeRecencyRefusal(undefined)).not.toBeNull();
-    expect(identityChangeRecencyRefusal({ passwordless: false, lastAuthenticatedAt: 1000 }, 1000 + 5)).toBeNull();
-    expect(identityChangeRecencyRefusal({ passwordless: false, lastAuthenticatedAt: 2000 }, 1000)).not.toBeNull();
+    expect(identityChangeRecencyRefusal({ passwordless: false, linked: false, lastAuthenticatedAt: 1000 }, 1000 + 5)).toBeNull();
+    expect(identityChangeRecencyRefusal({ passwordless: false, linked: false, lastAuthenticatedAt: 2000 }, 1000)).not.toBeNull();
   });
 });
