@@ -17,7 +17,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { check, findTypedLists, READERS, BRICK_APP, MIN_SCANNED } from '../assert-locale-register.mjs';
+import { check, findTypedLists, stripComments, READERS, BRICK_APP, MIN_SCANNED } from '../assert-locale-register.mjs';
 import {
   REGISTER, DART_TABLE, validateRegister, renderInfoPlist, renderManifest, renderMsixLanguages, supportedCodes, plan,
   renderChassisBridge,
@@ -251,6 +251,18 @@ describe('L4 no hand-typed locale list', () => {
     }
   });
 
+  test('the record/tuple picker and a continued path list are caught (review #1161 minor 1)', () => {
+    for (const src of [
+      // the shape both Settings pickers had before #1161
+      "<(String, String)>[\n  ('', l10n.languageSystem),\n  ('en', l10n.languageEnglish),\n  ('ta', l10n.languageTamil()),\n]",
+      'const l = [("en", "English"), ("hi", "Hindi")];',
+      // main's ci.yml chassis-regen step: one path per continued line
+      'sha256sum packages/x/l10n/chassis_localizations_en.dart \\\n          packages/x/l10n/chassis_localizations_ta.dart \\\n  > out',
+    ]) {
+      assert.equal(findTypedLists(src, codes).length, 1, src);
+    }
+  });
+
   test('a single code, prose, and one code twice are not lists', () => {
     for (const src of [
       "locale: const Locale('ta'),",
@@ -258,6 +270,11 @@ describe('L4 no hand-typed locale list', () => {
       "`app_en.arb` / `app_ta.arb`",
       "['en', 'en']",
       "['en', 'fr']",
+      // two CALLS with a locale first argument are not records
+      "f('en', x), g('ta', y)",
+      "f('en', x),\nf('ta', y)",
+      // a path list broken by a word is not a list
+      'a/x_en.dart and b/x_ta.dart',
     ]) {
       assert.deepEqual(findTypedLists(src, codes), [], src);
     }
@@ -302,6 +319,69 @@ describe('L5 the named consumers read the register', () => {
   test('the privacy-notice guard going back to the brick is named', () => {
     edit('tooling/ci/assert-policy-archive.mjs', (s) => s.replace("from '../i18n/locales.mjs'", "from './nowhere.mjs'"));
     assert.ok(has(verdict(), /^L5 tooling\/ci\/assert-policy-archive\.mjs/));
+  });
+
+  // Review #1161 minor 1, M7: both pickers restored to the tuple list and each
+  // keeping a comment that names kSupportedLocales. Before the fix: exit 0.
+  test('M7: a re-typed tuple picker that keeps a `// see kSupportedLocales` comment is named by L4 AND L5', () => {
+    const tuples = (indent) =>
+      `// T20: see kSupportedLocales\n${indent}for (final (String code, String name) in <(String, String)>[\n` +
+      `${indent}  ('en', l10n.languageEnglish),\n${indent}  ('ta', l10n.languageTamil),\n${indent}  ('hi', l10n.languageHindi),\n` +
+      `${indent}])\n${indent}  RadioListTile<String>(value: code, title: Text(name)),`;
+    const app = 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart';
+    const chassis = 'packages/chassis_screens/lib/settings/settings_screen.dart';
+    edit(app, (s) => {
+      const t = s.replace(/for \(final RegisteredLocale r in kSupportedLocales\)\s*\(r\.code, r\.nativeName\),/, "// T20: see kSupportedLocales\n('en', l10n.languageEnglish),\n('ta', l10n.languageTamil),\n('hi', l10n.languageHindi),");
+      assert.notEqual(t, s, 'the app picker fixture no longer matches the real file');
+      return t;
+    });
+    edit(chassis, (s) => {
+      const t = s.replace(/for \(final RegisteredLocale row in kSupportedLocales\)\s*RadioListTile<String>\([^)]*\),\s*\),/, tuples('                      '));
+      assert.notEqual(t, s, 'the chassis picker fixture no longer matches the real file');
+      return t;
+    });
+    const r = verdict();
+    for (const f of [app, chassis]) {
+      const e = f.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+      assert.ok(has(r, new RegExp(`^L4 ${e}:\\d+ types a list of locales by hand`)), `L4 ${f}\n${r.findings.join('\n')}`);
+      assert.ok(has(r, new RegExp(`^L5 ${e} no longer reads the register`)), `L5 ${f}\n${r.findings.join('\n')}`);
+    }
+  });
+
+  test('a comment alone does not satisfy L5 (the chassis picker keeps its doc comment, loses the code use)', () => {
+    edit('packages/chassis_screens/lib/settings/settings_screen.dart', (s) => {
+      assert.match(s, /\/\/.*kSupportedLocales/, 'the fixture needs the real comment that names kSupportedLocales');
+      return s.replace(/in kSupportedLocales\b/g, 'in kTypedLocales');
+    });
+    assert.ok(has(verdict(), /^L5 packages\/chassis_screens\/lib\/settings\/settings_screen\.dart no longer reads the register/));
+  });
+
+  // M8: the ci.yml chassis-regen step restored to main's multi-line typed path
+  // list. Before the fix: exit 0 (a path between the tokens; ci.yml unpinned).
+  test('M8: the ci.yml chassis-regen step back to a continued typed path list is named by L4', () => {
+    edit('.github/workflows/ci.yml', (s) => {
+      const t = s.replace(
+        /files=\$\(node tooling\/i18n\/locales\.mjs --files chassis_localizations dart\)\n(\s*)\(cd packages\/design_system\/lib\/src\/l10n && sha256sum \$files\) \\/,
+        (_, ind) => ['chassis_localizations.dart', 'chassis_localizations_en.dart', 'chassis_localizations_ta.dart', 'chassis_localizations_hi.dart']
+          .map((f, i) => `${i ? `${ind}          ` : 'sha256sum '}packages/design_system/lib/src/l10n/${f} \\`).join('\n'),
+      );
+      assert.notEqual(t, s, 'the ci.yml fixture no longer matches the real step');
+      return t;
+    });
+    assert.ok(has(verdict(), /^L4 \.github\/workflows\/ci\.yml:\d+ types a list of locales by hand/), verdict().findings.join('\n'));
+  });
+
+  test('ci.yml dropping every register read is named by L5, and a `#` comment does not satisfy it', () => {
+    edit('.github/workflows/ci.yml', (s) =>
+      s.replace(/files=\$\(node tooling\/i18n\/locales\.mjs --files chassis_localizations dart\)/g, '# was: files=$(node tooling/i18n/locales.mjs --files chassis_localizations dart)\n          files="chassis_localizations.dart"'),
+    );
+    assert.ok(has(verdict(), /^L5 \.github\/workflows\/ci\.yml no longer reads the register/));
+  });
+
+  test('stripComments keeps strings and blanks comments, per file kind', () => {
+    assert.equal(stripComments("a('https://x/kS'); // kS\n/* kS */b", 'x.dart'), "a('https://x/kS'); \nb");
+    assert.equal(stripComments('const r = /a\\/\\/b/; // kS', 'x.mjs'), 'const r = /a\\/\\/b/; ');
+    assert.equal(stripComments('run: x # kS\n# kS\nurl: "a#b"', 'ci.yml'), 'run: x \n\nurl: "a#b"');
   });
 
   test('a consumer that moved away is named', () => {

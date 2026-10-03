@@ -27,13 +27,17 @@
 //                 auth-mail templates are what tooling/i18n/auth-mail.mjs renders.
 //   L4 typed      no tracked source file holds a hand-typed list of two or more
 //                 register locales — `'en', 'ta'`, `Locale('ta'), Locale('hi')`,
-//                 `x_ta.dart x_hi.dart` — unless a `locale-list:` note on that
+//                 `x_ta.dart x_hi.dart` (also as a continued path list, one
+//                 `dir/x_ta.dart \` per line), the record/tuple picker
+//                 `('ta', l10n.languageTamil),` — unless a `locale-list:` note on that
 //                 line or the three above says why it is NOT the set (a fixture,
 //                 a deliberate sample). The marker is the escape hatch, and it
 //                 has to carry a reason a reviewer can read.
 //   L5 readers    each consumer named in READERS still reads the register (a
 //                 consumer quietly re-typing its list passes L4 only if it uses a
-//                 shape L4 does not know; L5 pins the known ones by name).
+//                 shape L4 does not know; L5 pins the known ones by name). The
+//                 `must:` regex reads the file with its comments stripped: a
+//                 comment naming the register is not a read of it.
 //
 // Exit 0 = green. 1 = a finding. 2 = COVERAGE LOST: fewer gen-l10n roots than
 // the floor were found, or the L4 scan read fewer files than its floor — either
@@ -76,7 +80,44 @@ export const READERS = [
   { file: 'tooling/bricks/app/hooks/post_gen.dart', must: /tooling\/i18n\/locales\.json/, why: 'a stamped app\'s MSIX languages come from the register' },
   { file: 'services/platform/src/lib/digest-copy.ts', must: /tooling\/i18n\/messages\/email\.json[\s\S]*tooling\/i18n\/locales\.json/, why: 'the renewal digest speaks the stored locale, from the register\'s copy' },
   { file: 'services/platform/src/lib/reminders.ts', must: /readStoredLocale\(/, why: 'the digest reads the person\'s stored locale before it is built' },
+  { file: '.github/workflows/ci.yml', must: /tooling\/i18n\/locales\.mjs --files chassis_localizations dart/, why: 'the chassis-regen step hashes one generated file per supported locale; a typed list there is a locale nothing compares' },
 ];
+
+/**
+ * `text` with its comments blanked, so a `must:` regex sees CODE only — a
+ * re-typed picker that keeps a `// see kSupportedLocales` line is not a reader.
+ * Dart/JS/TS: `//` and `/* *\/` outside a string literal; YAML and shell: `#`
+ * at a line start or after whitespace. Newlines are kept (line numbers hold).
+ */
+export function stripComments(text, file) {
+  if (/\.(ya?ml|sh)$/.test(file)) return text.replace(/(^|[ \t])#.*$/gm, '$1');
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+    } else if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? text.length : end + 2;
+      out += text.slice(i, stop).replace(/[^\n]/g, '');
+      i = stop;
+    } else if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== ch && !(ch !== '`' && text[j] === '\n')) j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (ch === '\\') {
+      out += text.slice(i, i + 2); // an escape in a regex literal: `\/\/` is not a comment
+      i += 2;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -87,8 +128,15 @@ export function typedListMatcher(codes) {
   const token =
     `(?:(['"\`])(${C})\\1` + // 'ta'
     `|(?:const\\s+)?Locale\\(\\s*'(${C})'\\s*\\)` + // Locale('ta')
-    `|['"]?[\\w.{}-]*_(${C_})\\.(?:arb|dart)['"]?)`; // app_ta.arb, x_ta.dart
-  return { token: new RegExp(token, 'g'), sep: /^[\s,\\]*$/ };
+    `|['"]?[\\w.{}-]*_(${C_})\\.(?:arb|dart)['"]?` + // app_ta.arb, x_ta.dart
+    // ('ta', l10n.languageTamil) — a record/tuple whose head is a locale (the
+    // shape both Settings pickers had before they read the register). The whole
+    // record is the token, so the next record is "adjacent"; a call's argument
+    // list (`f('ta', x)`) is not a record, hence the look-behind.
+    `|(?<![\\w$])\\(\\s*(['"])(${C})\\5\\s*,(?:[^()\\n]|\\([^()\\n]*\\))*\\))`;
+  // Between two tokens: commas, whitespace, a shell line continuation — and a
+  // continued PATH list's directory prefix (`…_en.dart \⏎ packages/…/x_ta.dart`).
+  return { token: new RegExp(token, 'g'), sep: /^[\s,\\]*(?:[\w.{}-]+\/)*$/ };
 }
 
 /** Every hand-typed locale list in `text`, as {line, snippet}. */
@@ -96,7 +144,7 @@ export function findTypedLists(text, codes) {
   const { token, sep } = typedListMatcher(codes);
   const toks = [];
   for (const m of text.matchAll(token)) {
-    const code = m[2] ?? m[3] ?? m[4];
+    const code = m[2] ?? m[3] ?? m[4] ?? m[6];
     toks.push({ start: m.index, end: m.index + m[0].length, code: code.replace(/_/g, '-') });
   }
   const hits = [];
@@ -233,7 +281,7 @@ export function check(root, { minScanned = MIN_SCANNED } = {}) {
       findings.push(`L5 ${r.file} is gone — READERS names it because ${r.why}. Update READERS to where that moved.`);
       continue;
     }
-    if (!r.must.test(readFileSync(abs, 'utf8'))) findings.push(`L5 ${r.file} no longer reads the register (${r.must}) — ${r.why}.`);
+    if (!r.must.test(stripComments(readFileSync(abs, 'utf8'), r.file))) findings.push(`L5 ${r.file} no longer reads the register (${r.must}, in code — a comment does not count) — ${r.why}.`);
   }
   if (!findings.some((f) => f.startsWith('L5'))) ok.push(`L5 ${READERS.length} consumer(s) read the register`);
 
