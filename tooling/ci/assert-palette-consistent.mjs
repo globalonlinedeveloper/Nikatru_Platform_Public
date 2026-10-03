@@ -253,7 +253,10 @@ const MUST_COMPARE = [
  *  guard's own ok line: 24 page(s). */
 /*  24 -> 27 on 2026-10-03 (lane help-search): the three /help/ pages tooling/help/
  *  build-index.mjs writes. Measured by the guard's own ok line: 27 page(s). */
-const MIN_PAGES = 27;
+/*  27 -> 30 on 2026-10-03 (lane status-page): sites/status/index.html, 404.html and
+ *  style.css, the status site tooling/status/build-status.mjs writes. Measured by
+ *  the guard's own ok line: 30 page(s). */
+const MIN_PAGES = 30;
 /** What the exclusion must still match. */
 const MIN_SNAPSHOTS = 3;
 /** `:root` blocks across every source. Today 33. EXACT: a block is a page's
@@ -304,7 +307,10 @@ const MIN_SNAPSHOTS = 3;
  *  help/fullshot/index.html and help/known-issues.html each declare the scale
  *  `:root`, a light palette and its dark override (+9). Measured by the guard's own
  *  ok line: 74 `:root` block(s). */
-const MIN_ROOT_BLOCKS = 74;
+/*  74 -> 76 on 2026-10-03, with MIN_PAGES above (lane status-page): sites/status/
+ *  style.css declares a light palette and its dark override (+2); the two pages
+ *  link it and declare none. Measured by the guard's own ok line: 76 `:root` block(s). */
+const MIN_ROOT_BLOCKS = 76;
 /** Declarations inside those blocks. Today 358 (265 until 2026-09-09), floored SLACK on purpose. The
  *  three exact floors already fence the subject; this one exists for the single
  *  failure they cannot see — a reducer that blanks one character too many and
