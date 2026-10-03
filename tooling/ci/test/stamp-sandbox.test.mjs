@@ -210,7 +210,7 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.equal(ran, false, 'mason ran over a leftover');
     assert.match(r.out, /REFUSED, nothing was stamped/);
     assert.ok(r.out.includes(`${p} exists from an earlier stamp`), r.out);
-    assert.match(r.out, /^  PowerShell: +New-Item -ItemType Directory -Force '[^']*stamped' \| Out-Null; Move-Item '[^']*' '[^']*stamped'$/m, 'a PowerShell 5.1 move, on its own line');
+    assert.match(r.out, /^  PowerShell: +New-Item -ItemType Directory -Force '[^']*stamped' \| Out-Null; Move-Item -LiteralPath '[^']*' -Destination '[^']*stamped'$/m, 'a PowerShell 5.1 move, on its own line');
     assert.match(r.out, /^  bash: +mkdir -p '[^']*stamped' && mv '[^']*' '[^']*stamped'\/$/m, 'a bash move, on its own line');
     assert.doesNotMatch(r.out, /\brm\b/);
     assert.equal(readFileSync(join(root, `${p}/keep.txt`), 'utf8'), 'an earlier run\n');
@@ -255,11 +255,18 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     }
   });
 
-  test('a root spelled through a symlink (a non-canonical path, as a Windows 8.3 short name is) snapshots, stamps and restores (review f5b054c5 finding 1a)', () => {
+  test('a root spelled through a symlink (a non-canonical path, as a Windows 8.3 short name is) snapshots, stamps and restores (review f5b054c5 finding 1a)', (t) => {
     const linkDir = mkdtempSync(join(tmpdir(), 'stamp-sandbox-link-'));
     const link = join(linkDir, 'repo');
     try {
       symlinkSync(root, link, 'junction');
+      // review 008cddae: some Windows hosts cannot create a directory THROUGH a junction (mkdir ENOENT), so the fake stamp could
+      // not run there. Probe it; where it fails, the comparator tests below (sameDir with a LOCALU~2-style input and an injected
+      // realpath) carry the short-name case on Windows, and this end-to-end leg runs on Linux CI.
+      try { mkdirSync(join(link, '.stamp-sandbox-probe')); rmSync(join(root, '.stamp-sandbox-probe'), { recursive: true, force: true }); } catch (e) {
+        t.skip(`this host cannot create a directory through a junction (${e.code}); the sameDir comparator tests cover the short-name case`);
+        return;
+      }
       const top = git(link, 'rev-parse', '--show-toplevel').trim();
       assert.notEqual(top, link, 'RED CONTROL: git names the root in another spelling, so a plain string compare would refuse');
       const before = status(root);
@@ -374,8 +381,11 @@ describe('stamp-sandbox — the root comparator (review f5b054c5 finding 1a)', (
     const lines = moveCommands("/r/it's", ['apps/probe'], '/t/stamped').split('\n');
     assert.equal(lines.length, 2);
     assert.doesNotMatch(lines[0], /&&/);
-    assert.ok(lines[0].includes("Move-Item '/r/it''s/apps/probe' '/t/stamped'"), lines[0]);
-    assert.ok(lines[1].includes("mv '/r/it'\\''s/apps/probe' '/t/stamped'/"), lines[1]);
+    // The source is joined with the HOST path module (review 008cddae: on Windows it reads \r\it's\apps\probe), so the
+    // expectation is built the same way; the QUOTING is what this test pins.
+    const src = join("/r/it's", 'apps/probe');
+    assert.ok(lines[0].includes(`Move-Item -LiteralPath '${src.replace(/'/g, "''")}' -Destination '/t/stamped'`), lines[0]);
+    assert.ok(lines[1].includes(`mv '${src.replace(/'/g, "'\\''")}' '/t/stamped'/`), lines[1]);
   });
 });
 

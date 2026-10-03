@@ -171,13 +171,14 @@ function bytesOf(file) {
 /** The commands that MOVE each leftover stamp directory out of `root`, one per
  *  line: a PowerShell form (Windows PowerShell 5.1 has no `&&`, review f5b054c5
  *  nit 2) and a bash form. Single-quoted: neither shell expands inside, and a
- *  quote in a path is doubled for PowerShell and closed-escaped for bash. */
+ *  quote in a path is doubled for PowerShell and closed-escaped for bash. -LiteralPath, because
+ *  PowerShell reads `[` and `]` in -Path as wildcards (review 008cddae nit). */
 export function moveCommands(root, found, dest = path.join(tmpdir(), 'stamped')) {
   const ps = (s) => `'${s.replace(/'/g, "''")}'`;
   const sh = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
   return found
     .flatMap((p) => [
-      `  PowerShell:  New-Item -ItemType Directory -Force ${ps(dest)} | Out-Null; Move-Item ${ps(abs(root, p))} ${ps(dest)}`,
+      `  PowerShell:  New-Item -ItemType Directory -Force ${ps(dest)} | Out-Null; Move-Item -LiteralPath ${ps(abs(root, p))} -Destination ${ps(dest)}`,
       `  bash:        mkdir -p ${sh(dest)} && mv ${sh(abs(root, p))} ${sh(dest)}/`,
     ])
     .join('\n');
