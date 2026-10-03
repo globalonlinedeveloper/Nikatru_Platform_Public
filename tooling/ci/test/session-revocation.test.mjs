@@ -84,10 +84,12 @@ const STA_BINDING = '{ "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931c
 const PLATFORM_BINDING = '{ "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" },';
 
 describe('assert-session-revocation over a copy of the real tree', () => {
-  test('green control: the tree as it is exits 0 and names three carriers', () => {
+  test('green control: the tree as it is exits 0 and names four carriers', () => {
     withRoot(realTree(), ({ code, out }) => {
       assert.equal(code, 0, out);
-      assert.match(out, /3 carrier\(s\) \(2 live, 1 template\)/);
+      // ⏱ 2026-10-03 · lane feedback-intake: services/platform/src/routes/feedback.ts verifies an
+      // optional sign-in token with the kit's verifier, so it is a carrier (3 → 4, 2 → 3 live).
+      assert.match(out, /4 carrier\(s\) \(3 live, 1 template\)/);
     });
   });
 

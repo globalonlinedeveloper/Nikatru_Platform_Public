@@ -169,7 +169,7 @@ describe('assert-failfast-coverage: the real tree', () => {
 
   test('a gate job that declares an environment becomes deploy-type, and its follow-up is refused', () => {
     withTree(
-      (root) => editJob(root, 'ci.yml', 'sites', swapLine('    timeout-minutes: 10', ['    timeout-minutes: 10', '    environment: production'])),
+      (root) => editJob(root, 'ci.yml', 'sites', swapLine('    timeout-minutes: 20', ['    timeout-minutes: 20', '    environment: production'])),
       (r) => red(r, /job `ff-sites` follows `sites`, which FF-2 does not grade/),
     );
   });

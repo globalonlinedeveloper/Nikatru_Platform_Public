@@ -6113,6 +6113,8 @@ final Provider<core.EntitlementTransport> entitlementTransportProvider = X();
 final Provider<core.CancellationTransport> cancellationTransportProvider = X();
 // ⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING: lives in providers.dart on the real tree; the domain scan reads both files.
 final Provider<core.ContentReportTransport> contentReportTransportProvider = X();
+// ⏱ 2026-10-03 · lane feedback-intake: the "Report a problem" host, in providers.dart on the real tree.
+final Provider<FeedbackHost> feedbackHostProvider = X();
 final Provider<PurchaseRail> purchaseRailProvider = X();
 final Provider<EntitlementConvergence> entitlementConvergenceProvider = X();
 // [pipeline 11]E-6 The funnel rides the SAME recorder as every other event. A
@@ -8311,7 +8313,9 @@ const InitializationSettings settings = InitializationSettings(
       // `content-pack-consumed`, so the gap count moves by one.
       // 70 since 2026-09-30 (audit D28): the four offline providers, all ADMITTED
       // gaps, so the gap count below moves by four too.
-      assert.match(out, /tracked domain: 70 chassis behaviour\(s\)/);
+      // 71 since 2026-10-03 (lane feedback-intake): `feedbackHostProvider`, an
+      // ADMITTED gap, so the gap count below moves by one too.
+      assert.match(out, /tracked domain: 71 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -8355,7 +8359,8 @@ const InitializationSettings settings = InitializationSettings(
       // 18 since 2026-09-30: the four offline providers (audit D28), admitted with
       // their reason — the stamped offline_cache_test drives them; no CHASSIS
       // property does.
-      assert.match(out, /18 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // 19 since 2026-10-03: `feedbackHostProvider` (lane feedback-intake), admitted with its reason.
+      assert.match(out, /19 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);

@@ -257,8 +257,12 @@ function selfHosted(dir, { root = 'a' } = {}) {
     join(site, 'index.html'),
     `<html><head><link rel="canonical" href="${FIXTURE_ORIGIN}"></head><body>` +
       `<p data-policy-version="${FIXTURE_VERSION}">${FIXTURE_PROMISE}</p>` +
-      `${EMPTY_GRID}</body></html>\n`,
+      // ⏱ 2026-10-03 · lane a11y-statement: the shared chrome footer, which on a
+      // REQUIRED_LEGAL_ROOTS root must link the accessibility statement.
+      `${EMPTY_GRID}${FIXTURE_FOOTER}</body></html>\n`,
   );
+  // …and the statement itself, noindex like every page but the homepage here.
+  writeFileSync(join(site, 'accessibility.html'), realPage('Accessibility statement').replace('<html', '<meta name="robots" content="noindex"><html'));
   writeFixtureFile(
     dir,
     join(site, 'sitemap.xml'),
@@ -313,6 +317,8 @@ function writeShot(dir, root, { web = 'RIFF-web-copy', master = 'PNG-master', ca
 }
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
+/** The shared footer region tooling/sites/chrome.mjs splices into every page. */
+const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
 
 /** A policy page that clears the floor: an <h1> plus >1000 visible characters. */
@@ -1371,6 +1377,24 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
   // Mutation-proven against the real tree as well (6/6): removing the name from
   // terms.html, from privacy.html, burying it in an HTML comment, and emptying
   // MUST_NAME_SELLER each turn the real run red.
+  // ── lane a11y-statement: the statement exists, and every footer reaches it ──
+  test('🔴 a missing accessibility statement FAILS', () => {
+    const r = afterEdit('cf-no-a11y', (d) => rmSync(join(d, 'sites/nikatru/accessibility.html')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing sites\/nikatru\/accessibility\.html — the accessibility statement/);
+  });
+
+  test('🔴 a footer that does not link /accessibility FAILS', () => {
+    const r = afterEdit('cf-footer-a11y', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/accessibility">Accessibility</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link \/accessibility/);
+  });
+
+  test('a root with no chrome footer at all is COVERAGE LOST for that limb', () => {
+    const r = afterEdit('cf-no-footer', (d) => patch(d, 'sites/nikatru/index.html', '<!-- CHROME:footer -->', ''));
+    assert.match(r.out, /COVERAGE LOST — no page under sites\/nikatru carries the chrome footer/);
+  });
+
   test('terms.html that names only the brand FAILS', () => {
     const r = afterEdit('cf-noseller-terms', (d) =>
       patch(d, 'sites/nikatru/terms.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
