@@ -22,3 +22,6 @@
   Cache-Control: public, max-age=0, must-revalidate
 /*.css
   Cache-Control: public, max-age=0, must-revalidate
+# No script ships here; the class is declared so one arriving is never left to a default.
+/*.js
+  Cache-Control: public, max-age=0, must-revalidate

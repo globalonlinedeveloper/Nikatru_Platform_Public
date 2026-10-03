@@ -570,7 +570,7 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from 
 
 | action | owner | used by |
 |---|---|---|
-| `cloudflare/wrangler-action` | third-party | `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `migrate-platform-db.yml`, `ops-watch.yml` |
+| `cloudflare/wrangler-action` | third-party | `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `migrate-platform-db.yml` |
 | `nanasess/setup-chromedriver` | third-party | `e2e.yml`, `store-screenshots.yml` |
 | `renovatebot/github-action` | third-party | `renovate.yml` |
 | `subosito/flutter-action` | third-party | `.github/actions/setup-flutter/action.yml` |
@@ -839,7 +839,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/mutation-proofs.yml` | Mutation proofs | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 6 |
-| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 15 |
+| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 14 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |

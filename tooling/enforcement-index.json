@@ -903,7 +903,6 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/migrate-platform-db.yml#migrate",
-      ".github/workflows/ops-watch.yml#status-page",
       ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
@@ -1128,7 +1127,6 @@
       ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/extensions.yml#release",
-      ".github/workflows/ops-watch.yml#status-page",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
@@ -3363,7 +3361,6 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
-      ".github/workflows/ops-watch.yml#status-page",
       ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
@@ -4266,8 +4263,7 @@
     "invokedBy": [
       ".github/workflows/deploy-web.yml#status-site",
       ".github/workflows/ops-watch.yml#digest",
-      ".github/workflows/ops-watch.yml#status",
-      ".github/workflows/ops-watch.yml#status-page"
+      ".github/workflows/ops-watch.yml#status"
     ],
     "kind": "script",
     "ref": "tooling/ops/status.mjs",
@@ -4741,8 +4737,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
-      ".github/workflows/deploy-web.yml#status-site",
-      ".github/workflows/ops-watch.yml#status-page"
+      ".github/workflows/deploy-web.yml#status-site"
     ],
     "kind": "script",
     "ref": "tooling/status/build-status.mjs",

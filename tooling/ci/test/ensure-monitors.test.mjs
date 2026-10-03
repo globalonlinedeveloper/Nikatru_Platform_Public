@@ -139,7 +139,12 @@ describe('monitor-register.mjs — the canary list is the host rows plus `expect
   test('R5 a host row with `monitor: null` is pending, never an expected id', () => {
     const r = expectedMonitors(JSON.parse(withPending()), realLedger());
     assert.deepEqual(r.problems, []);
-    assert.deepEqual(r.pending.map((p) => [p.hostname, p.name]), [['x-api.nikatru.com', 'x-api health']]);
+    // ⏱ 2026-10-03 · status-page: the real register carries its own pending row
+    // (status.nikatru.com, no `gap.create` until the lead's first deploy), so the
+    // appended row is judged as what it ADDS to the real register's pending set.
+    const real = expectedMonitors(JSON.parse(realRegister()), realLedger()).pending.map((p) => [p.hostname, p.name]);
+    assert.deepEqual(real, [['status.nikatru.com', null]]);
+    assert.deepEqual(r.pending.map((p) => [p.hostname, p.name]), [...real, ['x-api.nikatru.com', 'x-api health']]);
   });
 
   test('R6 a row is written as TEXT: every other line of the hand-formatted file survives', () => {
@@ -420,7 +425,12 @@ describe('verify-alarm-chains.mjs — the canary reads the monitor register', ()
     try {
       const { code, out } = await canary(opsTree(), g.url);
       assert.equal(code, 0, out);
-      assert.doesNotMatch(out, /COVERAGE LOST|ONE PLACE PER ID|EXPECTED BUT ABSENT/);
+      assert.doesNotMatch(out, /COVERAGE LOST|ONE PLACE PER ID/);
+      // ⏱ 2026-10-03 · status-page: the real register's one pending row
+      // (status.nikatru.com, monitored after the lead's first deploy) is the
+      // only EXPECTED BUT ABSENT line a green tree prints.
+      const absent = out.split('\n').filter((l) => l.includes('EXPECTED BUT ABSENT'));
+      assert.deepEqual(absent.map((l) => l.match(/ABSENT: (\S+)/)?.[1]), ['status.nikatru.com'], out);
     } finally {
       await g.close();
     }

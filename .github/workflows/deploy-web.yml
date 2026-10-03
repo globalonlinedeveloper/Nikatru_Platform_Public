@@ -541,7 +541,8 @@ jobs:
   # variable STATUS_PAGE_LIVE=true (lead steps; nothing here creates either). It never ships the committed
   # "no reading yet" copy over a live picture: it builds from tooling/ops/status.mjs's own verdicts (the
   # probe ops-watch runs; unauthenticated GETs, no secret) and the live status.json, so a page change
-  # carries the current states. ops-watch.yml's `status-page` job publishes state changes between pushes.
+  # carries the current states. NOTHING publishes between pushes yet: a scheduled publisher is the open
+  # half of the lane (see its PR), and the page is not to go live until one lands.
   status-site:
     name: Deploy the status page to Cloudflare Pages (nikatru-status)
     runs-on: ubuntu-24.04

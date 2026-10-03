@@ -1485,7 +1485,8 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
   // row, which takes NO published-id flag (record-deployment.mjs refuses one at run time).
   test('THE REAL TREE: deploy-web.yml passes the Pages deployment id, through env:', () => {
     const steps = recorderSteps('deploy-web.yml');
-    assert.deepEqual(steps.map((s) => s.job), ['deploy-web', 'site'], `deploy-web.yml records ${steps.length} time(s)`);
+    // ⏱ 2026-10-03 · status-page: + `status-site`, which records status.nikatru.com.
+    assert.deepEqual(steps.map((s) => s.job), ['deploy-web', 'site', 'status-site'], `deploy-web.yml records ${steps.length} time(s)`);
     const { step } = steps[0];
     assert.equal(step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
     assert.match(step.run.text, /--pages-deployment-id "\$PAGES_DEPLOYMENT_ID"(\s|$)/);
@@ -1499,6 +1500,15 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
     assert.equal(site.step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
     assert.doesNotMatch(site.step.run.text, /--(worker-version-id|wrangler-output-env)\b/);
     assert.equal(resolveEnvironment(REAL_REGISTER, 'nikatru-site')?.channel?.kind, 'site');
+  });
+
+  // ⏱ 2026-10-03 · status-page: deploy-web's `status-site` job records the status site's Pages deployment.
+  test('THE REAL TREE: the status site is recorded with the Pages deployment id its deploy step gave, through env:', () => {
+    const rec = recorderSteps('deploy-web.yml').find((s) => s.job === 'status-site');
+    assert.ok(rec, 'deploy-web.yml has no recording `status-site` job');
+    assert.match(rec.step.run.text, /record-deployment\.mjs status-site https:\/\/status\.nikatru\.com --pages-deployment-id "\$PAGES_DEPLOYMENT_ID"\s*$/);
+    assert.equal(rec.step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
+    assert.equal(resolveEnvironment(REAL_REGISTER, 'status-site')?.channel?.kind, 'site');
   });
 
   test('THE REAL TREE: each deploy-workers.yml job passes its deploy output, through env:', () => {

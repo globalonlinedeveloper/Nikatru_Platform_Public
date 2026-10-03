@@ -8,6 +8,10 @@
   ],
   "outOfScope": [
     {
+      "site": "sites/status",
+      "why": "⏱ 2026-10-03 · status-page. A separate origin (status.nikatru.com, its own Pages project nikatru-status) holding no app session and no script; its own _headers carries default-src 'none' with only the same-origin stylesheet, asserted by tooling/ci/test/status-page.test.mjs."
+    },
+    {
       "site": "sites/rajasekarselvam",
       "why": "A separate origin (rajasekarselvam.com) holding no app session; its policy carries script-src 'unsafe-inline' by design and rv2-security-005 scopes this limb to nikatru.com only."
     }
