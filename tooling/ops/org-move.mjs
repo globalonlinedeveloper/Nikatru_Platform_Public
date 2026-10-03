@@ -158,7 +158,7 @@ export async function run(opts, deps = {}) {
 
   // M2 — in the tree: nothing types the org but the register; the move commit's edits
   const g = spawn([join(root, ...NAME_GUARD.split('/')), root]);
-  const first = `${g.stdout ?? ''}${g.stderr ?? ''}`.split(/\r?\n/).find((l) => /^✗|code-host limbs/.test(l)) ?? '(no output)';
+  const first = `${g.stdout ?? ''}${g.stderr ?? ''}`.split(/\r?\n/).find((l) => l.startsWith('✗') || l.includes('code-host limbs')) ?? '(no output)';
   add(2, 'in-tree', g.status === 0 ? 'PASS' : g.status === 1 ? 'FAIL' : 'LOST', `node ${NAME_GUARD} exit ${g.status}: ${first.trim().slice(0, 240)}`);
   let dead = null;
   try { dead = readJson(root, DEAD_REPOS); } catch { dead = null; }
