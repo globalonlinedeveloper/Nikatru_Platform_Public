@@ -256,7 +256,7 @@ function world({
   iosAlpha = false,
   adaptive = true,
   adaptiveRef = '@drawable/ic_launcher_foreground',
-  brickConfig = 'assets/icon/app_icon.png',
+  brickConfig = 'assets/icon/app_icon_1024.png',
   brickArt = true,
   emptyStockIcons = false,
   flutterFails = false,

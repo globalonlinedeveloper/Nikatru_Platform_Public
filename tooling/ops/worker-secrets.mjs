@@ -247,7 +247,6 @@ async function cf(c, method, path, body) {
   return { status: res.status, ok: res.ok && json?.success !== false, json, errors: (json?.errors ?? []).map((e) => `${e.code} ${e.message}`).join('; ') };
 }
 
-/** Live secret NAMES per script; a script Cloudflare does not know is `null` (not deployed), any other failure throws. */
 /** Pages of one Worker's secret listing read at most; past that the listing is refused, never truncated. */
 export const MAX_LIST_PAGES = 20;
 

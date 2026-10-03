@@ -458,11 +458,13 @@ describe('the guard says YES on the tree as it is', () => {
     // Unswept stays 18. Read off the guard's own closing line.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +3 design_system surfaces (MonthGrid, DateBadge, PermissionPrimingView) and +1 chassis (SettingsSection), all swept: +2 files, +5 cases.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): +5 design_system surfaces (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider, AuthPasswordChecklist), each arriving swept, and AuthField swept for the first time, by a11y_auth_frame_test.dart (+1 file, +1 case).
-    assert.match(out, /116 reachable surface\(s\); 86 swept by 22 a11y test file\(s\) across 225 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-02 club-st-singles T16 XP-03: +2 app_lock surfaces (AppLockGate, AppLockScreen), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-11), on top of main: the sixteen mounted design_system surfaces arrived swept by a11y_mounted_surfaces_test.dart + a11y_two_pane_test.dart (+2 files, +12 cases): 81 → 97 swept, 20 → 22 files, 220 → 232 cases. Read off the guard's own closing line.
+    assert.match(out, /116 reachable surface\(s\); 102 swept by 24 a11y test file\(s\) across 237 case\(s\)/ /* ⏱ 2026-10-03 club-st-singles merged over main's P39: base 111/81/20/220 + this PR's +5 surfaces, +5 swept, +2 files, +5 cases + main's +16 swept, +2 files, +12 cases; read off the guard's own closing line */ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface and case, +2 chassis surfaces, +1 chassis file, +2 chassis cases */ /* ⏱ 2026-10-02 club-st-singles T16 XP-03: +2 app_lock surfaces (AppLockGate, AppLockScreen), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
     assert.match(out, /12 swept where they delegate to/);
     // ⏱ 2026-09-29 · train ST-D10: 18 → 17 — AuthField, on the printed list since 2026-09-05, is swept.
     // ⏱ 2026-10-01 · train st-entry: 17 → 18 — SwallowSystemBack, which paints nothing, is printed unswept.
-    assert.match(out, /18 unswept and PRINTED/);
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-11): 18 → 2 — NavShell, which nothing mounts, and SwallowSystemBack, which paints nothing.
+    assert.match(out, /2 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
     // day this guard was written until 2026-08-13, and a family that has never
     // been non-zero is a limb nothing has exercised — so the number that proves
@@ -636,15 +638,22 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 13 of 31 → 17 of 35 — the detail components arrived swept.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 20 of 38 → 26 of 43 — the auth frame's five parts arrived swept, and AuthField with them.
     // ⏱ 2026-10-01 · train st-entry: 26 of 43 → 26 of 44 — SwallowSystemBack joined the root unswept (it paints nothing).
-    assert.match(out, /packages\/design_system: 26 of 44 reachable surface\(s\) carry an a11y sweep/);
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-11): 26 of 44 → 42 of 44 — the sixteen mounted surfaces arrived swept.
+    assert.match(out, /packages\/design_system: 42 of 44 reachable surface\(s\) carry an a11y sweep/);
     // And the gap in each is PRINTED, by name, not merely counted.
     // ⏱ 2026-09-23 (chassis home): the brick's HomeScreen now delegates into
     // the swept WelcomeView, so it is judged THERE and the brick prints no gap.
     assert.match(out, /HomeScreen .* → packages\/chassis_screens\/lib\/home\/home_screen\.dart — SWEPT there/);
     assert.equal(printedUnswept(out, BRICK).length, 0, out);
     assert.ok(printedUnswept(out, DS).includes('NavShell'), out);
-    assert.ok(printedUnswept(out, DS).includes('DestructiveConfirmDialog'), out);
-    assert.ok(printedUnswept(out, DS).includes('TwoPane'), out);
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): DestructiveConfirmDialog and
+    // TwoPane were the two other names pinned on this list; both are swept now
+    // (a11y_mounted_surfaces_test.dart), so the pin is turned round — they must
+    // NOT be printed, and NavShell, which nothing mounts, is the one left.
+    assert.ok(!printedUnswept(out, DS).includes('DestructiveConfirmDialog'), out);
+    assert.ok(!printedUnswept(out, DS).includes('TwoPane'), out);
+    // ⏱ 2026-10-02 · on top of main: SwallowSystemBack (st-entry) stays printed — it paints nothing.
+    assert.deepEqual(printedUnswept(out, DS), ['NavShell', 'SwallowSystemBack'], out);
   });
 
   test('M11a · the brick DECLARES itself and its app directory is gone — COVERAGE LOST', () => {
@@ -714,9 +723,19 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
 
   test("M11f · one design_system widget file leaves — that root's surfaces floor fires", () => {
     const root = treeWithNewRoots();
-    rmSync(join(root, `${DS}/lib/src/widgets/two_pane.dart`));
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): two_pane.dart → nav_shell.dart.
+    // TwoPane and TwoPanePlaceholder joined this root's SWEPT_FLOOR, so removing
+    // their file now ALSO strands two floor keys (FLOOR OVER NOTHING, exit 1)
+    // — the M11g story again. nav_shell.dart carries the one surface this root
+    // still prints as unswept, so its removal fires the surfaces floor ALONE.
+    rmSync(join(root, `${DS}/lib/src/widgets/nav_shell.dart`));
     const { code, out } = run(root);
     assert.equal(code, 2, out);
+    assert.equal(
+      out.split('\n').filter((l) => l.startsWith('FAIL ')).length,
+      1,
+      `the design_system surfaces floor did not fire alone:\n${out}`,
+    );
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 — the foundation
     // components raised the floor; two_pane.dart still carries two surfaces.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: 33 of 35 → 36 of 38.
@@ -726,7 +745,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the floor.
     // ⏱ 2026-10-01 · train st-entry: 41 of 43 → 42 of 44 — SwallowSystemBack raised the floor.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 42 reachable surface\(s\).*floor is 44/s);
+    // ⏱ 2026-10-02 · train P39: the case now removes nav_shell.dart (one surface), not two_pane.dart (two): 44 → 43 against the floor of 44.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 43 reachable surface\(s\).*floor is 44/s);
   });
 
   // ── M11g · THE CHASSIS FLOOR, PINNED BY NUMBER ────────────────────────────
@@ -852,7 +872,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 19 of 32 → 19 of 36.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 19 of 39 → 18 of 44 — five swept parts joined the root and AuthField left the unswept list.
     // ⏱ 2026-10-01 · train st-entry: 18 of 44 → 19 of 45 — SwallowSystemBack joined the unswept list.
-    assert.match(out, /19 of 45 reachable surface\(s\) in packages\/design_system/);
+    // ⏱ 2026-10-02 · train P39 (SYN-X1 C-11): 19 of 45 → 3 of 45 — NavShell, SwallowSystemBack and the probe.
+    assert.match(out, /3 of 45 reachable surface\(s\) in packages\/design_system/);
   });
 });
 

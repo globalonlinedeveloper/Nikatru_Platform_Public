@@ -919,6 +919,33 @@ const WIDTH_EXEMPT = new Map([
 const APP_WIDTH_TEST = /^(?:width_.*_test|responsive_width_test)\.dart$/;
 const REQUIRED_WIDTHS = ['kPhone', 'kTablet', 'kDesktop'];
 
+// ── ALL FIVE WINDOW CLASSES, WHERE THEY HAVE BEEN EARNED ────────────────────
+// ⏱ 2026-10-01 · train P39 (SYN-X1 C-17). Material declares FIVE window
+// classes (compact, medium, expanded, large, extra-large) and the default
+// above requires three: no width test was required to pump the EXPANDED class
+// (840–1199), where every two-pane and grid layout in the app first branches,
+// or the EXTRA-LARGE one, where a cap is the only thing between a row and a
+// 1920 px display. Measured on the base: 15 of the app's 18 measured surfaces
+// never pumped kExpanded (it was not declared) and 6 never pumped kWide.
+//
+// The app root — the one that SHIPS — now declares kExpanded in its harness
+// and every one of its surfaces pumps all five; that is enforced here. The
+// other roots stay on the default three for now and say so on every run (the
+// ⬜ line below), because their harnesses declare neither kExpanded
+// (chassis_screens, design_system, brick) nor kWide (chassis_screens) yet. A
+// root joins this map in the change that declares both and pumps them.
+//
+// ⚠️ "kWide is meaningless for a pane-capped surface" (the (F) note below)
+// was true of an EQUALITY that could not distinguish two caps, not of the
+// width: a pane cap asserted AT 1920 still reds when the cap is deleted, so it
+// is required here rather than argued away.
+const REQUIRED_WIDTHS_BY_ROOT = new Map([
+  ['apps/subscriptiontracker', ['kPhone', 'kTablet', 'kExpanded', 'kDesktop', 'kWide']],
+]);
+const ALL_FIVE_CLASSES = ['kPhone', 'kTablet', 'kExpanded', 'kDesktop', 'kWide'];
+/** The window classes required of every surface in [label]'s root. */
+const requiredWidthsFor = (label) => REQUIRED_WIDTHS_BY_ROOT.get(label) ?? REQUIRED_WIDTHS;
+
 // ── SHARED PARSE HELPERS ───────────────────────────────────────────────────
 
 const surfaceCache = new Map();
@@ -1569,14 +1596,27 @@ for (const a of analyses) {
   // (F) WHICH WINDOWS THE MEASUREMENT ACTUALLY PUMPS
   //
   // The required widths are the harness's own named window classes — [kPhone],
-  // [kTablet], [kDesktop]. Not [kWide]: 1920 is the case that can go red for a
-  // `kMaxBodyWidth` screen and is meaningless for one capped at `pane`, so
-  // requiring it would force an assertion that cannot fail onto half the
-  // domain. The three required ones are the CLASSES a layout branches on, and a
-  // surface unmeasured in one of them has no width decision there whatever its
-  // file count says.
+  // [kTablet], [kDesktop] by default. ~~Not [kWide]: 1920 is the case that can
+  // go red for a `kMaxBodyWidth` screen and is meaningless for one capped at
+  // `pane`, so requiring it would force an assertion that cannot fail onto half
+  // the domain.~~ ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): RETIRED for the app
+  // root, which requires all five (REQUIRED_WIDTHS_BY_ROOT). A pane cap
+  // asserted AT 1920 reds the day the cap is deleted, so the case can fail; what
+  // could not fail was an inequality against kMaxBodyWidth, and the app's 1920
+  // cases assert the binding cap by equality. The required ones are the
+  // CLASSES a layout branches on, and a surface unmeasured in one of them has
+  // no width decision there whatever its file count says.
   // ═══════════════════════════════════════════════════════════════════════
-  const missingClasses = REQUIRED_WIDTHS.filter((w) => !a.windowClasses.has(w));
+  const requiredWidths = requiredWidthsFor(label);
+  const notYetRequired = ALL_FIVE_CLASSES.filter((w) => !requiredWidths.includes(w));
+  if (notYetRequired.length) {
+    notes.push(
+      `⬜ ${label} is required at ${requiredWidths.join('/')} only — ${notYetRequired.join('/')} ` +
+        'are NOT yet required of its surfaces (SYN-X1 C-17: declare them in its harness, pump them, and add ' +
+        'the root to REQUIRED_WIDTHS_BY_ROOT in the same change).',
+    );
+  }
+  const missingClasses = requiredWidths.filter((w) => !a.windowClasses.has(w));
   if (a.windowClasses.size === 0) {
     // 🔴 PRINTED, AND FATAL ONLY WHERE IT WAS EARNED. For subscriptiontracker the harness is
     // the vocabulary and losing it is COVERAGE LOST (R5). For a root that has
@@ -1586,7 +1626,7 @@ for (const a of analyses) {
     // one that passed.
     const line =
       `\`${label}\` declares NO \`const Size k… = Size(w, h)\` window class, in ${a.harnessRel} or ` +
-      `anywhere in its width corpus, so the ${REQUIRED_WIDTHS.join('/')} requirement was NOT APPLIED to ` +
+      `anywhere in its width corpus, so the ${requiredWidths.join('/')} requirement was NOT APPLIED to ` +
       'any of its surfaces. Coverage there means "some case pumps this widget at some size", which is ' +
       'weaker than what every other root gets.';
     if (floor && floor.widthTestFiles > 0 && a.testFiles.length > 0 && floor.enforce) {
@@ -1621,7 +1661,7 @@ for (const a of analyses) {
       for (const name of a.covered.get(key)) for (const w of a.widthsPumpedBy(name)) pumped.add(w);
       const exempt = WIDTH_EXEMPT.get(key) ?? new Map();
 
-      for (const windowClass of REQUIRED_WIDTHS) {
+      for (const windowClass of requiredWidths) {
         const width = a.windowClasses.get(windowClass);
         if (width === undefined) continue; // already reported above
         if (pumped.has(width)) continue;
@@ -1651,7 +1691,7 @@ for (const a of analyses) {
     if (a.problems.length === 0 && enforce) {
       ok(
         `${label}: every measured surface is pumped at ` +
-          `${REQUIRED_WIDTHS.map((w) => `${w} (${a.windowClasses.get(w)})`).join(', ')}` +
+          `${requiredWidths.map((w) => `${w} (${a.windowClasses.get(w)})`).join(', ')}` +
           `${[...WIDTH_EXEMPT.keys()].some((k) => k.startsWith(`${label}/`)) ? ' — argued exemption(s) printed below' : ''}` +
           ` (window classes read from ${a.windowSource})`,
       );

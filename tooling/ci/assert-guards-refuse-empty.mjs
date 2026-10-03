@@ -112,7 +112,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { codeMask, NON_CODE } from './text-reductions.mjs';
-import { parseResolvedWorkflows, workflowSteps, refusalText, shellSegments, commandAt, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseResolvedWorkflows, workflowSteps, githubEnvWrites, refusalText, shellSegments, commandAt, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /* The root is read AFTER the fixture flag is parsed, a few lines below, so that a
@@ -587,11 +587,39 @@ const PRELOAD_RE = new RegExp(
   `--import(?:=|\\s+)['"]?(?:\\.{1,2}/)*(${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)(?![A-Za-z0-9._-])`,
   'g',
 );
+// ⏱ ADDED 2026-10-02 — A PRELOAD NAMED BY A VARIABLE. Every workflow now writes
+// `node --import "$SPAWN_CEILING"`: a relative path resolves against the step's cwd
+// and left the checkout in PR #1160 (run 37006580364). The variable is an absolute
+// file URL that .github/actions/setup-node writes to $GITHUB_ENV, so the edge is
+// still DERIVED: `--import "$VAR"` reaches the guard-home file(s) named, quoted and
+// whole, in the run text of the step of the SAME job that writes VAR to
+// $GITHUB_ENV. No such step, or one that names no home file, is no edge — which
+// reports the preload dead, loudly.
+const PRELOAD_VAR_RE = /--import(?:=|\s+)(['"]?)\$\{?([A-Z_][A-Z0-9_]*)\}?\1(?=\s|$)/g;
+const HOME_FILE_RE = new RegExp(
+  `['"](${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)['"]`,
+  'g',
+);
+/** The guard-home files a step's run text names, quoted: what a GITHUB_ENV write may point at. */
+const homeFilesIn = (runText) => [...runText.matchAll(HOME_FILE_RE)].map((m) => `${m[1]}/${m[2]}`);
+/** VAR → the home files the step writing VAR to $GITHUB_ENV names, for one job. */
+const preloadVarsOf = (job) => {
+  const steps = workflowSteps(job);
+  const vars = new Map();
+  for (const w of githubEnvWrites(job)) {
+    const step = steps.find((s) => s.index === w.stepIndex);
+    vars.set(w.name, [...(vars.get(w.name) ?? []), ...homeFilesIn(step?.run?.text ?? '')]);
+  }
+  return vars;
+};
 /** The preloads a step's `run:` text names, from its `node` segments only. */
-const preloadsFrom = (runText) =>
+const preloadsFrom = (runText, vars = new Map()) =>
   shellSegments(runText)
     .filter((seg) => commandAt(seg, 'node(?=\\s)'))
-    .flatMap((seg) => [...seg.matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`));
+    .flatMap((seg) => [
+      ...[...seg.matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`),
+      ...[...seg.matchAll(PRELOAD_VAR_RE)].flatMap((m) => vars.get(m[2]) ?? []),
+    ]);
 
 // The matcher's own negative test, on every run, like the import canaries above.
 // Assembled from halves so no whole path to a file that is not on disk appears
@@ -603,18 +631,28 @@ const canaryPreloadRun = preloadsFrom(
 const canaryPreloadEcho = preloadsFrom(`echo "node --import ./tooling/scripts/${CANARY_PRELOAD_NAME} --test x.test.mjs"`);
 const canaryPreloadForeign = preloadsFrom(`node --import ./packages/lib/${CANARY_PRELOAD_NAME} --test x.test.mjs`);
 const canaryPreloadSuffix = preloadsFrom(`node --import ./tooling/scripts/${CANARY_PRELOAD_NAME}.bak --test x.test.mjs`);
+const canaryVars = new Map([['CANARY_PRELOAD', homeFilesIn(`node -p "require('path').resolve(process.env.GITHUB_WORKSPACE, 'tooling/scripts/${CANARY_PRELOAD_NAME}')"`)]]);
+const canaryPreloadVar = preloadsFrom('node --import "$CANARY_PRELOAD" --test-timeout=600000 --test x.test.mjs', canaryVars);
+const canaryPreloadVarEcho = preloadsFrom('echo "node --import $CANARY_PRELOAD x.mjs"', canaryVars);
+const canaryPreloadVarUnset = preloadsFrom('node --import "$OTHER_PRELOAD" x.mjs', canaryVars);
 if (
   canaryPreloadRun.length !== 1 ||
   canaryPreloadRun[0] !== `tooling/scripts/${CANARY_PRELOAD_NAME}` ||
   canaryPreloadEcho.length !== 0 ||
   canaryPreloadForeign.length !== 0 ||
-  canaryPreloadSuffix.length !== 0
+  canaryPreloadSuffix.length !== 0 ||
+  canaryPreloadVar.length !== 1 ||
+  canaryPreloadVar[0] !== `tooling/scripts/${CANARY_PRELOAD_NAME}` ||
+  canaryPreloadVarEcho.length !== 0 ||
+  canaryPreloadVarUnset.length !== 0
 ) {
   coverageLost([
     'the preload matcher no longer reads `node --import <guard-home file>` as an edge, or reads one it must not.',
     `A node run segment yielded [${canaryPreloadRun.join(', ')}] (must be exactly tooling/scripts/${CANARY_PRELOAD_NAME});`,
     `the same text inside an echo yielded [${canaryPreloadEcho.join(', ')}], a preload from outside the guard homes`,
     `[${canaryPreloadForeign.join(', ')}], and a \`.mjs.bak\` name [${canaryPreloadSuffix.join(', ')}] (all three must be empty).`,
+    `\`--import "$CANARY_PRELOAD"\`, a variable a GITHUB_ENV step points at the canary, yielded [${canaryPreloadVar.join(', ')}] (must be`,
+    `exactly the canary); inside an echo [${canaryPreloadVarEcho.join(', ')}] and an unset variable [${canaryPreloadVarUnset.join(', ')}] (both must be empty).`,
   ]);
 }
 
@@ -630,10 +668,11 @@ const preloaded = new Set();
 let runStepsRead = 0;
 for (const wf of resolvedWorkflows.workflows) {
   for (const job of wf.jobs.values()) {
+    const vars = preloadVarsOf(job);
     for (const step of workflowSteps(job)) {
       if (!step.run) continue;
       runStepsRead++;
-      for (const target of preloadsFrom(step.run.text)) {
+      for (const target of preloadsFrom(step.run.text, vars)) {
         preloaded.add(target);
         importedBy.set(target, (importedBy.get(target) ?? 0) + 1);
       }

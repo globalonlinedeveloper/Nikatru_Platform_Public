@@ -233,7 +233,9 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /apps\/subscriptiontracker: 22 surface\(s\) reachable, 22 measured — the two sets are EQUAL/ /* ⏱ 2026-10-02 club-st-singles SE-04/EN-21: +1 app surface (showConnectedAccountsSheet); +2 chassis surfaces (EmailCodeForm, ConnectedAccountsView) and +3 chassis width files */ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
     assert.match(
       out,
-      /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/,
+      // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): FIVE window classes for the app root —
+      // kExpanded declared in the harness, kWide required, every surface pumps both.
+      /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kExpanded \(1024\), kDesktop \(1280\), kWide \(1920\)/,
     );
     // The two report-mode roots, and the shape of what they report.
     // ⏱ 2026-09-23 (chassis home): the brick's printed list reached ZERO —
@@ -308,7 +310,8 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     const root = tree();
     // The import stays, so provenance survives and the ONLY thing that changed
     // is whether any case pumps the screen. That is the axis under test.
-    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
+    // ⏱ 2026-10-02 · train P39: 4 → 5 — the expanded/extra-large case constructs it once more.
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 5 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
@@ -361,7 +364,8 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     // Report mode is per root, dated and opt-in — never a default a new root
     // falls into. One tree, one run, both behaviours side by side.
     const root = treeWithNewRoots();
-    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
+    // ⏱ 2026-10-02 · train P39: 4 → 5 — the expanded/extra-large case constructs it once more.
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 5 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
@@ -408,7 +412,8 @@ describe('the widths a case actually pumps', () => {
     // constants — kJustBelowLarge, kAtSplit, kShell. So the set is not empty;
     // it simply no longer contains the three that are required, which is a
     // requirement naming a constant that does not exist.
-    assert.match(out, /FAIL `kPhone`, `kTablet`, `kDesktop` are required of every responsive surface/);
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the app root requires all five classes.
+    assert.match(out, /FAIL `kPhone`, `kTablet`, `kExpanded`, `kDesktop`, `kWide` are required of every responsive surface/);
     assert.match(out, /ranges over nothing and reports clean/);
   });
 });
@@ -559,6 +564,10 @@ describe('a report-mode root can get better, never quietly worse', () => {
   test('R10b · one design_system width case is deleted — the same backstop fires there', () => {
     const root = treeWithNewRoots();
     rmSync(join(root, `${DS}/test/two_pane_test.dart`));
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): a11y_two_pane_test.dart pins a
+    // 1280 window to sweep the placeholder column, so it measures TwoPane's
+    // width too; the deletion takes both, or nothing was deleted.
+    rmSync(join(root, `${DS}/test/a11y_two_pane_test.dart`));
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     assert.match(
