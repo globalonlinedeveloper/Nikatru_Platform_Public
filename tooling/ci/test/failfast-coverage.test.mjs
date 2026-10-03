@@ -278,7 +278,8 @@ describe('assert-failfast-coverage: the real tree', () => {
   });
 
   test('C5 — an aggregator that stops running always() is no longer excused', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'ci-gate', swapLine('    if: always()', '    if: success()')), (r) => {
+    // ⏱ 2026-10-03 — ci-gate's line carries the draft conjunct (assert-green-means-ran A10); the mutant keeps it and drops always().
+    withTree((root) => editJob(root, 'ci.yml', 'ci-gate', swapLine('    if: always() && github.event.pull_request.draft != true', '    if: success() && github.event.pull_request.draft != true')), (r) => {
       red(r, /EXCEPTION \.github\/workflows\/ci\.yml#ci-gate \(aggregator\) no longer holds/);
     });
   });
