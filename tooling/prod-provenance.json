@@ -312,6 +312,14 @@
         "feedback_mail_suppressed": {
           "resolver": "exempt",
           "reason": "⏱ 2026-10-03 · lane feedback-triage. NO app_version COLUMN AND NO OTHER MARKER: 0027_feedback.sql gives this table `address_hash` and `created_at` — the SHA-256 of an address that pressed unsubscribe on a feedback mail, and when (services/platform/src/feedback/notify.ts). No row names a build, an app or a money world, so it is exempt; a marker column added later re-opens this rule."
+        },
+        "privacy_requests": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane dpdp-rights. NO BUILD MARKER, ON PURPOSE: a DPDP rights request is accepted from ANY surface a person can reach — the app's \"Your privacy rights\" screen in any build, and nikatru.com/privacy-rights through its Pages Function — because a statutory right cannot be refused for the build it was asked from. 0031_privacy_requests.sql gives this table `id`, `idempotency_key`, `user_id`, `app_id`, `surface`, `request_type`, the request's clocks and status; no column names a released build or a money world a resolver could check, so it is exempt; a marker column added later re-opens this rule. Every column, named: `id`, `idempotency_key`, `user_id`, `app_id`, `surface`, `request_type`, `details`, `contact_email`, `locale`, `status`, `created_at`, `verified_at`, `ack_due_at`, `resolve_due_at`, `statutory_due_at`, `acknowledged_at`, `resolved_at`, `status_at`, `status_history`, `verify_hash`, `paged_at`, `purge_at`."
+        },
+        "privacy_nominees": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-03 · lane dpdp-rights. NO app_version COLUMN AND NO OTHER MARKER: 0031_privacy_requests.sql gives this table `user_id`, `name`, `email` and two timestamps — the one nominee an account names (DPDP s.14), written only by PUT /v1/account/nominee. Nothing about a build, an app or a money world, so it is exempt; a marker column added later re-opens this rule. Every column, named: `user_id`, `name`, `email`, `created_at`, `updated_at`."
         }
       }
     },

@@ -926,7 +926,6 @@ const WIRE_CONTRACTS = [
     serverOnly: {
       generatedAt: 'when the file was made; the client saves the file as the server sent it and reads only `schema`.',
       subject: 'the account the export is about, for the person reading the file.',
-      install: 'the install id whose pseudonymous rows were included, or null.',
       note: 'a sentence for the person reading the file.',
       stores: 'the data itself, `<db>.<table>` -> rows; saved whole, never interpreted by the app.',
     },

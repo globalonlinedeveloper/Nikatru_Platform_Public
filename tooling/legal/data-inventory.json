@@ -1213,8 +1213,9 @@
       },
       "note": "🔴 KEYED ON anon_id, NOT ON A USER. That is deliberate (nothing writes an anon_id → user_id mapping, and the route's own header says nothing ever may) and it has a consequence stage 8 records rather than hides: 'delete my account' provably cannot purge these rows, because there is nothing in them that identifies the account. Either the erasure promise narrows or the client sends its anon_id on erasure — a wording decision, and it belongs in the same version bump as the other O-3 corrections.",
       "export": {
-        "by": "anon_id",
-        "reader": "services/platform/src/routes/account-export.ts"
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-export.ts",
+        "reason": "PSEUDONYMOUS BY DESIGN ([ADR 020]): these rows are keyed on an install id, and no mapping from an account to an install exists or may be created — not even inside one export request (tooling/ci/assert-pseudonymity-firewall.mjs). So the server cannot say which rows are this person's, and an access request is answered with that fact; the app's own Settings › Privacy shows what the install sends, and erasing the install's data stays the app's 'Delete my analytics data'."
       },
       "notice": {
         "item": "Usage statistics, only if you allow them: which features are used and when, with a random install identifier",
@@ -1255,8 +1256,9 @@
       },
       "note": "Derived entirely from `events` and disclosed by the same sentence — it holds no category of information the raw table did not already hold, and strictly fewer. The reason it is listed separately rather than folded into the events row is that its LIFETIME differs: 1100 days against 400, so a reader asking 'what is still held about me after two years' gets the right answer only if this row exists.",
       "export": {
-        "by": "anon_id",
-        "reader": "services/platform/src/routes/account-export.ts"
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-export.ts",
+        "reason": "PSEUDONYMOUS BY DESIGN ([ADR 020]): these rows are keyed on an install id, and no mapping from an account to an install exists or may be created — not even inside one export request (tooling/ci/assert-pseudonymity-firewall.mjs). So the server cannot say which rows are this person's, and an access request is answered with that fact; the app's own Settings › Privacy shows what the install sends, and erasing the install's data stays the app's 'Delete my analytics data'."
       },
       "notice": {
         "item": "Usage statistics, only if you allow them: which features are used and when, with a random install identifier",
@@ -1315,8 +1317,9 @@
       },
       "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes.",
       "export": {
-        "by": "anon_id",
-        "reader": "services/platform/src/routes/account-export.ts"
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-export.ts",
+        "reason": "PSEUDONYMOUS BY DESIGN ([ADR 020]): these rows are keyed on an install id, and no mapping from an account to an install exists or may be created — not even inside one export request (tooling/ci/assert-pseudonymity-firewall.mjs). So the server cannot say which rows are this person's, and an access request is answered with that fact; the app's own Settings › Privacy shows what the install sends, and erasing the install's data stays the app's 'Delete my analytics data'."
       },
       "notice": {
         "item": "A record of each consent choice you make, and which version of this Policy you were shown",
@@ -2171,8 +2174,7 @@
   "exportKinds": {
     "_why": "⏱ 2026-10-03 · lane dpdp-rights (O-SERVER-DATA-EXPORT-MISSING). How an ACCESS request reaches each store holding personal data. Every personalData row names its `reader` — the code or the procedure that produces this store's part of the answer — and tooling/ci/assert-data-inventory.mjs fails a row that names none, or a reader that is not there.",
     "user_id": "the store is a table carrying `user_id` (its erasure kind is `purge`), and GET /v1/account/export reads it through the SAME schema-derived walk the erasure uses (services/_shared/src/erasure.ts exportUserRows). The reader must call exportUserRows.",
-    "anon_id": "the store is keyed on the install id; the export reads it for the install the app names (`?anon_id=`). The reader must select FROM this table.",
     "manual": "no code can address the store for a person, so the access request is answered by hand under the named procedure. Requires a `reason`.",
-    "withheld": "the store's content is a credential, a ledger or a copy, and is deliberately not exported. Requires a `reason`."
+    "withheld": "the store's content is a credential, a ledger, a copy, or PSEUDONYMOUS by design ([ADR 020]: no account-to-install mapping exists, and an export may not create one), and is deliberately not exported. Requires a `reason`."
   }
 }

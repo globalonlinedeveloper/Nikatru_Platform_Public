@@ -184,7 +184,6 @@ const DEFAULT_STORES = [
 
 const EXPORT_KINDS = {
   user_id: 'read through the derived walk',
-  anon_id: 'read for the install',
   manual: 'answered by hand',
   withheld: 'deliberately not exported',
 };

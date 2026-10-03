@@ -653,8 +653,11 @@ for (const s of stores) {
   // each is CHECKED, not believed:
   //   user_id   the table's erasure is `purge` (so its `user_id` is proven against
   //             the schema just above) and the reader calls the same derived walk;
-  //   anon_id   the reader selects FROM this table by name;
   //   manual / withheld  a written reason, and the reader exists.
+  // ⏱ 2026-10-03 · there is NO `anon_id` kind: an export that read the install-keyed
+  // stores for an account would PAIR the two ([ADR 020], assert-pseudonymity-firewall),
+  // so those stores are `withheld` with the reason, and a row naming `anon_id` is refused
+  // as an unknown kind.
   if (s.personalData === true) {
     const x = s.export;
     const EXPORT_KINDS = register.exportKinds && typeof register.exportKinds === 'object' ? register.exportKinds : {};
@@ -681,10 +684,6 @@ for (const s of stores) {
           );
         } else if (!/\bexportUserRows\s*\(/.test(reader)) {
           problems.push(`${where} names ${x.reader} as its user_id reader, and that file never calls exportUserRows(.`);
-        }
-      } else if (x.by === 'anon_id') {
-        if (!new RegExp(`FROM\\s+${s.name}\\s+WHERE\\s+anon_id`).test(reader)) {
-          problems.push(`${where} names ${x.reader} as its anon_id reader, and that file never selects FROM ${s.name} WHERE anon_id.`);
         }
       } else if (typeof x.reason !== 'string' || x.reason.trim().length < 40) {
         problems.push(`${where} declares export \`by: ${x.by}\` without a written \`reason\` (40 characters or more).`);

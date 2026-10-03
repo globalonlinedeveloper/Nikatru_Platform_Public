@@ -78,12 +78,10 @@ class PrivacyNominee {
 /// refused on this side.
 abstract interface class PrivacyDataTransport {
   /// Everything the platform holds server-side about the signed-in account,
-  /// as the JSON text of one file. [anonId] adds this install's pseudonymous
-  /// rows (usage statistics and consent records).
-  Future<Result<String>> exportData({
-    required String? accessToken,
-    String? anonId,
-  });
+  /// as the JSON text of one file. The install's pseudonymous rows are NOT in
+  /// it, and no install id is sent: pairing one with the account is what
+  /// [ADR 020] forbids (tooling/ci/assert-pseudonymity-firewall.mjs).
+  Future<Result<String>> exportData({required String? accessToken});
 
   /// The nominee, or `Ok(null)` when none is set.
   Future<Result<PrivacyNominee?>> readNominee({required String? accessToken});
@@ -104,10 +102,8 @@ class UnavailablePrivacyDataTransport implements PrivacyDataTransport {
   static const Failure _off = Failure('privacy data: the backend is not live');
 
   @override
-  Future<Result<String>> exportData({
-    required String? accessToken,
-    String? anonId,
-  }) async => const Result<String>.err(_off);
+  Future<Result<String>> exportData({required String? accessToken}) async =>
+      const Result<String>.err(_off);
 
   @override
   Future<Result<PrivacyNominee?>> readNominee({

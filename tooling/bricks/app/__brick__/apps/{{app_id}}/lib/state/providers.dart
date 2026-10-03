@@ -655,7 +655,6 @@ Future<void> openPrivacyRightsScreen(
     accessToken: ref.read(authTokenProvider),
     exporter: ref.read(fileExporterProvider),
     openDeleteAccount: onDeleteAccount,
-    anonId: () => ref.read(installIdProvider.future),
   ),
 );
 

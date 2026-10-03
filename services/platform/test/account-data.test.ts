@@ -109,24 +109,19 @@ describe('🔴 GET /v1/account/export — everything we hold server-side, from e
     expect(JSON.stringify(body)).not.toContain('me-reminder_feed-token_hash');
   });
 
-  it('the install-keyed stores come with the export only for the install the app names', async () => {
+  it('🔒 [ADR 020] the install-keyed stores NEVER come with an account\'s export, whatever the request names', async () => {
     const platform = realPlatformDb();
     const app = appDb();
     seedEveryUserTable(platform, ME, 'me');
     platform.db
       .prepare(`INSERT INTO consent_artifacts (consent_id, anon_id, purpose, granted, policy_version, client_ts, server_ts, app_id) VALUES ('c1', ?, 'analytics', 1, '2026-10-04', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 'subscriptiontracker')`)
       .run(ANON);
-    const without = (await (await routes(ME).request('https://platform.nikatru.com/v1/account/export', {}, envOf(platform, app))).json()) as {
+    const body = (await (await routes(ME).request(`https://platform.nikatru.com/v1/account/export?anon_id=${ANON}`, {}, envOf(platform, app))).json()) as {
       stores: Record<string, unknown[]>;
     };
-    expect(without.stores['platform_db.consent_artifacts']).toBeUndefined();
-    const withAnon = (await (await routes(ME).request(`https://platform.nikatru.com/v1/account/export?anon_id=${ANON}`, {}, envOf(platform, app))).json()) as {
-      stores: Record<string, unknown[]>;
-    };
-    expect(withAnon.stores['platform_db.consent_artifacts']).toHaveLength(1);
-    expect(withAnon.stores['platform_db.events']).toEqual([]);
-    const bad = await routes(ME).request('https://platform.nikatru.com/v1/account/export?anon_id=not-an-id', {}, envOf(platform, app));
-    expect(bad.status).toBe(422);
+    expect(body.stores['platform_db.consent_artifacts']).toBeUndefined();
+    expect(body.stores['platform_db.events']).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(ANON);
   });
 });
 

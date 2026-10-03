@@ -50,21 +50,21 @@ DioPrivacyDataTransport _transport(_FakeAdapter adapter) =>
 
 void main() {
   test(
-    'the export is fetched with the bearer and the install id, and kept as the server sent it',
+    '🔒 the export is fetched with the bearer and NO install id, and kept as the server sent it',
     () async {
       const String body = '{"schema":"nikatru.data-export/1","stores":{}}';
       final _FakeAdapter a = _FakeAdapter(body);
-      final core.Result<String> r = await _transport(a).exportData(
-        accessToken: 'tok',
-        anonId: '0f8fad5b-d9cb-469f-a165-70867728950e',
-      );
+      final core.Result<String> r = await _transport(
+        a,
+      ).exportData(accessToken: 'tok');
       expect(r, isA<core.Ok<String>>());
       expect((r as core.Ok<String>).value, body);
       expect(
         a.lastRequest!.uri.toString(),
         startsWith('$_base/v1/account/export'),
       );
-      expect(a.lastRequest!.uri.queryParameters['anon_id'], isNotNull);
+      // [ADR 020]: an account and an install id never travel together.
+      expect(a.lastRequest!.uri.queryParameters, isEmpty);
       expect(a.lastRequest!.headers['authorization'], 'Bearer tok');
     },
   );

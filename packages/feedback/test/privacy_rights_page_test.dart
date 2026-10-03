@@ -13,15 +13,10 @@ import 'support.dart';
 class _FakeData implements PrivacyDataTransport {
   int exports = 0;
   PrivacyNominee? nominee;
-  String? lastAnon;
 
   @override
-  Future<Result<String>> exportData({
-    required String? accessToken,
-    String? anonId,
-  }) async {
+  Future<Result<String>> exportData({required String? accessToken}) async {
     exports++;
-    lastAnon = anonId;
     return const Result<String>.ok('{"schema":"nikatru.data-export/1"}');
   }
 
@@ -80,7 +75,6 @@ _Rig _rig({required bool signedIn}) {
       accessToken: () async => signedIn ? 'token' : null,
       exporter: exporter,
       openDeleteAccount: () async => deletes.add('open'),
-      anonId: () async => '0f8fad5b-d9cb-469f-a165-70867728950e',
     ),
   );
 }
@@ -137,7 +131,6 @@ void main() {
       await tester.tap(find.byKey(PrivacyRightsKeys.download));
       await tester.pumpAndSettle();
       expect(rig.data.exports, 1);
-      expect(rig.data.lastAnon, isNotNull);
       expect(rig.exporter.files.single.fileName, 'nikatru-data-export.json');
       expect(rig.exporter.files.single.mimeType, 'application/json');
     });

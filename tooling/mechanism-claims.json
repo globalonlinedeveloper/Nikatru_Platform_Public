@@ -1521,6 +1521,22 @@
       "test": "tooling/ci/test/e2e-provision-leak.test.mjs",
       "case": "green control — a good mint writes all four outputs, each once, and the address has the sweep's shape",
       "proves": "provision_user.mjs is SPAWNED and the address it writes to $GITHUB_OUTPUT is held to E2E_EMAIL_SHAPE, the regex purge_stale.mjs selects by; a provisioner that minted any other shape fails this case."
+    },
+    {
+      "file": "services/platform/src/routes/account-export.ts",
+      "anchor": "THE EXPORT IS DERIVED, NOT LISTED",
+      "status": "proven",
+      "test": "services/platform/test/account-data.test.ts",
+      "case": "🔴 the export of a seeded user contains a row from EVERY store the inventory says it reads, and none of anyone else's",
+      "proves": "The case seeds one row into EVERY table carrying `user_id` in the real migrations of both databases, found from the schema, and requires every inventory store marked `export.by: user_id` to come back non-empty. A table the route listed by hand instead of walking would come back missing the first time a migration added one."
+    },
+    {
+      "file": "services/platform/test/account-data.test.ts",
+      "anchor": "THE SEED IS DERIVED, NOT LISTED",
+      "status": "proven",
+      "test": "services/platform/test/account-data.test.ts",
+      "case": "🔴 the export of a seeded user contains a row from EVERY store the inventory says it reads, and none of anyone else's",
+      "proves": "The header of the case that grades it: `seedEveryUserTable` reads sqlite_master and pragma_table_info, and the expectation reads the inventory, so neither side is a list in this file."
     }
   ],
   "backlog": {}

@@ -119,7 +119,8 @@ describe('🔴 identity: the session, or a proven address — nothing else', () 
     const h = harness();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const mail = recordingMail();
-    const t0 = Date.parse('2026-11-01T10:00:00Z');
+    // The route below stamps the verification from the wall clock, so the request is made on it too.
+    const t0 = Date.now();
     await acceptPrivacyRequest(
       h.db as never,
       mail,

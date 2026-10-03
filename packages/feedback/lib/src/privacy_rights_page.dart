@@ -78,7 +78,6 @@ class PrivacyRightsHost {
     required this.accessToken,
     required this.exporter,
     required this.openDeleteAccount,
-    this.anonId,
   });
 
   /// The "Report a problem" host: its outbox, app identity and session.
@@ -93,10 +92,6 @@ class PrivacyRightsHost {
 
   /// The app's own "Delete account" flow.
   final Future<void> Function() openDeleteAccount;
-
-  /// This install's pseudonymous id, so its usage statistics and consent
-  /// records come with the export. Null leaves them out.
-  final Future<String?> Function()? anonId;
 }
 
 /// The words of the Settings row, in [context]'s locale.
@@ -252,7 +247,6 @@ class _PrivacyRightPageState extends State<PrivacyRightPage> {
     setState(() => _busy = true);
     final Result<String> r = await widget.host.data.exportData(
       accessToken: await widget.host.accessToken(),
-      anonId: await widget.host.anonId?.call(),
     );
     ExportOutcome outcome = ExportOutcome.failed;
     final String? json = _ok(r);

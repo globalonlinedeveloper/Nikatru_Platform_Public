@@ -37,17 +37,13 @@ class DioPrivacyDataTransport implements core.PrivacyDataTransport {
   );
 
   @override
-  Future<core.Result<String>> exportData({
-    required String? accessToken,
-    String? anonId,
-  }) async {
+  Future<core.Result<String>> exportData({required String? accessToken}) async {
     if (_signedOut(accessToken)) {
       return const core.Result<String>.err(_noSession);
     }
     try {
       final Response<String> res = await _dio.get<String>(
         '$_base/v1/account/export',
-        queryParameters: <String, Object?>{'anon_id': ?anonId},
         options: _options(accessToken!, type: ResponseType.plain),
       );
       final String body = res.data ?? '';
