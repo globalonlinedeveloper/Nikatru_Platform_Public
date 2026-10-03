@@ -243,8 +243,10 @@ export const PLAY_ID_MAP = Object.freeze({
     deletionNo: 'DATA_DELETION_NO',
     /** dataSecurity.deletionRequestSupported.webDeletionUrl — the delete-ACCOUNT page. */
     accountDeletionUrl: 'PSL_ACCOUNT_DELETION_URL',
-    /** The SAME webDeletionUrl, filled only when the deletion answer is YES: the page is where a
-     *  user requests deletion of their data (its title is "Delete your account and data"). */
+    /** "Delete data URL": Play's link for deleting data WITHOUT deleting the account (MAYBE_REQUIRED,
+     *  per the Console export of 2026-10-03). The product offers no such path — the delete-account
+     *  page deletes the account — so the row is never filled, and validate() refuses the account page
+     *  in it. Fill it only from a sworn data-only deletion URL, if one is ever offered. */
     dataDeletionUrl: 'PSL_DATA_DELETION_URL',
     /** dataSecurity.independentSecurityReview.answer */
     independentlyValidated: 'PSL_INDEPENDENTLY_VALIDATED',
@@ -468,7 +470,6 @@ export function render(ds, posture, { idMap = PLAY_ID_MAP, template = PLAY_TEMPL
       else set(acc.outsideAppSpecify, '', out.description, 'accounts.outsideAppAccounts.description');
     }
   }
-  if (del === true && delUrl != null && isHttps(delUrl)) set(d.dataDeletionUrl, '', delUrl, 'dataSecurity.deletionRequestSupported.webDeletionUrl (data deletion)');
 
   if (problems.length) throw new Refusal(problems);
 
@@ -511,7 +512,9 @@ export function validate(rows, template = PLAY_TEMPLATE) {
   if (chosen.includes(acc.methods.none) && chosen.length > 1) problems.push(`${acc.methodsQuestion} chooses ${acc.methods.none} beside ${chosen.length - 1} method(s).`);
   if (chosen.some((id) => id !== acc.methods.none) && get(PLAY_ID_MAP.dataSecurity.accountDeletionUrl) === undefined) problems.push(`${acc.methodsQuestion} says users can create an account and ${PLAY_ID_MAP.dataSecurity.accountDeletionUrl} is blank.`);
   if ((get(acc.otherSpecify) !== undefined) !== chosen.includes(acc.methods.other)) problems.push(`${acc.otherSpecify} must be filled exactly when ${acc.methods.other} is chosen.`);
-  if (get(PLAY_ID_MAP.dataSecurity.deletionQuestion, PLAY_ID_MAP.dataSecurity.deletionYes) === 'true' && get(PLAY_ID_MAP.dataSecurity.dataDeletionUrl) === undefined) problems.push(`${PLAY_ID_MAP.dataSecurity.deletionQuestion} is YES and ${PLAY_ID_MAP.dataSecurity.dataDeletionUrl} is blank.`);
+  // The data-only deletion link is not the account-deletion page: that page deletes the account.
+  const accountUrl = get(PLAY_ID_MAP.dataSecurity.accountDeletionUrl);
+  if (accountUrl !== undefined && get(PLAY_ID_MAP.dataSecurity.dataDeletionUrl) === accountUrl) problems.push(`${PLAY_ID_MAP.dataSecurity.dataDeletionUrl} is the account-deletion page; it is the link for deleting data while KEEPING the account.`);
   const outsideTypes = Object.values(acc.outsideAppTypes).filter((id) => get(acc.outsideAppTypesQuestion, id) === 'true');
   if (get(acc.outsideApp) !== 'true' && outsideTypes.length) problems.push(`${acc.outsideAppTypesQuestion} is answered and ${acc.outsideApp} is not true.`);
   if (get(acc.outsideApp) === 'true' && !outsideTypes.length) problems.push(`${acc.outsideApp} is true and ${acc.outsideAppTypesQuestion} is unanswered.`);
@@ -754,7 +757,7 @@ async function cli() {
   console.log(`  · encrypted in transit: ${sec.encryptedInTransit.answer}`);
   console.log(`  · deletion request supported: ${sec.deletionRequestSupported.answer} — account deletion URL ${sec.deletionRequestSupported.webDeletionUrl}`);
   console.log(`  · independent security review: ${sec.independentSecurityReview.answer}`);
-  console.log(`  · data deletion URL: ${result.rows.find((r) => r.question === PLAY_ID_MAP.dataSecurity.dataDeletionUrl)?.value || '(blank)'}`);
+  console.log(`  · data deletion URL (delete data, KEEP the account): ${result.rows.find((r) => r.question === PLAY_ID_MAP.dataSecurity.dataDeletionUrl)?.value || '(blank — no data-only deletion path is offered)'}`);
   console.log(`  · Families policy badge: ${sec.playFamiliesPolicy.answer}${sec.playFamiliesPolicy.answer ? '' : ' (left blank: the question is only for apps whose target age group includes children)'}`);
   console.log('Accounts:');
   console.log(`  · creation methods: ${result.accounts.methods.map((k) => PLAY_ID_MAP.accounts.methods[k]).join(', ')}`);

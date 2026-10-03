@@ -2055,7 +2055,9 @@ function checkApp(app) {
   //       · OAuth             ⇔ the app calls `signInWithApple(` or `signInWithGoogle(`, AND
   //         AuthProviders.configured enables that provider, AND the set the app passes as
   //         `registeredCallbacks:` holds TargetPlatform.android (otherwise oauthRedirect is false on
-  //         the Play artefact and the buttons are not drawn — packages/auth_supabase auth_capabilities).
+  //         the Play artefact — packages/auth_supabase auth_capabilities), AND a Dart file that calls
+  //         the door draws its buttons under `if (<caps>.oauthRedirect && <providers>.any|apple|google)`
+  //         (login_screen.dart's gate): a gate forced off, or gone, is a button nobody sees.
   const ACM_KEYS = ['userIdPassword', 'userIdOtherAuth', 'userIdPasswordOtherAuth', 'oauth', 'other', 'none'];
   const ACCOUNT_POSTURE = 'backend-live';
   const PROVIDERS_REL = 'packages/auth_supabase/lib/src/auth_providers.dart';
@@ -2105,6 +2107,13 @@ function checkApp(app) {
         );
       }
       const doors = { apple: appDart.includes('signInWithApple('), google: appDart.includes('signInWithGoogle(') };
+      // The gate that draws the buttons, read in the file(s) that call a door — not anywhere in lib, so a
+      // sibling sheet's `if (caps.oauthRedirect && providers.apple)` cannot stand in for the sign-in screen's.
+      const OAUTH_GATE = /\bif\s*\(\s*[A-Za-z_]\w*\.oauthRedirect\s*&&\s*[A-Za-z_]\w*\.(?:any|apple|google)\s*\)/;
+      const drawn = appLibFiles.some((f) => {
+        const t = stripSourceComments(read(f) ?? '', '.dart');
+        return /\.signInWith(?:Apple|Google)\(/.test(t) && OAUTH_GATE.test(t);
+      });
       let derivedOauth = false;
       if (doors.apple || doors.google) {
         const provText = read(PROVIDERS_REL);
@@ -2128,12 +2137,12 @@ function checkApp(app) {
           }
           android = /\bTargetPlatform\.android\b/.test(set[1]);
         }
-        derivedOauth = android && ((doors.apple && flag('apple') === 'true') || (doors.google && flag('google') === 'true'));
+        derivedOauth = android && drawn && ((doors.apple && flag('apple') === 'true') || (doors.google && flag('google') === 'true'));
       }
       if (typeof live('oauth') === 'boolean' && live('oauth') !== derivedOauth) {
         problems.push(
           `🔴 ${DS_REL} accounts.creationMethods.oauth["${ACCOUNT_POSTURE}"] is ${live('oauth')} and the code ${derivedOauth ? 'OFFERS' : 'does not offer'} an OAuth sign-in on Android ` +
-            `(doors: apple ${doors.apple}, google ${doors.google}; ${PROVIDERS_REL} configured; registeredCallbacks holding TargetPlatform.android). The answer and the button disagree.`,
+            `(doors: apple ${doors.apple}, google ${doors.google}; ${PROVIDERS_REL} configured; registeredCallbacks holding TargetPlatform.android; buttons drawn under an oauthRedirect gate ${drawn}). The answer and the button disagree.`,
         );
       }
       prints.push(`accounts — "${ACCOUNT_POSTURE}" methods ${chosen.join(', ') || 'none'}; email+password ${derivedPassword} and OAuth ${derivedOauth} re-derived from ${APP_DIR}/lib`);

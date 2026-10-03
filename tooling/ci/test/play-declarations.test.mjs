@@ -2312,7 +2312,8 @@ describe('assert-play-declarations — limb M: the merged set against the .aab t
 // The base fixture has no account surface (its lib carries no AuthRepository), so
 // every case here opts into one. Real-tree mutation run, same day: 6/6 caught —
 // oauth flipped false, both providers off, android dropped from the callback set,
-// the block renamed away, a null method, the sign-up call renamed.
+// the block renamed away, a null method, the sign-up call renamed. And (r2) the
+// login_screen.dart button gate forced to `if (false && caps.oauthRedirect && …)`: exit 1.
 describe('assert-play-declarations — limb 8c, the account-creation answers', () => {
   const ACCOUNT_DART = `abstract class AuthRepository {}
 const Set<TargetPlatform> kTargets = <TargetPlatform>{
@@ -2323,6 +2324,7 @@ final caps = AuthCapabilities.current(registeredCallbacks: kTargets);
 Future<void> signUp(a) => a.signUpWithEmail(email: 'e', password: 'p');
 Future<void> signIn(a) => a.signInWithEmail(email: 'e', password: 'p');
 Future<void> apple(a) => a.signInWithApple();
+List<Object> buttons(caps, providers) => [if (caps.oauthRedirect && providers.any) 'apple'];
 `;
   const PROVIDERS = (apple) => `class AuthProviders {
   // static const AuthProviders configured = AuthProviders(apple: false, google: false); — a COMMENT, not the constant
@@ -2410,6 +2412,21 @@ Future<void> apple(a) => a.signInWithApple();
     const r = run(withAccounts({ files: (f) => { f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace('  TargetPlatform.android,\n', ''); } }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /does not offer an OAuth sign-in on Android/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and the button gate is forced off (login_screen.dart\'s `if (caps.oauthRedirect && providers.any)`)', () => {
+    const r = run(withAccounts({ files: (f) => { f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace('if (caps.oauthRedirect', 'if (false && caps.oauthRedirect'); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not offer an OAuth sign-in on Android .*buttons drawn under an oauthRedirect gate false/);
+  });
+
+  test('🔴 FAILS when OAuth is claimed and the gate lives only in a file that calls no door', () => {
+    const r = run(withAccounts({ files: (f) => {
+      f['apps/subscriptiontracker/lib/auth.dart'] = ACCOUNT_DART.replace(/^List<Object> buttons.*\n/m, '');
+      f['apps/subscriptiontracker/lib/sheet.dart'] = "List<Object> rows(caps, providers) => [if (caps.oauthRedirect && providers.apple) 'apple'];\n";
+    } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /buttons drawn under an oauthRedirect gate false/);
   });
 
   test('🔴 FAILS when OAuth is denied and the code offers it', () => {
