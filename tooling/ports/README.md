@@ -27,6 +27,14 @@ Resend-shaped. `tooling/ports/ai.json` (port-ai) is the first TWO-SIDED port, at
 Anthropic on OUR key, behind T17's meter, plus a counting stub) and a client half (Dart `AiProvider`: three
 bring-your-own-key adapters on the USER's key, plus a fake), selected per call by FEATURE.
 
+port-auth (2026-10-03) grades `tooling/ports/auth.json` apart: the Dart `AuthRepository` at L3 (suite
+`packages/core/lib/testing.dart` `runAuthRepositoryConformance`, passed by `FakeAuthRepository` and by
+`SupabaseAuthRepository` over GoTrue's wire answers) and the Worker half, `IdentityAdmin`
+(`services/_shared/src/ports/identity.ts`: every call a Worker makes to the identity provider on its own
+credential), at L2 behind `identityFor` (`services/platform/src/ports.ts`). Its `issuers` — the trusted
+issuers, the JWKS path, the algorithm and the audience — are rendered into
+`services/_shared/src/generated/ports.ts`; a cutover's dual-issuer window is a second row.
+
 `tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
 `tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
 `upload` · `status`) that passes `submitterConformance` dry, with no network
@@ -89,6 +97,7 @@ wherever the shape can hold it).
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
 | `features` | For `selection.by: per-call`: `{<feature>: {adapter, model, effort, maxInputTokens, candidates, tokensPerCall, why}}` — the adapter and the model a feature runs on (null until measured), its input cap (every call is reserved at it, and an input over it is refused before the wire; null refuses every call), the models it may be set to (each priced in its adapter's `cost.models`), and the tokens one call takes (`{input, output, basis: declared | measured, asOf, why}`, or null). Limb 1 holds each to its adapter and its candidates; the AI dry run (C15–C17) prices it. |
+| `issuers` | Auth only: `[{id, originEnv, issuerPath, jwksPath, algorithms, audience, why}]` — the issuers a Worker trusts, the FIRST the primary (the one whose key set is cached in KV). `originEnv` names the Worker variable holding the origin, never the origin. Rendered by `render.mjs`; `services/_shared/src/auth.ts` `trustedIssuers` resolves them, and a token's `iss` only selects a row — verification pins it. |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
@@ -259,7 +268,18 @@ never a guess), and C17 the MINIMUM credit-pack price per unit per selling chann
 `fee-register.json` `taxRegions`, so the floor holds in every region (IN's on the India web book) — and the rail fee; a
 subscription-only cell never prices a one-time pack.
 
+For `auth` it WRAPS `tooling/ops/auth-cutover-preflight.mjs` (spawned, never copied; `--phase pre|post` and `--attest
+apple-return-url` are forwarded) as C9, and adds C10 the issuer-list delta, C11 the client config per channel (a
+`--dart-define` is compile-time: every app channel is a release, the site a deploy, each Worker a redeploy), C12 the
+captcha provider (Turnstile, ADR 084) and C13 the Apple Services ID return URL (LOST until the owner attests it).
+
+Limb 4 has a URL half (port-auth): no module under `services/*/src` builds an identity-provider URL (`/auth/v1`,
+`/rest/v1`) except the auth port's ts adapters and `src/generated/`, and no file under `sites/` names one except
+`sites/nikatru/js/identity-client.js`; declared exceptions (the edge shield, which classifies the paths requests
+arrive on) print on every run.
+
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`
-from `channel-register.json` and the store-billed rails `payments.json` derives); `--check` exits 1 on any difference,
+from `channel-register.json` and the store-billed rails `payments.json` derives, and
+`services/_shared/src/generated/ports.ts` from `auth.json` `issuers`); `--check` exits 1 on any difference,
 and limb 3 runs the same check on every build.
