@@ -1591,6 +1591,41 @@ if (problems.length === problemsBeforeExport) {
   }
   const triggerRel = typeof register.triggerFile === 'string' ? register.triggerFile : null;
   const sqlRaw = triggerRel && existsSync(join(ROOT, triggerRel)) ? readFileSync(join(ROOT, triggerRel), 'utf8') : null;
+  // ⏱ 2026-10-03 · nit on #1140 (review 3fa224e4, finding 1). EVERY function
+  // definition in the file, whatever its dollar-quote tag, and the LAST one of
+  // each name is the one graded: psql runs the file top to bottom, so a later
+  // CREATE OR REPLACE is the function that exists on Box C. A `$$`-only read
+  // let a later `$f$` redefinition make the on-verify function unconditional or
+  // a no-op, or the sweep `RETURN 0`, and still pass. A definition of a graded
+  // name that this cannot read as a zero-argument, dollar-quoted body is a
+  // finding (`unreadable`), never skipped.
+  const functionDefs = (text) => {
+    const defs = []; // { name, body (raw) | null, head }
+    const HEAD = /create\s+(?:or\s+replace\s+)?function\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))?)/gi;
+    for (const h of text.matchAll(HEAD)) {
+      const rest = text.slice(h.index + h[0].length);
+      const open = rest.match(/^\s*\(\s*\)[^;$]*\$(\w*)\$/);
+      const close = open ? rest.indexOf(`$${open[1]}$`, open[0].length) : -1;
+      defs.push({
+        name: h[1].replace(/["\s]/g, '').toLowerCase(),
+        body: close === -1 ? null : rest.slice(open[0].length, close),
+        head: norm(`${h[0]}${rest.slice(0, 80)}`),
+      });
+    }
+    const bodies = new Map(); // function -> raw body of its LAST readable definition
+    for (const d of defs) if (d.body !== null) bodies.set(d.name, d.body);
+    const unreadable = (fn) => defs.filter((d) => d.name === fn && d.body === null).map((d) => d.head);
+    return { bodies, unreadable };
+  };
+  const fns = sqlRaw === null ? null : functionDefs(sqlRaw.replace(/--[^\n]*/g, ''));
+  const unreadableFinding = (fn) => {
+    for (const head of fns.unreadable(fn)) {
+      problems.push(
+        `${triggerRel}: a definition of ${fn}() that limb 10 cannot read as a zero-argument function with a dollar-quoted ` +
+          `body: "${head}". The last definition of a name is the function that runs, so every one must be readable.`,
+      );
+    }
+  };
   if (sqlRaw === null) {
     problems.push(
       `${IDENTITY}: triggerFile "${triggerRel}" does not exist. Every column it lists then keeps whatever GoTrue ` +
@@ -1606,10 +1641,7 @@ if (problems.length === problemsBeforeExport) {
     )) {
       triggers.set(m[2].toLowerCase(), m[3].toLowerCase());
     }
-    const bodies = new Map(); // function -> body
-    for (const m of sql.matchAll(/create\s+(?:or\s+replace\s+)?function\s+([\w.]+)\s*\(\s*\)[\s\S]*?\$\$([\s\S]*?)\$\$/gi)) {
-      bodies.set(m[1].toLowerCase(), m[2]);
-    }
+    const { bodies } = fns;
     for (const c of columns) {
       const where = `${c.table}.${c.column}`;
       const fn = triggers.get(String(c.table).toLowerCase());
@@ -1620,6 +1652,7 @@ if (problems.length === problemsBeforeExport) {
         );
         continue;
       }
+      unreadableFinding(fn);
       const body = bodies.get(fn);
       const assigned = body
         ? [...body.matchAll(new RegExp(`new\\.${c.column}\\s*:=\\s*([^;]+);`, 'gi'))].map((m) => norm(m[1]))
@@ -1669,13 +1702,10 @@ if (problems.length === problemsBeforeExport) {
   }
   if (exempt.length && sqlRaw !== null) {
     const noComments = sqlRaw.replace(/--[^\n]*/g, '');
-    const fnBodies = new Map(); // function -> normalised body
-    for (const m of noComments.matchAll(/create\s+(?:or\s+replace\s+)?function\s+([\w."]+)\s*\(\s*\)[\s\S]*?\$\$([\s\S]*?)\$\$/gi)) {
-      fnBodies.set(m[1].replace(/"/g, '').toLowerCase(), norm(m[2]));
-    }
-    // The statements OUTSIDE function bodies, quotes dropped, one per `;`.
+    const fnBodies = new Map([...fns.bodies].map(([fn, body]) => [fn, norm(body)])); // function -> normalised body
+    // The statements OUTSIDE dollar-quoted bodies (any tag), quotes dropped, one per `;`.
     const statements = noComments
-      .replace(/\$\$[\s\S]*?\$\$/g, '$$$$ $$$$')
+      .replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, '$$$$ $$$$')
       .split(';')
       .map((t) => norm(t.replace(/"/g, '')))
       .filter(Boolean);
@@ -1722,6 +1752,7 @@ if (problems.length === problemsBeforeExport) {
             `${onVerify.function}() must blank ${e.column} once verified_at is set (${IDENTITY} \`onVerify\`), or a verified challenge keeps the address.`,
         );
       }
+      unreadableFinding(verifyFn);
       const wantBody = norm(`begin ${String(onVerify.body ?? '')} end`);
       if (fnBodies.get(verifyFn) !== wantBody) {
         problems.push(
@@ -1735,8 +1766,24 @@ if (problems.length === problemsBeforeExport) {
       const expiry = Number(sweep.challengeExpirySeconds);
       if (!statement || !Number.isInteger(expiry) || !statement.includes(`interval '${expiry} seconds'`)) {
         problems.push(`${IDENTITY}: exempt ${key} declares no \`sweep.statement\` past \`sweep.challengeExpirySeconds\`; an abandoned challenge would keep the address.`);
-      } else if (!(fnBodies.get(sweepFn) ?? '').includes(statement)) {
-        problems.push(`${triggerRel}: ${sweep.function}() does not run the declared sweep "${sweep.statement}" (${IDENTITY} \`sweep\`).`);
+      } else {
+        // ⏱ 2026-10-03 · nit on #1140 (review 3fa224e4, finding 1): EQUAL, never
+        // `includes` — `… interval '300 seconds' OR true` contains the declared
+        // statement and blanks every PENDING challenge, failing its verify. The
+        // one statement in the sweep that names the table is the declared one
+        // plus the guard that skips a row already blank, and nothing else.
+        unreadableFinding(sweepFn);
+        const wantSweep = norm(`${String(sweep.statement)} AND ip_address <> '0.0.0.0'::inet`);
+        const ran = (fnBodies.get(sweepFn) ?? '')
+          .split(';')
+          .map((s) => s.trim().replace(/^begin /, ''))
+          .filter(mentions);
+        if (ran.length !== 1 || ran[0] !== wantSweep) {
+          problems.push(
+            `${triggerRel}: ${sweep.function}() does not run exactly the declared sweep "${wantSweep}" and nothing else on ${e.table} ` +
+              `(${IDENTITY} \`sweep\`); its statement(s) on that table: ${ran.length ? ran.map((s) => `"${s}"`).join(', ') : 'none'}.`,
+          );
+        }
       }
       for (const [fn, body] of fnBodies) {
         if (fn !== sweepFn && body.split(/[^\w.]+/).some((tok) => names(tok) || tok.endsWith(`.${bare}`))) {

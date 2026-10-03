@@ -605,6 +605,61 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     } finally { kill(root); }
   });
 
+  // ⏱ 2026-10-03 · nit on #1140 (review 3fa224e4, finding 1). Each of these
+  // exited 0 at review: the limb read only `$$`-quoted bodies, the FIRST of
+  // each name, and held the sweep with `includes`. psql runs the file top to
+  // bottom, so a later CREATE OR REPLACE under any dollar tag is what exists.
+  const redefinition = (name, returns, body) =>
+    `CREATE OR REPLACE FUNCTION ${name}()\n  RETURNS ${returns} LANGUAGE plpgsql SET search_path = '' AS $f$\n${body}\nEND $f$;`;
+  const refusesSqlMutation = (mutate, pattern) => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = mutate(sql);
+      assert.notEqual(cut, sql, 'the mutation must change the trigger file');
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, pattern);
+    } finally { kill(root); }
+  };
+  test('MUTATION (D): the sweep widened from `AND ip_address <> …` to `OR true` is refused — it blanks PENDING challenges (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => sql.replace("AND ip_address <> '0.0.0.0'::inet;", 'OR true;'),
+      /mfa_challenge_ip_sweep\(\) does not run exactly the declared sweep .*"update auth\.mfa_challenges set ip_address = '0\.0\.0\.0' where created_at < now\(\) - interval '300 seconds' or true"/,
+    );
+  });
+  test('MUTATION (E): the on-verify function made unconditional by a later `$f$` redefinition is refused (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => withStatement(sql, redefinition('nikatru_privacy.mfa_ip_blank_on_verify', 'trigger', "BEGIN\n  NEW.ip_address := '0.0.0.0';\n  RETURN NEW;")),
+      /mfa_ip_blank_on_verify\(\) is not exactly the declared body .*it reads "begin new\.ip_address := '0\.0\.0\.0'; return new; end"/,
+    );
+  });
+  test('MUTATION (F): the on-verify function made a no-op by a later `$f$` redefinition is refused (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => withStatement(sql, redefinition('nikatru_privacy.mfa_ip_blank_on_verify', 'trigger', 'BEGIN\n  RETURN NEW;')),
+      /mfa_ip_blank_on_verify\(\) is not exactly the declared body .*it reads "begin return new; end"/,
+    );
+  });
+  test('MUTATION (G): the sweep redefined as `RETURN 0` by a later `$f$` definition is refused (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => withStatement(sql, redefinition('nikatru_privacy.mfa_challenge_ip_sweep', 'integer', 'BEGIN\n  RETURN 0;')),
+      /mfa_challenge_ip_sweep\(\) does not run exactly the declared sweep .*its statement\(s\) on that table: none/,
+    );
+  });
+  test('MUTATION: an every-write column function made a no-op by a later `$f$` redefinition is refused (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => withStatement(sql, redefinition('nikatru_privacy.sessions_ip_null', 'trigger', 'BEGIN\n  RETURN NEW;')),
+      /runs nikatru_privacy\.sessions_ip_null\(\), which never sets NEW\.ip := NULL/,
+    );
+  });
+  test('MUTATION: a later definition of a graded function that cannot be read (a quoted body) is refused (limb 10)', () => {
+    refusesSqlMutation(
+      (sql) => withStatement(sql, "CREATE OR REPLACE FUNCTION nikatru_privacy.mfa_challenge_ip_sweep()\n  RETURNS integer LANGUAGE sql AS 'SELECT 0';"),
+      /a definition of nikatru_privacy\.mfa_challenge_ip_sweep\(\) that limb 10 cannot read as a zero-argument function/,
+    );
+  });
+
   test('MUTATION: the sweep no longer run by the retention script (only named in its comments) is refused (limb 10)', () => {
     const root = tree();
     const SCRIPT = 'docs/platform/supabase/boxc/identity-log-retention.sh';
