@@ -4,24 +4,74 @@
     "read by tooling/ops/check-box-config-drift.mjs in ops-watch against platform_db.box_config_manifest.",
     "`vendored` is the file's path inside the private corpus checkout; `sha256` is that file's hash, written ONLY by",
     "`node tooling/ops/check-box-config-drift.mjs --refresh-vendored <corpus dir>` — never typed. A null `sha256` is",
-    "COVERAGE LOST (exit 2), never a pass. The logical names are the first column of each box's",
+    "COVERAGE LOST (exit 2), never a pass — inside its box's firstDue it is KNOWN-PENDING, dated, and red again after it. The logical names are the first column of each box's",
     "/etc/nikatru/box-manifest.files; a file a box posts that is not declared here is a finding (UNDECLARED).",
-    "`maxPostAgeHours`: the box cron runs daily, so two missed runs plus slack."
+    "`maxPostAgeHours`: the box cron runs daily, so two missed runs plus slack.",
+    "⏱ 2026-10-03 (ops-watch 37103985999). The `vendored` paths are the corpus's own byte copies of the live files, each",
+    "recorded as such in the corpus runbooks (runbooks/boxb-services.md, runbooks/boxes/hostinger.md, runbooks/ntfy.md,",
+    "runbooks/vaultwarden.md, runbooks/beszel-dozzle.md, runbooks/boxes/boxc.md). Box B's names were a placeholder",
+    "(`compose`, `override`, `tunnel`): the corpus vendors SIX Box B compose files, one per stack, and NO override, so each stack is declared",
+    "by its own name and `override` is not declared. boxc/override and boxc/compose carry NO hash ON PURPOSE (lead",
+    "7185eb, read from Box C's own post): the corpus's override is STALE, the copy from before the deliberate",
+    "2026-09-27 Google sign-in change (the live file is right), and Supabase's upstream docker-compose.yml was never",
+    "vendored. Both are re-vendored from the live box in a Private follow-up; then run --refresh-vendored. ⚠️ DO NOT",
+    "REFRESH BEFORE THAT LANDS: the override path below still names the stale copy, and its hash would come back.",
+    "`firstDue` + `firstDueWhy` on a box is THE BOOTSTRAP (the reader's header says how it is bounded): until that",
+    "instant the box's NO ROW, and each of its entries with no hash, prints KNOWN-PENDING and does not block; from it",
+    "they are red again. Every entry that HAS a hash is graded in full against the box's post, whatever firstDue says."
   ],
   "maxPostAgeHours": 50,
   "boxes": {
     "boxb": {
+      "firstDue": "2026-10-10T00:00:00Z",
+      "firstDueWhy": "⚠️ THE BOOTSTRAP (2026-10-03, ops-watch 37103985999) for NO ROW: Box B posts only once its cron is installed, which needs the box-scoped secret BOX_MANIFEST_SECRET_BOXB (`wrangler secret put` on the platform Worker, the same value in /etc/nikatru/box-manifest.secret on Box B, mode 0600) — an OWNER step, because it CREATES A CREDENTIAL — plus tooling/ops/boxes/post-config-manifest.sh under /etc/cron.d with /etc/nikatru/box-manifest.conf (BOX=boxb) and /etc/nikatru/box-manifest.files listing exactly this box's logical names in tooling/ops/box-config-vendored.json. ⏱ 2026-10-03, lead 7185eb: installed; Box B posts, and all 7 hashes match this register. ⬜ DELETE THIS FIELD AND `firstDue` once an ops-watch run on main has graded this box green.",
       "files": {
-        "compose": { "vendored": null, "sha256": null },
-        "override": { "vendored": null, "sha256": null },
-        "tunnel": { "vendored": null, "sha256": null }
+        "beszel-compose": {
+          "vendored": "runbooks/config/beszel-boxb-compose.yml",
+          "sha256": "6186c2022e1754bde5de36af7917f33e65950e97999fc946938a173c66ed148d"
+        },
+        "diun-compose": {
+          "vendored": "runbooks/config/diun-boxb-compose.yml",
+          "sha256": "d3bab870e6ed9c3ca05da41e486f51c3da3045b67bfb9da751655277ec107493"
+        },
+        "dozzle-compose": {
+          "vendored": "runbooks/config/dozzle-boxb-compose.yml",
+          "sha256": "cfd86e1cffdac1c01a89a24475dce1a70924af4ebc832a6bb60ea7872f65ef9e"
+        },
+        "glitchtip-compose": {
+          "vendored": "runbooks/config/glitchtip-boxb-compose.yml",
+          "sha256": "85f89799318956c66cd9cee9add224b925d5b2cadd15faac66bbe06569177ecb"
+        },
+        "ntfy-compose": {
+          "vendored": "runbooks/config/ntfy-boxb-compose.yml",
+          "sha256": "c200072e340a6d98869f45155fc812637f12f1826766399b3876806677a231e1"
+        },
+        "tunnel": {
+          "vendored": "runbooks/config/glitchtip-boxb-cloudflared-config.yml",
+          "sha256": "182c67800d644fe8040e40193d00fd4ad5135b20acf1034eebeeb79339563080"
+        },
+        "vaultwarden-compose": {
+          "vendored": "runbooks/config/vaultwarden-boxb-compose.yml",
+          "sha256": "c2f2b033456a06cbba00957311f487f76121961e9e21d06e265e235ca4100402"
+        }
       }
     },
     "boxc": {
+      "firstDue": "2026-10-10T00:00:00Z",
+      "firstDueWhy": "⚠️ THE BOOTSTRAP (2026-10-03, ops-watch 37103985999). (1) NO ROW: Box C posts only once its cron is installed, which needs the box-scoped secret BOX_MANIFEST_SECRET_BOXC (`wrangler secret put` on the platform Worker, the same value in /etc/nikatru/box-manifest.secret on Box C, mode 0600) — an OWNER step, because it CREATES A CREDENTIAL — plus tooling/ops/boxes/post-config-manifest.sh under /etc/cron.d with /etc/nikatru/box-manifest.conf (BOX=boxc) and /etc/nikatru/box-manifest.files listing exactly this box's logical names in tooling/ops/box-config-vendored.json. ⏱ 2026-10-03, lead 7185eb: installed; Box C posts, and `tunnel` matches. (2) `override` and `compose` carry NO hash on purpose: the corpus's override is STALE (the copy from before the deliberate 2026-09-27 Google sign-in change; the live file is right) and compose was never vendored. Both are re-vendored from the live box in a Private follow-up, then --refresh-vendored; never refresh before that lands. ⬜ DELETE THIS FIELD AND `firstDue` once both carry a hash and an ops-watch run on main has graded this box green.",
       "files": {
-        "compose": { "vendored": null, "sha256": null },
-        "override": { "vendored": null, "sha256": null },
-        "tunnel": { "vendored": null, "sha256": null }
+        "compose": {
+          "vendored": null,
+          "sha256": null
+        },
+        "override": {
+          "vendored": "runbooks/config/supabase-docker-compose.override.yml",
+          "sha256": null
+        },
+        "tunnel": {
+          "vendored": "runbooks/config/supabase-cloudflared-config.yml",
+          "sha256": "aa49144158e9d03cbc4125d4e5bbb2d5586be47a3ca3c9fc9ffab04274b13315"
+        }
       }
     }
   }
