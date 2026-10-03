@@ -1,0 +1,103 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cloudflare Worker — feedback. Wrangler v4 / jsonc. Lane feedback-intake
+  // (O-FEEDBACK-INTAKE-UNBUILT): the private "Report a problem" intake every app,
+  // site and extension posts to. Stamped from the brick's Worker by
+  // tooling/kit/stamp-service.mjs and cut down to an intake; README.md says what
+  // it does and does not do.
+  //
+  // ── WHAT IT BINDS, AND WHY NOTHING IS PER-WORKER ─────────────────────────────
+  //   PLATFORM_DB  platform_db, the portfolio's APAC database (C-APAC-RESIDENCY).
+  //                The reports are a platform_db table, migrated by
+  //                services/platform/migrations/0025_feedback.sql; the platform
+  //                is the sole applier, so there is NO migrations_dir here. A
+  //                database of its own would have needed an id committed before
+  //                the database existed, which assert-d1-bindings.mjs refuses.
+  //   SCREENSHOTS  the PRIVATE bucket `nikatru-feedback`: no public access, no
+  //                custom domain, no r2.dev URL. It must exist BEFORE the first
+  //                deploy (an unresolvable bucket binding fails the deploy), so
+  //                creating it is a lead step in the PR body. No route of this
+  //                Worker's `fetch` reads it (src/internal.ts is the read path).
+  //   JWKS_CACHE / SESSION_REVOKED  the portfolio's shared namespaces, read only.
+  //
+  // INTAKE_OPEN is THE GO-LIVE FLAG: "false" until the lead has created the
+  // bucket, deployed and watched the health check; anything but "true" answers
+  // POST /v1/feedback with 503 and the clients keep the report queued.
+  // ───────────────────────────────────────────────────────────────────────────
+  "name": "feedback",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ID": "feedback",
+    "SUPABASE_URL": "https://auth-api.nikatru.com",
+    "API_VERSION": "v1",
+    // Every app's web build is served from the apex ([ADR 075]); the site's own
+    // form posts same-origin to its Pages Function and reaches this Worker over a
+    // Service Binding, with no Origin.
+    "ALLOWED_ORIGINS": "https://nikatru.com",
+    "INTAKE_OPEN": "false"
+  },
+  "d1_databases": [
+    {
+      // SHARED. `platform` is the sole migrations applier, so there is
+      // deliberately NO migrations_dir here.
+      "binding": "PLATFORM_DB",
+      "database_name": "platform_db",
+      "database_id": "9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351"
+    }
+  ],
+  "kv_namespaces": [
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" },
+    // The revocation list (`rev:<sub>`), READ ONLY here; services/platform writes it.
+    { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }
+  ],
+  "r2_buckets": [
+    { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback" }
+  ],
+  // One label deep (ADR 080). `custom_domain: true` provisions the record and the
+  // certificate on the first deploy.
+  "routes": [
+    { "pattern": "feedback.nikatru.com", "custom_domain": true }
+  ],
+  // The nightly purge (90 days), orphan-screenshot sweep and window prune
+  // (src/scheduled.ts), at 03:40 UTC, clear of the platform's 02:30 backup.
+  "triggers": { "crons": ["40 3 * * *"] },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🧪 env.sandbox — every top-level binding twinned, every id a sandbox one
+  // (the brick's rule; tooling/ci/assert-platform-register.mjs limb 8). The
+  // sandbox Worker `feedback-sandbox` answers on its workers.dev host only and
+  // runs no cron.
+  // ───────────────────────────────────────────────────────────────────────────
+  "env": {
+    "sandbox": {
+      "routes": [],
+      "workers_dev": true,
+      "triggers": { "crons": [] },
+      "vars": {
+        "APP_ID": "feedback",
+        "SUPABASE_URL": "https://auth-api.nikatru.com",
+        "API_VERSION": "v1",
+        "ALLOWED_ORIGINS": "https://nikatru.com",
+        "INTAKE_OPEN": "false"
+      },
+      "d1_databases": [
+        {
+          // The sandbox platform database, migrated by services/platform's own
+          // env.sandbox (the sole applier).
+          "binding": "PLATFORM_DB",
+          "database_name": "platform_db_sandbox",
+          "database_id": "ead92001-03e1-4f71-9b92-c64963a24925"
+        }
+      ],
+      "kv_namespaces": [
+        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
+      ],
+      "r2_buckets": [
+        { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback-sandbox" }
+      ]
+    }
+  }
+}

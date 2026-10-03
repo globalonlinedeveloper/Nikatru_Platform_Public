@@ -93,6 +93,10 @@ describe('the delete set is derived from the real platform schema', () => {
       'ext_devices',
       // ⏱ 2026-09-30 · EXA-11 (0021): the per-account link floor leaves with the account.
       'ext_link_floor',
+      // ⏱ 2026-10-03 · 0025, lane feedback-intake. Spelt `user_id` ON PURPOSE: a
+      // signed-in reporter's "Report a problem" reports leave with the account, and
+      // services/feedback's nightly orphan sweep then deletes their screenshots.
+      'feedback_reports',
       'identity',
       'provider_accounts',
       'provider_notifications',

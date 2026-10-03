@@ -58,6 +58,7 @@ import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 import boxConfigManifest0024 from '../migrations/0024_box_config_manifest.sql?raw';
+import feedback0025 from '../migrations/0025_feedback.sql?raw';
 
 /**
  * platform_db's migration set, IN APPLICATION ORDER, exactly as
@@ -125,6 +126,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
   // (routes/box-manifest.ts).
   boxConfigManifest0024,
+  // ⏱ 2026-10-03 · lane feedback-intake — the "Report a problem" intake's tables,
+  // WRITTEN by services/feedback (this Worker only migrates them).
+  feedback0025,
 ];
 
 /**
@@ -178,6 +182,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   nativeAttest0022,
   // 0024 is one CREATE TABLE IF NOT EXISTS — it replays.
   boxConfigManifest0024,
+  // 0025 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  feedback0025,
 ];
 
 /**
