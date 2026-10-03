@@ -16,7 +16,13 @@
 // No `jose` and no `hono` (a test under services/_shared resolves bare imports
 // from services/_shared/node_modules, which holds only what the kit declares):
 // the tokens are minted with WebCrypto, which is what ES256 and HS256 are.
+//
+// ⏱ 2026-10-03 (review of #1152, minor 1): `revokedNotRefused` runs a SIGNED-OUT
+// session through both boundaries, so a boundary whose `sessionRevoked(` call is
+// present but neutered (`false && await sessionRevoked(…)`) is red in every
+// Worker suite that calls it — the mutation assert-session-revocation.mjs cannot see.
 // ─────────────────────────────────────────────────────────────────────────────
+import { revocationKey, withRevokedSessions } from '../src/auth';
 import { mountedEndpoints, probePath, type Endpoint, type MountedRoute } from './preflight';
 
 const b64url = (bytes: Uint8Array): string => {
@@ -100,5 +106,56 @@ export async function anonymousNotRefused(
     const res = await through(probePath(e.path), { method: e.method });
     if (res.status !== 401) out.push(`${e.method} ${e.path} answered ${res.status} to a caller with no credential`);
   }
+  return out;
+}
+
+/** A SESSION_REVOKED binding holding one record, in the writer's own shape
+ *  (`withRevokedSessions`), and counting the reads `sessionRevoked` makes. */
+export function revokedSessionKv(sub: string, sessionId: string) {
+  const record = withRevokedSessions(null, [sessionId], Math.floor(Date.now() / 1000));
+  const kv = {
+    reads: 0,
+    async get(key: string): Promise<unknown> {
+      kv.reads += 1;
+      return key === revocationKey(sub) ? record : null;
+    },
+  };
+  return kv;
+}
+export type RevokedSessionKv = ReturnType<typeof revokedSessionKv>;
+
+/**
+ * A token whose session was signed out, through the permissive boundary
+ * (`permissive`, an endpoint it admits a live token to) and the erasure boundary
+ * (`erasure`): one line per boundary that did not refuse it. Empty is the pass.
+ * `through(kv)` must bind `kv` as SESSION_REVOKED (`undefined`: no binding), and
+ * the JWKS that verifies `sign` must already be served.
+ *
+ * A control runs first — the same token with no record must NOT be a 401 — or a
+ * refusal below would prove nothing. The erasure limb also requires the record to
+ * have been READ by that request: a 401 for another reason is not a revocation.
+ */
+export async function revokedNotRefused(
+  through: (revoked: RevokedSessionKv | undefined) => Through,
+  sign: (claims: Record<string, unknown>) => Promise<string>,
+  supabaseUrl: string,
+  permissive: Endpoint,
+  erasure: Endpoint,
+): Promise<string[]> {
+  const sub = 'user-signed-out';
+  const claims = goTrueClaims(supabaseUrl, sub);
+  const headers = { Authorization: `Bearer ${await sign(claims)}` };
+  const out: string[] = [];
+  const control = await through(undefined)(probePath(permissive.path), { method: permissive.method, headers });
+  if (control.status === 401) {
+    return [`control: ${permissive.method} ${permissive.path} refused the token with NO revocation record (401), so a refusal below would prove nothing`];
+  }
+  const kv = revokedSessionKv(sub, String(claims.session_id));
+  const p = await through(kv)(probePath(permissive.path), { method: permissive.method, headers });
+  if (p.status !== 401) out.push(`${permissive.method} ${permissive.path} answered ${p.status} to a signed-out session's token`);
+  const readsBefore = kv.reads;
+  const e = await through(kv)(probePath(erasure.path), { method: erasure.method, headers });
+  if (e.status !== 401) out.push(`${erasure.method} ${erasure.path} answered ${e.status} to a signed-out session's token`);
+  if (kv.reads === readsBefore) out.push(`${erasure.method} ${erasure.path} never read SESSION_REVOKED, so its boundary did not consult the revocation list`);
   return out;
 }

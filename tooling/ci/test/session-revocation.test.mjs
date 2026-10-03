@@ -102,6 +102,44 @@ describe('assert-session-revocation over a copy of the real tree', () => {
     });
   });
 
+  // ⏱ 2026-10-03 (review of #1152, minor 1): limb 1b. A delegate is exempt from
+  // limb 1's call checks, so each of these exited 0 before it.
+  const PLATFORM_AUTH = `${PLATFORM}/src/middleware/auth.ts`;
+  const PLATFORM_IMPORT = 'NO_SYMMETRIC_FALLBACK, sessionRevoked, verifySupabaseToken';
+  const REVOKED_IF = 'if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {';
+  test('🔴 platformAuth drops its sessionRevoked import AND call ⇒ exit 1', () => {
+    withRoot(
+      mutated([[PLATFORM_AUTH, PLATFORM_IMPORT, 'NO_SYMMETRIC_FALLBACK, verifySupabaseToken'], [PLATFORM_AUTH, REVOKED_IF, 'if (false) {']]),
+      ({ code, out }) => {
+        assert.equal(code, 1, out);
+        assert.match(out, /platform\/src\/middleware\/auth\.ts: verifies a token directly but does not import sessionRevoked/);
+        assert.match(out, /platform\/src\/middleware\/auth\.ts: verifies a token directly but never calls sessionRevoked\(/);
+      },
+    );
+  });
+
+  test('🔴 a kit boundary drops its sessionRevoked call ⇒ exit 1, for each boundary', () => {
+    // The kit holds the same `if` twice (supabaseAuthWith, then erasureAuth); cut one at a time.
+    for (const [nth, name] of [[0, 'supabaseAuthWith'], [1, 'erasureAuth']]) {
+      const root = realTree();
+      const p = join(root, KIT_AUTH);
+      const parts = readFileSync(p, 'utf8').split(REVOKED_IF);
+      assert.equal(parts.length, 3, 'the kit no longer holds the two boundary calls this case cuts');
+      writeFileSync(p, parts[0] + (nth === 0 ? 'if (false) {' : REVOKED_IF) + parts[1] + (nth === 1 ? 'if (false) {' : REVOKED_IF) + parts[2]);
+      withRoot(root, ({ code, out }) => {
+        assert.equal(code, 1, out);
+        assert.match(out, new RegExp(`the boundary ${name} never calls sessionRevoked\\(`));
+      });
+    }
+  });
+
+  test('COVERAGE LOST: a kit boundary renamed ⇒ exit 2', () => {
+    withRoot(mutated([[KIT_AUTH, 'export async function erasureAuth<', 'export async function erasureAuthV2<']]), ({ code, out }) => {
+      assert.equal(code, 2, out);
+      assert.match(out, /COVERAGE LOST — .*declares no function erasureAuth/);
+    });
+  });
+
   test('🔴 SESSION_REVOKED removed from the sta-api wrangler ⇒ exit 1', () => {
     withRoot(mutated([[`${STA}/wrangler.jsonc`, STA_BINDING, '']]), ({ code, out }) => {
       assert.equal(code, 1, out);

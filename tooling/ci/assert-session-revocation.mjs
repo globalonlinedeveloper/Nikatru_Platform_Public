@@ -34,6 +34,18 @@
 //           that imports a kit module which calls `jwtVerify(` (derived the same
 //           way). A delegate under no config binding SESSION_REVOKED is a finding,
 //           exactly as a verifier there was.
+//   limb 1b THE BOUNDARIES CALL IT. ⏱ 2026-10-03 (review of #1152, minor 1): a
+//           delegate is exempt from limb 1's call checks, so a kit boundary, or
+//           platform's `platformAuth`, could drop its `sessionRevoked(` call and
+//           limb 1 still exited 0. Now each named kit boundary (KIT_BOUNDARIES,
+//           in services/_shared/src/auth-middleware.ts) must call `sessionRevoked(`
+//           inside its own declaration, and every file outside the kit that calls
+//           a verifier directly (`verifySupabaseToken(` / `verifyAsymmetric(`) must
+//           import `sessionRevoked` from the kit and call it outside that import.
+//           A named boundary that is not found is COVERAGE LOST. What this limb
+//           cannot see is a call that is present but neutered (`false && await
+//           sessionRevoked(…)`): services/_shared/test/mount-auth.ts runs a
+//           revoked session through every mounted boundary for that.
 //   limb 2  THE TTL. `REVOCATION_TTL_SECONDS` must equal `jwt_exp`
 //           (tooling/mail-transport.json → supabaseAuth.jwt_exp, the value read
 //           back from the live project) + `CLOCK_SKEW_SECONDS`. Shorter, and a
@@ -186,6 +198,52 @@ for (const rel of [...verifiers, ...delegates]) {
   }
 }
 
+// ── limb 1b: every boundary calls sessionRevoked( ───────────────────────────
+const KIT_MIDDLEWARE = `${KIT}auth-middleware.ts`;
+const KIT_BOUNDARIES = ['supabaseAuthWith', 'erasureAuth'];
+const DIRECT_VERIFIER = /\b(?:verifySupabaseToken|verifyAsymmetric)\s*\(/;
+const REVOKED_CALL = /\bsessionRevoked\s*\(/;
+const withoutImports = (bare) => bare.replace(/import\s*(?:type\s*)?\{[^}]*\}\s*from\s*[^;\n]+;?/g, '');
+/** One top-level declaration's text: from `function NAME` to the next line that opens another at column 0. */
+function declarationOf(code, name) {
+  const start = code.search(new RegExp(String.raw`^(?:export\s+)?(?:async\s+)?function\s+${name}\b`, 'm'));
+  if (start < 0) return null;
+  const rest = code.slice(start + 1);
+  const end = rest.search(/^(?:export\s|(?:async\s+)?function\s|const\s|let\s|class\s|interface\s|type\s)/m);
+  return end < 0 ? code.slice(start) : code.slice(start, start + 1 + end);
+}
+if (!existsSync(join(ROOT, KIT_MIDDLEWARE))) {
+  coverageLost([`${KIT_MIDDLEWARE} does not exist, so the kit boundaries (${KIT_BOUNDARIES.join(', ')}) could not be read.`]);
+}
+{
+  const kitBare = stripStringLiterals(readCode(KIT_MIDDLEWARE));
+  const missing = KIT_BOUNDARIES.filter((b) => declarationOf(kitBare, b) === null);
+  if (missing.length) {
+    coverageLost([
+      `${KIT_MIDDLEWARE} declares no function ${missing.join(', ')}, so limb 1b could not read that boundary.`,
+      'A renamed or moved boundary is unchecked until KIT_BOUNDARIES names it again.',
+    ]);
+  }
+  for (const b of KIT_BOUNDARIES) {
+    if (!REVOKED_CALL.test(declarationOf(kitBare, b))) {
+      problems.push(`${KIT_MIDDLEWARE}: the boundary ${b} never calls sessionRevoked( — every route behind it admits a signed-out session's token.`);
+    }
+  }
+}
+const directCallers = [...candidates]
+  .filter((rel) => !rel.startsWith(KIT) && DIRECT_VERIFIER.test(withoutImports(stripStringLiterals(readCode(rel)))))
+  .sort();
+for (const rel of directCallers) {
+  const code = readCode(rel);
+  const importsIt = [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)].some(
+    ([, names, from]) => /_shared\/src\/auth-middleware$/.test(from) && /(?:^|[\s,])sessionRevoked(?:\s*[,}]|\s*$)/.test(names),
+  );
+  if (!importsIt) problems.push(`${rel}: verifies a token directly but does not import sessionRevoked from ${KIT_MIDDLEWARE}.`);
+  if (!REVOKED_CALL.test(withoutImports(stripStringLiterals(code)))) {
+    problems.push(`${rel}: verifies a token directly but never calls sessionRevoked( — a signed-out session's token is admitted here.`);
+  }
+}
+
 // ── limb 2: the record lives exactly as long as the longest token it refuses ─
 const numberOf = (code, name) => {
   const m = code.match(new RegExp(String.raw`\bconst\s+${name}\s*(?::\s*number\s*)?=\s*([0-9][0-9_]*)\s*;`));
@@ -232,5 +290,6 @@ if (problems.length) {
 console.log(
   `✓ assert-session-revocation: ${carriers.length} carrier(s) (${liveCarriers.length} live, ${templateCarriers.length} template) ` +
     `bind ${BINDING}; ${verifiers.length} verifier(s) import and call revocationRefusal ` +
-    `(${verifiers.join(', ')}); REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}.`,
+    `(${verifiers.join(', ')}); ${KIT_BOUNDARIES.length} kit boundary(ies) and ${directCallers.length} direct verifier caller(s) ` +
+    `call sessionRevoked; REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}.`,
 );

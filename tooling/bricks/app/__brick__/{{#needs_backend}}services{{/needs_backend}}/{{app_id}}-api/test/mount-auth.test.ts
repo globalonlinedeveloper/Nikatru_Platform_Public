@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { app } from '../src/index';
 import type { AppEnv } from '../src/types';
-import { anonymousNotRefused, es256Issuer, goTrueClaims, hs256Token, jwksFetch, type Through } from '../../_shared/test/mount-auth';
+import { anonymousNotRefused, es256Issuer, goTrueClaims, hs256Token, jwksFetch, revokedNotRefused, type Through } from '../../_shared/test/mount-auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mount-auth.test.ts — THIS WORKER'S AUTH BOUNDARIES RUN IN ITS OWN SUITE.
@@ -70,5 +70,25 @@ describe('supabaseAuth admits a verified token, and erasureAuth refuses the lega
     const headers = { Authorization: `Bearer ${token}` };
     expect((await through()('/v1/anything', { method: 'GET', headers })).status).toBe(404);
     expect((await through()('/v1/account', { method: 'DELETE', headers })).status).toBe(401);
+  });
+});
+
+describe('both boundaries refuse a signed-out session (AUTH-REVOKE-AT-WORKERS)', () => {
+  it('🔴 a token whose session_id is on the SESSION_REVOKED list is a 401 on /v1 and on DELETE /v1/account', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Its own project URL: the kit caches the remote JWKS per URL, and an earlier
+    // case's key under the same kid would refuse this case's control.
+    const url = 'https://revoked.example.test';
+    const { jwks, sign } = await es256Issuer();
+    vi.stubGlobal('fetch', jwksFetch(url, jwks));
+    const failures = await revokedNotRefused(
+      (revoked) => through(env({ SUPABASE_URL: url, SESSION_REVOKED: revoked })),
+      sign,
+      url,
+      { method: 'GET', path: '/v1/anything' },
+      { method: 'DELETE', path: '/v1/account' },
+    );
+    expect(failures).toEqual([]);
   });
 });
