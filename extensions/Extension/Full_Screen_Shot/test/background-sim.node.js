@@ -2018,6 +2018,126 @@ const quotaError = (message) => {
     check('FS_ERROR releases the session', (await startCapture(env, tab.id, 'visible')).ok === true, 'retry');
   }
 
+  /* ================= who may talk to the router ================= */
+  /* O-FULLSHOT-ROUTER-TRUSTS-ANY-SENDER (rv2-security-014). Until this section
+     the router checked no sender at all, so DATA_DELETE_ALL, BATCH_START (a url
+     list the queue never re-validates) and START_CAPTURE with any tabId were
+     honoured from a content-script context — the one context this product runs
+     inside pages it does not control. A refusal is NO ANSWER (undefined here,
+     the channel closed), never a sentence: a refusal that answers is a probe
+     that succeeded. Every refusal is graded on what did NOT happen as well. */
+  console.log('\n=== who may talk to the router ===');
+  const seedShot = (env, id) => env.db.stores.shots.set(id, {
+    id, title: 'A page', url: 'https://one.test/', createdAt: env.clock.now(), mode: 'full',
+    w: 10, h: 10, format: 'png', segments: [], thumb: null
+  });
+  const foreignPage = p => ({ id: 'someoneelsesextensionid', url: 'chrome-extension://someoneelsesextensionid/' + (p || 'x.html') });
+  // An extension page opened IN A TAB — options_page and batch.html both are —
+  // carries sender.tab as well as our url. That is still us.
+  const ourPageInTab = (env, p, id) => Object.assign(env.fromPage(p), { tab: { id: id || 77, url: EXT_URL + p } });
+  {
+    const env = newEnv();
+    await pump(env, { budget: 0 });
+    const page = env.addTab({ id: 501, url: 'https://hostile.example/' });
+    seedShot(env, 'keep-1');
+    const res = await env.send({ type: 'DATA_DELETE_ALL' }, env.senderTab(page));
+    await pump(env, { budget: 2000 });
+    check('a content script cannot delete everything: no answer', res === undefined, JSON.stringify(res));
+    check('...and the library is untouched', env.db.stores.shots.has('keep-1'), env.db.stores.shots.size);
+    check('...and the refusal is logged by type for the developer',
+      env.logs.some(l => /refused/.test(l) && /DATA_DELETE_ALL/.test(l)), JSON.stringify(env.logs.slice(-3)));
+  }
+  {
+    const env = newEnv({ script: { frames: 1 } });
+    const page = env.addTab({ id: 502, url: 'https://hostile.example/' });
+    const res = await env.send({ type: 'BATCH_START', urls: ['https://one.test/', 'https://two.test/'] }, env.senderTab(page));
+    await pump(env, { budget: 12000 });
+    check('a content script cannot start a batch: no answer, no tab opened, nothing captured',
+      res === undefined && env.creates.length === 0 && env.shots.length === 0,
+      JSON.stringify(res) + ' creates=' + env.creates.length + ' shots=' + env.shots.length);
+  }
+  {
+    // The cross-tab read the template's comment describes: a page asks for a
+    // capture of a DIFFERENT tab it has nothing to do with.
+    const env = newEnv();
+    const page = env.addTab({ id: 503, url: 'https://hostile.example/', active: false });
+    const mail = env.addTab({ id: 504, url: 'https://mail.example.com/inbox' });
+    const res = await env.send({ type: 'START_CAPTURE', tabId: mail.id, mode: 'full', startDelay: 0 }, env.senderTab(page));
+    await pump(env, { budget: 12000 });
+    check('a content script cannot start a capture of another tab: no answer, nothing injected, nothing shot',
+      res === undefined && mail.scripts.length === 0 && page.scripts.length === 0 && env.shots.length === 0,
+      JSON.stringify(res) + ' injected=' + JSON.stringify([mail.scripts, page.scripts]) + ' shots=' + env.shots.length);
+  }
+  for (const type of ['DIAGNOSTIC_BUNDLE', 'DATA_STATUS', 'DATA_SWEEP']) {
+    const env = newEnv();
+    const page = env.addTab({ id: 505, url: 'https://hostile.example/' });
+    const res = await env.send({ type }, env.senderTab(page));
+    check('a content script gets no answer to ' + type, res === undefined, JSON.stringify(res));
+  }
+  {
+    // Somebody else's extension, from its own page: refused before the type is
+    // even read, so it cannot learn which types exist.
+    const env = newEnv();
+    await pump(env, { budget: 0 });
+    seedShot(env, 'keep-2');
+    const del = await env.send({ type: 'DATA_DELETE_ALL' }, foreignPage('options.html'));
+    const unk = await env.send({ type: 'FS_NOT_A_REAL_MESSAGE' }, foreignPage());
+    const tab = env.addTab({ id: 506 });
+    const frame = await env.send({ type: 'FS_FRAME', index: 0, total: 1, x: 0, y: 0 },
+      Object.assign(env.senderTab(tab), { id: 'someoneelsesextensionid' }));
+    await pump(env, { budget: 2000 });
+    check('another extension gets no answer at all — not even to an unknown type',
+      del === undefined && unk === undefined && frame === undefined, JSON.stringify([del, unk, frame]));
+    check('...and the library is untouched', env.db.stores.shots.has('keep-2'), env.db.stores.shots.size);
+  }
+  {
+    // Our id but a url outside our origin, and no tab: not one of our pages.
+    const env = newEnv();
+    const res = await env.send({ type: 'DATA_STATUS' }, { id: EXT_ID, url: 'https://hostile.example/frame.html' });
+    check('a sender with our id but a url outside our origin is refused', res === undefined, JSON.stringify(res));
+  }
+  {
+    /* CONTROL, both halves. Our own pages are answered whether or not they sit
+       in a tab, and a content script still reaches the cases written for it. */
+    const env = newEnv({ script: { frames: 1 } });
+    await pump(env, { budget: 0 });
+    const st = await env.send({ type: 'DATA_STATUS' }, ourPageInTab(env, 'pages/options.html'));
+    check('CONTROL: the options page, open in a tab, is answered', st && st.ok === true, JSON.stringify(st));
+    const st2 = await env.send({ type: 'DATA_STATUS' }, env.fromPage('popup/popup.html'));
+    check('CONTROL: the popup, which has no tab, is answered', st2 && st2.ok === true, JSON.stringify(st2));
+    const b = await env.send({ type: 'BATCH_START', urls: ['https://one.test/'] }, ourPageInTab(env, 'pages/batch.html'));
+    await pump(env, { budget: 12000 });
+    check('CONTROL: the batch page, open in a tab, starts its queue', b && b.ok === true && env.creates.length >= 1,
+      JSON.stringify(b) + ' creates=' + env.creates.length);
+    const tab = env.addTab({ id: 507 });
+    const fr = await env.send({ type: 'FS_FRAME', index: 0, total: 1, x: 0, y: 0 }, env.senderTab(tab));
+    check('CONTROL: a content script of ours is still answered on its own cases',
+      fr && fr.error === 'No active session', JSON.stringify(fr));
+  }
+  {
+    /* tabIdFor: an extension page that IS a tab acts on that tab, never on one
+       it names. Only a page with no tab (the popup) may nominate one. */
+    const env = newEnv();
+    const other = env.addTab({ id: 508, url: 'https://mail.example.com/inbox' });
+    const res = await env.send({ type: 'START_CAPTURE', tabId: other.id, mode: 'full', startDelay: 0 },
+      Object.assign(env.fromPage('popup/popup.html'), { tab: { id: 509, url: EXT_URL + 'popup/popup.html' } }));
+    await pump(env, { budget: 12000 });
+    check('a page in a tab cannot nominate a different tab to capture',
+      other.scripts.length === 0 && env.trace.indexOf('tab.get:' + other.id) < 0 && env.trace.indexOf('tab.get:509') >= 0,
+      JSON.stringify(res) + ' ' + JSON.stringify(env.trace.filter(s => /^tab\.get:/.test(s))));
+  }
+  {
+    // The structural half, read off the shipped source: the guard is the FIRST
+    // thing the router does, before the async block that answers.
+    const head = (BG_SRC.split("chrome.runtime.onMessage.addListener(")[1] || '').slice(0, 1200);
+    check('the router asks who is talking before anything else',
+      /^\(msg, sender, respond\) => \{\s*(?:\/\*(?:[^*]|\*(?!\/))*\*\/\s*)*if \(!senderMayAsk\(msg, sender\)\)/.test(head),
+      head.slice(0, 200));
+    check('...and START_CAPTURE reads its tab through tabIdFor, never msg.tabId',
+      /case 'START_CAPTURE':[\s\S]{0,200}chrome\.tabs\.get\(tabIdFor\(msg, sender\)\)/.test(BG_SRC) &&
+      !/chrome\.tabs\.get\(msg\.tabId\)/.test(BG_SRC), 'background.js START_CAPTURE');
+  }
+
   /* ================= frame expansion ================= */
   console.log('\n=== expand frames ===');
   {

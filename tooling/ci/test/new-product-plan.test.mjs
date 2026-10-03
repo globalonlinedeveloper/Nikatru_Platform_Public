@@ -31,6 +31,7 @@ import { tmpdir } from 'node:os';
 import { REPO, STEPS, STEPS_BY_KIND, planProduct, exitCodeOf, main, resolveKind } from '../../kit/new-product.mjs';
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
 import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
+import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
 import { main as stampServiceMain } from '../../kit/stamp-service.mjs';
 import { run as runStampShared } from '../../kit/stamp-shared.mjs';
 import { BUNDLES_REGISTER, isStampedExclusion } from '../../catalog/read.mjs';
@@ -508,8 +509,16 @@ describe('step 9 · price row', () => {
 
   test('every served offering priced → DONE; render-rail-prices.mjs --check is green', () => {
     assert.equal(stepOf('price row').state, 'DONE');
-    const g = guard('tooling/catalog/render-rail-prices.mjs', FX, '--check');
-    assert.equal(g.status, 0, g.out);
+    // ON THE REAL CLOCK, deliberately: --check grades the LIVE fee register's
+    // asOf dates against today (a fee cell is re-read within 90 days), so on a
+    // time-travel run it would grade a future nobody has re-read yet. The date
+    // that register next goes stale is an ops obligation, not a test fuse.
+    const r = spawnSync(process.execPath, [repoFile('tooling/catalog/render-rail-prices.mjs'), FX, '--check'], {
+      cwd: FX,
+      encoding: 'utf8',
+      env: { ...process.env, [TEST_NOW_VAR]: '' },
+    });
+    assert.equal(r.status, 0, `${r.stdout ?? ''}${r.stderr ?? ''}`);
   });
 
   // rv2-newproduct-002. The absent row is served the defaults, so no guard of this
@@ -521,6 +530,24 @@ describe('step 9 · price row', () => {
     assert.equal(a.state, 'NEXT');
     assert.match(a.detail, /has no apps\.nextapp row/);
     assert.match(a.command, /"offerings": \[\]\}` declares it free/);
+  });
+
+  // The stamp writes apps.<id> with its update_url alone (snap-update-row.mjs); that
+  // row decides no price. Red control: with the `paywall` key test removed from the
+  // reader, this row reads DONE "declares no offering".
+  test('an apps.<id> row with no `paywall` (the stamp\'s update_url row) → NEXT, never "free"', () => {
+    const restore = mutate('services/platform/src/app-config-data.json', (t) => {
+      const j = JSON.parse(t);
+      j.apps.nextapp = { update_url: { 'linux-snap': 'https://snapcraft.io/nextapp' } };
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /apps\.nextapp declares no `paywall`/);
+    } finally {
+      restore();
+    }
   });
 
   test('apps.<id> declaring no offering → DONE, free by declaration; render-rail-prices.mjs --check is green', () => {

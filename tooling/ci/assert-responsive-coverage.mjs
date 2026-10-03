@@ -740,15 +740,23 @@ const REQUIRED_COVERAGE = [
     // surfaces and covered, 34 → 35 width files — the chassis DevicesSection
     // at all three classes and 200 % text (test/devices_section_test.dart).
     // Read off the merged tree: `34 surface(s) reachable, 34 measured`, `— 35 file(s)`.
+    // ⏱ RAISED 2026-10-02 · club-rt-money: 34 → 36 surfaces and covered,
+    // 35 → 38 width files — the chassis AiDisclosureDialog and AiOutputLabel at
+    // all three classes (test/ai_disclosure_test.dart, test/a11y_ai_test.dart),
+    // and test/revocation_reason_test.dart. Read off the tree: `36 surface(s)
+    // reachable, 36 measured`, `— 38 file(s)`.
     // ⏱ RAISED 2026-10-02 · club-st-singles (EN-21, SE-04): surfaces and
     // covered 34 → 36, width files 35 → 38, IN THE CHANGE THAT EARNED THEM:
     // `EmailCodeForm` and `ConnectedAccountsView` arrived with
     // test/email_code_form_test.dart and test/connected_accounts_view_test.dart
     // (all three classes each) and test/a11y_account_plus_test.dart. Read off
     // the merged tree: `36 surface(s) reachable, 36 measured`, `— 38 file(s)`.
-    surfaces: 36,
-    widthTestFiles: 38,
-    coveredSurfaces: 36,
+    // ⏱ RAISED 2026-10-03 · merge of main into #1176 (both sides above):
+    // surfaces and covered 36 → 38, width files 38 → 41. Read off the merged
+    // tree: `38 surface(s) reachable, 38 measured`, `— 41 file(s)`.
+    surfaces: 38,
+    widthTestFiles: 41,
+    coveredSurfaces: 38,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

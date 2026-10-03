@@ -39,6 +39,26 @@ node tooling/ops/land-gate.mjs freeze --file <path to land.freeze>
 
 Exit `0` GREEN/OPEN, `1` RED/FROZEN, `2` not a verdict (PENDING, STALE, NONE, unreadable).
 
+## The merge itself squashes with the PR body
+
+Then the lander merges through one command, never a bare `gh pr merge --squash`:
+
+```
+node tooling/ops/land-merge.mjs <n> --head <the head whose gate was read> [--dry-run]
+```
+
+It reads the PR's title, body and head in one `gh pr view`, rewrites the body's `Rows:` line
+bare, and runs `gh pr merge <n> --squash --match-head-commit <head> --subject "<title> (#<n>)"
+--body-file <body>`. A bare `--squash` takes the repository's squash default, which writes
+the branch's commit messages and drops the PR body. Exit `0` merged, `1` refused (no `Rows:` line
+main can read, or gh failed), `2` not a verdict (the head moved, the PR is not open, unreadable).
+
+On every push to `main`, guard-meta runs `tooling/ci/assert-main-rows.mjs`: the newest commit
+whose subject ends `(#<n>)` must hold a line matching `^Rows:`. If it does not, that push's
+`ci-gate` is red, so that commit does not deploy and `main-healthy` is `failure`. A squashed commit
+cannot be re-squashed, so the next PR merge (one that carries its line) is the fix: land it as
+fix-first under rule (c).
+
 A run object's `name` is ci.yml's `run-name` ("CI on main by @…"), never `CI`, so runs are
 matched on `path` (`.github/workflows/ci.yml`), not on name.
 
@@ -54,7 +74,8 @@ on an up-to-date branch. GitHub can do that natively:
 
 1. Keep `ci-gate` the **only** required check. `main-healthy` is posted on main commits,
    never on a PR head, so requiring it would block every merge.
-2. Turn **auto-merge** on per PR (`gh pr merge <n> --auto --squash --match-head-commit <sha>`).
+2. Turn **auto-merge** on per PR (`gh pr merge <n> --auto --squash --match-head-commit <sha> --subject "<title> (#<n>)" --body-file <body>`;
+   without the last two the squash takes the repository default and drops the `Rows:` line).
    `allow_auto_merge` is already true (§7 of `README.md`). GitHub then merges on the
    **native** evaluation of the required check, which reads the newest run's `ci-gate` —
    rule (a) with no reader at all.

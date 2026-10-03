@@ -394,9 +394,13 @@ String? _historyKey(List<Subscription>? rows) {
 /// 🔴 THE TIMER IS NOT IN HERE, deliberately: a provider-owned timer outlives
 /// every widget test whose container is disposed at teardown, and fails each
 /// with `!timersPending`. A widget's timer dies with the widget.
+///
+/// ⏱ 2026-10-01 · its default reads [wallClock] rather than `DateTime.now`
+/// directly, so the weekly time-travel run can move every reader that has not
+/// pinned this provider (see [wallClock]).
 final Provider<DateTime Function()> nowProvider = Provider<DateTime Function()>(
   (Ref ref) =>
-      () => DateTime.now(),
+      () => wallClock(),
 );
 
 /// How long from [now] until the next LOCAL midnight — calendar arithmetic,
@@ -408,3 +412,19 @@ Duration untilLocalMidnight(DateTime now) {
   final Duration d = next.difference(local);
   return d < const Duration(seconds: 1) ? const Duration(seconds: 1) : d;
 }
+
+/// The wall clock behind [nowProvider]'s default. Production never assigns it,
+/// so it is `DateTime.now` in every shipped build.
+///
+/// 🔴 A TEST-ONLY SEAM, and the only one the Dart half of the time-travel run
+/// has. `test/flutter_test_config.dart` moves it to `NIKATRU_TEST_NOW` when that
+/// variable is set (the weekly `.github/workflows/time-travel.yml` sets it ~400
+/// days ahead and at the year boundary), so a test that reads the clock through
+/// [nowProvider] without pinning it runs on that day, and a date fuse in it
+/// fires there instead of on every pull request on the day it was set for
+/// (#1101: a Worker test did exactly that at 2026-10-01 00:00Z). A test that
+/// overrides [nowProvider] stays pinned. A zone-scoped clock (`withClock`)
+/// cannot do this job: package:test runs each test body in the runner's zone,
+/// not the zone `testExecutable` declared it in.
+@visibleForTesting
+DateTime Function() wallClock = DateTime.now;

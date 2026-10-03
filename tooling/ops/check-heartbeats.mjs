@@ -46,6 +46,9 @@
 //                 that the semantics are correct, a check that merely asserts
 //                 "a heartbeat landed today" is GREEN ON A FAILING KEEP-ALIVE.
 //                 Assert on the outcome column, not on the row's presence.
+//   2b. CAPPED  — ⏱ 2026-10-01: a retention job whose newest N rows are all ok=1
+//                 and all say a store was still full when its budget ran out
+//                 (`cappedNightsRed` in the register). Graded as RED: exit 1.
 //   3. UNKNOWN  — no token, a non-200, unparseable JSON, an unrecognised cron
 //                 expression. ALL FAIL CLOSED. "I could not tell" must never
 //                 read as "it is fine"; that is precisely how the original claim
@@ -54,6 +57,19 @@
 //                 after the instant the register began watching it
 //                 (`watchedJobsDeclaredAt`) has not yet ended its grace. It
 //                 PRINTS, and becomes ABSENT at that instant by arithmetic.
+//
+// ⏱ 2026-10-03 · A SLOT IS OWED BY THE SCHEDULE THAT WAS LIVE WHEN IT FELL DUE.
+// The register on main says which cron each job keeps NOW; the Worker runs
+// whatever release was deployed. Ops watch 37137496614 judged seven jobs ABSENT
+// for slots (06:10-06:40Z, and 12:00Z for the two probes) that no live release
+// had ever scheduled: #1165 moved them onto new crons, merged 15:29:59Z, and the
+// Worker carrying that split went live 16:17:38Z. Every one had run inside the
+// 06:00Z firing, ok=1. So each slot is now judged by the job's crons in the
+// register AT THE RELEASE LIVE WHEN IT FELL DUE, read from the deploy ledger
+// (deploy-workers.yml's `record-deployment.mjs <worker>` rows: sha + time) and
+// `git show <sha>:tooling/ops/register.json`. See `owedSlot` and `jobTimeline`.
+// A ledger or a register that cannot be read falls back to main's schedule —
+// the stricter reading, the one this reader always used — and says so.
 //
 // EXIT CODES (INV6, 2026-09-11): 0 every duty fresh or not yet due · 1 a duty is
 // ABSENT or RED · 2 COVERAGE LOST — the watched set could not be derived, the
@@ -74,8 +90,12 @@
 // decision branch is exercised without network. It prints a loud banner so its
 // presence in a real log is unmistakable.
 //
-// Usage:  node tooling/ops/check-heartbeats.mjs [--root <repoRoot>]
-// Env:    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+// Usage:  node tooling/ops/check-heartbeats.mjs [--root <repoRoot>] [--releases-file <json>]
+// Env:    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID; GITHUB_TOKEN (+ GITHUB_REPOSITORY)
+//         for the deploy ledger. `--releases-file` stands in for it offline:
+//         { "ledger": { "<worker>": [{ sha, created_at }] }, "registers": { "<sha>": <register> } }
+//         (a sha with no `registers` entry is read with `git show`). With `--rows-file`
+//         and no releases file the ledger is not read: main's schedule judges every slot.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -273,15 +293,140 @@ export function firstFireAfterMs(expr, fromMs) {
 }
 
 /**
+ * ⏱ 2026-10-03 · THE NEWEST SLOT THE RELEASE LIVE AT IT OWED, past its grace.
+ *
+ * `timeline` is one job's schedule per release: `[{ fromMs, crons, sha }]`, each
+ * entry the job's cron list in the register of the release that went live at
+ * `fromMs` (the oldest entry's `fromMs` is -Infinity: everything before it is
+ * taken to have run it). A slot of cron `c` is owed only when it falls inside an
+ * entry whose `crons` holds `c`. One entry from -Infinity with main's crons is
+ * exactly the rule this reader always applied.
+ *
+ * Returns `{ dueMs, cron, sha, fromMs }`, `{ unreadable: cron }` when ANY entry
+ * names an expression this reader cannot read (refused, never skipped — the
+ * same rule as before), or `null` when no entry owed a slot yet.
+ *
+ * 🔴 IT CANNOT HIDE A MISSED SLOT OF A LIVE SCHEDULE. A slot is dropped only when
+ * the release running at that instant did not schedule the job on that cron, so
+ * the Worker could not have run it then. After the deploy, the new crons own every
+ * slot (heartbeats.test.mjs, the red control).
+ */
+export function owedSlot(timeline, nowMs) {
+  const segs = (Array.isArray(timeline) ? timeline : []).filter((s) => s && Array.isArray(s.crons));
+  for (const s of segs) {
+    for (const c of s.crons) {
+      if (cronIntervalHours(c) === null || lastExpectedFireMs(c, nowMs) === null) return { unreadable: c };
+    }
+  }
+  const sorted = [...segs].sort((a, b) => a.fromMs - b.fromMs);
+  const asOf = nowMs - MISSED_RUN_GRACE_HOURS * 3_600_000;
+  let best = null;
+  for (let i = 0; i < sorted.length; i++) {
+    const { fromMs, crons } = sorted[i];
+    // A slot AT the next release's instant belongs to the next release.
+    const until = Math.min(asOf, i + 1 < sorted.length ? sorted[i + 1].fromMs - 1 : Infinity);
+    if (until < fromMs) continue;
+    for (const c of crons) {
+      const s = lastExpectedFireMs(c, until);
+      if (s !== null && s >= fromMs && (best === null || s > best.dueMs)) {
+        best = { dueMs: s, cron: c, sha: sorted[i].sha ?? null, fromMs };
+      }
+    }
+  }
+  return best;
+}
+
+/** How far back the deploy ledger is turned into schedule entries: a weekly
+ *  cron's period plus its grace, and a day to spare. Older releases cannot hold
+ *  the newest owed slot of any shape `cronIntervalHours` accepts. */
+export const SCHEDULE_LOOKBACK_MS = (24 * 7 + MISSED_RUN_GRACE_HOURS + 24) * 3_600_000;
+
+/**
+ * ⏱ 2026-10-03 · One job's `owedSlot` timeline, from the deploy ledger.
+ *
+ * `releases` are ledger rows `{ sha, liveFromMs }` (any order); `registerAt(sha)`
+ * answers the parsed tooling/ops/register.json at that commit, or null. A release
+ * whose register — or whose row `rowId`, or whose watchedJobs MAP — cannot be
+ * read is judged by `headCrons` (main's) and named in `notes`: the stricter
+ * reading, never a skip. A release whose register does not watch `job` owed it
+ * nothing. Only releases live inside SCHEDULE_LOOKBACK_MS of `nowMs` are read,
+ * and the oldest kept one is taken back to -Infinity.
+ *
+ * Returns `{ timeline: null }` when the ledger names no release: the caller then
+ * judges by main's schedule, as before.
+ */
+export function jobTimeline(rowId, job, headCrons, releases, registerAt, nowMs) {
+  const notes = [];
+  const sorted = (Array.isArray(releases) ? releases : [])
+    .filter((r) => r && typeof r.sha === 'string' && Number.isFinite(r.liveFromMs))
+    .sort((a, b) => a.liveFromMs - b.liveFromMs);
+  if (!sorted.length) return { timeline: null, notes };
+  // The newest release live at the window's start, and every one after it.
+  let first = 0;
+  for (let i = 0; i < sorted.length; i++) if (sorted[i].liveFromMs <= nowMs - SCHEDULE_LOOKBACK_MS) first = i;
+  const timeline = sorted.slice(first).map((r, i) => {
+    const reg = registerAt(r.sha);
+    const row = Array.isArray(reg?.rows) ? reg.rows.find((x) => x?.id === rowId) : null;
+    const wj = row?.watchedJobs;
+    let crons;
+    if (!wj || typeof wj !== 'object' || Array.isArray(wj)) {
+      notes.push(
+        `release ${r.sha.slice(0, 12)} (live ${new Date(r.liveFromMs).toISOString()}) — its register ` +
+          `${!reg ? 'could not be read' : !row ? `has no row ${rowId}` : 'has no watchedJobs MAP'}, so its slots are judged by main's schedule.`,
+      );
+      crons = headCrons;
+    } else {
+      // Absent: the job did not exist at that release, so it owed nothing. Present
+      // and not a list cannot be read, so it is judged by main's, like the rest.
+      crons = Array.isArray(wj[job]) ? wj[job] : Object.prototype.hasOwnProperty.call(wj, job) ? headCrons : [];
+    }
+    return { fromMs: i === 0 ? -Infinity : r.liveFromMs, crons, sha: r.sha };
+  });
+  return { timeline, notes };
+}
+
+/**
+ * The integer a heartbeat `detail` carries as `<name>=<n>`, or null. The token
+ * must open the detail or follow whitespace, so `capped` never reads the number
+ * inside `prune_capped=`.
+ */
+export function detailToken(detail, name) {
+  const m = new RegExp(`(?:^|\\s)${name}=(\\d+)(?![\\w.])`).exec(String(detail ?? ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * ⏱ 2026-10-01. The targets whose newest `nights` rows ALL carry `token` above 0.
+ * Fewer than `nights` rows for a target is not enough history to say so, and a
+ * row without the token (a run that failed before it could count) breaks the
+ * streak rather than extending it: that run is graded by the outcome limb.
+ */
+export function cappedTargets(rows, token, nights) {
+  const byTarget = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const key = r.target ?? '(none)';
+    if (!byTarget.has(key)) byTarget.set(key, []);
+    byTarget.get(key).push(r);
+  }
+  const stuck = [];
+  for (const [target, list] of byTarget) {
+    const newest = [...list].sort((a, b) => Date.parse(b.ran_at) - Date.parse(a.ran_at)).slice(0, nights);
+    if (newest.length === nights && newest.every((r) => (detailToken(r.detail, token) ?? 0) > 0)) stuck.push(target);
+  }
+  return stuck;
+}
+
+/**
  * The decision, kept pure. `rows` are the newest-first heartbeat rows for ONE
- * job; `cronExpr` is that job's declared cron expression.
+ * job; `cronExpr` is that job's declared cron expression; `capped`, when the
+ * register declares one for the job, is `{ token, nights }` (cappedNightsRed).
  *
  * ⚠️ It takes the EXPRESSION, not a precomputed interval, and that is the whole
  * repair: an interval can only answer "how old is the newest row", which is a
  * different question from "did the run that was due actually run". See
  * MISSED_RUN_GRACE_HOURS for the real event that separated them.
  */
-export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
+export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null, capped = null, timeline = null) {
   if (!Array.isArray(rows)) {
     return { ok: false, kind: 'unknown', reason: `${job}: the query result was not an array — an unreadable answer is a failure, not a pass` };
   }
@@ -347,29 +492,43 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
   // past due. Stepping back by the grace first grades the newest slot that is
   // OWED a row, so a late run inside its grace is still not an alarm.
   const cronList = Array.isArray(cronExpr) ? cronExpr : [cronExpr];
-  const dues = cronList.map((c) => lastExpectedFireMs(c, nowMs - MISSED_RUN_GRACE_HOURS * 3_600_000));
+  // ⏱ 2026-10-03 · THE SLOT IS THE ONE THE RELEASE LIVE AT IT OWED (`owedSlot`).
+  // Without a ledger timeline it is one entry, main's crons from -Infinity, which
+  // is the rule below exactly as it stood.
+  const fromLedger = Array.isArray(timeline) && timeline.length > 0;
+  const owed = owedSlot(fromLedger ? timeline : [{ fromMs: -Infinity, crons: cronList, sha: null }], nowMs);
   // ⚠️ ANY unreadable expression is refused, not skipped: taking the max over
   // "the ones that parsed" would quietly judge a job against a subset of its own
   // schedule, which is the shape of every silent narrowing in this file.
-  const dueMs = dues.some((d) => d === null) || dues.length === 0 ? null : Math.max(...dues);
-  if (dueMs === null) {
+  const dueMs = owed === null || owed.unreadable !== undefined ? null : owed.dueMs;
+  // No release has owed a slot yet — only reachable from a ledger timeline (main's
+  // own crons from -Infinity always owe one). The outcome limbs below still grade
+  // the rows; the absence limb has nothing to grade.
+  const notOwedYet = fromLedger && owed === null;
+  if (dueMs === null && !notOwedYet) {
     return {
       ok: false,
       kind: 'unknown',
       ageHours,
       reason:
-        `${job}: cron expression \`${cronList.join('` `')}\` yields no computable occurrence, so "was the run that was due missed?" ` +
+        `${job}: cron expression \`${fromLedger && owed?.unreadable !== undefined ? owed.unreadable : cronList.join('` `')}\` yields no computable occurrence, so "was the run that was due missed?" ` +
         'cannot be asked. Failing closed rather than falling back to a staleness guess.',
     };
   }
   const sinceDueHours = (nowMs - dueMs) / 3_600_000;
-  if (stamp < dueMs) {
+  // Which release owed the slot, when the ledger said. Printed so a red names the
+  // schedule it was judged by, not only main's.
+  const owedBy =
+    fromLedger && owed?.sha
+      ? `, owed by release ${owed.sha.slice(0, 12)}${Number.isFinite(owed.fromMs) ? ` live since ${new Date(owed.fromMs).toISOString()}` : ''}`
+      : '';
+  if (!notOwedYet && stamp < dueMs) {
     return {
       ok: false,
       kind: 'absent',
       ageHours,
       reason:
-        `${job}: the run due at ${new Date(dueMs).toISOString()} (cron \`${cronList.join('` `')}\`) left NO row. ` +
+        `${job}: the run due at ${new Date(dueMs).toISOString()} (cron \`${fromLedger ? owed.cron : cronList.join('` `')}\`${owedBy}) left NO row. ` +
         `It is now ${sinceDueHours.toFixed(1)}h past due, beyond the ${MISSED_RUN_GRACE_HOURS}h grace, and the newest row is ` +
         `${new Date(stamp).toISOString()} (${ageHours.toFixed(1)}h old) — written BEFORE that occurrence. ` +
         'The timer did not fire, or the job can no longer write. ' +
@@ -420,14 +579,47 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
         'only about the newest ROW would be green whenever another target of the same job succeeded.',
     };
   }
+  // ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED — A RETENTION JOB
+  // THAT KEEPS FALLING BEHIND IS RED. Every row above says ok=1, and that is true:
+  // the sweep ran. What it cannot say in `ok` is that a store is still FULL when
+  // its per-run budget runs out, night after night, so a declared period has
+  // stopped being kept. `capped` comes from the register's `cappedNightsRed`
+  // (see deriveWatchedJobs), and its `_cappedNightsRedWhy` states the slack.
+  if (capped && typeof capped.token === 'string') {
+    const stuck = cappedTargets(rows, capped.token, capped.nights);
+    if (stuck.length > 0) {
+      return {
+        ok: false,
+        kind: 'capped',
+        ageHours,
+        reason:
+          `${job}: ${stuck.map((t) => `target ${t}`).join(', ')} carried \`${capped.token}=\` above 0 on each of its newest ` +
+          `${capped.nights} runs. Every run SUCCEEDED (ok=1) and still left expired rows behind, so the declared retention ` +
+          'period is no longer being kept. Clear the backlog (or raise the per-run budget with its arithmetic), then let a ' +
+          `run print \`${capped.token}=0\`.`,
+      };
+    }
+  }
   // The green line names the occurrence it covered, so a reader can check the
   // pass rather than take it. "fresh (28.1h old)" was literally true on the
   // morning of the miss and told nobody anything.
+  if (notOwedYet) {
+    return {
+      ok: true,
+      pending: true,
+      kind: 'pending',
+      ageHours,
+      reason:
+        `${job}: NOT YET OWED — no release in the deploy ledger has scheduled a slot of this job whose ` +
+        `${MISSED_RUN_GRACE_HOURS}h grace has ended (main keeps \`${cronList.join('` `')}\`). Newest row ` +
+        `${new Date(stamp).toISOString()} (${ageHours.toFixed(1)}h old), ok=1. The first slot a live release schedules owes a row.`,
+    };
+  }
   return {
     ok: true,
     ageHours,
     reason:
-      `${job}: the run due ${new Date(dueMs).toISOString()} is recorded — newest row ${new Date(stamp).toISOString()} ` +
+      `${job}: the run due ${new Date(dueMs).toISOString()}${fromLedger ? ` (cron \`${owed.cron}\`${owedBy})` : ''} is recorded — newest row ${new Date(stamp).toISOString()} ` +
       `(${ageHours.toFixed(1)}h old), ok=1`,
   };
 }
@@ -647,6 +839,33 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} has no D1 binding carrying \`migrations_dir\`, so the database that owns the heartbeat table cannot be resolved.`);
       continue;
     }
+    // ⏱ 2026-10-01 · THE CAPPED-NIGHTS RULE (`cappedNightsRed`). Optional per row,
+    // but never half-read: a token job the row does not watch, or a token the
+    // Worker's source never writes, would be a rule that can never fire.
+    const cappedRule = new Map();
+    const rule = row.cappedNightsRed;
+    if (rule !== undefined) {
+      const nights = rule?.nights;
+      const tokens = rule?.tokens;
+      // ≤ 20: queryD1 reads a job's newest 20 rows, so a longer streak could not be seen.
+      if (!Number.isInteger(nights) || nights < 1 || nights > 20 || !tokens || typeof tokens !== 'object' || Array.isArray(tokens)) {
+        problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed must be { nights: 1..20, tokens: { job: token } }; it is ${JSON.stringify(rule)}.`);
+        continue;
+      }
+      let ruleBroken = false;
+      for (const [job, token] of Object.entries(tokens)) {
+        if (!Object.prototype.hasOwnProperty.call(watched, job)) {
+          problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed names job "${job}", which ${row.id}.watchedJobs does not watch: a rule over rows nobody reads.`);
+          ruleBroken = true;
+        } else if (typeof token !== 'string' || !/^\w+$/.test(token) || !src.includes(`${token}=`)) {
+          problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed reads token \`${token}=\` for "${job}", and ${dirname(cfgRel)}/src never writes it: the rule could never fire.`);
+          ruleBroken = true;
+        } else {
+          cappedRule.set(job, { token, nights });
+        }
+      }
+      if (ruleBroken) continue;
+    }
     for (const [job, jobCrons] of Object.entries(watched)) {
       if (!src.includes(`'${job}'`) && !src.includes(`"${job}"`)) {
         problems.push(
@@ -655,7 +874,9 @@ export function deriveWatchedJobs(root) {
         );
         continue;
       }
-      jobs.push({ id: row.id, job, databaseId: dbId, cron: jobCrons, declaredAtMs: declaredAtMs.get(job) });
+      // `worker` is the deploy ledger's environment for this Worker: deploy-workers.yml
+      // records each deploy as `record-deployment.mjs <wrangler name> <origin>`.
+      jobs.push({ id: row.id, job, databaseId: dbId, cron: jobCrons, declaredAtMs: declaredAtMs.get(job), capped: cappedRule.get(job) ?? null, worker: typeof cfg.name === 'string' ? cfg.name : null });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -803,6 +1024,68 @@ export async function queryD1(databaseId, job, target = null) {
   });
 }
 
+/**
+ * ⏱ 2026-10-03 · The deploy ledger for one Worker: `[{ sha, liveFromMs }]`, from
+ * the GitHub Deployments deploy-workers.yml writes after each successful deploy
+ * (tooling/ci/record-deployment.mjs). check-worker-versions.mjs asserts in the
+ * same ops-watch run that the newest record is what the Worker serves. 100 rows
+ * reach back well past SCHEDULE_LOOKBACK_MS at this repo's deploy rate. Throws
+ * CouldNotLook; the caller then judges by main's schedule.
+ */
+export async function readDeployLedger(environment, { env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  const repo = env.GITHUB_REPOSITORY;
+  const token = env.GITHUB_TOKEN || env.GH_TOKEN || '';
+  if (!repo || !token) throw new CouldNotLook(`no ${!repo ? 'GITHUB_REPOSITORY' : 'GITHUB_TOKEN / GH_TOKEN'} in the environment`);
+  const url = `https://api.github.com/repos/${repo}/deployments?environment=${encodeURIComponent(environment)}&per_page=100`;
+  return readWithBoundedRetry(async (_attempt, { signal }) => {
+    let res;
+    try {
+      res = await fetchImpl(url, {
+        signal,
+        headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'nikatru-check-heartbeats', Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      throw classifyThrown(e, `the ${environment} deploy ledger did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);
+    }
+    if (!res.ok) {
+      const line = `the ${environment} deploy ledger answered HTTP ${res.status}`;
+      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+    }
+    let body;
+    try {
+      body = await res.json();
+    } catch (e) {
+      throw classifyThrown(e, `the ${environment} deploy ledger answer was not JSON (${e.message})`);
+    }
+    if (!Array.isArray(body)) throw new CouldNotLook(`the ${environment} deploy ledger answer is not a list`);
+    return body
+      .filter((d) => d && d.environment === environment && /^[0-9a-f]{40}$/.test(String(d.sha)))
+      .map((d) => ({ sha: d.sha, liveFromMs: Date.parse(d.created_at) }));
+  });
+}
+
+/** `git show <sha>:tooling/ops/register.json`, parsed, or null (a shallow clone,
+ *  an unknown commit, a file that does not parse). Pure of the network. */
+export function gitRegisterAt(root) {
+  const cache = new Map();
+  return (sha) => {
+    if (!/^[0-9a-f]{40}$/.test(String(sha))) return null;
+    if (!cache.has(sha)) {
+      const r = spawnSync('git', ['-C', root, 'show', `${sha}:${REGISTER_REL}`], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 });
+      let reg = null;
+      if (r.status === 0) {
+        try {
+          reg = JSON.parse(r.stdout);
+        } catch {
+          reg = null;
+        }
+      }
+      cache.set(sha, reg);
+    }
+    return cache.get(sha);
+  };
+}
+
 // ⚠️ `process.exitCode` and return, NEVER `process.exit()`: exiting while a fetch
 // handle is still closing aborts Node on Windows with 127 for every outcome
 // (tooling/ci/assert-gate-passed.mjs records the measurement).
@@ -857,6 +1140,47 @@ async function main() {
     }
   }
 
+  // ⏱ 2026-10-03 · THE SCHEDULE EACH RELEASE RAN (`owedSlot`). The ledger is read
+  // once per Worker; offline it comes from --releases-file, and with --rows-file
+  // alone it is not read at all, so every fixture is judged by main's schedule.
+  // Every way of not reading it ends in main's schedule — the stricter reading —
+  // and prints a ⚠ line; none of them is COVERAGE LOST, since nothing is skipped.
+  const releasesFile = flag('--releases-file');
+  const ledger = new Map();
+  const ledgerNotes = [];
+  let registerAt = gitRegisterAt(ROOT);
+  if (releasesFile) {
+    console.log('!!  OFFLINE LEDGER — --releases-file is set. This must NEVER appear in a real ops-watch log.');
+    let rf;
+    try {
+      rf = JSON.parse(readFileSync(releasesFile, 'utf8'));
+    } catch (e) {
+      console.error(`✗ COVERAGE LOST — could not read releases fixture ${releasesFile}: ${e.message}`);
+      process.exitCode = 2;
+      return;
+    }
+    for (const [worker, list] of Object.entries(rf?.ledger ?? {})) {
+      ledger.set(worker, (Array.isArray(list) ? list : []).map((d) => ({ sha: d?.sha, liveFromMs: Date.parse(d?.created_at) })));
+    }
+    const fromGit = registerAt;
+    registerAt = (sha) => (rf?.registers && Object.prototype.hasOwnProperty.call(rf.registers, sha) ? rf.registers[sha] : fromGit(sha));
+  } else if (!fixture) {
+    for (const worker of new Set(jobs.map((j) => j.worker).filter(Boolean))) {
+      try {
+        ledger.set(worker, await readDeployLedger(worker));
+      } catch (e) {
+        ledgerNotes.push(`the ${worker} deploy ledger could not be read (${e.message}), so every slot is judged by main's schedule.`);
+      }
+    }
+  }
+  for (const [worker, list] of ledger) {
+    const live = list.filter((r) => Number.isFinite(r.liveFromMs) && r.liveFromMs <= nowMs).sort((a, b) => b.liveFromMs - a.liveFromMs);
+    console.log(
+      `⬜  ${worker}: each slot judged by the schedule of the release live when it fell due — ${list.length} ledger row(s)` +
+        (live.length ? `, newest ${live[0].sha.slice(0, 12)} live since ${new Date(live[0].liveFromMs).toISOString()}` : ''),
+    );
+  }
+
   const failures = [];
   const unreadable = [];
   const pending = [];
@@ -872,7 +1196,11 @@ async function main() {
       unreadable.push(`${j.job}: ${e.message}`);
       continue;
     }
-    const verdict = evaluateJob(j.job, rows, j.cron, nowMs, j.declaredAtMs);
+    // Only releases already live at `now` (a --now in the past must not see later ones).
+    const releases = (ledger.get(j.worker) ?? []).filter((r) => Number.isFinite(r.liveFromMs) && r.liveFromMs <= nowMs);
+    const { timeline, notes } = jobTimeline(j.id, j.job, j.cron, releases, registerAt, nowMs);
+    ledgerNotes.push(...notes);
+    const verdict = evaluateJob(j.job, rows, j.cron, nowMs, j.declaredAtMs, j.capped, timeline);
     if (verdict.pending) pending.push(verdict.reason);
     else if (verdict.ok) okLines.push(verdict.reason);
     else failures.push(verdict.reason);
@@ -881,6 +1209,8 @@ async function main() {
   console.log(`⬜  watching ${jobs.length} cron job(s) derived from ${REGISTER_REL}: ${jobs.map((j) => `${j.job} (${j.cron})`).join(', ')}`);
   for (const l of okLines) console.log(`ok  ${l}`);
   for (const l of pending) console.log(`⬜  ${l}`);
+  // One line per release, not per job: every job of a Worker reads the same registers.
+  for (const l of new Set(ledgerNotes)) console.log(`⚠   ${l}`);
 
   if (unreadable.length) {
     console.error(

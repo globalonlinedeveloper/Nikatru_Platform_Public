@@ -12,7 +12,8 @@
 //       declared age are FLAGGED, and CANCELLED only when the owner's flag
 //       OPS_WATCHDOG_CANCEL_STUCK === "true" (default OFF — the token needs
 //       `actions:write`, which the owner widens separately);
-//   (b) main's latest COMPLETED ci.yml and ops-watch.yml conclusions;
+//   (b) main's latest COMPLETED ci.yml and ops-watch.yml conclusions — and,
+//       since 2026-10-01, how OLD ops-watch's is (`gradeOpsWatchFreshness`);
 //   (c) GlitchTip monitors 6 and 22, when GLITCHTIP_TOKEN is set.
 //
 // What stays on the laptop (design note research/session-2026-09-18/
@@ -44,7 +45,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Env } from './types';
 
-export type HeartbeatRow = { target: string; ok: boolean; detail: string };
+/** `page`, when set, asks scheduled.ts `opsWatchdogJob` to mail the owner
+ *  directly (lib/owner-page.ts). It is never recorded. */
+export type HeartbeatRow = { target: string; ok: boolean; detail: string; page?: string };
 
 /** The repository whose runs are watched. Same owner/repo the dispatcher fires. */
 export const OPS_REPO = { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public' } as const;
@@ -90,14 +93,19 @@ export const OPS_FETCH_TIMEOUT_MS = 10_000;
  *      only when every attempt was refused — see "THE SECOND PATH" below
  * + 2  GlitchTip monitor reads (OPS_GLITCHTIP_MONITORS)
  * + 1  the watchdog's own heartbeat POST (scheduled.ts, opsWatchdogJob)
- * = 13. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * + 1  the owner page (lib/owner-page.ts), only when the ops-watch freshness row
+ *      finds main's newest completed run past OPS_WATCH_MAX_AGE_HOURS
+ * = 14. test/ops-watchdog.test.ts recomputes this from the arrays above.
+ * ⏱ 2026-10-01: 13 -> 14 for the owner page (PB-10).
  * ⏱ 2026-09-24: it was 18 while the pass also read the two run lists and made up
  * to three cancels; those moved to the hourly firing (OPS_STUCK_RUNS_MAX_SUBREQUESTS).
  * On the 06:00 firing it sits beside keep-alive (1+), Box B (3), Box A (N),
  * the dispatcher (≤3) and the cron beat (1): far inside 50 (Free) and 10,000 (Paid).
+ * Since 2026-10-01 Box B and Box A ride every grid firing, each with at most one
+ * owner page of its own (lib/owner-page.ts) — still far inside both.
  * @ceiling workers.externalSubrequests lte
  */
-export const OPS_WATCHDOG_MAX_SUBREQUESTS = 13;
+export const OPS_WATCHDOG_MAX_SUBREQUESTS = 14;
 
 /**
  * THE EXTERNAL SUBREQUESTS ONE HOURLY STUCK-RUN FIRING CAN SPEND, COUNTED:
@@ -283,7 +291,7 @@ export const OPS_ANCHOR_RACE_MS = 120_000;
 /** @ceiling none — a page whose newest run is younger than this (ms) is not cross-read. */
 export const OPS_CROSS_READ_AFTER_MS = 3 * 3_600_000;
 
-type MainRun = {
+export type MainRun = {
   id: number;
   head_sha?: string;
   head_branch?: string;
@@ -486,8 +494,14 @@ async function readMainPage(
   return 'run' in found ? { headRun: found.run, headSha } : { unreadable: `${refused}; ${found.why}` };
 }
 
-/** (b) main's latest COMPLETED run per declared workflow, from an ANCHORED page. */
-export async function checkMainConclusions(env: Env, nowMs: number = Date.now()): Promise<HeartbeatRow[]> {
+/** (b) main's latest COMPLETED run per declared workflow, from an ANCHORED page.
+ *  `graded`, when given, receives the run each row was graded from, keyed by
+ *  workflow — what the freshness limb ages, so it spends no read of its own. */
+export async function checkMainConclusions(
+  env: Env,
+  nowMs: number = Date.now(),
+  graded?: Map<string, MainRun>,
+): Promise<HeartbeatRow[]> {
   const token = env.GITHUB_DISPATCH_TOKEN;
   const rows: HeartbeatRow[] = [];
   let headRead: Promise<string | null> | null = null;
@@ -501,16 +515,19 @@ export async function checkMainConclusions(env: Env, nowMs: number = Date.now())
       let row: HeartbeatRow;
       if ('headRun' in page) {
         row = gradeMainRun(wf, page.headRun, `via head_sha=${page.headSha.slice(0, 8)} (the branch=main list was a stale page)`);
+        graded?.set(wf, page.headRun);
       } else if ('freshRun' in page) {
         row = gradeMainRun(
           wf,
           page.freshRun,
           `via the creation-date cross-read (the branch=main list was a stale page ending at run ${page.pageTop ?? 'none'}; the cross-read answered run ${page.beyond})`,
         );
+        graded?.set(wf, page.freshRun);
       } else {
         const run = newestCompletedRun(page.runs);
         if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main in the newest ${OPS_MAIN_PAGE_SIZE}` }); continue; }
         row = gradeMainRun(wf, run, 'via the branch=main list');
+        graded?.set(wf, run);
       }
       rows.push(row);
       if (row.detail.startsWith('FINDING: ')) console.log(`[cron] ops watchdog: ${row.detail}`);
@@ -550,11 +567,73 @@ export async function checkGlitchtipMonitors(env: Env): Promise<HeartbeatRow[]> 
   return rows;
 }
 
-/** (b) and (c) in order — (a) runs hourly on its own firing since 2026-09-24
- *  (`scanStuckRuns`). Each limb contains its own errors; a throw out of here is a bug. */
-export async function runOpsWatchdogChecks(env: Env): Promise<HeartbeatRow[]> {
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · PB-10, O-OPS-WATCH-GRADES-ITS-OWN-FRESHNESS — WHO NOTICES IF
+// OPS-WATCH STOPS? Until today, nothing outside GitHub. ops-watch.yml is what
+// reads every heartbeat in this file and files the issue, so a GitHub that stops
+// running it (a disabled workflow, a revoked dispatch token, an Actions outage,
+// a scheduler that delivers nothing) silences every alarm it carries — and its
+// own freshness was graded only by readers that run on GitHub too.
+//
+// So the age of main's newest COMPLETED ops-watch run is graded here, off
+// GitHub, from the run (b) already read: no extra request. Past
+// OPS_WATCH_MAX_AGE_HOURS it is a FINDING (ok=1, the rule this file opens with)
+// AND a page, sent by scheduled.ts `opsWatchdogJob` straight to Resend
+// (lib/owner-page.ts), once per streak. No GlitchTip console step is needed for
+// this duty — the Private owner-queue's S-8 retires for it in the next Private
+// pass — because the watcher of ops-watch must not be Box B either.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The workflow whose own freshness is graded. */
+export const OPS_WATCH_WORKFLOW = 'ops-watch.yml';
+
+/** The cron_heartbeat target the freshness limb writes, on every pass. */
+export const OPS_WATCH_FRESHNESS_TARGET = 'ops-watch-freshness';
+
+/**
+ * @ceiling none — an ALERTING THRESHOLD, not a platform resource. DERIVED: the
+ *   dispatcher fires ops-watch.yml on EVERY 6-hourly firing (scheduled.ts
+ *   GITHUB_DISPATCH_TARGETS, no `everyHours`), and this check runs right after
+ *   it on the same firing. So a newest completion older than one grid interval
+ *   means the previous firing's dispatch produced no completed run AND none of
+ *   the twelve `schedule:` slots in between landed either.
+ */
+export const OPS_WATCH_MAX_AGE_HOURS = 6;
+
+/** PURE. The freshness row for main's newest completed ops-watch run, or the
+ *  honest ok=0 when (b) could not read one — the age was then not judged. */
+export function gradeOpsWatchFreshness(run: MainRun | null | undefined, nowMs: number): HeartbeatRow {
+  const target = OPS_WATCH_FRESHNESS_TARGET;
+  if (!run) {
+    return { target, ok: false, detail: `not judged: main:${OPS_WATCH_WORKFLOW} was not read on this pass (its own row says why)` };
+  }
+  const at = Date.parse(run.updated_at ?? run.created_at ?? '');
+  if (Number.isNaN(at)) {
+    return { target, ok: false, detail: `not judged: ${OPS_WATCH_WORKFLOW} run ${run.id} carries no date to age` };
+  }
+  const hours = (nowMs - at) / 3_600_000;
+  const facts = `newest completed run ${run.id} on main finished ${new Date(at).toISOString()}, ${hours.toFixed(1)}h ago (ceiling ${OPS_WATCH_MAX_AGE_HOURS}h)`;
+  if (hours <= OPS_WATCH_MAX_AGE_HOURS) return { target, ok: true, detail: `${OPS_WATCH_WORKFLOW}: ${facts}` };
+  return {
+    target,
+    ok: true,
+    detail: `FINDING: ${OPS_WATCH_WORKFLOW} has STOPPED: ${facts}`,
+    page:
+      `ops-watch.yml has completed no run on main for ${hours.toFixed(1)}h (ceiling ${OPS_WATCH_MAX_AGE_HOURS}h; ` +
+      `newest: run ${run.id}). Every alarm it reads is silent until it runs again - check Actions, the dispatch token and ` +
+      `githubstatus.com.`,
+  };
+}
+
+/** (b), its freshness and (c), in order — (a) runs hourly on its own firing since
+ *  2026-09-24 (`scanStuckRuns`). Each limb contains its own errors; a throw out of
+ *  here is a bug. */
+export async function runOpsWatchdogChecks(env: Env, nowMs: number = Date.now()): Promise<HeartbeatRow[]> {
+  const graded = new Map<string, MainRun>();
+  const main = await checkMainConclusions(env, nowMs, graded);
   return [
-    ...(await checkMainConclusions(env)),
+    ...main,
+    gradeOpsWatchFreshness(graded.get(OPS_WATCH_WORKFLOW), nowMs),
     ...(await checkGlitchtipMonitors(env)),
   ];
 }

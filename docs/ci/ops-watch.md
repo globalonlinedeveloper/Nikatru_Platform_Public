@@ -647,6 +647,16 @@ human having looked.
 
 SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
 
+⏱ CORRECTED 2026-10-01 (PB-02), the sentence above left standing: it has been
+FALSE since 2026-09-03, when the platform Worker began dispatching this
+workflow on every 6-hourly firing (services/platform/src/scheduled.ts,
+`GITHUB_DISPATCH_TARGETS`). Nobody watches a run the Worker fired, yet its
+failure filed nothing. The Worker's dispatch now sends the input
+`unattended: true`, and the job runs on `schedule` OR on a `workflow_dispatch`
+carrying it. A land-script or hand dispatch sends no input and stays attended.
+services/platform/test/github-dispatch.test.ts holds the input declared in
+this file and read by this job's `if:`.
+
 ### key `needs:`
 
 ### above `needs:`

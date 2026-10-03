@@ -60,6 +60,9 @@ import providerTokenEncryption0023 from '../migrations/0023_provider_token_encry
 import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
 import boxConfigManifest0025 from '../migrations/0025_box_config_manifest.sql?raw';
 import providerPaymentLinks0026 from '../migrations/0026_provider_payment_links.sql?raw';
+import aiMeter0027 from '../migrations/0027_ai_meter.sql?raw';
+import refundRequests0028 from '../migrations/0028_refund_requests.sql?raw';
+import cancelAttempts0029 from '../migrations/0029_cancel_attempts.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -133,9 +136,19 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
   // (routes/box-manifest.ts).
   boxConfigManifest0025,
+  // ⏱ 2026-10-03 · merge of main into #1176: the four below were 0025-0028 and
+  // shifted to 0026-0029 behind main's 0025_box_config_manifest
+  // (check-migrations: one number per directory).
   // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
   // subscription, so a refund or dispute resolves by payment id.
   providerPaymentLinks0026,
+  // ⏱ 2026-10-02 · T17 — the AI meter: credits, allowance, opt-in and the call ledger.
+  aiMeter0027,
+  // ⏱ 2026-10-02 · refund-finish — the in-window refund requests (MF-5).
+  refundRequests0028,
+  // ⏱ 2026-10-02 · refund-finish — the cancel executor's retry state. ADD
+  // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  cancelAttempts0029,
 ];
 
 /**
@@ -189,8 +202,12 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   nativeAttest0022,
   // 0025 is one CREATE TABLE IF NOT EXISTS — it replays.
   boxConfigManifest0025,
-  // 0026_provider_payment_links is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  // 0026 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   providerPaymentLinks0026,
+  // 0027 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  aiMeter0027,
+  // 0028 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  refundRequests0028,
 ];
 
 /**
