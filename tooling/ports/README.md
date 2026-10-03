@@ -35,6 +35,15 @@ credential), at L2 behind `identityFor` (`services/platform/src/ports.ts`). Its 
 issuers, the JWKS path, the algorithm and the audience — are rendered into
 `services/_shared/src/generated/ports.ts`; a cutover's dual-issuer window is a second row.
 
+`tooling/ports/codehost.json` (port-codehost, 2026-10-03) makes the CODE HOST config: `tooling/github-org.json` is the
+one file that types the org and the platform's repositories, `render.mjs` writes them into
+`services/platform/src/generated/codehost.ts` (the platform Worker's dispatch table and `OPS_REPO`) and
+`tooling/generated/codehost.mjs` (every script's default repository), workflows read `${{ github.repository }}`, and
+`tooling/ci/assert-no-dead-repo-names.mjs` refuses the org as a literal anywhere else and checks the pubspec, podspec,
+CODEOWNERS and issue-chooser pins against the register. An org move is rehearsed by
+`node tooling/ops/org-move.mjs --to <org> --dry-run` (read-only; every pin outside the tree is a `renamePins` entry).
+It claims and targets L2: CI stays GitHub Actions (§7), and the forge exit is a runbook, not a second adapter.
+
 `tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
 `tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
 `upload` · `status`) that passes `submitterConformance` dry, with no network
@@ -221,7 +230,8 @@ Six phases, each with an exit test. `Private/runbooks/switch-vendor.md#<port>` c
 
 These are platform, not vendors to swap; a port around them would cost more than it could ever save:
 
-- **GitHub Actions** — the CI runtime (the public repo's free minutes are the reason it is public).
+- **GitHub Actions** — the CI runtime (the public repo's free minutes are the reason it is public). The code host's NAMES
+  are a port (`codehost.json`); the runtime that executes the workflows is not.
 - **The Cloudflare Workers runtime** and **Cloudflare Pages** — the execution and hosting substrate.
 - **The domain registrar.**
 - **Signing custody** — store signing keys and their custody chain.
