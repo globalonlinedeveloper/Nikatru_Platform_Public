@@ -62,7 +62,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/reaccept_terms_screen.dart",
           "linesAtSince": 179,
-          "ceiling": 103,
+          "ceiling": 102,
           "template": 57
         },
         {
@@ -104,7 +104,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 1929,
+          "ceiling": 1922,
           "template": 616
         }
       ],
@@ -208,6 +208,20 @@
           "on": "2026-10-01",
           "callSiteDelta": -6,
           "measured": "ST-N6 (D23/F37, #1080), on merging main at c89cb4fa (O-APPS-GOV-IN-VAPT-CHECKLIST). Main's `_OfflineBanner` now wraps its child in the chassis `RootedDeviceNoticeHost`, and this PR's chassis `RefreshOnResume` wrapped the same child: nested in the fork, the two took apps/subscriptiontracker/lib/app.dart to 662 lines against its ceiling 660. Instead of raising the ceiling, the `RefreshOnResume(onRefresh:, elapsed:, child:)` construction moved out of the fork into the app's own state/refresh_on_return.dart as `refreshOnResume(ref, child:)`, beside the `refreshOnReturn` it calls, and the fork keeps one line, `RootedDeviceNoticeHost(child: refreshOnResume(ref, child: child))`: app.dart 662 -> 656 lines, `wc -l` after `dart format` (Flutter 3.47.5), and its ceiling re-recorded at 656 in the same commit."
+        },
+        {
+          "file": "features/auth/connected_accounts_sheet.dart",
+          "piece": "ConnectedAccountsView",
+          "on": "2026-10-01",
+          "callSiteDelta": -199,
+          "measured": "SE-04, train ST-account-plus. A NEW piece, not a moved one: Settings' \"Connected accounts\" row was inert, so there is no before-file. The delta is the body the app did NOT write — packages/chassis_screens/lib/settings/connected_accounts_view.dart, 199 lines (`wc -l`, after `dart format`, Flutter 3.47.5) — against the app adapter apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart, 62 lines, which keeps only what names this app: the capability and provider reads, the seam calls and `showAdaptiveSheet`. It lives under features/auth/, not features/settings/, so assert-deletion-control and assert-consent-withdrawal-surface (which union every delegating file under features/settings/) keep reading the settings surface they judge. The strings are new chassis keys (connectedAccounts*) in both shipped locales."
+        },
+        {
+          "file": "features/auth/email_code_entry.dart",
+          "piece": "EmailCodeForm",
+          "on": "2026-10-01",
+          "callSiteDelta": -203,
+          "measured": "EN-21, train ST-account-plus. A NEW piece, not a moved one: there was no e-mail code entry. The delta is the body the app did NOT write — packages/chassis_screens/lib/auth/email_code_form.dart, 203 lines (`wc -l`, after `dart format`, Flutter 3.47.5) — against the call-through apps/subscriptiontracker/lib/features/auth/email_code_entry.dart, 49 lines (the form binding and the persisted per-address cooldown). login_screen.dart does not import the package: chassis-delegation.mjs reads a routed screen importing one chassis path as a screen emptied into it, the reason auth_error_sentence.dart exists. The SEND stays in login_screen.dart beside the TurnstileGate whose token it spends (assert-captcha-gated-call-sites R1/R2). The strings are new chassis keys (emailCode*, authCodeInvalid) in both shipped locales; the two the login screen draws itself (emailCodeRequest, emailCodeTitle) are app keys."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

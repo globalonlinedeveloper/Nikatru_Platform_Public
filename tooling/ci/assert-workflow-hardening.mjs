@@ -99,6 +99,9 @@
 //      holds one row per pinned action — its sha and version equal to the pin, its
 //      recorded `runs.using` node24, composite or docker (⏱ 2026-09-29, audit A-6/B-10).
 //      See "limb 15".
+//  16. every `workflow_run`-triggered workflow carries a top-level `run-name:` that reads
+//      `github.event.workflow_run.conclusion`: its own green says only that it ran, so
+//      the run list must show the verdict it acted on (⏱ 2026-10-02). See "limb 16".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -155,6 +158,7 @@ import {
   refusalText,
   classifyPublishes,
   storePublishSteps,
+  workflowEvents,
 } from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
@@ -2461,6 +2465,45 @@ if (pinRowsArmed) {
   }
 }
 
+// ── limb 16: a workflow_run publisher names the verdict it acted on ─────────────
+// ⏱ 2026-10-02 — main-healthy.yml ("Main healthy") POSTS main's commit status from
+// a completed CI run, and its own run is green whenever the post worked. The Actions
+// list showed green "Main healthy" runs at 15:51Z, 16:21Z and 17:02Z while the status
+// they posted on 201cb64e and c3b059c8 was `failure`, and the owner read the green as
+// "main is healthy". redeploy-stranded.yml has the same shape. So every workflow whose
+// `on:` holds `workflow_run` carries a top-level `run-name:` that reads
+// `github.event.workflow_run.conclusion`: the run's title then says what CI said, and
+// the run's own colour says only whether it did its job. Read through workflow-scan's
+// `workflowEvents` over the comment-blanked lines. On the real tree fewer than
+// RUN_NAME_FLOOR such workflows is COVERAGE LOST: "every publisher names its verdict"
+// would be true of a trigger reading that stopped seeing them.
+// Not caught: a run-name that reads the conclusion but words it misleadingly.
+const RUN_NAME_FLOOR = 2;
+const RUN_NAME_VERDICT = /\$\{\{.*\bgithub\.event\.workflow_run\.conclusion\b.*\}\}/;
+let runPublishers = 0;
+for (const wf of parsedAll) {
+  if (!workflowEvents(wf).has('workflow_run')) continue;
+  runPublishers++;
+  const runName = wf.lines.find((l) => /^run-name:/.test(l.text));
+  if (runName === undefined) {
+    problems.push(
+      `${wf.rel} runs on \`workflow_run\` and has no top-level \`run-name:\`. Its own run is green whenever it did its job, ` +
+        'so the run list reads as the verdict it acted on. Name that verdict: `run-name: "… ${{ github.event.workflow_run.conclusion }} …"`.',
+    );
+  } else if (!RUN_NAME_VERDICT.test(runName.text)) {
+    problems.push(
+      `${wf.rel}:${runName.n} \`run-name:\` does not read \`github.event.workflow_run.conclusion\`, so the run list still ` +
+        'shows this workflow\'s own green, not the verdict of the run it acted on.',
+    );
+  }
+}
+if (scanningRealRepo && runPublishers < RUN_NAME_FLOOR) {
+  coverageLost([
+    `limb 16 read ${runPublishers} \`workflow_run\`-triggered workflow(s); the floor is ${RUN_NAME_FLOOR} (main-healthy.yml, redeploy-stranded.yml).`,
+    'Fewer means the `on:` reading changed shape under it, and "every publisher names its verdict" would be true of a remnant.',
+  ]);
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -2536,4 +2579,8 @@ console.log(
         `every recorded runtime ${[...RUNTIMES].join('/')}; ${unreadRows.length} row(s) record a runtime nobody read at the SHA` +
         `${unreadRows.length ? ` (${unreadRows.join(', ')})` : ''}`
     : `    limb 15 — NOT armed: no ${PIN_REGISTER} under this root`,
+);
+console.log(
+  `    limb 16 — ${runPublishers} \`workflow_run\`-triggered workflow(s), each with a \`run-name:\` that names the ` +
+    "triggering run's conclusion, so its own green never reads as that run's verdict",
 );

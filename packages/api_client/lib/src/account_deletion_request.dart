@@ -132,3 +132,36 @@ Future<void> storeProviderRefreshToken(
   };
   await client.put(path, body: providerTokenBody);
 }
+
+/// ⏱ 2026-10-02 · review of #1155, finding 1 — `PUT {baseUrl}/account/apple-code`.
+///
+/// The native Sign in with Apple sheet's one-time authorization code, which
+/// the server exchanges at Apple (with the key only it holds) for the refresh
+/// token an account deletion revokes with. Body `{authorizationCode, appId}`;
+/// the server refuses (400) an account that has not linked Apple and a code
+/// Apple will not exchange. Nothing here logs the code; a refusal throws
+/// [ApiException].
+Future<void> exchangeAppleAuthorizationCode(
+  RestClient client, {
+  required String authorizationCode,
+  required String appId,
+  String path = '/account/apple-code',
+}) async {
+  final Map<String, Object?> appleCodeBody = <String, Object?>{
+    'authorizationCode': authorizationCode,
+    'appId': appId,
+  };
+  await client.put(path, body: appleCodeBody);
+}
+
+/// ⏱ 2026-10-02 · review of #1155, finding 3 — `POST
+/// {baseUrl}/account/identity-change`. Asks the server whether THIS session
+/// may link or unlink a sign-in method: it answers 200, or 403
+/// `reauth_required` when the token's own last authentication is too old. A
+/// refusal throws [ApiException]; the caller changes nothing.
+Future<void> checkSignInMethodChange(
+  RestClient client, {
+  String path = '/account/identity-change',
+}) async {
+  await client.post(path);
+}

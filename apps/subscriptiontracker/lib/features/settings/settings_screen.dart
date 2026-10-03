@@ -1,10 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS — the P2.6b MERGE of the stamped chassis screen and Subly's live one.
 //
-// DRAFT for the main session. Not applied anywhere; produced read-only against
-// the live tree (`feat/subscriptiontracker-p24b-money-rail`) and the fully-stamped clone
-// (`/tmp/claude/nk-p21r`). Contract: `restamp-artifacts/overrides.md` §10-11 (R2).
-//
 // 🔴 WHY A MERGE AND NOT AN APPLY. A wholesale apply of the stamped file is
 // GREEN on every guard and still destroys product surfaces:
 //   · the consent-WITHDRAWAL row (DPDP §6(3)) — guard-invisible, because
@@ -64,6 +60,7 @@ import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
 import '../account/account_rows.dart';
+import 'app_lock_setup.dart' show AppLockSettingsRow;
 import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'delete_account_billing.dart';
 import 'reminder_settings.dart';
@@ -660,6 +657,9 @@ class SettingsScreen extends ConsumerWidget {
                           core.ConsentStatus.granted,
                     ),
                   ),
+                  // ⏱ 2026-10-01 · XP-03 · the app lock, Free (ADR 101); its
+                  // row is built in app_lock_setup.dart, in this card's shape.
+                  AppLockSettingsRow(row: _prefRow),
                 ],
               ),
             ),
@@ -821,9 +821,6 @@ class SettingsScreen extends ConsumerWidget {
                   ref.watch(authRepositoryProvider).currentUser,
                   _LinkRow.new,
                 ),
-                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                // because deleting it is a product decision, not a merge one.
-                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
               ],
               // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
               // export. test/settings_export_test.dart parses its file back.
@@ -1234,10 +1231,19 @@ class SettingsScreen extends ConsumerWidget {
     // ST-A1 (BUG-1): `consume()` spends the token and re-challenges, so a retry
     // after a wrong password never re-sends a redeemed one.
     final CaptchaTokenController captcha = newCaptchaController();
-    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
-    // kind of proof this account can give.
+    // O-OAUTH-DELETE-REAUTH, AB-A5-01 — read once, before the dialog: the proof
+    // this account gives, by the rule `_deleteAccount` runs (`deletionReauthOf`).
     final AuthUser? current = ref.read(authRepositoryProvider).currentUser;
-    final bool passwordless = current != null && !current.hasPasswordIdentity;
+    final bool passwordless =
+        current != null &&
+        core.deletionReauthOf(current) == core.DeletionReauth.provider;
+    // #1142 item 2: a linked account that has a password keeps it, where the grant passes.
+    final bool passwordToo =
+        current != null &&
+        core.offersPasswordReauth(
+          current,
+          passwordGrant: ref.read(authCapabilitiesProvider).passwordReauth,
+        );
     showDialog<void>(
       context: context,
       // 🔴 NOT DISMISSIBLE, and the dialog also refuses a system back/Escape
@@ -1250,6 +1256,7 @@ class SettingsScreen extends ConsumerWidget {
       builder: (BuildContext dialogContext) => _DeleteAccountDialog(
         l10n: l10n,
         passwordless: passwordless,
+        passwordToo: passwordToo,
         password: password,
         captcha: captcha,
         onConfirm: () => _deleteAccount(ref, password.text, captcha.consume()),
@@ -1281,6 +1288,9 @@ class SettingsScreen extends ConsumerWidget {
     // the forget silently; after it, it escaped into `_DeleteAccountDialog._run`,
     // leaving the dialog `_busy` with no outcome. That was the live E2E flake.
     final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
+    final bool passwordGrant = ref
+        .read(authCapabilitiesProvider)
+        .passwordReauth;
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
     );
@@ -1292,15 +1302,15 @@ class SettingsScreen extends ConsumerWidget {
     String? detail;
     try {
       if (user == null) throw core.AuthFailure('Not signed in');
-      // Re-authenticate through the SAME seam sign-in uses, so it works against
-      // whatever identity provider is wired.
-      // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
-      // PASSWORD-LESS account (Sign in with Apple) has nothing to type here, so
-      // it confirms by signing in with its provider AGAIN — unless it has just
-      // done so (on web Apple's redirect reloads the app, and the user taps
-      // Delete a second time). `DELETE /v1/account` re-checks the token's own
-      // authentication time and refuses a stale one with `reauth_required`.
-      if (user.hasPasswordIdentity) {
+      // Re-authenticate through the SAME seam sign-in uses. O-OAUTH-DELETE-REAUTH
+      // (owner ruling, OWNER_QUEUE A-10) + AB-A5-01: an account with no password,
+      // or with Apple or Google LINKED, signs in with its provider AGAIN unless it
+      // just did (`core.deletionReauthOf`) — a native build cannot pass the
+      // password grant unattested. `DELETE /v1/account` refuses a password-less
+      // token without a recent sign-in (`reauth_required`).
+      if (core.deletionReauthOf(user) == core.DeletionReauth.password ||
+          (password.isNotEmpty &&
+              core.offersPasswordReauth(user, passwordGrant: passwordGrant))) {
         await auth.signInWithEmail(
           email: user.email,
           password: password,
@@ -1486,12 +1496,16 @@ class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
     required this.passwordless,
+    required this.passwordToo,
     required this.password,
     required this.captcha,
     required this.onConfirm,
   });
 
   final AppLocalizations l10n;
+
+  /// #1142 item 2: the password field is OFFERED, optional, next to the sheet.
+  final bool passwordToo;
 
   /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. A password-less account gets no
   /// password field and no captcha (nothing is posted to a gated endpoint): the
@@ -1549,37 +1563,12 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   /// The dialog's ground: the pinned white in light, the SCHEME'S own dialog
   /// surface in dark.
   ///
-  /// 🔴 THE PIN USED TO BE UNCONDITIONAL, AND THE LEAK IT CAUSED WAS BIGGER
-  /// THAN THE ONE ANYBODY WAS LOOKING FOR. `AppColors.surface` is a `const`
-  /// #FFFFFF, so under `ThemeMode.dark` these two dialogs painted a WHITE card
-  /// in a dark app — and every descendant that takes its colour from the THEME
-  /// rather than from an `AppColors` literal then followed the DARK scheme onto
-  /// that white. Measured against `buildAppTheme(seed: 0xFF6459F5, brightness:
-  /// dark)` — what `app.dart:85` actually supplies — on 2026-08-21:
-  ///
-  ///   · the TITLE. Neither `AlertDialog` sets `titleTextStyle`, and there is
-  ///     no `dialogTheme` anywhere in `build_app_theme.dart`, so M3 resolves
-  ///     `textTheme.headlineSmall`. `_themeFrom` applies `displayColor: ink =
-  ///     scheme.onSurface` = **#E5E1E9**, which on #FFFFFF is **1.29:1**. The
-  ///     heading of the most destructive dialog in the app, invisible.
-  ///   · the PASSWORD FIELD. Its text style is `textTheme.bodyLarge`, same ink,
-  ///     same **1.29:1** — the obscured dots the user types to confirm
-  ///     deletion could not be seen either. Its `labelText` rides
-  ///     `onSurfaceVariant` #C8C5D0 at **1.70:1**.
-  ///   · CANCEL / CLOSE. `TextButton`'s foreground is `colorScheme.primary`
-  ///     #C4C0FF — **1.70:1**. The only way out of the dialog.
-  ///
-  /// Patching those four foregrounds would be four new decisions, each one a
-  /// literal that has to be kept in step with a theme it does not read. Handing
-  /// the dialog the scheme's own ground in dark is ONE, and it fixes the
-  /// buttons and the field along with the title: `onSurface` on
-  /// `surfaceContainerHigh` measures **11.18:1**.
-  ///
-  /// ✅ LIGHT REPAINTS BY ZERO PIXELS, which is why this is a branch and not a
-  /// deletion. The light `surfaceContainerHigh` is **#EBE7EF**, not white, so
-  /// dropping the pin outright would visibly tint the dialog in the build the
-  /// owner eyeballs — the repaint `app.dart`'s theme-fork note exists to avoid.
-  /// The pin stays exactly where it was for `Brightness.light`.
+  /// 🔴 THE PIN WAS UNCONDITIONAL: under `ThemeMode.dark` the const #FFFFFF card
+  /// carried dark-scheme ink, so the title and the password dots read at 1.29:1
+  /// and Cancel/Close at 1.70:1 (measured 2026-08-21; the full measurement is in
+  /// this file's history). The scheme's ground in dark fixes all of them at once
+  /// (`onSurface` on `surfaceContainerHigh`, 11.18:1). ✅ LIGHT REPAINTS BY ZERO
+  /// PIXELS: its `surfaceContainerHigh` is #EBE7EF, not white, so the pin stays.
   Color? _ground(ThemeData theme) =>
       theme.brightness == Brightness.light ? AppColors.surface : null;
 
@@ -1600,7 +1589,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            widget.passwordless
+            widget.passwordless && !widget.passwordToo
                 ? l10n.deleteAccountConfirmBodyApple
                 : l10n.deleteAccountConfirmBody,
             style: t.body,
@@ -1608,12 +1597,12 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           const DeleteAccountPlanLine(),
           const SizedBox(height: 14),
           Text(
-            widget.passwordless
+            widget.passwordless && !widget.passwordToo
                 ? l10n.deleteAccountReauthHintApple
                 : l10n.deleteAccountReauthHint,
             style: t.muted,
           ),
-          if (!widget.passwordless) ...<Widget>[
+          if (!widget.passwordless || widget.passwordToo) ...<Widget>[
             const SizedBox(height: 8),
             TextField(
               key: E2EKeys.deleteAccountPassword,
@@ -1642,6 +1631,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             // refusing to enable the button when `TurnstileGate.isConfigured` is
             // false would disable deletion in every build that ships now.
             TurnstileGate(controller: widget.captcha, render: renderTurnstile),
+            if (widget.passwordToo) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(l10n.deleteAccountReauthHintApple, style: t.muted),
+            ],
           ],
         ],
       ),

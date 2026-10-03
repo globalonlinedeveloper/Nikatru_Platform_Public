@@ -152,6 +152,11 @@
           "resolver": "provider-register",
           "reason": "NO `app_version` COLUMN and no `environment` column either: the row is DERIVED from a notification rather than received, so the environment lives on the notification it was derived from. `provider` is the column it does carry, and it is a closed set the legal register owns. The row links a person to a subscription, which is why it deliberately carries `user_id` and joins the erasure sweep."
         },
+        "provider_payment_links": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "⏱ 2026-10-02 · PR #1149 ruling item 2. NO `app_version` COLUMN: the row is DERIVED from a signed `subscription.charged` notification (a Razorpay payment id → the subscription it charged) by services/platform/src/lib/mor/store.ts linkPayment. `environment` (0025_provider_payment_links.sql) is stamped from the destination's money world, the same column unclaimed_payments carries; a sandbox row here would resolve a sandbox refund against a live subscription, so a non-live row in production is a finding."
+        },
         "unclaimed_payments": {
           "marker": "environment",
           "resolver": "live-environment",
@@ -235,6 +240,10 @@
           "marker": "product",
           "resolver": "extension-catalogue",
           "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+        },
+        "box_config_manifest": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-10-01 · PB-27. NO app_version COLUMN AND NO OTHER MARKER: 0025_box_config_manifest.sql gives this table `box`, `manifest` and `posted_at` — one row per box, replaced whole by POST /v1/ops/box-manifest, which a box's own cron calls with a secret scoped to that box (services/platform/src/routes/box-manifest.ts). `box` is a closed set of two the route enforces, `manifest` is sha256 hashes of box config files and `posted_at` is the server's instant; no row is written by an app, a build or a live verification, and none names a build, an app or a money world a resolver could check. So it is exempt; a marker column added later re-opens this rule."
         },
         "ext_link_floor": {
           "resolver": "exempt",

@@ -49,6 +49,7 @@
 // and for no id that appeared in a request body. That is the same reason
 // /v1/checkout is authenticated ([ADR 044] §6).
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { readBoundedBody } from '../lib/body';
@@ -114,7 +115,7 @@ interface ReceiptBody {
 
 /** The members of one pinned feature-set version, from the PINNED tables. */
 async function membersOf(
-  db: D1Database,
+  db: SqlDb,
   name: string,
   version: number,
 ): Promise<string[]> {
@@ -137,7 +138,7 @@ async function membersOf(
  * register edit to rewrite an already-minted version's membership.
  */
 async function pinFeatureSet(
-  db: D1Database,
+  db: SqlDb,
   name: string,
   version: number,
   products: readonly string[],
@@ -207,7 +208,7 @@ async function pinFeatureSet(
  * has no such row; the caller answers 503 with nothing written.
  */
 export async function mintFeatureSetFromRegister(
-  db: D1Database,
+  db: SqlDb,
   featureSet: string,
   version: number,
   register: readonly BundleRegisterRow[] = BUNDLE_ROWS,
@@ -260,7 +261,7 @@ export function extendExpiry(expiresAt: string | null, days: number): string | n
  * funded by us for a term the customer keeps.
  */
 async function supersededPerAppPeriodEnd(
-  db: D1Database,
+  db: SqlDb,
   userId: string,
   environment: MoneyEnvironment,
   products: readonly string[],

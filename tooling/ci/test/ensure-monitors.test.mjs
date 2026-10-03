@@ -14,7 +14,8 @@
 //     row with no id is named EXPECTED BUT ABSENT, an id in both lists is exit 1.
 //
 // ⚠️ NOTHING HERE TOUCHES A LIVE INSTANCE. Every script is pointed at a GlitchTip
-// served from THIS process (or at a closed port) with a made-up token, and
+// served from THIS process — the monitor API's fake adapter,
+// tooling/ops/monitor-api/fake.mjs (port-telemetry) — (or at a closed port) with a made-up token, and
 // GLITCHTIP_URL is set in every case, so a mistake cannot reach the real host.
 // Each script runs in a CHILD process: when it exits its keep-alive sockets close,
 // which is what lets the fixture server close (ops-verifiers.test.mjs, header).
@@ -25,7 +26,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 
 import { appendHostRow, expectedMonitors, replaceHostRow } from '../../ops/monitor-register.mjs';
 import { clockEnv } from '../../scripts/test-clock.mjs';
+import { serveFakeMonitorApi, statefulMonitors } from '../../ops/monitor-api/fake.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const OPS = join(REPO, 'tooling', 'ops');
@@ -49,27 +50,9 @@ let seq = 0;
 const realRegister = () => readFileSync(join(REPO, REGISTER), 'utf8');
 const realLedger = () => JSON.parse(readFileSync(join(REPO, LEDGER), 'utf8'));
 
-/** A GlitchTip served from this process. `answer(method, url, body)` → [status, json]. */
-async function serve(answer) {
-  const seen = [];
-  const server = createServer((req, res) => {
-    let raw = '';
-    req.on('data', (d) => { raw += d; });
-    req.on('end', () => {
-      const body = raw ? JSON.parse(raw) : null;
-      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization ?? null, body });
-      const [status, json] = answer(req.method, req.url, body);
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(json));
-    });
-  });
-  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-  return {
-    url: `http://127.0.0.1:${server.address().port}`,
-    seen,
-    close: () => new Promise((ok) => { server.closeAllConnections?.(); server.close(ok); }),
-  };
-}
+/** A GlitchTip served from this process — the monitor API's FAKE adapter
+ *  (tooling/ops/monitor-api/fake.mjs); `answer(method, url, body)` → [status, json]. */
+const serve = serveFakeMonitorApi;
 
 /** Run a script in a child with a CONTROLLED environment: the token and the URL are always set. */
 const runScript = (file, args, env) =>
@@ -473,6 +456,40 @@ describe('verify-alarm-chains.mjs — the canary reads the monitor register', ()
       const { code, out } = await canary(opsTree(), g.url);
       assert.equal(code, 1, out);
       assert.match(out, /COVERAGE LOST: expected monitor id 2 \("Subscription Tracker API health", from tooling\/monitor-register\.json subscriptiontracker-api\.nikatru\.com\) is not in the live list/);
+    } finally {
+      await g.close();
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// port-telemetry: the three monitor scripts against the monitor API's STATEFUL
+// fake (tooling/ops/monitor-api/fake.mjs statefulMonitors) — one GlitchTip whose
+// list, reads and writes agree with each other, so a create is visible to the
+// next list and a PUT to the next read, as on the live instance.
+describe('the monitor API fake — the three scripts read and write one consistent instance', () => {
+  const MON = { id: 2, name: 'API health', monitorType: 'GET', url: 'https://a.example/v1/health', expectedStatus: 200, expectedBody: '"ok":true', interval: 60, timeout: 30, projectID: '1', confirmationThreshold: 1 };
+
+  test('set-monitor-thresholds --apply moves the threshold, and the fake reads it back', async () => {
+    const fake = statefulMonitors([MON]);
+    const g = await serve(fake.answer);
+    try {
+      const { code, out } = await runScript(join(OPS, 'set-monitor-thresholds.mjs'), ['--apply'], { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: g.url });
+      assert.equal(code, 0, out);
+      assert.equal(fake.monitors[0].confirmationThreshold, 2, out);
+      assert.equal(fake.monitors[0].projectID, '1', 'the PUT carried `project`, so the project survived the full replace');
+    } finally {
+      await g.close();
+    }
+  });
+
+  test('verify-monitors reads its list through the monitor API: a 503 is COULD NOT LOOK (exit 2)', async () => {
+    const g = await serve(() => [503, { detail: 'unavailable' }]);
+    try {
+      const { code, out } = await runScript(join(OPS, 'verify-monitors.mjs'), [], { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: g.url });
+      assert.equal(code, 2, out);
+      assert.match(out, /COULD NOT LOOK/);
+      assert.ok(g.seen.length >= 1 && g.seen.every((r) => r.method === 'GET' && r.url === '/api/0/organizations/nikatru/monitors/' && r.auth === 'Bearer fixture-token'), JSON.stringify(g.seen));
     } finally {
       await g.close();
     }

@@ -328,6 +328,28 @@ jobs:
           E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/backend.mjs --app "$E2E_APP_ID" --emit-output
 
+      # why: A THROWAWAY USER NO always() PURGE REACHED IS REMOVED BY THE NEXT RUN.
+      # Runs 37076032926 and 37081275953 created a user, died on a 520 from
+      # generate_link before its id was written, and left it in production auth.
+      # The sweep (purge_stale.mjs) deletes only addresses this workflow MARKED
+      # for this app (E2E_SWEEP_APP on every provisioning step below — a store
+      # capture's or another app's user keeps its rows where this sweep cannot
+      # reach, so it is never touched) whose GoTrue created_at AND address tag
+      # are both over 2 h old (no job that provisions one outlives 60 minutes),
+      # at most 20 per run, through purge.mjs's own per-user requests, and prints
+      # counts, never an address. It is best-effort hygiene: a failure or a
+      # refusal is ONE ::warning:: and exit 0, never a red E2E, so it carries no
+      # continue-on-error (which would disarm this job as a gate). Only the
+      # always() purges of THIS run's users are mandatory.
+      - name: Sweep stale throwaway E2E users a failed run left behind
+        env:
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_APP_ID: ${{ matrix.app }}
+        run: node tooling/e2e/purge_stale.mjs
+
       - uses: ./.github/actions/setup-flutter
 
       - name: Set up ChromeDriver
@@ -365,6 +387,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          E2E_SWEEP_APP: ${{ matrix.app }}
         run: node tooling/e2e/provision_user.mjs
 
       - name: Provision the throwaway user the delete leg destroys
@@ -372,6 +395,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          E2E_SWEEP_APP: ${{ matrix.app }}
         run: node tooling/e2e/provision_user.mjs
 
       # why: THE ANSWER TO runbook §4.6's "expected, NOT YET MEASURED", taken on
@@ -892,6 +916,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_SWEEP_APP: ${{ matrix.app }}
         run: node tooling/e2e/provision_user.mjs
       - name: The native leg — first run, sign in, the list offline, sign out
         id: proof

@@ -62,6 +62,8 @@ import { requestId } from './lib/request-id';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
+import appleCode from './routes/apple-code';
+import identityChange from './routes/identity-change';
 import account from './routes/account';
 import config from './routes/config';
 import fx from './routes/fx';
@@ -78,6 +80,7 @@ import nativeAuth from './routes/native-auth';
 import nativeHandoff from './routes/native-handoff';
 import reminders from './routes/reminders';
 import calendar from './routes/calendar';
+import boxManifest from './routes/box-manifest';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -251,6 +254,11 @@ app.use('/v1/account', platformAuth);
 app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
 app.route('/v1', providerToken);
+// ⏱ 2026-10-02 · review of #1155, findings 1 and 3: the native Apple sheet's
+// code exchange (routes/apple-code.ts) and the recency check before a sign-in
+// method is linked or unlinked (routes/identity-change.ts), under the same line.
+app.route('/v1', appleCode);
+app.route('/v1', identityChange);
 
 // AUTHENTICATED: the caller's signed-in sessions, and signing them out at the
 // Workers (⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS, routes/sessions.ts). TWO lines
@@ -378,6 +386,11 @@ app.use('/v1/reminders/prefs', platformAuth);
 app.route('/v1', reminders);
 app.use('/v1/calendar/feed', platformAuth);
 app.route('/v1', calendar);
+// ⏱ 2026-10-01 · PB-27 — A BOX REPORTS ITS LIVE CONFIG HASHES (routes/box-manifest.ts).
+// 🔴 NO `platformAuth` HERE, DELIBERATELY: the caller is a box's cron, not a
+// user. The route authenticates the bearer against the secret of the ONE box the
+// body names, and middleware/cors.ts refuses `Origin` on `/v1/ops/`.
+app.route('/v1', boxManifest);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.

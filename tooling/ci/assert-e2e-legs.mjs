@@ -672,6 +672,94 @@ if (legTargets.length) {
   }
 }
 
+// ── limb OAUTH-RETURN (⏱ 2026-10-01 · AB-A1-02) ────────────────────────────
+// Every job of native-auth-proof.yml ran --expect-refusal after #1070, which
+// starts no app, so the `--callback` they passed was never reached and no
+// native build had been watched taking an auth callback. The OAuth return is
+// its own leg now (nativeTargets.oauthReturn): per native catalog target, a
+// job that runs the drive with `--oauth-return --target <t>`, or a named wait.
+// assert-deletion-control.mjs reads the same block: a provider re-auth ships on
+// a native target only where this leg runs.
+const OR = NT.oauthReturn && typeof NT.oauthReturn === 'object' ? NT.oauthReturn : null;
+const orRows = OR?.targets && typeof OR.targets === 'object' ? OR.targets : null;
+if (!orRows) {
+  coverageLost([
+    `${REGISTER_REL} nativeTargets.oauthReturn.targets is absent.`,
+    'It is the per-target record of where an OAuth return is proven to land in the app. Without it no native',
+    'target\'s callback was checked at all — that is not a pass.',
+  ]);
+}
+const orUngraded = nativeTargets.filter((t) => orRows[t]?.status !== 'leg' && orRows[t]?.status !== 'waits');
+if (orUngraded.length) {
+  coverageLost([
+    `${orUngraded.length} native catalog target(s) with no OAuth-return grade in ${REGISTER_REL} nativeTargets.oauthReturn.targets: ${orUngraded.join(', ')}.`,
+    'Declare each "leg" (with the native-auth-proof.yml `job` that runs it) or "waits" (with `waitsFor`).',
+  ]);
+}
+const orLegs = nativeTargets.filter((t) => orRows[t].status === 'leg');
+for (const t of nativeTargets.filter((x) => orRows[x].status === 'waits')) {
+  if (typeof orRows[t].waitsFor !== 'string' || orRows[t].waitsFor.trim() === '') {
+    problems.push(`nativeTargets.oauthReturn ${t} waits, and names no \`waitsFor\`: a wait nobody can trace is an excuse.`);
+  }
+}
+/** Whether `text` passes `--target <t>` as a whole word (`--target ios` is not `--target ios-sim`). No regex is built from `t`. */
+function namesTarget(text, t) {
+  const needle = `--target ${t}`;
+  for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + 1)) {
+    const next = text[i + needle.length];
+    if (next === undefined || !/[\w-]/.test(next)) return true;
+  }
+  return false;
+}
+if (orLegs.length) {
+  const orWf = typeof OR.workflow === 'string' ? parseWorkflow(ROOT, OR.workflow) : null;
+  const drive = typeof OR.drive === 'string' ? OR.drive : '';
+  if (!orWf) {
+    problems.push(`nativeTargets.oauthReturn.workflow ${JSON.stringify(OR.workflow)} does not exist, and ${orLegs.join(', ')} declare OAuth-return legs it would run.`);
+  } else {
+    for (const t of orLegs) {
+      const job = orWf.jobs.get(orRows[t].job);
+      const runs = job?.logical.some(
+        (l) => drive && l.text.includes(`node ${drive}`) && l.text.includes('--oauth-return') && namesTarget(l.text, t),
+      );
+      if (!runs) {
+        problems.push(
+          `${OR.workflow} job \`${orRows[t].job}\` ${job ? 'does not run' : 'does not exist to run'} \`node ${drive || '(oauthReturn.drive unset)'} … --target ${t} … --oauth-return\`, ` +
+            `and the register says ${t}'s OAuth return is a leg. A leg nothing runs proves no return.`,
+        );
+      }
+    }
+  }
+  const orSuiteRel = `${APP_DIR}/${OR.suite}`;
+  // Read, not stat-then-read: one call answers "is it there" and "what does it say".
+  let orSuiteText = null;
+  if (typeof OR.suite === 'string') {
+    try {
+      orSuiteText = readFileSync(join(ROOT, orSuiteRel), 'utf8');
+    } catch {
+      orSuiteText = null;
+    }
+  }
+  if (orSuiteText === null) {
+    problems.push(`the OAuth-return suite ${orSuiteRel} does not exist, and ${orLegs.join(', ')} declare legs it proves.`);
+  } else {
+    const orSuite = stripSourceComments(orSuiteText, '.dart');
+    const anchors = Array.isArray(OR.anchors) ? OR.anchors : [];
+    const miss = anchors.filter((a) => !orSuite.includes(a));
+    if (anchors.length === 0 || miss.length) {
+      problems.push(
+        `nativeTargets.oauthReturn: ${anchors.length === 0 ? 'no anchors' : `${miss.map((m) => JSON.stringify(m)).join(', ')} no longer resolve`} in ${orSuiteRel} (comment-stripped). ` +
+          'An OAuth-return leg whose suite no longer waits for the return proves nothing on any target.',
+      );
+    }
+  }
+}
+const orAwaiting = orLegs.filter((t) => !Number.isInteger(OR.proofRuns?.[t]));
+notes.push(
+  `⬜ OAuth return per native target: ${orLegs.length} leg(s) in ${OR.workflow} [${orLegs.join(', ')}]` +
+    `${orLegs.length < nativeTargets.length ? `, ${nativeTargets.length - orLegs.length} waiting` : ''}; ` +
+    `${orAwaiting.length ? `${orAwaiting.length} with no green run id recorded yet (${orAwaiting.join(', ')})` : 'every leg has a recorded run id'}.`,
+);
 // ── limb FLOWS: every user flow, a leg or a declared equivalent on EVERY
 // target (⏱ 2026-10-01 · train st-e2e-parity, EN-07/EN-08/XP-02). The targets
 // are the catalog's — every platform of a `surface: app` channel, web included

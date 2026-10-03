@@ -166,11 +166,11 @@
           "path": "/v1/subscriptions",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-          "purpose": "Every subscription owned by the verified user, newest renewal first. Scoped by the token's user_id, never by a body value.",
+          "purpose": "Every subscription owned by the verified user, most expensive first. Scoped by the token's user_id, never by a body value. ⏱ 2026-10-01 · rv2-services-008: BOUNDED — with no `limit` it is the bare array, LIMIT the per-account row cap (500), so it never truncates a list the cap admitted; with `?limit=N&after=<cursor>` it is keyset-paged as `{items, next}`.",
           "client": {
             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
-            "expression": "_rest.get('/subscriptions')",
-            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching."
+            "expression": "'/subscriptions?limit=$subscriptionsPageSize$cursor'",
+            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching. It follows `next` page by page, and reads a pre-paging Worker's bare array whole."
           }
         },
         {
@@ -233,15 +233,6 @@
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
           "purpose": "The user records a payment by hand (ST-R5, round-2 X06: mark as paid). Writes one payment_history row with `source` = manual against a subscription the user owns and has not removed; ownership is in the SQL, so a foreign or removed id is a 404.",
           "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
-        },
-        {
-          "id": "subscriptiontracker-renewals",
-          "method": "GET",
-          "path": "/v1/renewals",
-          "auth": "required",
-          "owningFile": "services/subscriptiontracker-api/src/routes/renewals.ts",
-          "purpose": "The upcoming-renewals list for the verified user, computed server-side over a window. Mounted at index.ts:87 behind `supabaseAuth`, 108 lines, with its own test file.",
-          "unconsumedReason": "🔴 NOTHING IN THIS REPO CALLS IT, AND THAT IS THE FINDING THIS ENTRY EXISTS TO STOP BEING INVISIBLE. Measured 2026-08-25 across every language and every root in the repo, with the /v1 prefix removed after that exact mistake once produced a false negative: apps/subscriptiontracker/lib/data/api/api_client.dart declares NINE methods and none is renewals; dio_api_client.dart issues NINE requests and none is to /renewals; packages/api_client has no renewals transport; and every bare-word `renewals` hit outside services/ is a UI string, a feature flag, the platform cron fan-out (services/platform/src/scheduled.ts, which writes subscriptiontracker_db DIRECTLY through the SUBSCRIPTIONTRACKER_DB binding and never over HTTP), or a test. The app computes its upcoming-renewal list locally from the subscriptions it already holds. ⚠️ IT IS NOT DELETED, AND DELETION IS NOT THIS ITEM’S CALL: it is a plausible sync-era surface, deletion is the irreversible half, and the register’s whole purpose is that an unconsumed capability is a PRINTED fact rather than a silence. Give it a client or remove it deliberately — but from now on the choice is on the screen every CI run."
         },
         {
           "id": "subscriptiontracker-budget-get",
@@ -461,6 +452,51 @@
       }
     ]
   },
+  "envBindingParity": {
+    "_why": [
+      "Read by tooling/ci/assert-platform-register.mjs limb 8 (2026-10-01, rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS).",
+      "Wrangler does not inherit a binding into an environment, and every binding fails open when absent, so an env block that omits",
+      "one the top level declares deploys WITHOUT it, silently. Limb 8 requires every top-level binding name (d1_databases, kv_namespaces,",
+      "r2_buckets, ratelimits, services, vars) in every env block of every config in bindingSources.configs, on a resource of that",
+      "environment. A row below is the ONLY way to leave one out: it names the config, the environment, the section and the name, with",
+      "the reason, and it is printed on every run. A row that stops being true (the block declares it, or the top level no longer does)",
+      "is itself a finding.",
+      "pendingTwins (2026-10-02): a sandbox twin whose resource needs the Cloudflare token to create carries the all-zeros id and one row here;",
+      "limb 8 PRINTS that placeholder instead of refusing it, and refuses the row once the id is recorded, so the row leaves with the placeholder."
+    ],
+    "pendingTwins": [
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SESSION_REVOKED",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      },
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SIGNUPS",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `signups-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      },
+      {
+        "config": "services/subscriptiontracker-api/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SESSION_REVOKED",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      }
+    ],
+    "exempt": [
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "vars",
+        "name": "PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL",
+        "why": "The plain-text read window exists only to migrate provider tokens written before encryption (services/platform/src/lib/provider-revoke.ts plaintextReadsOpen), and the decision to leave it out of the sandbox is recorded beside the top-level line (services/platform/wrangler.jsonc, #1104): the sandbox database never held plain text. Absent, the window is CLOSED, which is the state production reaches when its date passes."
+      }
+    ]
+  },
   "routes": [
     {
       "id": "health",
@@ -468,7 +504,7 @@
       "path": "/v1/health",
       "auth": "public",
       "owningFile": "services/platform/src/index.ts",
-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:160-196).",
+      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:161-207).",
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
     },
@@ -546,6 +582,24 @@
       "owningFile": "services/platform/src/routes/provider-token.ts",
       "purpose": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT. The provider-general form of the route above: body `{provider, refreshToken, appId}`, `provider` one of `apple` / `google` and cross-checked against the verified token's `app_metadata.providers` (a provider the account has not linked is 400). platform_db.provider_tokens keeps one row per (subject, provider) until DELETE /v1/account revokes it — at Apple, or at Google through 'POST https://oauth2.googleapis.com/revoke', which takes the token and no client credential. The subject is the JWT's, never the body's; the response is a COUNT; the token is never logged, never echoed and readable by no route — its only reader is src/lib/provider-revoke.ts. ⏱ 2026-09-30 · STORED ENCRYPTED (AES-256-GCM under the Worker secret TOKEN_ENC_KEY_V1, src/lib/token-crypto.ts, migration 0023): without a usable key it answers 503 `<provider>_token_store_failed` and stores nothing.",
       "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/state/providers/auth.dart (sendProviderRefreshToken, wired into appleTokenKeeperProvider) posts every non-Apple provider token through packages/api_client/lib/src/account_deletion_request.dart (storeProviderRefreshToken). No shipped build produces one yet: Google sign-in is the Dart half of O-GOOGLE-SIGN-IN-NOT-BUILT. Proven in services/platform/test/provider-token.test.ts."
+    },
+    {
+      "id": "account-apple-code",
+      "method": "PUT",
+      "path": "/v1/account/apple-code",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/apple-code.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 1 (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, the native sheet's half). The native Sign in with Apple sheet (iOS, macOS) signs in through `signInWithIdToken`, whose session carries NO provider refresh token; it returns a one-time `authorizationCode` instead. Body `{authorizationCode, appId}`: the Worker exchanges the code at 'POST https://appleid.apple.com/auth/token' with client_id = the bundle id `com.nikatru.<appId>` (client secret minted with the same four APPLE_REVOKE_* secrets as the revoke) and stores the refresh token encrypted in platform_db.provider_tokens under `apple`, with `client_id` (migration 0024) so the revoke signs for the client the token belongs to. Refused (400) for an account whose verified token does not list apple, a malformed code or app id, and a code Apple refuses; 503 when the Apple secrets are missing (nothing stored); 502 when Apple cannot be reached. The response is a COUNT; the code and the token are never logged or echoed.",
+      "unconsumedReason": "CONSUMED: packages/core/lib/src/auth/provider_token_keeper.dart (keepProviderRefreshToken's sendAuthorizationCode) posts the code through packages/api_client/lib/src/account_deletion_request.dart (exchangeAppleAuthorizationCode), wired by appleTokenKeeperProvider (apps/subscriptiontracker/lib/state/providers/auth.dart sendAppleAuthorizationCode). Proven in services/platform/test/provider-revoke.test.ts."
+    },
+    {
+      "id": "account-identity-change",
+      "method": "POST",
+      "path": "/v1/account/identity-change",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/identity-change.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 3. Asked by the app BEFORE it links or unlinks a sign-in method (Settings › Connected accounts): 200 `{ok:true}` when the verified token's newest `amr` timestamp is inside RECENT_AUTH_SECONDS (the deletion path's recency rule, services/_shared/src/auth.ts), for every account, password accounts included; otherwise 403 `reauth_required` (never 401, which the client reads as a dead session). Reads nothing and writes nothing.",
+      "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart (confirmSignInMethodChangeAtServer, the serverCheck of core.guardSignInMethodChange) through packages/api_client/lib/src/account_deletion_request.dart (checkSignInMethodChange). Proven in services/platform/test/identity-change.test.ts."
     },
     {
       "id": "entitlements",
@@ -775,6 +829,16 @@
       "unconsumedReason": "Consumed by CALENDAR SERVICES (Google Calendar, Apple Calendar, Outlook) subscribing to the URL, and by a browser downloading it; the URL is handed out by POST /v1/calendar/feed, whose client ships in ST-T4b."
     },
     {
+      "id": "box-manifest",
+      "method": "POST",
+      "path": "/v1/ops/box-manifest",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/box-manifest.ts",
+      "purpose": "⏱ 2026-10-01 · PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE). A box (Box B, Box C) reports the sha256 of its LIVE compose, override and tunnel config, under logical names, so tooling/ops/check-box-config-drift.mjs can compare it with the vendored copies from ops-watch without CI ever SSHing into a box. No JWT: the bearer is compared, over SHA-256 digests with timingSafeEqual, with the secret of the ONE box the body names (BOX_MANIFEST_SECRET_BOXB / _BOXC), so a box can write only its own row; an unconfigured box answers 503 before the body is read. One platform_db.box_config_manifest row per box (migration 0024), replaced whole. Hashes only — no file content reaches the Worker. No `Origin` (403): middleware/cors.ts grants the `/v1/ops/` prefix no CORS.",
+      "noLimiterReason": "Nothing an unauthenticated caller can reach costs more than the Worker invocation itself, which the account-wide request ceiling already bounds: the body is cut off at BOX_MANIFEST_MAX_BYTES (8 KiB) before it is parsed, a box name outside the closed set is a 400 before any secret is consulted, and a wrong bearer is a 401 after two SHA-256 digests over strings of at most that size — no D1, KV or subrequest happens on any refused path. The ONE D1 write (an upsert of one row) is reachable only with that box's own secret, and its honest caller posts once a day. A limiter here would spend a Rate Limiting namespace to protect two digests.",
+      "unconsumedReason": "NO CLIENT IN THIS REPO'S APPS, BY CONSTRUCTION — the caller is each box's own cron, tooling/ops/boxes/post-config-manifest.sh, installed on the box by the lead. Pinned server-side by services/platform/test/box-manifest.test.ts and read back by tooling/ops/check-box-config-drift.mjs."
+    },
+    {
       "id": "native-auth-token",
       "method": "POST",
       "path": "/v1/auth/native/:app/token",
@@ -912,7 +976,6 @@
       "readers": [
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "services/subscriptiontracker-api/src/routes/budget.ts",
-        "services/subscriptiontracker-api/src/routes/renewals.ts",
         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
       ]
     },
@@ -1144,6 +1207,15 @@
       "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's intake limiter, keyed global:intake, all clients together: GlitchTip's crash intake on Box B (/api/<id>/envelope/ and /store/). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "WRITE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "per-app",
+      "purpose": "⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). subscriptiontracker-api's per-ACCOUNT write limiter: every non-GET under /v1, mounted after supabaseAuth and keyed `st:<verified sub>` — never a header or the body. `simple: { limit: 120, period: 60 }`; over it is a 429 with Retry-After: 60. FAILS OPEN (the kit's withinRateLimit): the per-user row cap in routes/subscriptions.ts bounds the total without it, and test/wrangler-config.test.ts asserts the binding in both environments. Its OWN namespace (1031; the sandbox's is 1032).",
+      "readers": [
+        "services/subscriptiontracker-api/src/middleware/write-limit.ts"
       ]
     },
     {

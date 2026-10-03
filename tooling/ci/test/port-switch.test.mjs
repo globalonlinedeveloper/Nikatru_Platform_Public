@@ -6,12 +6,13 @@
 // margin check over a copy of the REAL fee, channel and price registers.
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin, callCostUsd, chainCallCostUsd, creditFloor } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -242,11 +243,21 @@ describe('port-switch — the payments additions over a copy of the REAL registe
       cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     }
   });
-  it('red: --to razorpay prints every pending case as FAIL and exits 1', () => {
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay's 15 pending cases cleared (O-RAZORPAY-CHECKOUT-ADAPTER),
+  // so its C5 passes; the per-case FAIL lines are held on revenuecat, which still pends two.
+  it('red: --to revenuecat prints every pending case as FAIL and exits 1', () => {
+    const r = run(['payments', '--to', 'revenuecat', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: 2 pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: dispute holds \(O-REVENUECAT-VERIFIER\)$/m);
+  });
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: razorpay keeps ONE case pending — the refund's payment →
+  // subscription link, unproven on a real test-mode event — so its C5 fails on exactly that case.
+  it('red: --to razorpay fails C5 on its one pending case and exits 1 on the owner step too (C10: no plan created yet)', () => {
     const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /^FAIL  C5 conformance: \d+ pending case\(s\)/m);
-    assert.match(r.out, /^FAIL  C5 pending: purchase grants \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
+    assert.match(r.out, /^FAIL  C5 conformance: 1 pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: refund revokes \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
     // Counted off the real tree: subscriptiontracker's 3 offerings and, since #1117, FullShot Pro's 2.
     assert.match(r.out, /^FAIL  C10 prices: 5 of 5 offering\(s\) have no razorpay price id yet/m);
     assert.match(r.out, /to create on razorpay: subscriptiontracker pro_monthly/);
@@ -417,5 +428,249 @@ describe('port-switch — a MAIL switch moves more than code (C9–C14)', () => 
     assert.match(r.out, /PASS\s+C9 dns: `fake` is a fake/);
     const live = run(['mail', '--to', 'fake', '--dry-run', '--root', root]);
     assert.match(live.first, /FAIL — C1 target: `fake` is a fake/);
+  });
+});
+
+describe('port-switch — the telemetry plan (C9) over the REAL registers', () => {
+  // Run against the repository itself: the plan reads four registers and the two
+  // uploaders, and every one of them is read-only here.
+  it('green control: --to sentry --env sandbox --from noop passes, and C9 lists every channel, Worker, uploader and monitor', () => {
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^PASS  C9 plan: \d+ app build\(s\) need a release if the app sink moves; 2 Worker\(s\) a redeploy; 2 uploader\(s\); \d+ monitor\(s\) to recreate/m);
+    assert.match(r.out, /GLITCHTIP_DSN is COMPILE-TIME .* APP RELEASE on every channel below/);
+    const channels = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8')).channels;
+    for (const c of channels.filter((x) => (x.crashSink?.layers ?? []).includes('dart'))) {
+      assert.match(r.out, new RegExp(`^ +${c.id} +GLITCHTIP_DSN \\(--dart-define\\) → release this channel$`, 'm'), `channel ${c.id} is not named`);
+    }
+    assert.match(r.out, /^ +platform +GLITCHTIP_DSN \(deploy var\) → set it and REDEPLOY/m);
+    assert.match(r.out, /^ +subscriptiontracker-api +GLITCHTIP_DSN \(deploy var\)/m);
+    assert.match(r.out, /node tooling\/ops\/upload-native-symbols\.mjs/);
+    assert.match(r.out, /node tooling\/ops\/upload-web-sourcemaps\.mjs/);
+    assert.match(r.out, /^ +#1 +GET +glitchtip\.nikatru\.com$/m);
+    assert.match(r.out, /export it optionally; never block the switch on it/);
+    assert.match(r.out, /cost delta: noop: no unit cost recorded → sentry: no unit cost recorded/);
+  });
+  it('red: a missing uploader is LOST (exit 2), never a pass', () => {
+    const root = mkdtempSync(join(tmpdir(), 'port-switch-tel-'));
+    for (const rel of ['tooling/ports', 'tooling/channel-register.json', 'tooling/platform-register.json', 'tooling/monitor-register.json',
+      'tooling/ops/upload-native-symbols.mjs', 'packages/telemetry/test']) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run', '--root', root]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C9 plan: tooling\/ops\/upload-web-sourcemaps\.mjs does not exist/);
+  });
+  it('red: a Worker target fails C5 — the ts half has no registered suite (it claims L2)', () => {
+    const r = run(['telemetry', '--to', 'webhook', '--from', 'ntfy', '--dry-run']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: services\/_shared\/test\/notifier\.test\.ts does not CALL runTelemetryClientConformance/m);
+    assert.match(r.out, /Workers \(TOUCHED by this switch\)/);
+  });
+});
+
+// ⏱ 2026-10-02 · port-sql — C9, the export dry run, over the REAL sql.json and the
+// REAL migrations. The export here is built at test time from the migrations in
+// the dump's JSON-lines shape, so this block grades the TOOL (flags, gzip, exit
+// codes, the deciding line); services/platform/test/sql-export-replay.test.ts
+// feeds the replay the shipped dumpD1Database's own output.
+describe('port-switch sql — C9 replays one export into node:sqlite', () => {
+  let dir;
+  const exportOf = (database, migDir, { dropTable = null } = {}) => {
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
+    const db = new DatabaseSync(':memory:');
+    for (const f of readdirSync(join(REPO, migDir)).filter((x) => x.endsWith('.sql')).sort()) db.exec(readFileSync(join(REPO, migDir, f), 'utf8'));
+    if (database === 'platform_db') db.exec("INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('nightly-export', 'platform_db', 1, NULL, '2026-10-02T02:30:00Z')");
+    const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter((t) => t.name !== dropTable);
+    const lines = [{ kind: 'meta', database, exportedAt: '2026-10-02T02:30:00Z', generator: 'platform-worker-backup/2' }];
+    let rows = 0;
+    for (const t of tables) lines.push({ kind: 'schema', table: t.name, sql: t.sql });
+    for (const t of tables) {
+      const data = db.prepare(`SELECT * FROM "${t.name}" ORDER BY rowid`).all();
+      for (const d of data) lines.push({ kind: 'row', table: t.name, data: { ...d } });
+      lines.push({ kind: 'table-end', table: t.name, rows: data.length, truncated: false });
+      rows += data.length;
+    }
+    lines.push({ kind: 'end', tables: tables.length, rows, truncated: false, queries: 3 });
+    db.close();
+    return lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+  };
+  const write = (name, text, gz = true) => {
+    const file = join(dir, name);
+    writeFileSync(file, gz ? gzipSync(Buffer.from(text)) : text);
+    return file;
+  };
+  before(() => { dir = mkdtempSync(join(tmpdir(), 'sql-export-')); });
+
+  it('green control: a gzipped platform_db export replays — every check PASS, exit 0', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('platform_db.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.first, /^port-switch: PASS — all 9 checks pass/);
+    assert.match(r.out, /PASS  C9 replay: platform_db: \d+ migration\(s\) of services\/platform\/migrations replayed; \d+ table\(s\) and \d+ row\(s\) match the export/);
+    assert.match(r.out, /cron_heartbeat\s+1 row\(s\)/);
+  });
+  it('…and so does subscriptiontracker_db, found by the wrangler config that owns its migrations, uncompressed', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('st.jsonl', exportOf('subscriptiontracker_db', 'services/subscriptiontracker-api/migrations'), false)]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /PASS  C9 replay: subscriptiontracker_db: \d+ migration\(s\) of services\/subscriptiontracker-api\/migrations replayed/);
+  });
+  it('red: an export MISSING a table is FAIL (exit 1), and the first line names C9 and the table', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('missing.jsonl.gz', exportOf('platform_db', 'services/platform/migrations', { dropTable: 'signups' }))]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C9 replay: platform_db: 1 mismatch\(es\) — first: table `signups` is created by the migrations and is missing from the export/);
+  });
+  it('LOST: no --export is exit 2 — the export duty unrehearsed is never a pass', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C9 replay: no --export <file>/);
+  });
+  it('the sqlite engine is never a live target (C1), export or not', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--export', write('live.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C1 target: `sqlite` is a fake; a fake is never selectable in live/);
+  });
+  it('--export belongs to the sql port alone', () => {
+    assert.match(parseArgs(['payments', '--to', 'paddle', '--dry-run', '--export', 'x.gz']).error, /--export is for sql/);
+    assert.equal(parseArgs(['sql', '--to', 'sqlite', '--dry-run', '--export', 'x.gz']).export, 'x.gz');
+  });
+});
+
+describe('port-switch — an AI switch prices every feature and floors it per channel (C15–C17)', () => {
+  // A FIXTURE fee register and channel register, so the floor below is a hand
+  // computation over numbers this file states, not over whatever the real
+  // register says today.
+  const FEES = {
+    cells: {
+      'apple-iap-standard': { rail: 'apple-iap', value: { percentBps: 3000 } },
+      'apple-iap-small-business': { rail: 'apple-iap', value: { percentBps: 1500 } },
+      'play-billing-subscription': { rail: 'play-billing', value: { percentBps: 1500 } },
+      'paddle-checkout': { rail: 'paddle', value: { percentBps: 500, fixedMinor: 50, fixedCurrency: 'USD' } },
+      'razorpay-platform': { rail: 'razorpay', value: { percentBps: 200 } },
+      'razorpay-subscription-add-on': { rail: 'razorpay', value: { percentBps: 50 } },
+      'india-gst': { rail: 'razorpay', value: { percentBps: 1800 } },
+    },
+    taxRegions: { rows: { IN: { value: { percentBps: 1800 } }, HU: { value: { percentBps: 2700 } } } },
+  };
+  const CHANNELS = {
+    channels: [
+      { id: 'web', surface: 'app', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] } },
+      { id: 'ios-appstore', surface: 'app', purchaseRail: { rail: 'apple-iap' } },
+      { id: 'android-play', surface: 'app', purchaseRail: { rail: 'play-billing' } },
+      { id: 'apps-gov-in', surface: 'app', purchaseRail: { rail: 'none' } },
+    ],
+  };
+  const OPUS = { inputUsdPerMTok: 4, outputUsdPerMTok: 20, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 5, asOf: '2026-10-02', source: 'https://example.invalid/pricing', verify: 'a fixture price' };
+  const HAIKU = { inputUsdPerMTok: 1, outputUsdPerMTok: 5, cacheReadUsdPerMTok: 0.1, cacheWriteUsdPerMTok: 1.25, asOf: '2026-10-02', source: 'https://example.invalid/pricing', verify: 'a fixture price' };
+  const DECLARED = { input: 3000, output: 500, basis: 'declared', asOf: '2026-10-02', why: 'the fixture case the brief names' };
+  const aiPort = (featureModel = null, tokens = DECLARED) =>
+    port({
+      port: 'ai',
+      adapters: [
+        adapter({ id: 'acme', cost: { feeCells: [], unit: null, models: { 'claude-opus-5-5': OPUS, 'claude-haiku-4-5': HAIKU } } }),
+        adapter({ id: 'acme-byok', status: 'built', half: 'client', secrets: [], environments: ['test', 'sandbox', 'live'], conformance: { file: 'test/beta.test.ts' } }),
+        adapter({ id: 'fake', vendor: null, status: 'fake', secrets: [], identity: [], environments: ['test'], conformance: { file: 'test/fake.test.ts' } }),
+      ],
+      features: {
+        import: { adapter: 'acme', model: featureModel, effort: null, maxInputTokens: 8000, candidates: ['claude-haiku-4-5', 'claude-opus-5-5'], tokensPerCall: tokens, why: 'the fixture import feature' },
+      },
+      selection: { by: 'per-call', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
+      switch: { runbook: 'Private/runbooks/switch-vendor.md#ai', dryRun: 'node tooling/ops/port-switch.mjs ai --to <adapter> --dry-run' },
+    });
+  const aiFixture = (doc, fees = FEES) => fixture(doc, { 'tooling/catalog/fee-register.json': JSON.stringify(fees), 'tooling/channel-register.json': JSON.stringify(CHANNELS) });
+
+  it('🔴 Opus 5.5 at 3,000 in and 500 out: the floor per channel is the hand computation', () => {
+    // C = 3000 × max(4, 5 cache-write) / 1e6 + 500 × 20 / 1e6 = 0.015 + 0.010 = 0.025 USD per call; 4C = 0.1.
+    // The tax is the HIGHEST region's (HU 27%) everywhere but the India web book (IN 18%):
+    //   paddle      0.1 / (1/1.27 − 0.05)       = 0.1 / 0.737401… = 0.135612… → 0.1357 per unit,
+    //               + 0.50 / 0.737401…          = 0.678060… → 0.6781 per pack
+    //   razorpay    0.1 / (1/1.18 − 0.02)       = 0.1 / 0.827457… = 0.120852… → 0.1209
+    //   apple-iap   0.1 × 1.27 / (1 − 0.30)     = 0.181428… → 0.1815 (the 30% cell, not the 15% one)
+    //   play        its only cell is subscription-only → LOST, never 15% guessed for a one-time pack
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /PASS  C16 features: import on claude-opus-5-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.025000 per call/);
+    assert.match(r.out, /import — claude-opus-5-5, cost USD 0\.025000 per call, 4× = 0\.100000/);
+    assert.match(r.out, /web\s+paddle\s+≥ 0\.1357 per unit \+ 0\.6781 per pack/);
+    assert.match(r.out, /web\/IN\s+razorpay\s+≥ 0\.1209 per unit/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1815 per unit\s+\(4C × \(1 \+ 27% tax, HU\) \/ \(1 − 30% apple-iap-standard\)\)/);
+    assert.match(r.out, /android-play\s+play-billing\s+LOST — .*no cell for a one-time pack on `play-billing` \(play-billing-subscription is subscription-only/);
+    assert.doesNotMatch(r.out, /apps-gov-in/);
+    // A LOST floor is exit 2, never a pass.
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C17 floor: 1 floor\(s\) not derived — first: import\/android-play/);
+  });
+
+  it('green control: with a one-time Play cell the same switch passes, and a model switch keeps the adapter (C7)', () => {
+    const fees = structuredClone(FEES);
+    fees.cells['play-billing-one-time'] = { rail: 'play-billing', value: { percentBps: 3000 } };
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(aiPort(), fees)]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /android-play\s+play-billing\s+≥ 0\.1815 per unit/);
+    assert.match(r.out, /PASS  C7 standby: a model switch keeps `acme`; the rollback is each feature's previous model \(import: unset\)/);
+    assert.match(r.out, /PASS  C17 floor: 1 feature\(s\) × 4 channel row\(s\) floored at 4× cost/);
+    // review of #1136, nit 1: the floor prices the dearest SINGLE attempt, and says so.
+    assert.match(r.out, /C17 floor: .*a refusal's declined attempt is excluded/);
+  });
+
+  it('a feature with no model yet, or no tokens per call, is LOST — never a guess', () => {
+    let r = run(['ai', '--to', 'acme', '--dry-run', '--from', 'acme-byok', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /LOST  C16 features: import: no model \(features\.import\.model is unset until measured\)/);
+    assert.equal(r.code, 2, r.out);
+    r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run', '--root', aiFixture(aiPort(null, null))]);
+    assert.match(r.out, /LOST  C16 features: import: no tokens per call/);
+  });
+
+  it('naming a cheaper model floors lower', () => {
+    const r = run(['ai', '--to', 'claude-haiku-4-5', '--dry-run', '--root', aiFixture(aiPort('claude-opus-5-5'))]);
+    // Haiku: 3000 × max(1, 1.25) / 1e6 + 500 × 5 / 1e6 = 0.00375 + 0.0025 = 0.00625; ×4 = 0.025;
+    // Apple: 0.025 × 1.27 / 0.7 = 0.045357… → 0.0454.
+    assert.match(r.out, /import on claude-haiku-4-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.006250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.0454 per unit/);
+  });
+
+  it("a bring-your-own-key adapter prices nothing of ours: the user's key pays", () => {
+    const r = run(['ai', '--to', 'acme-byok', '--dry-run', '--root', aiFixture(aiPort())]);
+    assert.match(r.out, /PASS  C15 models: `acme-byok` runs on the USER's own key/);
+  });
+
+  it('creditFloor and callCostUsd are the formulas the table prints', () => {
+    assert.equal(callCostUsd(OPUS, { input: 3000, output: 500 }), 0.025);
+    const apple = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows);
+    assert.ok(Math.abs(apple.perUnit - (0.1 * 1.27) / 0.7) < 1e-12);
+    assert.match(creditFloor('play-billing', 0.025, FEES.cells, FEES.taxRegions.rows).lost, /subscription-only/);
+  });
+
+  it('🔴 the floor takes the HIGHEST region tax, and with no tax table it is LOST — never India for every region', () => {
+    const india = { IN: FEES.taxRegions.rows.IN };
+    const low = creditFloor('apple-iap', 0.025, FEES.cells, india).perUnit;
+    const high = creditFloor('apple-iap', 0.025, FEES.cells, FEES.taxRegions.rows).perUnit;
+    assert.ok(high > low, 'adding a 27% region raises the store floor');
+    assert.match(creditFloor('apple-iap', 0.025, FEES.cells, undefined).lost, /no taxRegions\.rows/);
+    assert.match(creditFloor('razorpay', 0.025, FEES.cells, { HU: FEES.taxRegions.rows.HU }).lost, /no taxRegions\.rows\.IN/);
+  });
+
+  it('🔴 a fallback chain is priced at its DEAREST model: the floor follows the fallback, not the requested model', () => {
+    const DEAR = { ...OPUS, inputUsdPerMTok: 5, outputUsdPerMTok: 25, cacheWriteUsdPerMTok: 6.25 };
+    const priced = { 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-opus-4-8'] }, 'claude-opus-4-8': DEAR };
+    // Opus 4.8: 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.03125 (Opus 5.5 alone: 0.025).
+    assert.deepEqual(chainCallCostUsd(priced, 'claude-opus-5-5', DECLARED), { cost: 0.03125, pricedAt: 'claude-opus-4-8' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': OPUS }, 'claude-opus-5-5', DECLARED), { cost: 0.025, pricedAt: 'claude-opus-5-5' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-x'] } }, 'claude-opus-5-5', DECLARED), { unpriced: 'claude-x' });
+    // Through the dry run: Apple 4 × 0.03125 × 1.27 / 0.7 = 0.226785… → 0.2268, not Opus 5.5's 0.1815.
+    const doc = aiPort();
+    doc.adapters[0].cost.models = priced;
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(doc)]);
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): .* = USD 0\.031250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
+  });
+
+  it("on the REAL registry: the AI dry run names T17's gaps — no tokens for review yet, and Play has no one-time cell", () => {
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run']);
+    assert.equal(r.code, 2, r.out);
+    // Opus 5.5 falls back to Opus 4.8 and Opus 5 ($5/$25, cache write 6.25), so the call is priced there:
+    // C = 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.01875 + 0.0125 = 0.03125; Apple 4C × 1.27 / 0.7 = 0.226785… → 0.2268.
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.031250 per call/);
+    assert.match(r.out, /review: no tokens per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
+    assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
 });

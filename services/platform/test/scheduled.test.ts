@@ -471,6 +471,51 @@ describe('boxbReachability — an outage is a ROW, not a gap', () => {
   });
 });
 
+describe('[port-telemetry] a Box B outage PAGES the owner, and survives Box B taking ntfy down', () => {
+  const ALERTING = {
+    NTFY_ALERT_URL: 'https://ntfy.nikatru.test/nikatru-page',
+    ALERT_WEBHOOK_URL: 'https://hooks.offbox.test/alert',
+  };
+
+  it('🔴 ntfy (on Box B) answers 503: the off-box webhook receives the alert ONCE', async () => {
+    const { db } = fakeDb();
+    const e = env({ BOXB_REACH_URLS: 'https://vault.nikatru.test/', PLATFORM_DB: db, ...ALERTING } as unknown as Partial<Env>);
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: String(init?.body ?? '') });
+      if (url.startsWith('https://vault.')) return new Response('error code: 1033', { status: 530 });
+      if (url.startsWith('https://ntfy.')) return new Response('', { status: 503 });
+      return new Response(null, { status: 204 });
+    }));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await boxbReachability(e);
+    const hooks = calls.filter((c) => c.url === ALERTING.ALERT_WEBHOOK_URL);
+    expect(hooks).toHaveLength(1);
+    expect(JSON.parse(hooks[0].body)).toMatchObject({ severity: 'critical', dedupeKey: BOXB_REACH_JOB });
+    expect(JSON.parse(hooks[0].body).body).toContain('https://vault.nikatru.test/');
+    expect(calls.filter((c) => c.url === ALERTING.NTFY_ALERT_URL)).toHaveLength(1);
+  });
+
+  it('every host up: no alert is sent at all', async () => {
+    const { db } = fakeDb();
+    const e = env({ BOXB_REACH_URLS: 'https://vault.nikatru.test/', PLATFORM_DB: db, ...ALERTING } as unknown as Partial<Env>);
+    const fetchSpy = vi.fn(async () => new Response('', { status: 401 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await boxbReachability(e);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('no channel configured: the outage is still a row, the alert says NOT SENT, and nothing throws', async () => {
+    const { db, bound } = fakeDb();
+    const e = env({ BOXB_REACH_URLS: 'https://vault.nikatru.test/', PLATFORM_DB: db } as unknown as Partial<Env>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 530 })));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(boxbReachability(e)).resolves.toBeUndefined();
+    expect(bound[0][2]).toBe(0);
+    expect(log.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/box B alert: NOT SENT \(invalid\)/);
+  });
+});
+
 describe('[O-GITHUB-SCHEDULER] platformCronBeat — the off-Cloudflare heartbeat never breaks the cron', () => {
   const URL_WITH_TOKEN = 'https://glitchtip.example/api/0/organizations/o/heartbeat_check/SECRET-ENDPOINT-ID/';
 

@@ -229,7 +229,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Usage:  node tooling/ci/assert-ops-register.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, extname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -245,6 +245,7 @@ import { appWorkerMatrix } from './worker-set.mjs';
 // alone, and V8 parses `2026-02-31` as 3 March, so an impossible date passed
 // (the PR 913 review, L2, 2026-09-24).
 import { isIsoDate } from '../app-yaml/schema-validate.mjs';
+import { outageGrade, laptopState, parseBeat, readBeatApi, stateLine } from '../autopilot/heartbeat.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
@@ -621,15 +622,26 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
   // ⏱ 2026-09-11 (INV3). A unit read that scanned a FULL page and found no success
   // of its unit is not "no success ever": it measured the silence back to the
   // oldest run it read, and when that reaches past the window the duty is stale.
-  if (Number.isFinite(probe.noSuccessSinceMs) && nowMs - probe.noSuccessSinceMs > windowMs) {
+  // ⏱ 2026-10-03 · OPS-WATCH 37080147071. The unit scan now reads back to the
+  // row's window start (scanUnit, UNIT_WINDOW_PAGES), so a weekly unit with no
+  // success reaches THIS branch where it used to stop at the bootstrap branch
+  // below. Both say "no success was found"; only the depth differs. So the
+  // `firstDue` gate covers both, on the same four bounds: a success that WAS
+  // found and is stale still blocks, a missing mechanism still blocks, and the
+  // gate expires by arithmetic.
+  const noSuccess = typeof probe.lastSuccessMs !== 'number' || Number.isNaN(probe.lastSuccessMs);
+  const dueMs = q.firstDue ? Date.parse(q.firstDue) : NaN;
+  const notYetDue = noSuccess && !Number.isNaN(dueMs) && nowMs < dueMs;
+  if (!notYetDue && Number.isFinite(probe.noSuccessSinceMs) && nowMs - probe.noSuccessSinceMs > windowMs) {
     return {
       verdict: 'fail',
       line:
         `${id} — its record IS reachable and the newest SUCCESSFUL run is older than every run it read, which reach ` +
-        `back ${((nowMs - probe.noSuccessSinceMs) / 3_600_000).toFixed(1)}h — outside its own window [${windowLabel}]. ${probe.detail}`,
+        `back ${((nowMs - probe.noSuccessSinceMs) / 3_600_000).toFixed(1)}h — outside its own window [${windowLabel}]. ${probe.detail}` +
+        (q.firstDue ? ` \`recordQuery.firstDue\` (${q.firstDue}) has PASSED, so it gates nothing: delete the field.` : ''),
     };
   }
-  if (typeof probe.lastSuccessMs !== 'number' || Number.isNaN(probe.lastSuccessMs)) {
+  if (noSuccess) {
     // 🔴 THE BOOTSTRAP CASE, AND IT IS THE ONE BRANCH WHERE "no success ever" IS
     // NOT A FAILURE OF THE DUTY. A row declared today for a workflow whose first
     // scheduled slot has not arrived has an EMPTY record for a reason that is not
@@ -645,18 +657,17 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
     // stays `fail`, the word FAILING stays next to the count, and the line prints
     // on every run; only the BLOCK is lifted, through the same `gated` channel
     // CLAUDE.md C-6 already uses for owner-gated rows. It is bounded four ways:
-    // it applies ONLY here (a STALE success and a MISSING mechanism both still
-    // block), only while `now < firstDue`, only to a date the schema limb holds
-    // within one cadence window of now, and it expires by arithmetic rather than
-    // by anybody remembering to remove it.
-    const firstDueMs = q.firstDue ? Date.parse(q.firstDue) : NaN;
-    if (!Number.isNaN(firstDueMs) && nowMs < firstDueMs) {
+    // it applies ONLY where no success was found (a STALE success and a MISSING
+    // mechanism both still block), only while `now < firstDue`, only to a date the
+    // schema limb holds within one cadence window of now, and it expires by
+    // arithmetic rather than by anybody remembering to remove it.
+    if (notYetDue) {
       return {
         verdict: 'fail',
         gated: true,
         line:
           `${id} — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL, and it is NOT YET DUE: ` +
-          `\`recordQuery.firstDue\` is ${q.firstDue}, ${((firstDueMs - nowMs) / 3_600_000).toFixed(1)}h from now. ` +
+          `\`recordQuery.firstDue\` is ${q.firstDue}, ${((dueMs - nowMs) / 3_600_000).toFixed(1)}h from now. ` +
           `${probe.detail} [window ${windowLabel}] — the duty was declared before its first slot could arrive, ` +
           'so this prints and does not block. It BLOCKS from that moment on, whether or not anybody edits this row.',
       };
@@ -697,7 +708,7 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
  *  happened. Returns `coverageLost` separately from `errors` because the two
  *  mean different things: an error is a duty that is failing, coverage lost is
  *  this limb no longer being able to tell. */
-export function evaluateRunRecords(reg, probes, nowMs) {
+export function evaluateRunRecords(reg, probes, nowMs, laptop = null) {
   const errors = [];
   const prints = [];
   const decl = reg._recordReaders;
@@ -1021,9 +1032,33 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // own counter would put the word FAILING next to a smaller number every time a
   // row was gated — the count, not the exit code, is what a reader scans.
   const gatedFailLines = [];
+  // ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. A `duty.laptop.*` row graded FAILING
+  // while the laptop heartbeat PROVES an outage (`laptop`, from heartbeat.mjs) is
+  // DEGRADED when its staleness began inside the outage (`outageGrade`): printed as a
+  // warning, never a problem. With no `laptop` argument, or a state of unknown, fresh
+  // or drill-stale, nothing below changes — today's grading, byte for byte.
+  const degraded = [];
   for (const r of scheduled) {
     if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
     const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
+    if (c.verdict === 'fail' && !c.gated && laptop && String(r.id).startsWith('duty.laptop.')) {
+      const p = probes.get(r.id);
+      const days = cadenceDays(r.cadence);
+      const windowMs = days * 86_400_000 * effectiveMultiplier(r, multiplier);
+      // Only the plain "newest success is outside its window" case: a missing
+      // mechanism, a dark reader, a held failure or no success at all stay red.
+      const plainStale = p && !p.unreadable && !p.missing && Number.isFinite(p.lastSuccessMs) &&
+        nowMs - p.lastSuccessMs > windowMs && r.mechanism.recordQuery.lastObserved?.verdict !== 'fail';
+      const o = plainStale
+        ? outageGrade({ rowId: r.id, cadenceMs: days * 86_400_000, windowMs, lastSuccessMs: p.lastSuccessMs, laptop, nowMs })
+        : { degraded: false };
+      if (o.degraded) {
+        tally.degraded = (tally.degraded ?? 0) + 1;
+        degraded.push(o.line);
+        prints.push(`[14]O-3 — DEGRADED, NOT RED (laptop outage): ${o.line}. ${c.line}`);
+        continue;
+      }
+    }
     tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
     if (c.verdict === 'fail') {
       (c.gated ? gatedFailLines : errors).push(c.line);
@@ -1056,6 +1091,7 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // costs exactly what a false alarm costs, so the format is part of the guard.
   prints.push(
     `[14]O-3 — scheduled=${scheduled.length} · queried_ok=${tally.pass} · failing=${tally.fail} ` +
+      (tally.degraded ? `· degraded=${tally.degraded} (laptop outage: printed, not a problem) ` : '') +
       `(owner-gated=${gatedFailLines.length}: printed, not blocking) · ` +
       `unreadable=${tally.unreadable}/ceiling ${readCap} · unreachable=${tally.unreachable}/ceiling ${cap} ` +
       `— [queried_ok is duties whose record WAS read and is inside its window; unreadable is duties this ` +
@@ -1072,7 +1108,7 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
   for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
 
-  return { errors, prints, live, measurement, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
+  return { errors, prints, live, measurement, degraded, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3167,7 +3203,7 @@ export function unitConclusion(q, run, apiJobs, wf, newer = null) {
 /** PURE. The freshness probe from a scanned, newest-first `[{ run, c }]`. A full
  *  page with no success is not "never": it carries `noSuccessSinceMs`, the oldest
  *  run read, so the verdict can say how far back the silence was measured. */
-export function decideUnitFreshness(q, entries, pageFull, repo) {
+export function decideUnitFreshness(q, entries, pageFull, repo, reach = null) {
   const on = ` on ${q?.headBranch}`;
   const ev = q?.event ?? 'any';
   const hit = (entries ?? []).find((e) => e.c?.verdict === 'success');
@@ -3178,11 +3214,12 @@ export function decideUnitFreshness(q, entries, pageFull, repo) {
     };
   }
   const oldest = entries?.length ? entries[entries.length - 1].run : null;
+  if (pageFull && reach?.short) return { unreadable: true, why: shortReadWhy(q, entries, repo, reach) }; // ⏱ 2026-10-03 (file end)
   if (pageFull && oldest) {
     return {
       lastSuccessMs: NaN,
-      noSuccessSinceMs: Date.parse(oldest.updated_at),
-      detail: `${repo}: NO success of ${describeUnit(q)} in the newest ${entries.length} completed \`${ev}\` run(s)${on}, back to run ${oldest.id} at ${oldest.updated_at}.`,
+      noSuccessSinceMs: reachedBackMs(oldest, reach),
+      detail: `${repo}: NO success of ${describeUnit(q)} in the newest ${entries.length} completed \`${ev}\` run(s)${on}, back to run ${oldest.id} at ${oldest.updated_at}${reachNote(reach)}.`,
     };
   }
   return { lastSuccessMs: NaN, detail: `${repo} has NO successful ${describeUnit(q)} in any completed \`${ev}\` run${on} in its run history at all.` };
@@ -3291,6 +3328,29 @@ export function checkLiveVerdictScopes(reg, topology) {
       continue;
     }
     prints.push(`PAGE-ONLY · ${id} — a red live verdict blocks only in ${sc.page} and PRINTS in every other host. ${sc.why}`);
+  }
+  return { errors, prints };
+}
+
+/** ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. PURE. Every `duty.laptop.*` row on a
+ *  CLOCK names its outage home: `outage: { cloudTwin, laptopOnly }` — where its
+ *  portable half runs while the laptop is off, and what waits for the laptop. The
+ *  outage rule (`outageGrade` in tooling/autopilot/heartbeat.mjs) grades such a row
+ *  DEGRADED during a proven outage, and a degraded duty that names no home for its
+ *  work is a duty nobody does. On-demand (attended) laptop rows have no outage.
+ *  Returns `{ errors, prints }`. */
+export function checkLaptopOutageHomes(reg) {
+  const errors = [];
+  const prints = [];
+  for (const r of reg?.rows ?? []) {
+    const id = String(r?.id ?? '');
+    if (r?.kind !== 'duty' || !id.startsWith('duty.laptop.') || !TIME_CADENCE.test(String(r?.cadence ?? ''))) continue;
+    const o = r?.outage;
+    if (!o || typeof o !== 'object' || !nonEmpty(o.cloudTwin) || !nonEmpty(o.laptopOnly)) {
+      errors.push(`${id}: a scheduled laptop duty with no \`outage: { cloudTwin, laptopOnly }\`. While the laptop is off this row reads DEGRADED (O-LAPTOP-OUTAGE-READS-AS-RED), so it must say where its portable half runs and what waits for the laptop.`);
+      continue;
+    }
+    prints.push(`outage home — ${id}: cloud twin ${o.cloudTwin}; laptop-only ${o.laptopOnly}`);
   }
   return { errors, prints };
 }
@@ -3531,22 +3591,48 @@ export async function scanUnitRuns(q, runs, all, wf, jobsFor) {
   return entries;
 }
 
-async function scanUnit(q, repo, wf, cache, filters, what) {
+async function scanUnit(q, repo, wf, cache, filters, what, sinceMs = null) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
-  const { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
-  const entries = await scanUnitRuns(q, runs, all, wf, (runId) => jobsOfRun(repo, runId, cache));
-  return gapCheckedScan(entries, pageFull, gapBelow); // a scan that ran off a fresh window with no success is UNREAD (file end)
+  let { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
+  // ⏱ 2026-10-03 · OPS-WATCH 37080147071. One page was the whole read: 100 runs of
+  // ops-watch.yml on main are ~81h, the window of a 7d duty is 252h, so a weekly
+  // unit's success fell off the page within four days of its slot. With no success
+  // yet and `sinceMs` (the row's window start) not reached, the scan reads the next
+  // OLDER page — `deeperUnitPage`, `olderUnitPage` (file end) — up to UNIT_WINDOW_PAGES.
+  const { event, status } = splitRunFilters(filters);
+  const entries = [];
+  let pages = 1;
+  let short = null;
+  for (;;) {
+    // older than the window: cannot make it fresh, so a deeper page's run before `sinceMs` is not read
+    const page = pages > 1 && Number.isFinite(sinceMs) ? runs.filter((run) => !(Date.parse(run.created_at) < sinceMs)) : runs;
+    const found = await scanUnitRuns(q, page, all, wf, (runId) => jobsOfRun(repo, runId, cache));
+    entries.push(...found);
+    if (found.at(-1)?.c.verdict === 'success') break;
+    const next = deeperUnitPage({ pageFull, gapBelow, all: all ?? runs, sinceMs, pages, listing: Array.isArray(all) });
+    if (!next.read) { short = next.short; break; }
+    const older = olderUnitPage(await ghJson(olderUnitPagePath(repo, q.workflow, q.headBranch, next.boundary)), { branch: q.headBranch, boundary: next.boundary, what });
+    const seen = new Set(all.map((r) => r.id));
+    const fresh = older.runs.filter((r) => !seen.has(r.id));
+    [all, pageFull, pages] = [[...all, ...fresh], older.full, pages + 1];
+    runs = selectRuns(fresh, { event, status }).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  }
+  const reach = Number.isFinite(sinceMs) ? { pages, sinceMs, short, backToMs: oldestCreatedMs(all ?? runs) } : null;
+  return { ...gapCheckedScan(entries, pageFull, gapBelow), reach }; // a scan that ran off a fresh window with no success is UNREAD (file end)
 }
 
-async function probeUnitFreshness(q, repo, wf, cache) {
+/** IMPURE. The freshness read of a job or step unit. `sinceMs` is the row's own
+ *  window start (`recordWindowStartMs`); null reads one page, as before. */
+export async function probeUnitFreshness(q, repo, wf, cache, sinceMs = null) {
   const ev = q.event ? `event=${encodeURIComponent(q.event)}` : '';
-  const { entries, pageFull } = await scanUnit(
+  const { entries, pageFull, reach } = await scanUnit(
     q, repo, wf, cache,
     [ev, `branch=${encodeURIComponent(q.headBranch)}`, 'status=completed'],
     `the newest completed ${q.event ?? 'any'} runs of ${q.workflow} on ${q.headBranch}`,
+    sinceMs,
   );
-  return decideUnitFreshness(q, entries, pageFull, repo);
+  return decideUnitFreshness(q, entries, pageFull, repo, reach);
 }
 
 async function probeUnitRedSince(q, repo, wf, cache) {
@@ -5664,7 +5750,7 @@ async function probeRunRecords(reg, root, parsedByFile = new Map(), jobsCache = 
           if (u.kind === 'invalid') throw new Error('the row names no readable unit');
           outcome = u.kind === 'run'
             ? await probeGithubRun(q, repo)
-            : await probeUnitFreshness(q, repo, parsedByFile.get(String(q.workflow)) ?? null, jobsCache);
+            : await probeUnitFreshness(q, repo, parsedByFile.get(String(q.workflow)) ?? null, jobsCache, recordWindowStartMs(r, reg?._recordReaders?._windowMultiplier, Date.now()));
         }
         // A `timer` limb makes this a TWO-RECORD read: the run history above is
         // now the OUTCOME only, and the cadence claim comes from the heartbeat
@@ -6139,6 +6225,9 @@ async function main() {
   const scopes = checkLiveVerdictScopes(reg, topology);
   errors.push(...scopes.errors);
   prints.push(...scopes.prints);
+  const homes = checkLaptopOutageHomes(reg);
+  errors.push(...homes.errors);
+  prints.push(...homes.prints);
   // ⏱ 2026-09-29 (A-2) — a lane a guard names is run by a schedule (see
   // `checkNamedLanes`). STRUCTURAL. An empty guard set is COVERAGE LOST.
   // A fixture ROOT with no tooling/ci has no guard to hold; THIS checkout
@@ -6169,8 +6258,23 @@ async function main() {
   // everything structural should already have decided by the time a socket opens.
   const jobsCache = new Map();
   const recordProbes = readPlan.read ? await probeRunRecords(reg, ROOT, parsedByFile, jobsCache) : LIVE_READS_NOT_MADE;
-  const rec = evaluateRunRecords(reg, recordProbes, now);
+  let rec = evaluateRunRecords(reg, recordProbes, now);
+  // ⏱ 2026-10-02 · O-LAPTOP-OUTAGE-READS-AS-RED. The heartbeat is read only when a
+  // laptop duty is failing, so a healthy run makes no extra request. An unreadable
+  // beat is `unknown`, which grades exactly as before.
+  if ((rec.live ?? []).some((v) => String(v.id).startsWith('duty.laptop.'))) {
+    const got = await readBeatApi({ repo: process.env.GITHUB_REPOSITORY || DEFAULT_REPO, token: ghToken() });
+    const laptop = laptopState(parseBeat(got.text), now);
+    prints.push(`[14]O-3 — laptop heartbeat: ${stateLine(laptop)}${got.text === null ? ` — ${got.why}` : ''}`);
+    rec = evaluateRunRecords(reg, recordProbes, now, laptop);
+  }
   if (rec.coverageLost) coverageLost(rec.coverageLost);
+  for (const d of rec.degraded ?? []) {
+    console.log(`::warning title=Laptop outage — duty degraded, not red::${d}`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${d}\n`); } catch { /* the summary is a courtesy; the warning above is the record */ }
+    }
+  }
   prints.push(...(rec.prints ?? []));
 
   // [14]O-3b asks a DIFFERENT question of the same record — not "is the newest
@@ -6570,4 +6674,160 @@ function pinnedGlitchtipBase() {
   } catch (e) {
     return { unreadable: true, why: e.message };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · OPS-WATCH 37080147071 — A UNIT READ COVERS THE ROW'S WINDOW,
+// NOT A FIXED NUMBER OF RUNS.
+//
+// 🔴 MEASURED. The run failed on ONE problem: duty.failure-ledger "holds NO
+// SUCCESSFUL RUN AT ALL … in the newest 39 completed `schedule` run(s) on main,
+// back to run 36587820199 at 2026-09-29T15:10:30Z [window 7d x 1.5 = 252.0h]".
+// The unit scan read ONE shared page: the newest 100 ops-watch.yml runs on main
+// of every event (39 schedule, the rest workflow_dispatch). At about 30 runs a
+// day that page is ~81h deep (2026-10-03 00:00Z: 100 runs back to 2026-09-29
+// 15:07Z; the next 100 reach 2026-09-26 20:35Z), and the row's window is 252h.
+// So a job that runs on the Monday 07:45 UTC slot only fell off the page within
+// four days of its slot, and every weekly unit (duty.failure-ledger,
+// duty.edge-shield-in-path, duty.freshness.*) read "no success" from Thursday to
+// Monday whatever the job did. Its own `why` stated a depth of ~8.3 days,
+// counting twelve slots a day and none of the dispatches that share the page.
+// That Monday's slot DID run — 8h14m late, as run 36447758185 (created
+// 2026-09-28T15:59:37Z) — and its edge-shield job succeeded; the page never
+// reached it.
+//
+// ── THE FIX ─────────────────────────────────────────────────────────────────
+// `probeRunRecords` hands each unit read the row's own window start
+// (`recordWindowStartMs`, the same cadence x multiplier `classifyRunRecord`
+// grades against). While the scan has found no success, the page was full, no
+// stale-page gap stands below it, and its oldest run is still inside the window,
+// `scanUnit` reads the next OLDER page, up to UNIT_WINDOW_PAGES pages in all:
+//   · KEYSET, NOT OFFSET. `created=<=<oldest created_at read>` rather than
+//     `page=k`: a run created between two reads cannot shift a page, and the
+//     past does not lag the way the head of a listing can.
+//   · CHECKED, NOT TRUSTED (`olderUnitPage`). The branch filter held, the created
+//     filter held, and the page HOLDS the run it was anchored on, so it overlaps
+//     the page above it. One that does not THROWS, and a throw is `unreadable`:
+//     a gap at the seam could hold the success.
+//   · ONLY THE WINDOW IS GRADED on a deeper page: a run created before the
+//     window start cannot make the row fresh, so its job list is not fetched.
+//   · A READ THAT STOPS SHORT of the window start with no success (the page
+//     ceiling, or a targeted read with no listing to continue) is UNREAD
+//     (`shortReadWhy`), never "no success": the success may be in the part not read.
+// A row whose success IS on the first page reads nothing more, so the daily rows
+// cost what they cost before; the replay's 31-run ops-watch history is never full.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Pages of a branch's run listing a unit scan reads, the first included, to
+ *  reach a row's window start. 6 x 100 runs is ~20 days of ops-watch.yml at the
+ *  ~30 runs a day measured 2026-10-03 (36 on 2026-09-28), against a 7d row's 10.5. */
+export const UNIT_WINDOW_PAGES = 6;
+
+/** A run's `created_at` as the API writes it: a UTC instant to the second. The
+ *  keyset is built from it, so nothing else is let into the URL. */
+const CREATED_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/** PURE. The instant a row's freshness window opens — `now` minus cadence x
+ *  (base + the row's own missed-run budget), exactly the window
+ *  `classifyRunRecord` grades — or null when the row is not on a clock or the
+ *  base is not a usable multiplier. */
+export function recordWindowStartMs(row, base, nowMs) {
+  const days = cadenceDays(row?.cadence);
+  if (days === null || typeof base !== 'number' || !(base >= 1) || !Number.isFinite(nowMs)) return null;
+  return nowMs - days * 86_400_000 * effectiveMultiplier(row, base);
+}
+
+/** PURE. The run on `runs` created first, among those whose `created_at` is a
+ *  UTC instant to the second, or null. */
+export function oldestByCreated(runs) {
+  let best = null;
+  for (const r of runs ?? []) {
+    if (!CREATED_AT.test(String(r?.created_at ?? ''))) continue;
+    if (!best || Date.parse(r.created_at) < Date.parse(best.created_at)) best = r;
+  }
+  return best;
+}
+
+/** PURE. The `created_at` of `oldestByCreated(runs)` in ms, or NaN. */
+export function oldestCreatedMs(runs) {
+  const r = oldestByCreated(runs);
+  return r ? Date.parse(r.created_at) : NaN;
+}
+
+/** PURE. Does a unit scan that has found no success read one more, older page?
+ *  `{ read: true, boundary }` names the run the next page is anchored on;
+ *  `{ read: false, short }` stops, and `short` (a reason, or null) says the read
+ *  stopped before the window start. `listing` is false for a targeted read,
+ *  which has no shared listing to continue. */
+export function deeperUnitPage({ pageFull, gapBelow, all, sinceMs, pages, listing }) {
+  if (!Number.isFinite(sinceMs) || !pageFull || gapBelow) return { read: false, short: null };
+  const boundary = oldestByCreated(all);
+  if (!boundary) return { read: false, short: 'no run on the page carries a created_at to the second, so where the read ends cannot be told' };
+  if (Date.parse(boundary.created_at) <= sinceMs) return { read: false, short: null };
+  const at = `run ${boundary.id} (created ${boundary.created_at})`;
+  if (!listing) return { read: false, short: `the read was a targeted query with no listing to continue, and it ends at ${at}` };
+  if (!(pages < UNIT_WINDOW_PAGES)) return { read: false, short: `the ceiling of ${UNIT_WINDOW_PAGES} pages (UNIT_WINDOW_PAGES) was reached at ${at}` };
+  return { read: true, boundary };
+}
+
+/** PURE. The keyset path of the next older page: the same branch listing, every
+ *  run created at or before `boundary` (which it must therefore hold again). */
+export function olderUnitPagePath(repo, workflow, branch, boundary) {
+  if (!CREATED_AT.test(String(boundary?.created_at ?? ''))) throw new Error(`run ${boundary?.id} has no created_at to the second to anchor an older page on`);
+  const created = encodeURIComponent(`<=${boundary.created_at}`);
+  return `/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=${encodeURIComponent(branch)}&created=${created}&per_page=${RUN_PAGE_WIDE}`;
+}
+
+/** PURE. One older page, checked: `{ runs, full }`, or a THROW naming the check
+ *  that did not hold. The branch filter, the created filter, and the overlap —
+ *  the page must hold `boundary`, the run it was anchored on, or a gap may stand
+ *  between it and the page above, and a success in that gap would read as
+ *  silence. */
+export function olderUnitPage(body, { branch, boundary, what = 'this run history' }) {
+  const list = body?.workflow_runs;
+  if (!Array.isArray(list)) throw new Error(`the older page of ${what} came back without a workflow_runs array`);
+  const ceiling = Date.parse(boundary?.created_at ?? '');
+  for (const r of list) {
+    if (r?.head_branch !== branch) {
+      throw new Error(`the branch filter did not hold on the older page of ${what}: asked for ${JSON.stringify(branch)} and run ${r?.id} came back on ${JSON.stringify(r?.head_branch ?? null)}`);
+    }
+    const c = Date.parse(r?.created_at ?? '');
+    if (!Number.isFinite(c) || !(c <= ceiling)) {
+      throw new Error(`the created filter did not hold on the older page of ${what}: asked for runs created at or before ${boundary?.created_at} and run ${r?.id} came back created ${JSON.stringify(r?.created_at ?? null)}`);
+    }
+  }
+  if (!list.some((r) => r?.id === boundary?.id)) {
+    throw new Error(
+      `the older page of ${what} does not hold run ${boundary?.id} (created ${boundary?.created_at}), the oldest run already read, ` +
+        'so it does not overlap the page above it: a gap may stand between them, and a success in it would read as silence',
+    );
+  }
+  return { runs: list.filter((r) => r?.updated_at), full: list.length >= RUN_PAGE_WIDE };
+}
+
+/** PURE. How far back a scan that found no success measured the silence: the
+ *  oldest run it scanned, or the oldest run its listing reached when that is
+ *  older (every schedule run created since was considered). */
+export function reachedBackMs(oldest, reach) {
+  const at = Date.parse(oldest?.updated_at ?? '');
+  if (!Number.isFinite(reach?.backToMs)) return at;
+  return Number.isFinite(at) ? Math.min(at, reach.backToMs) : reach.backToMs;
+}
+
+const isoOrDash = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '—');
+
+/** PURE. The clause a covered read adds to its "no success" detail. */
+export function reachNote(reach) {
+  if (!reach || !Number.isFinite(reach.sinceMs)) return '';
+  return `; the run listing was read ${reach.pages} page(s) deep, to a run created ${isoOrDash(reach.backToMs)}, past this row's window start ${isoOrDash(reach.sinceMs)}`;
+}
+
+/** PURE. Why a read that stopped short of the window start with no success is
+ *  UNREAD rather than a finding. */
+export function shortReadWhy(q, entries, repo, reach) {
+  return (
+    `${repo}: NO success of ${describeUnit(q)} in the ${(entries ?? []).length} completed \`${q?.event ?? 'any'}\` run(s) on ` +
+    `${q?.headBranch} read, and the read stopped SHORT of this row's window start ${isoOrDash(reach?.sinceMs)}: ${reach?.short}. ` +
+    'A success may stand in the part of the window that was not read, so this is UNREAD (INV6) — never a finding, never a pass.'
+  );
 }

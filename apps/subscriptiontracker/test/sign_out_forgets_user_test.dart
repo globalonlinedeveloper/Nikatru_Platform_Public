@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
+import 'package:nikatru_widgets/nikatru_widgets.dart'
+    show GlanceFact, GlancePublisher, GlanceSnapshot;
 import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/api/cached_api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
@@ -196,7 +198,12 @@ class _FakeAuth extends core.AuthRepository {
   FakeNotifications chassis,
   RecordingSublyNotifications fork,
 })
-_harness(_FakeAuth auth, {_MemStore? kv, ApiClient? api}) {
+_harness(
+  _FakeAuth auth, {
+  _MemStore? kv,
+  ApiClient? api,
+  GlancePublisher? glance,
+}) {
   final MemSecureStore secure = MemSecureStore();
   final _MemStore store = kv ?? _MemStore();
   final FakeNotifications chassis = FakeNotifications();
@@ -212,6 +219,7 @@ _harness(_FakeAuth auth, {_MemStore? kv, ApiClient? api}) {
       secureStoreProvider.overrideWithValue(secure),
       notificationServiceProvider.overrideWithValue(chassis),
       renewalRemindersProvider.overrideWithValue(fork),
+      if (glance != null) glancePublisherProvider.overrideWithValue(glance),
     ],
   );
   addTearDown(container.dispose);
@@ -243,7 +251,48 @@ Future<void> _pumpSettings(
   await tester.pumpAndSettle();
 }
 
+/// The home-screen widget's store, as a map: what a sign-out leaves on it.
+class _GlanceStore implements GlancePublisher {
+  Map<String, String> shown = <String, String>{};
+
+  @override
+  Future<void> publish(GlanceSnapshot snapshot) async =>
+      shown = snapshot.toWidgetData();
+
+  @override
+  Future<void> clear() async => shown = <String, String>{};
+}
+
 void main() {
+  testWidgets(
+    '🔴 (#1155 review, finding 7) SIGNING OUT CLEARS THE HOME-SCREEN GLANCE',
+    (WidgetTester tester) async {
+      final _FakeAuth auth = _FakeAuth();
+      final _GlanceStore glance = _GlanceStore();
+      final h = _harness(auth, glance: glance);
+      await glance.publish(
+        GlanceSnapshot.forPlan(
+          isPro: true,
+          facts: const <GlanceFact>[],
+          proPrompt: 'p',
+          badgeCount: 3,
+        ),
+      );
+      expect(glance.shown, isNotEmpty, reason: 'the seed is real');
+
+      await _pumpSettings(tester, h.container);
+      await tester.tap(find.text('Log out'));
+      await tester.pumpAndSettle();
+
+      expect(auth.signOutCalls, 1);
+      expect(
+        glance.shown,
+        isEmpty,
+        reason: 'the last account’s renewals must not stay on the home screen',
+      );
+    },
+  );
+
   testWidgets(
     '🔴 SIGNING OUT EMPTIES THE ENTITLEMENT CACHE AND CANCELS THE SCHEDULE',
     (WidgetTester tester) async {

@@ -414,6 +414,38 @@ const WIRE_CONTRACTS = [
       'storeProviderRefreshToken awaits client.put and returns void: it subscripts no key of { ok, stored }, and the caller (keepProviderRefreshToken) only cares whether the call threw. As for the Apple pin, the REQUEST is the contract — a renamed key is a 400 for every released build, and a token the server never receives is a grant the deletion cannot revoke.',
   },
   {
+    // ⏱ 2026-10-02 · review of #1155, finding 1 — the native Sign in with Apple
+    // sheet's one-time code, which the Worker exchanges at Apple for the refresh
+    // token a deletion revokes with. Request-only, like the two pins above.
+    id: 'account-apple-code',
+    kind: 'request',
+    server: 'services/platform/src/routes/apple-code.ts',
+    client: {
+      file: 'packages/api_client/lib/src/account_deletion_request.dart',
+      marker: 'appleCodeBody =',
+    },
+    keys: ['authorizationCode', 'appId'],
+    responseIsNotTheContract:
+      'exchangeAppleAuthorizationCode awaits client.put and returns void: it subscripts no key of { ok, stored }, and its caller (keepProviderRefreshToken\'s sendAuthorizationCode) only cares whether the call threw. The REQUEST is the contract — a renamed key is a 400 for every released build, and a code the server never receives is an Apple grant the deletion cannot revoke.',
+  },
+  {
+    // ⏱ 2026-10-02 · review of #1155, finding 3 — asked before a sign-in method
+    // is linked or unlinked. No request body; the answer is a STATUS.
+    id: 'account-identity-change',
+    kind: 'status',
+    servers: ['services/platform/src/routes/identity-change.ts'],
+    client: {
+      file: 'apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart',
+      member: 'core.AuthFailure? signInMethodChangeFailureForStatus(',
+    },
+    /** THE FLOOR. 403 is `reauth_required`: the person stays signed in and is
+     *  asked to sign in again. Unmapped, it reaches the sheet as a generic
+     *  error, and the change the server refused looks like a broken button. */
+    mustMap: [403],
+    bodyIsNotTheContract:
+      'checkSignInMethodChange posts no body and reads none: success is 200 {ok:true}, which nothing subscripts, and a refusal is the shared REAUTH_REQUIRED_BODY/STATUS pair (403 {error:"reauth_required"}), whose body this scan reads as opaque and whose status services/platform/test/identity-change.test.ts asserts. The STATUS SET is the contract, so the client\'s `case`s are pinned against every literal status the route answers.',
+  },
+  {
     id: 'entitlements',
     kind: 'body',
     // ⏱ 2026-09-11 · NOT A NAMED PATH. The server half is the register row's
@@ -776,6 +808,14 @@ const WIRE_CONTRACTS = [
       'NO APP CLIENT, BY CONSTRUCTION — the callers are calendar services (Google Calendar, Apple Calendar, Outlook) subscribing to the URL and browsers downloading it; the app only hands the server-returned URL to the OS. The wire is RFC 5545 text/calendar, written by services/platform/src/lib/ics.ts and pinned by services/platform/test/calendar-feed.test.ts, not a JSON envelope.',
     absentFromDart: '/v1/calendar/',
     absentCall: 'get',
+  },
+  // ⏱ 2026-10-01 · PB-27 — a box's config-hash report (services/platform/src/routes/box-manifest.ts).
+  {
+    id: 'box-manifest',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is each box\'s own cron, tooling/ops/boxes/post-config-manifest.sh, which posts `{box, files: {<logical name>: <sha256>}}` with a secret scoped to that box and reads only the status (204, or 4xx/503). The wire is pinned on both sides outside Dart: services/platform/test/box-manifest.test.ts for the route and tooling/ci/test/box-config-drift.test.mjs for the body the script sends.',
+    absentFromDart: '/v1/ops/',
   },
   // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
   // It was a gap until the TRANSPORT shipped with its first consumer, and its
