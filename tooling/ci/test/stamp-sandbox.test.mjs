@@ -17,11 +17,11 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, appendFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, win32, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STAMP_PATHS, STAMP_WRITES, snapshotTree, restoreTree, validateSnapshot, inWriteSet, fsPath, REPO, StampLeftover, SnapshotRefused } from '../../kit/stamp-sandbox.mjs';
+import { STAMP_PATHS, STAMP_WRITES, snapshotTree, restoreTree, validateSnapshot, inWriteSet, fsPath, REPO, StampLeftover, SnapshotRefused, sameDir, moveCommands } from '../../kit/stamp-sandbox.mjs';
 import { stampLeg } from '../../scripts/preflight.mjs';
 // The catalogue paths from their owners, as STAMP_WRITES takes them.
 import { CATALOGUE } from '../../app-yaml/render.mjs';
@@ -210,7 +210,8 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.equal(ran, false, 'mason ran over a leftover');
     assert.match(r.out, /REFUSED, nothing was stamped/);
     assert.ok(r.out.includes(`${p} exists from an earlier stamp`), r.out);
-    assert.match(r.out, /mkdir -p "[^"]*stamped" && mv "/, 'the fix named is a move to the temp dir');
+    assert.match(r.out, /^  PowerShell: +New-Item -ItemType Directory -Force '[^']*stamped' \| Out-Null; Move-Item '[^']*' '[^']*stamped'$/m, 'a PowerShell 5.1 move, on its own line');
+    assert.match(r.out, /^  bash: +mkdir -p '[^']*stamped' && mv '[^']*' '[^']*stamped'\/$/m, 'a bash move, on its own line');
     assert.doesNotMatch(r.out, /\brm\b/);
     assert.equal(readFileSync(join(root, `${p}/keep.txt`), 'utf8'), 'an earlier run\n');
     assert.equal(status(root), before);
@@ -229,6 +230,45 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
       assert.equal(ran, false);
     } finally {
       rmSync(notRepo, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 a root that is not the git top-level is REFUSED at the snapshot, BEFORE anything is stamped, with nothing written (review f5b054c5 finding 1b)', () => {
+    const sub = join(root, 'apps', 'subscriptiontracker');
+    const before = status(root);
+    assert.throws(() => snapshotTree(sub), (e) => e instanceof SnapshotRefused && /nothing was snapshotted, nothing may be stamped/.test(e.message) && /not a git top-level/.test(e.message));
+    let ran = false;
+    const r = stampLeg({ root: sub, runner: (cmd, args, opts) => { ran = true; fakeStamp(opts.cwd); return { code: 0, out: '' }; } });
+    assert.equal(r.code, 1);
+    assert.equal(ran, false, 'mason ran on a root the restore would refuse');
+    assert.match(r.out, /COVERAGE LOST.*nothing was stamped/s);
+    assert.equal(status(root), before);
+    const snapFile = join(mkdtempSync(join(tmpdir(), 'stamp-sandbox-snap-')), 'snap.json');
+    try {
+      const c = spawnSync(process.execPath, [SANDBOX, 'snapshot', snapFile, '--root', sub], { encoding: 'utf8' });
+      assert.equal(c.status, 2, `${c.stdout}${c.stderr}`);
+      assert.match(c.stderr, /snapshot refused/);
+      assert.equal(existsSync(snapFile), false, 'a refused snapshot was still written');
+      assert.equal(status(root), before);
+    } finally {
+      rmSync(dirname(snapFile), { recursive: true, force: true });
+    }
+  });
+
+  test('a root spelled through a symlink (a non-canonical path, as a Windows 8.3 short name is) snapshots, stamps and restores (review f5b054c5 finding 1a)', () => {
+    const linkDir = mkdtempSync(join(tmpdir(), 'stamp-sandbox-link-'));
+    const link = join(linkDir, 'repo');
+    try {
+      symlinkSync(root, link, 'junction');
+      const top = git(link, 'rev-parse', '--show-toplevel').trim();
+      assert.notEqual(top, link, 'RED CONTROL: git names the root in another spelling, so a plain string compare would refuse');
+      const before = status(root);
+      const r = stampLeg({ root: link, runner: runnerFor((cwd) => { fakeStamp(cwd); return { code: 0, out: 'stamped' }; }) });
+      assert.equal(r.code, 0, r.out);
+      assert.doesNotMatch(r.out, /COULD NOT RESTORE|refused/);
+      assert.equal(status(root), before);
+    } finally {
+      rmSync(linkDir, { recursive: true, force: true });
     }
   });
 
@@ -308,6 +348,34 @@ describe('stamp-sandbox — a snapshot is checked before restore acts on it (rev
     fakeStamp(root);
     restoreTree(snap);
     assert.equal(status(root), before);
+  });
+});
+
+describe('stamp-sandbox — the root comparator (review f5b054c5 finding 1a)', () => {
+  // On the lead's Windows host %TEMP% is C:\Users\LOCALU~2\…, git --show-toplevel answers
+  // C:/Users/localuserwin11/…; realpathSync.native expands the short name,
+  // the JS realpathSync does not. Both are injected here, so Linux CI proves it.
+  const native = (p) => p.replace(/\\LOCALU~2\\/i, '\\localuserwin11\\');
+  const short = 'C:\\Users\\LOCALU~2\\AppData\\Local\\Temp\\stamp-sandbox-ab12';
+  const long = 'C:/Users/localuserwin11/AppData/Local/Temp/stamp-sandbox-ab12';
+  test('an 8.3 short-name root and git\'s long top-level are the same directory, with a canonicalising realpath', () => {
+    assert.equal(sameDir(long, short, { realpath: native, platform: 'win32' }), true);
+    assert.equal(sameDir(long.toUpperCase(), short, { realpath: native, platform: 'win32' }), true, 'case-insensitive on win32');
+  });
+  test('🔴 RED CONTROL: with a realpath that keeps the short name (the JS realpathSync on win32) they differ', () => {
+    assert.equal(sameDir(long, short, { realpath: (p) => p, platform: 'win32' }), false);
+  });
+  test('a different directory, a failing realpath, and case on POSIX are not the same directory', () => {
+    assert.equal(sameDir(long, `${short}-other`, { realpath: native, platform: 'win32' }), false);
+    assert.equal(sameDir(long, short, { realpath: () => { throw new Error('ENOENT'); }, platform: 'win32' }), false);
+    assert.equal(sameDir('/tmp/Repo', '/tmp/repo', { realpath: (p) => p, platform: 'linux' }), false);
+  });
+  test('the leftover move names a PowerShell 5.1 form (no &&) and a bash form, each on its own line, quoting a path with a quote (review f5b054c5 nit 2)', () => {
+    const lines = moveCommands("/r/it's", ['apps/probe'], '/t/stamped').split('\n');
+    assert.equal(lines.length, 2);
+    assert.doesNotMatch(lines[0], /&&/);
+    assert.ok(lines[0].includes("Move-Item '/r/it''s/apps/probe' '/t/stamped'"), lines[0]);
+    assert.ok(lines[1].includes("mv '/r/it'\\''s/apps/probe' '/t/stamped'/"), lines[1]);
   });
 });
 

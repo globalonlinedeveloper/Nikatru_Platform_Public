@@ -44,6 +44,10 @@
 // root the snapshot recorded, after checking it (validateSnapshot): the root is
 // a git top-level, every path stays inside it, and the recorded write set is
 // STAMP_WRITES or part of it. Otherwise it exits 2 and writes nothing.
+// snapshot makes the same checks FIRST (review f5b054c5 finding 1): a root
+// restore would refuse exits 2 there, with no snapshot written and nothing
+// stamped. The root is compared canonically (sameDir, realpathSync.native), so
+// a Windows 8.3 short name (%TEMP% = C:\Users\LOCALU~2\…) is the same root.
 //
 // Windows: git is spawned without a shell; every git path is '/'-separated and
 // joined onto the root by splitting on '/'. No shebang or .sh helper is run.
@@ -164,16 +168,29 @@ function bytesOf(file) {
   }
 }
 
+/** The commands that MOVE each leftover stamp directory out of `root`, one per
+ *  line: a PowerShell form (Windows PowerShell 5.1 has no `&&`, review f5b054c5
+ *  nit 2) and a bash form. Single-quoted: neither shell expands inside, and a
+ *  quote in a path is doubled for PowerShell and closed-escaped for bash. */
+export function moveCommands(root, found, dest = path.join(tmpdir(), 'stamped')) {
+  const ps = (s) => `'${s.replace(/'/g, "''")}'`;
+  const sh = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  return found
+    .flatMap((p) => [
+      `  PowerShell:  New-Item -ItemType Directory -Force ${ps(dest)} | Out-Null; Move-Item ${ps(abs(root, p))} ${ps(dest)}`,
+      `  bash:        mkdir -p ${sh(dest)} && mv ${sh(abs(root, p))} ${sh(dest)}/`,
+    ])
+    .join('\n');
+}
+
 /** A stamp directory left from an earlier run. The snapshot refuses rather than
  *  let mason `--on-conflict overwrite` into it and grade old and new output
  *  mixed (review fc4d5cab nit 2). The fix it names MOVES, never deletes. */
 export class StampLeftover extends Error {
   constructor(root, found) {
-    const dest = path.join(tmpdir(), 'stamped');
     super(
       `${found.join(', ')} exists from an earlier stamp, so this run would mix its output with the old one. ` +
-        `Move it out of the repository, then run again:  ` +
-        found.map((p) => `mkdir -p "${dest}" && mv "${abs(root, p)}" "${dest}/"`).join('  ;  '),
+        `Move it out of the repository, then run again:\n${moveCommands(root, found)}`,
     );
     this.name = 'StampLeftover';
     this.found = found;
@@ -193,29 +210,43 @@ export function snapshotTree(root = REPO) {
     const b = bytesOf(abs(root, rel));
     files[rel] = { xy, bytes: b === null ? null : b.toString('base64') };
   }
-  return { root, files, writes: [...STAMP_WRITES] };
+  const snap = { root, files, writes: [...STAMP_WRITES] };
+  // 🔴 The checks restore makes, made HERE, before anything is stamped (review
+  // f5b054c5 finding 1b): a snapshot restore would refuse must stop the stamp,
+  // never surface in its finally with the stamp already on disk.
+  const problems = validateSnapshot(snap);
+  if (problems.length) throw new SnapshotRefused(problems, 'snapshotted, nothing may be stamped');
+  return snap;
 }
 
 /** Thrown by restoreTree for a snapshot it will not act on (exit 2 from the CLI). */
 export class SnapshotRefused extends Error {
-  constructor(problems) {
-    super(`the snapshot was refused, nothing was restored: ${problems.join('; ')}`);
+  constructor(problems, outcome = 'restored') {
+    super(`the snapshot was refused, nothing was ${outcome}: ${problems.join('; ')}`);
     this.name = 'SnapshotRefused';
     this.problems = problems;
   }
 }
 
-const sameDir = (a, b) => {
-  let x = resolve(a);
-  let y = resolve(b);
+/** Do `a` and `b` name the same directory? Compared CANONICAL (review f5b054c5
+ *  finding 1a): git answers --show-toplevel with the long path
+ *  (C:/Users/localuserwin11/…) while a root reached through %TEMP% keeps its
+ *  8.3 short name (C:\Users\LOCALU~2\…). The JS realpathSync does not expand
+ *  a short name; realpathSync.native does (it also resolves a POSIX symlink).
+ *  Case-insensitive on win32. `realpath` and `platform` are injectable so the
+ *  suite proves the short-name case on Linux. */
+export function sameDir(a, b, { realpath = realpathSync.native, platform = process.platform } = {}) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  let x;
+  let y;
   try {
-    x = realpathSync(x);
-    y = realpathSync(y);
+    x = p.resolve(realpath(p.resolve(a)));
+    y = p.resolve(realpath(p.resolve(b)));
   } catch {
     return false;
   }
-  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
-};
+  return platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
 
 /** Is git path `rel` a plain relative path that stays under `root`? */
 function contained(root, rel) {
@@ -400,7 +431,7 @@ if (isMain) {
       if (r.left.length) process.exit(1);
     }
   } catch (e) {
-    console.error(`stamp-sandbox: ${cmd} ${e instanceof StampLeftover ? 'refused' : 'failed'} — ${e.message}`);
+    console.error(`stamp-sandbox: ${cmd} ${e instanceof StampLeftover || e instanceof SnapshotRefused ? 'refused' : 'failed'} — ${e.message}`);
     process.exit(e instanceof SnapshotRefused || e instanceof SyntaxError ? 2 : 1);
   }
 }
