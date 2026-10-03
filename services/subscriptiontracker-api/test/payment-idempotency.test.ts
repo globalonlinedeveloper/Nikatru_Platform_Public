@@ -266,6 +266,23 @@ describe('POST /v1/subscriptions/:id/payments — Idempotency-Key', () => {
     expect(payments()).toHaveLength(0);
   });
 
+  // ⏱ 2026-10-01 · review of #1121, nit 2 (kills mutation R3c). The purge case
+  // above deletes the payment AND its subscription, so it answers 410 from the
+  // missing PAYMENT and never reaches the `parent_id == null` limb. Here ONLY
+  // the subscriptions row goes (an erasure or a purge racing the history
+  // delete): the payment row is still there, and the replay must still be 410 —
+  // never a 200 reporting a payment under a subscription that no longer exists.
+  it('🔴 only the subscriptions row deleted (the payment stays): the replay is 410', async () => {
+    const id = await create();
+    expect((await pay(id, CLIENT_ID)).status).toBe(201);
+    db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(id).run();
+    expect(payments()).toHaveLength(1);
+    const gone = await pay(id, CLIENT_ID);
+    expect(gone.status).toBe(410);
+    expect(((await gone.json()) as Row).error).toBe('idempotent_create_gone');
+    expect(payments()).toHaveLength(1);
+  });
+
   it('a refused payment releases its claim, so the corrected retry can record it', async () => {
     const id = await create();
     expect((await pay(id, CLIENT_ID, { amount: -1, paid_on: '2026-09-20' })).status).toBe(400);

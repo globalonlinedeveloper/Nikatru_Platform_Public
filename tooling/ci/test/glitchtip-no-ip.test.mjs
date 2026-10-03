@@ -220,11 +220,20 @@ describe('IP fields and client-IP headers on an event surface', () => {
   });
 });
 
+// The bootstrap's ONE beforeSend assignment, verbatim (port-telemetry put the rate
+// bound in front of the scrub). `mutated` THROWS when the text is gone, so a
+// reworded bootstrap cannot turn these two mutations into no-ops that pass.
+const BEFORE_SEND = 'options.beforeSend =\n        (event, hint) => bound.tryAcquire() ? scrubEvent(event) : null;';
+const mutated = (body, from, to) => {
+  if (!body.includes(from)) throw new Error(`the mutation target is not in ${BOOTSTRAP_REL}; re-anchor BEFORE_SEND`);
+  return body.replace(from, to);
+};
+
 describe('the choke point', () => {
   test('R10 — beforeSend never assigned: exit 1', () => {
     const root = stage('r10', (rel, body) =>
       rel === BOOTSTRAP_REL
-        ? body.replace('options.beforeSend = (event, hint) => scrubEvent(event);', '')
+        ? mutated(body, BEFORE_SEND, '')
         : body);
     const r = run(root);
     assert.equal(r.code, 1, r.out);
@@ -234,10 +243,7 @@ describe('the choke point', () => {
   test('R11 — beforeSend assigned, but not through scrubEvent: exit 1', () => {
     const root = stage('r11', (rel, body) =>
       rel === BOOTSTRAP_REL
-        ? body.replace(
-            'options.beforeSend = (event, hint) => scrubEvent(event);',
-            'options.beforeSend = (event, hint) => event;',
-          )
+        ? mutated(body, BEFORE_SEND, 'options.beforeSend = (event, hint) => event;')
         : body);
     const r = run(root);
     assert.equal(r.code, 1, r.out);

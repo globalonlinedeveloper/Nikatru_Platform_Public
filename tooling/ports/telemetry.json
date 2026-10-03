@@ -1,56 +1,316 @@
 {
   "$schema": "./port.schema.json",
   "port": "telemetry",
-  "level": { "claimed": 2, "target": 3 },
+  "level": {
+    "claimed": 2,
+    "target": 3,
+    "byInterface": {
+      "dart": {
+        "claimed": 3,
+        "target": 3
+      },
+      "ts": {
+        "claimed": 2,
+        "target": 3
+      }
+    }
+  },
   "interface": {
-    "dart": { "file": "packages/telemetry/lib/src/telemetry_client.dart", "symbols": ["TelemetryClient"] }
+    "ts": {
+      "file": "services/_shared/src/ports/telemetry.ts",
+      "symbols": [
+        "ErrorSink",
+        "Notifier"
+      ]
+    },
+    "dart": {
+      "file": "packages/telemetry/lib/src/telemetry_client.dart",
+      "symbols": [
+        "TelemetryClient"
+      ]
+    }
   },
   "adapters": [
     {
       "id": "sentry",
       "vendor": "glitchtip",
       "status": "live",
-      "impl": { "file": "packages/telemetry/lib/src/sentry_telemetry_client.dart", "symbol": "SentryTelemetryClient" },
-      "capabilities": ["capture-error", "capture-message", "breadcrumb", "scrub-pii"],
+      "impl": {
+        "file": "packages/telemetry/lib/src/sentry_telemetry_client.dart",
+        "symbol": "SentryTelemetryClient"
+      },
+      "capabilities": [
+        "capture-error",
+        "capture-message",
+        "breadcrumb",
+        "scrub-pii",
+        "rate-bound"
+      ],
       "secrets": [],
       "identity": [],
-      "environments": ["sandbox", "live"],
-      "cost": { "feeCells": [], "unit": null },
-      "conformance": null,
-      "exportDuty": "Leaves with us: nothing needs to — error events are short-retention diagnostics, scrubbed of PII before send. Export: the alert and monitor configuration (tooling/monitor-register.json is already the source). The Sentry protocol is open, so any Sentry-compatible sink takes the same client with a new DSN.",
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/telemetry/test/sentry_telemetry_client_conformance_test.dart"
+      },
+      "exportDuty": "Leaves with us: nothing needs to — error events are short-retention diagnostics, scrubbed of PII before send. Export: the alert and monitor configuration (tooling/monitor-register.json is already the source). The issue history is a diagnostic stream: export it optionally, never block a switch on it. The Sentry protocol is open, so any Sentry-compatible sink takes the same client with a new DSN — but the DSN is COMPILE-TIME (owner decision 2026-07-27), so repointing the app half is an app release per channel.",
       "readAt": null
     },
     {
       "id": "noop",
       "vendor": null,
       "status": "fake",
-      "impl": { "file": "packages/telemetry/lib/src/noop_telemetry_client.dart", "symbol": "NoOpTelemetryClient" },
-      "capabilities": ["capture-error", "capture-message", "breadcrumb"],
+      "impl": {
+        "file": "packages/telemetry/lib/src/noop_telemetry_client.dart",
+        "symbol": "NoOpTelemetryClient"
+      },
+      "capabilities": [
+        "capture-error",
+        "capture-message",
+        "breadcrumb"
+      ],
       "secrets": [],
       "identity": [],
-      "environments": ["test"],
-      "cost": { "feeCells": [], "unit": null },
-      "conformance": null,
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/telemetry/test/noop_telemetry_client_conformance_test.dart"
+      },
       "exportDuty": "Nothing leaves: the no-op client records nothing and has no record to export.",
+      "readAt": null
+    },
+    {
+      "id": "sentry-envelope",
+      "vendor": "glitchtip",
+      "status": "live",
+      "impl": {
+        "file": "services/_shared/src/adapters/telemetry/sentry-envelope.ts",
+        "symbol": "sentryEnvelopeSink"
+      },
+      "capabilities": [
+        "capture-error",
+        "scrub-path"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/error-sink.test.ts"
+      },
+      "exportDuty": "Leaves with us: nothing needs to — a Worker error report carries the route pattern, the release and a correlation id, never a body, header, query string or address. The Worker's GLITCHTIP_DSN is a deploy-time var per Worker, so repointing it is a redeploy, not an app release.",
+      "readAt": null
+    },
+    {
+      "id": "fake-sink",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/telemetry.ts",
+        "symbol": "recordingErrorSink"
+      },
+      "capabilities": [
+        "capture-error"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/error-sink.test.ts"
+      },
+      "exportDuty": "Nothing leaves: the recording fake keeps its reports in memory for the test that made it.",
+      "readAt": null
+    },
+    {
+      "id": "ntfy",
+      "vendor": "ntfy",
+      "status": "built",
+      "impl": {
+        "file": "services/_shared/src/adapters/telemetry/notify-ntfy.ts",
+        "symbol": "ntfyNotifier"
+      },
+      "capabilities": [
+        "notify"
+      ],
+      "secrets": [
+        "NTFY_ALERT_URL",
+        "NTFY_ALERT_TOKEN"
+      ],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/notifier.test.ts"
+      },
+      "exportDuty": "Nothing leaves: ntfy keeps a short message cache and no record we depend on. The topic and its access token are the whole configuration; both are Worker secrets.",
+      "readAt": {
+        "url": "https://docs.ntfy.sh/publish/",
+        "on": "2026-10-01"
+      }
+    },
+    {
+      "id": "webhook",
+      "vendor": "alert-webhook",
+      "status": "built",
+      "impl": {
+        "file": "services/_shared/src/adapters/telemetry/notify-webhook.ts",
+        "symbol": "webhookNotifier"
+      },
+      "capabilities": [
+        "notify"
+      ],
+      "secrets": [
+        "ALERT_WEBHOOK_URL"
+      ],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/notifier.test.ts"
+      },
+      "exportDuty": "Nothing leaves: a webhook is a delivery, not a store. The URL is the whole configuration and is a Worker secret.",
+      "readAt": null
+    },
+    {
+      "id": "mail",
+      "vendor": "resend",
+      "status": "draft",
+      "impl": {
+        "file": "services/_shared/src/adapters/telemetry/notify-mail.ts",
+        "symbol": "mailNotifier"
+      },
+      "capabilities": [
+        "notify"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": null,
+      "exportDuty": "Pending the mail port: once mailFor('alerts') exists the alert mail is sent through it, and the mail port's export duty (the suppression list) covers it.",
+      "readAt": null
+    },
+    {
+      "id": "fake-notifier",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/telemetry.ts",
+        "symbol": "recordingNotifier"
+      },
+      "capabilities": [
+        "notify"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/notifier.test.ts"
+      },
+      "exportDuty": "Nothing leaves: the recording fake keeps its alerts in memory for the test that made it.",
       "readAt": null
     }
   ],
   "selection": {
     "by": "environment",
     "source": "packages/telemetry/lib/src/telemetry_bootstrap.dart#config.enabled",
-    "default": { "live": "sentry", "sandbox": "sentry", "test": "noop" },
-    "canary": null
+    "default": {
+      "live": "sentry",
+      "sandbox": "sentry",
+      "test": "noop"
+    },
+    "canary": null,
+    "byInterface": {
+      "ts": {
+        "by": "per-call",
+        "source": "services/_shared/src/ports/telemetry.ts#NOTIFIER_ROUTES",
+        "default": {
+          "live": null,
+          "sandbox": null,
+          "test": null
+        },
+        "canary": null
+      }
+    }
   },
   "generated": false,
-  "handTables": [],
-  "conformance": { "suite": null, "pending": [] },
+  "handTables": [
+    {
+      "file": "services/_shared/src/error-sink.ts",
+      "anchor": "export * from './adapters/telemetry/sentry-envelope';",
+      "until": "port-telemetry-callers",
+      "why": "The ErrorSink adapter's body moved here from services/_shared/src/error-sink.ts, which now re-exports it whole so every carrier's lib/error-sink.ts and every app.onError `reportWorkerError(` call (read by assert-worker-error-sink limb 2) is unchanged; the callers move to errorSinkFor(env) (services/platform/src/ports.ts) in a later change."
+    }
+  ],
+  "conformance": {
+    "suite": {
+      "file": "packages/telemetry/lib/testing.dart",
+      "runner": "runTelemetryClientConformance"
+    },
+    "pending": [
+      {
+        "adapter": "mail",
+        "case": "the mail notifier waits for mailFor('alerts') from the mail port; it refuses every alert until then",
+        "row": "O-TELEMETRY-SINK-AND-ALERTS-VENDOR-SHAPED"
+      }
+    ]
+  },
   "switch": {
     "runbook": "Private/runbooks/switch-vendor.md#telemetry",
     "dryRun": "node tooling/ops/port-switch.mjs telemetry --to <adapter> --dry-run"
   },
   "_why": [
-    "L2: callers hold a TelemetryClient; TelemetryBootstrap.init is the one place that chooses, from configuration (an empty GLITCHTIP_DSN selects the no-op client).",
-    "The adapter is named for the SDK (sentry_flutter) and its vendor is the sink it posts to, GlitchTip, self-hosted; GLITCHTIP_DSN is a write-only ingest key classified build-config, not a secret.",
-    "The server half of the glitchtip vendor (heartbeats, GLITCHTIP_TOKEN) is not behind this port; port-telemetry brings it."
+    "TWO INTERFACES, GRADED APART (level.byInterface). dart — the app's crash client: L3. Callers hold a TelemetryClient; TelemetryBootstrap.init is the one place that chooses, from configuration (an empty GLITCHTIP_DSN selects the no-op client); runTelemetryClientConformance (packages/telemetry/lib/testing.dart) runs for SentryTelemetryClient over a fake Sentry transport and for the no-op client: a valid envelope, every PiiScrubber class scrubbed, release and environment stamped, an outage failing open, a bounded rate.",
+    "ts — the Worker half: L2. ErrorSink (the sentry-envelope adapter, GLITCHTIP_DSN per Worker) and Notifier (ntfy, webhook, and mail declared pending) live in services/_shared/src/ports/telemetry.ts; services/platform/src/ports.ts is the composition root, and notifierFor(severity) routes by NOTIFIER_ROUTES: a primary and an OFF-BOX-B fallback, because ntfy, GlitchTip and the vault share Box B. Not L3: the Worker scenarios (services/_shared/test/telemetry-conformance.ts) are vitest helpers, not this port's registered suite.",
+    "The app DSN is COMPILE-TIME by owner decision (2026-07-27, tooling/capability-register.json glitchtip.configKeyed): a crash-sink switch for the apps is an app release per channel, and port-switch's dry run says so. The Worker DSN is a deploy var: a redeploy.",
+    "The adapter `sentry` is named for the SDK (sentry_flutter) and its vendor is the sink it posts to, GlitchTip, self-hosted; GLITCHTIP_DSN is a write-only ingest key classified build-config, not a secret.",
+    "The GlitchTip MONITOR API (heartbeats, uptime monitors, GLITCHTIP_TOKEN) is not an event sink: the ops scripts reach it through ONE module, tooling/ops/monitor-api/ (a glitchtip adapter and a fake), and tooling/monitor-register.json stays the data."
   ]
 }

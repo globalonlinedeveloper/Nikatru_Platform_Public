@@ -20,6 +20,7 @@
 //     does not block: the store bills its own account, which the deletion does
 //     not touch. Telling the person so is the delete dialog's copy (client).
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../../_shared/src/ports/sql';
 import { nowIso } from '../d1';
 import { isMoneyEnvironment } from './contract';
 import { cancelThrough, railCan } from '../../../../_shared/src/ports/payments';
@@ -44,7 +45,7 @@ export type CancelBeforeDeleteOutcome =
  * (the route answers it before anything is erased).
  */
 export async function cancelBillingBeforeDelete(
-  db: D1Database,
+  db: SqlDb,
   userId: string,
   env: Env,
 ): Promise<CancelBeforeDeleteOutcome> {

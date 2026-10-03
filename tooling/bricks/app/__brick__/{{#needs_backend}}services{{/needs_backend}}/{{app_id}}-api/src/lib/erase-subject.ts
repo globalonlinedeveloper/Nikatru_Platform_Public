@@ -17,6 +17,7 @@
 // two sets are disjoint by construction. Idempotent: a second erasure of an
 // erased person deletes nothing and is success.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type EraseSubjectResult =
@@ -27,7 +28,7 @@ export type EraseSubjectResult =
 // round trips) and the write is `eraseTargets` (one batch, one transaction, with
 // the transient retry every copy now shares — this brick had it and the live
 // Workers did not). This file keeps its envelope, its refusals and its words.
-export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
+export async function eraseSubjectRows(db: SqlDb, userId: string): Promise<EraseSubjectResult> {
   if (typeof userId !== 'string' || userId.length === 0) {
     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
   }
