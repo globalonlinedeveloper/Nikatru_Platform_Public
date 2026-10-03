@@ -115,7 +115,8 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('removing `if: always()` from the aggregate fails — a skipped required check satisfies branch protection', () => {
-    const root = mutant([['ci.yml', '    if: always()\n    steps:\n      - name: Require all lanes green', '    steps:\n      - name: Require all lanes green']]);
+    // ⏱ 2026-10-03 — the line carries the draft conjunct since A10; the mutation still drops the whole `if:`.
+    const root = mutant([['ci.yml', '    if: always() && github.event.pull_request.draft != true\n    steps:\n      - name: Require all lanes green', '    steps:\n      - name: Require all lanes green']]);
     caught(run(root), /job "ci-gate" has no job-level `if: always\(\)`/);
   });
 
@@ -138,7 +139,8 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   // through the job that calls it.
   test('deleting the call job fails A7 — the called-only workflow is then called by no gate constituent', () => {
     const root = mutant([
-      ['ci.yml', /\n {2}extensions:\n {4}name: extensions\n {4}uses: \.\/\.github\/workflows\/extensions-ci\.yml\n(?: {4}#[^\n]*\n)* {4}permissions:\n {6}contents: read\n {6}actions: write\n/, '\n'],
+      // ⏱ 2026-10-03 — the call job carries the draft predicate (A10) between `name:` and `uses:`.
+      ['ci.yml', /\n {2}extensions:\n {4}name: extensions\n(?: {4}if: [^\n]*\n)? {4}uses: \.\/\.github\/workflows\/extensions-ci\.yml\n(?: {4}#[^\n]*\n)* {4}permissions:\n {6}contents: read\n {6}actions: write\n/, '\n'],
       ['ci.yml', '      - extensions\n    if: always()', '    if: always()'],
       ['ci.yml', '          echo "extensions=${{ needs.extensions.result }}"\n', ''],
     ]);
@@ -689,5 +691,99 @@ describe('§A9 — a post-gate job runs only after its aggregator, and only on a
   test('a callee called by a job that is neither a constituent nor post-gate fails A7', () => {
     const r = run(withDeployX(withIf("github.event_name == 'push'")));
     assert.match(r.out, /deploy-x\.yml can be started only by `workflow_call`, and no constituent of an aggregator .* calls it, nor a post-gate job after one/);
+  });
+});
+
+// ⏱ 2026-10-03 — rules A1 (exactly), A6 (the one admitted `if:`), A10 and A11. Stacked
+// pull requests live as drafts until their bases merge, and a draft runs nothing: every
+// root lane of ci.yml and ci-gate itself skip on ONE predicate, and ready_for_review is
+// the event that gives the readied PR its single full run. The plan is read off the
+// parsed job graph, so each red control below is a lane that would start on a draft, or
+// a constituent that would not start on the run that judges the PR.
+describe('§A10/A11 — a draft pull request runs nothing; ready_for_review runs every lane once', () => {
+  const DRAFT = 'github.event.pull_request.draft != true';
+  const GATE_LINE = `    if: always() && ${DRAFT}\n`;
+  const PLAN = /a draft pull_request run of \.github\/workflows\/ci\.yml starts (\d+) of (\d+) job\(s\) \((\d+) lane\(s\) skip drafts with "ci-gate"\) and a ready_for_review run starts all (\d+) constituent\(s\) and the gate/;
+  /** ci-gate's needs, read off the real file without the guard's parser. */
+  const gateNeeds = () => {
+    const ci = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
+    const block = ci.split('\n  ci-gate:\n')[1].split('\n    if:')[0];
+    return [...block.matchAll(/^ {6}- ([a-z0-9-]+)$/gm)].map((m) => m[1]);
+  };
+
+  test('GREEN: the real tree — a draft run starts 0 jobs, a ready_for_review run starts every constituent and the gate', () => {
+    const r = run(REPO);
+    assert.equal(r.code, 0, r.out);
+    const m = r.out.match(PLAN);
+    assert.ok(m, `no draft-plan reading in:\n${r.out}`);
+    assert.equal(Number(m[1]), 0, 'a draft pull request starts no job of ci.yml, ci-gate included');
+    const needs = gateNeeds();
+    assert.ok(needs.length >= 20, `ci-gate's needs read as ${needs.length} — the reader above lost the block`);
+    assert.equal(Number(m[4]), needs.length, `ready_for_review must start every one of ci-gate's ${needs.length} needs`);
+    assert.ok(Number(m[3]) >= 1 && Number(m[3]) < needs.length, 'only the root lanes carry the predicate; the rest inherit the skip through `needs`');
+    assert.match(r.out, /, 2 workflow\(s\) skipping drafts hear ready_for_review/, 'ci.yml and codeql.yml');
+  });
+
+  test('GREEN: a lane that needs a draft-skipping lane may carry the predicate as well', () => {
+    const r = run(mutant([['ci.yml', '    name: Store submission dry runs\n    needs: prepare\n', `    name: Store submission dry runs\n    if: ${DRAFT}\n    needs: prepare\n`]]));
+    assert.equal(r.code, 0, r.out);
+    const m = r.out.match(PLAN);
+    assert.ok(m, r.out);
+    assert.equal(Number(m[1]), 0);
+  });
+
+  test('RED: a root lane without the predicate starts on every draft push while its gate is skipped', () => {
+    const root = mutant([['ci.yml', `    name: App brick (stamp both variants + analyze + validate the clone contract)\n    if: ${DRAFT}\n`, '    name: App brick (stamp both variants + analyze + validate the clone contract)\n']]);
+    caught(run(root), /a draft pull_request run of \.github\/workflows\/ci\.yml would start 1 job\(s\): "app-brick"/);
+  });
+
+  test('RED: a call job without it starts its whole callee on a draft', () => {
+    const root = mutant([['ci.yml', `  extensions:\n    name: extensions\n    if: ${DRAFT}\n`, '  extensions:\n    name: extensions\n']]);
+    caught(run(root), /a draft pull_request run of \.github\/workflows\/ci\.yml would start 1 job\(s\): "extensions"/);
+  });
+
+  test('RED: the gate without the draft conjunct fails A1, and A6 names every lane it would read skipped', () => {
+    const r = run(mutant([['ci.yml', GATE_LINE, '    if: always()\n']]));
+    caught(r, /job "ci-gate" carries `if: always\(\)`; it must be exactly `always\(\) && github\.event\.pull_request\.draft != true`/);
+    assert.match(r.out, /lane "app-brick" skips draft pull requests \(`if: github\.event\.pull_request\.draft != true`\) and "ci-gate" does not/);
+    assert.match(r.out, /a draft pull_request run of \.github\/workflows\/ci\.yml would start 1 job\(s\): "ci-gate"/);
+  });
+
+  test('RED: any other conjunct on an aggregator fails A1 — each one is an event on which the gate is skipped', () => {
+    caught(run(mutant([['ci.yml', GATE_LINE, "    if: always() && github.event_name != 'pull_request'\n"]])), /job "ci-gate" carries `if: always\(\) && github\.event_name != 'pull_request'`; it must be exactly/);
+    caught(
+      run(mutant([['build-platforms.yml', '    needs: [gate, prepare, linux_web_android, windows, apple, release]\n    if: always()\n', "    needs: [gate, prepare, linux_web_android, windows, apple, release]\n    if: always() && github.event_name != 'schedule'\n"]])),
+      /job "all_platforms" carries `if: always\(\) && github\.event_name != 'schedule'`; it must be exactly `always\(\)`/,
+    );
+  });
+
+  test('RED: the predicate is byte-equal or nothing — a wrapper or the negated spelling is an ordinary conditional lane', () => {
+    const anchor = `    name: App brick (stamp both variants + analyze + validate the clone contract)\n    if: ${DRAFT}\n`;
+    const as = (cond) => mutant([['ci.yml', anchor, `    name: App brick (stamp both variants + analyze + validate the clone contract)\n    if: ${cond}\n`]]);
+    caught(run(as(`\${{ ${DRAFT} }}`)), /lane "app-brick" carries a job-level `if: \$\{\{ github\.event\.pull_request\.draft != true \}\}`, and "ci-gate" aggregates it/);
+    caught(run(as('!github.event.pull_request.draft')), /lane "app-brick" carries a job-level `if: !github\.event\.pull_request\.draft`, and "ci-gate" aggregates it/);
+  });
+
+  test('RED: without ready_for_review in ci.yml\'s types a readied draft gets no run — A10 and A11', () => {
+    const r = run(mutant([['ci.yml', 'types: [opened, synchronize, reopened, edited, ready_for_review]', 'types: [opened, synchronize, reopened, edited]']]));
+    caught(r, /\.github\/workflows\/ci\.yml skips draft pull requests \(draftSkips\) and its `on: pull_request: types:` is \[opened, synchronize, reopened, edited\], without `ready_for_review`/);
+    assert.match(r.out, /\.github\/workflows\/ci\.yml: job "lane-workers", .* skip\(s\) draft pull requests, and `on: pull_request: types:` is \[opened, synchronize, reopened, edited\]/);
+  });
+
+  test("RED: codeql.yml skipping drafts without ready_for_review fails A11 — ci.yml's CodeQL PR rule would wait on an analysis that never runs", () => {
+    caught(
+      run(mutant([['codeql.yml', 'types: [opened, synchronize, reopened, ready_for_review]', 'types: [opened, synchronize, reopened]']])),
+      /\.github\/workflows\/codeql\.yml: job "analyze" skip\(s\) draft pull requests, and `on: pull_request: types:` is \[opened, synchronize, reopened\]/,
+    );
+    caught(
+      run(mutant([['codeql.yml', /\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/, '\n']])),
+      /\.github\/workflows\/codeql\.yml: job "analyze" skip\(s\) draft pull requests, and `on: pull_request: types:` is absent \(GitHub's defaults omit ready_for_review\)/,
+    );
+  });
+
+  test('RED: a constituent that needs a job no green run starts is dark on ready_for_review and on a push to main', () => {
+    const r = run(mutant([['ci.yml', '    name: Store submission dry runs\n    needs: prepare\n', '    name: Store submission dry runs\n    needs: ff-prepare\n']]));
+    caught(r, /a ready_for_review pull_request run of \.github\/workflows\/ci\.yml would not start "app-dryrun"/);
+    assert.match(r.out, /a push to main of \.github\/workflows\/ci\.yml would not start "app-dryrun"/);
   });
 });

@@ -26,6 +26,38 @@ push filter and were covered only because `pull_request:` has no branch filter.
 still `feat|fix|chore/<slug>` (see `.github/PULL_REQUEST_TEMPLATE.md`) — it is
 now a convention rather than a gate, which is what it always actually was.
 
+### 1.1 A draft pull request runs nothing (2026-10-03)
+
+A stacked pull request (body `STACKED ON: #a, #b`) cannot merge until its bases
+do, and every base merge re-ran its whole ~40-job CI: runner time spent on a PR
+that could not land, shown as red or cancelled runs. Stacked PRs are now opened
+as **drafts** and marked ready (`gh pr ready`) once every base has merged, and a
+draft runs no CI at all:
+
+- every `ci.yml` job with no `needs` carries
+  `if: github.event.pull_request.draft != true`; a job that needs one inherits
+  the skip. `ci-gate` carries `if: always() && github.event.pull_request.draft != true`,
+  so on a draft it is skipped **with** its lanes instead of reading them skipped,
+  and on every other event (a push, a dispatch, a ready PR) the predicate is true
+  and nothing changes. GitHub refuses to merge a draft, so no gate is owed.
+- `ready_for_review` is in the `pull_request` `types:`: readying the PR is the
+  event that gives it its one full run.
+- `codeql.yml`'s `analyze` skips drafts on the same predicate and also hears
+  `ready_for_review`, because `security-scan`'s CodeQL PR rule waits for the
+  analysis of the run that readies the PR.
+
+`assert-green-means-ran.mjs` holds all of it (A1, A6, A10, A11): the predicates
+byte for byte, a draft run that starts **zero** jobs on the parsed graph, a
+ready_for_review run and a push to main that start every constituent and the
+gate, and `ready_for_review` in every draft-skipping workflow's `types:`.
+
+⚠️ The skipped `ci-gate` of a draft run satisfies branch protection, and the
+ready run's `ci-gate` check exists only once its needs finish (about five
+minutes in). In that window GitHub alone would allow a merge. The lander does
+not: `land-rules.mjs` `gateVerdict` reads only SUCCESS as green, and a newer run
+on the head makes the older gate STALE. A hand merge waits for the ready run's
+`ci-gate` the same way.
+
 ## 2. `concurrency` — why `cancel-in-progress` is an expression
 
 ```yaml
@@ -139,36 +171,36 @@ any deploy starts, every gate job has finished, so no follow-up can fire.
 
 | job | its `name:` | its `needs` | job-level `if:` | in `ci-gate`'s `needs` |
 |---|---|---|---|---|
-| `lane-workers` | lane-workers | — | — | yes |
-| `guard-tests` | Guards — the guards can still fail (shard ${{ matrix.shard }}) | — | — | yes |
+| `lane-workers` | lane-workers | — | yes | yes |
+| `guard-tests` | Guards — the guards can still fail (shard ${{ matrix.shard }}) | — | yes | yes |
 | `ff-guard-tests` | fail-fast · guard-tests | `guard-tests` | yes | **no** |
 | `guard-tests-floor` | Guards — every shard ran, and ran at least the floor | `guard-tests` | — | yes |
 | `ff-guard-tests-floor` | fail-fast · guard-tests-floor | `guard-tests-floor` | yes | **no** |
-| `guard-meta` | Guards — the guards can still fail | — | — | yes |
+| `guard-meta` | Guards — the guards can still fail | — | yes | yes |
 | `ff-guard-meta` | fail-fast · guard-meta | `guard-meta` | yes | **no** |
-| `guards-platform` | Guards — platform, data and ops | — | — | yes |
+| `guards-platform` | Guards — platform, data and ops | — | yes | yes |
 | `ff-guards-platform` | fail-fast · guards-platform | `guards-platform` | yes | **no** |
-| `guards-legal` | Guards — privacy, legal and money | — | — | yes |
+| `guards-legal` | Guards — privacy, legal and money | — | yes | yes |
 | `ff-guards-legal` | fail-fast · guards-legal | `guards-legal` | yes | **no** |
-| `guards-store` | Guards — store, release and versioning | — | — | yes |
+| `guards-store` | Guards — store, release and versioning | — | yes | yes |
 | `ff-guards-store` | fail-fast · guards-store | `guards-store` | yes | **no** |
-| `guards-chassis` | Guards — chassis, app surface and packages | — | — | yes |
+| `guards-chassis` | Guards — chassis, app surface and packages | — | yes | yes |
 | `ff-guards-chassis` | fail-fast · guards-chassis | `guards-chassis` | yes | **no** |
-| `security-scan` | Security — secret and workflow scanners | — | — | yes |
+| `security-scan` | Security — secret and workflow scanners | — | yes | yes |
 | `ff-security-scan` | fail-fast · security-scan | `security-scan` | yes | **no** |
-| `site-tokens` | Design tokens (build + drift, all three outputs) | — | — | yes |
+| `site-tokens` | Design tokens (build + drift, all three outputs) | — | yes | yes |
 | `ff-site-tokens` | fail-fast · site-tokens | `site-tokens` | yes | **no** |
-| `site-shared` | Shared site build | — | — | yes |
+| `site-shared` | Shared site build | — | yes | yes |
 | `ff-site-shared` | fail-fast · site-shared | `site-shared` | yes | **no** |
-| `content-gate` | Content pipeline (recipe -> pack -> sign -> gate) | — | — | yes |
+| `content-gate` | Content pipeline (recipe -> pack -> sign -> gate) | — | yes | yes |
 | `ff-content-gate` | fail-fast · content-gate | `content-gate` | yes | **no** |
-| `app-brick` | App brick (stamp both variants + analyze + validate the clone contract) | — | — | yes |
+| `app-brick` | App brick (stamp both variants + analyze + validate the clone contract) | — | yes | yes |
 | `ff-app-brick` | fail-fast · app-brick | `app-brick` | yes | **no** |
-| `sites` | Static sites (functions parse + required files) | — | — | yes |
+| `sites` | Static sites (functions parse + required files) | — | yes | yes |
 | `ff-sites` | fail-fast · sites | `sites` | yes | **no** |
-| `workspace-gate` | Workspace gate (melos analyze + test) · ${{ matrix.part }} | — | — | yes |
+| `workspace-gate` | Workspace gate (melos analyze + test) · ${{ matrix.part }} | — | yes | yes |
 | `ff-workspace-gate` | fail-fast · workspace-gate | `workspace-gate` | yes | **no** |
-| `prepare` | Derive the app set from the pub workspace | — | — | yes |
+| `prepare` | Derive the app set from the pub workspace | — | yes | yes |
 | `ff-prepare` | fail-fast · prepare | `prepare` | yes | **no** |
 | `app-dryrun` | Store submission dry runs | `prepare` | — | yes |
 | `ff-app-dryrun` | fail-fast · app-dryrun | `app-dryrun` | yes | **no** |
@@ -178,7 +210,7 @@ any deploy starts, every gate job has finished, so no follow-up can fire.
 | `ff-web-artifacts` | fail-fast · web-artifacts | `web-artifacts` | yes | **no** |
 | `linux-artifacts` | Linux artifacts (built, inspected, discarded) | `prepare` | — | yes |
 | `ff-linux-artifacts` | fail-fast · linux-artifacts | `linux-artifacts` | yes | **no** |
-| `extensions` | extensions | — | — | yes |
+| `extensions` | extensions | — | yes | yes |
 | `ci-gate` | ci-gate | `lane-workers`, `guard-meta`, `guard-tests`, `guard-tests-floor`, `guards-platform`, `guards-legal`, `guards-store`, `guards-chassis`, `security-scan`, `site-tokens`, `site-shared`, `content-gate`, `app-brick`, `sites`, `workspace-gate`, `prepare`, `app-dryrun`, `android-artifacts`, `web-artifacts`, `linux-artifacts`, `extensions` | yes | — (the aggregate: the single required status check on `main`) |
 | `platform-db-migrate` | platform-db-migrate | `ci-gate` | yes | **no** |
 | `deploy-web` | deploy-web | `ci-gate`, `platform-db-migrate`, `deploy-workers` | yes | **no** |
@@ -311,7 +343,9 @@ Each is enforced by a guard that will fail the build, named so you can read it:
   it `needs:` **every** other job in `ci.yml`, it echoes each
   `needs.<job>.result`, and it treats `failure`, `cancelled` **and `skipped`**
   as not-green — `tooling/ci/assert-green-means-ran.mjs`.
-- **No lane inside the gate carries a job-level `if:`** — same guard.
+- **No lane inside the gate carries a job-level `if:`** — same guard. The one
+  exception is the draft predicate of §1.1, admitted only while `ci-gate`
+  skips on the same predicate.
 - **A step that branches on whether a secret is set must `exit 1`**, never skip
   the real work and report success — same guard. This is why the store
   submission workflows fail closed on a missing credential instead of passing
@@ -577,11 +611,11 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from 
 | `actions/cache` | GitHub | `.github/actions/setup-flutter/action.yml`, `ci.yml`, `ops-watch.yml` |
 | `actions/cache/restore` | GitHub | `ci.yml` |
 | `actions/cache/save` | GitHub | `ci.yml` |
-| `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
+| `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `regen-gradle-verify.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
 | `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
-| `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
+| `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `regen-gradle-verify.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
-| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
+| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `regen-gradle-verify.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
 | `github/codeql-action/analyze` | GitHub | `codeql.yml` |
 | `github/codeql-action/init` | GitHub | `codeql.yml` |
 <!-- END GENERATED: gen-ci-map actions -->
@@ -799,6 +833,54 @@ without ever opening a pull request, and nothing would say so. The workflow
 fires **daily** and `renovate.json`'s own schedule decides when it does work:
 give the *evidence* margin, not the duty.
 
+### 8.2 Regenerate Gradle verification
+
+`apps/<app>/android/gradle/verification-metadata.xml` lists the sha256 of every
+artefact Gradle fetches, and Gradle refuses one it does not list ("Dependency
+verification failed … N artifacts failed verification"). So **every Android
+dependency change** (a Flutter, AGP, Kotlin, Gradle or plugin bump; a Flutter bump
+alone is a new engine artefact set) is red in `ci.yml` android-artifacts until the
+file is regenerated, and that needs Gradle and the Android SDK on Linux, which no
+laptop or cloud sandbox here has. `.github/workflows/regen-gradle-verify.yml`
+regenerates it on the runner:
+
+1. **Dispatch** ON the branch that carries the dependency change, with `--ref`:
+
+   ```
+   gh workflow run regen-gradle-verify.yml -R globalonlinedeveloper/Nikatru_Platform_Public \
+     --ref <branch> -f app=subscriptiontracker
+   ```
+
+   `--ref` is the only form: the workflow takes no `ref` input and refuses
+   `main`. A dispatch runs in the cache scope of the ref it is dispatched on, and
+   this job runs the branch's unreviewed build code, so it must never run in
+   `main`'s scope, which every branch and the keystore jobs restore. It writes no
+   cache either (`setup-flutter` and `setup-java` caches off, no `actions/cache`).
+   A branch cut before the workflow reached `main` must merge `main` first.
+
+   It builds that branch with the same JDK, Flutter and runner image as
+   android-artifacts, no cache and no secret, verification lenient in
+   `~/.gradle` only, and runs `./gradlew --write-verification-metadata sha256`
+   over bundleDebug + assembleDebug, then bundleRelease + assembleRelease (the
+   procedure `tooling/ci/assert-signing-inputs-pinned.mjs` limb V names). Gradle
+   MERGES into the committed file, so an entry no build uses any more stays.
+   **Before the upload** it puts verification back to strict, re-runs those
+   four tasks against the new file (Gradle, not the release composer: a composer
+   call outside ci-gate is refused by `assert-release-provenance`) and runs
+   `node tooling/ci/assert-signing-inputs-pinned.mjs`, so a file a build refuses
+   never becomes an artifact.
+2. **Download** the artifact `verification-metadata-<app>-<sha8>` (`<sha8>` is the
+   commit the run built):
+   `gh run download <run id> -R globalonlinedeveloper/Nikatru_Platform_Public -n verification-metadata-<app>-<sha8>`.
+3. **Commit** it at `apps/<app>/android/gradle/verification-metadata.xml` on the
+   same branch, read the diff (new components should match the bump, nothing
+   else), and push. android-artifacts on the pull request is the proof: it builds
+   with verification on, against the committed file. If the branch moved after
+   the dispatch, dispatch again on the new head.
+
+The workflow pushes nothing and holds `contents: read` only; its duty row is
+`duty.workflow.regen-gradle-verify.yml` in `tooling/ops/register.json`.
+
 ---
 
 ## 9. One page per workflow
@@ -818,7 +900,7 @@ naming the job it belonged to and the line it sat above.
 
 <!-- BEGIN GENERATED: gen-ci-map workflows -->
 <!-- why: GENERATED by node tooling/ci/gen-ci-map.mjs --write. Never hand-edit. -->
-**31** workflows. A workflow's page is `docs/ci/<workflow>.md`; `ci.yml`'s is this one.
+**32** workflows. A workflow's page is `docs/ci/<workflow>.md`; `ci.yml`'s is this one.
 
 | page | workflow | its `name:` | triggers | jobs |
 |---|---|---|---|---|
@@ -842,6 +924,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 11 |
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 14 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
+| none | `.github/workflows/regen-gradle-verify.yml` | Regenerate Gradle verification | `workflow_dispatch` | 2 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/review-gate.yml` | Review gate | `pull_request_target` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
