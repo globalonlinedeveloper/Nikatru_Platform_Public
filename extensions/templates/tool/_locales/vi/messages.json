@@ -451,6 +451,22 @@
     "message": "Mở biểu mẫu báo cáo",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Trợ giúp",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Tìm trong trợ giúp",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Không có câu trả lời phù hợp.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Vẫn gặp khó khăn? Hãy hỏi chúng tôi",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Chuẩn bị báo cáo",
     "description": "en: Prepare a report"

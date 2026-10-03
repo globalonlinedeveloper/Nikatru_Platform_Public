@@ -436,5 +436,9 @@
   "optionsSectionReport": "Ziņot par problēmu",
   "optionsReport": "Pastāstiet, kas nogāja greizi",
   "optionsReportDesc": "Jaunā cilnē atver nikatru.com ziņošanas veidlapu, kurā aizpildīta tikai FullShot versija, valoda un pārlūks.",
-  "optionsReportBtn": "Atvērt ziņošanas veidlapu"
+  "optionsReportBtn": "Atvērt ziņošanas veidlapu",
+  "optionsSectionHelp": "Palīdzība",
+  "optionsHelpSearch": "Meklēt palīdzībā",
+  "optionsHelpNone": "Nav atbilstošas atbildes.",
+  "optionsHelpAsk": "Joprojām neizdodas? Jautājiet mums"
 }

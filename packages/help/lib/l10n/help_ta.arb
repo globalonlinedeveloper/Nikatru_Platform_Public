@@ -1,0 +1,13 @@
+{
+  "@@locale": "ta",
+  "helpCentreTitle": "உதவி",
+  "helpSearchLabel": "உதவியில் தேடுங்கள்",
+  "helpNoResults": "பொருந்தும் கட்டுரை இல்லை. கீழே எங்களிடம் கேளுங்கள்.",
+  "helpKnownIssuesTitle": "அறியப்பட்ட சிக்கல்கள்",
+  "helpNoKnownIssues": "அறியப்பட்ட சிக்கல்கள் இல்லை",
+  "helpFixedIn": "{version} இல் சரிசெய்யப்பட்டது",
+  "helpStillStuck": "இன்னும் சிக்கலா?",
+  "helpAskUs": "எங்களிடம் கேளுங்கள்",
+  "helpAccessibility": "அணுகல்தன்மை அறிக்கை",
+  "helpArticlesInEnglish": "உதவிக் கட்டுரைகள் தற்போது ஆங்கிலத்தில் மட்டும் உள்ளன."
+}

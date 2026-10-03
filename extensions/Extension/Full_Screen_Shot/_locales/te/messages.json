@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "నివేదిక ఫారమ్‌ను తెరవండి"
   },
+  "optionsSectionHelp": {
+    "message": "సహాయం"
+  },
+  "optionsHelpSearch": {
+    "message": "సహాయంలో వెతకండి"
+  },
+  "optionsHelpNone": {
+    "message": "సరిపోలే సమాధానం లేదు."
+  },
+  "optionsHelpAsk": {
+    "message": "ఇంకా సమస్యా? మమ్మల్ని అడగండి"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot ఈ పరికరంలో నిల్వ చేసినదంతా తొలగించాలా?\n\nమీ చరిత్రలో స్క్రీన్‌షాట్‌లు: $COUNT$\nఆగిపోయిన క్యాప్చర్‌ల అవశేషాలు: $LEFTOVER$\nఇది ఖాళీ చేసే స్థలం: $SIZE$\n\nమీ సెట్టింగ్‌లపై ప్రభావం ఉండదు. దీన్ని వెనక్కి తీసుకోలేరు.",
     "placeholders": {

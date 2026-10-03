@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Otevřít formulář"
   },
+  "optionsSectionHelp": {
+    "message": "Nápověda"
+  },
+  "optionsHelpSearch": {
+    "message": "Hledat v nápovědě"
+  },
+  "optionsHelpNone": {
+    "message": "Žádná odpovídající odpověď."
+  },
+  "optionsHelpAsk": {
+    "message": "Stále nevíte? Zeptejte se nás"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Smazat vše, co FullShot uložil v tomto zařízení?\n\nSnímky obrazovky v historii: $COUNT$\nZbytky po přerušených snímáních: $LEFTOVER$\nUvolněné místo: $SIZE$\n\nVašich nastavení se to nedotkne. Tuto akci nelze vrátit zpět.",
     "placeholders": {

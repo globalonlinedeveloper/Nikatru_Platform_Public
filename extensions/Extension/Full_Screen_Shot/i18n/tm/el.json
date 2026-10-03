@@ -427,5 +427,9 @@
   "optionsSectionReport": "Αναφορά προβλήματος",
   "optionsReport": "Πείτε μας τι πήγε στραβά",
   "optionsReportDesc": "Ανοίγει τη φόρμα αναφοράς στο nikatru.com σε νέα καρτέλα, με συμπληρωμένα μόνο την έκδοση του FullShot, τη γλώσσα και το πρόγραμμα περιήγησης.",
-  "optionsReportBtn": "Άνοιγμα φόρμας αναφοράς"
+  "optionsReportBtn": "Άνοιγμα φόρμας αναφοράς",
+  "optionsSectionHelp": "Βοήθεια",
+  "optionsHelpSearch": "Αναζήτηση στη βοήθεια",
+  "optionsHelpNone": "Δεν βρέθηκε αντίστοιχη απάντηση.",
+  "optionsHelpAsk": "Ακόμα κολλημένοι; Ρωτήστε μας"
 }

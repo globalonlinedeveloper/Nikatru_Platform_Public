@@ -1,0 +1,277 @@
+{
+  "_why": "Questions people ask in their own words (never an article's title or an `asked` line) and the article that answers each. tooling/help/build-index.mjs requires at least 50 pairs and top-3 recall of at least 0.9 overall and for every article named here (lane help-search, row O-HELP-SEARCH-RECALL-UNGUARDED).",
+  "pairs": [
+    {
+      "query": "track a new streaming service",
+      "expect": "subscriptiontracker/add-a-subscription"
+    },
+    {
+      "query": "service missing from the popular list",
+      "expect": "subscriptiontracker/add-a-subscription"
+    },
+    {
+      "query": "enter renewal date and cost",
+      "expect": "subscriptiontracker/add-a-subscription"
+    },
+    {
+      "query": "custom billing cycle every 3 weeks",
+      "expect": "subscriptiontracker/add-a-subscription"
+    },
+    {
+      "query": "change the amount I pay",
+      "expect": "subscriptiontracker/edit-or-delete"
+    },
+    {
+      "query": "pause reminders for a plan",
+      "expect": "subscriptiontracker/edit-or-delete"
+    },
+    {
+      "query": "remove an entry from my list",
+      "expect": "subscriptiontracker/edit-or-delete"
+    },
+    {
+      "query": "undo a delete",
+      "expect": "subscriptiontracker/edit-or-delete"
+    },
+    {
+      "query": "stop being charged by spotify",
+      "expect": "subscriptiontracker/cancel-a-subscription"
+    },
+    {
+      "query": "revoke upi autopay mandate",
+      "expect": "subscriptiontracker/cancel-a-subscription"
+    },
+    {
+      "query": "cancel play store subscription",
+      "expect": "subscriptiontracker/cancel-a-subscription"
+    },
+    {
+      "query": "unsubscribe from apple subscription on iphone",
+      "expect": "subscriptiontracker/cancel-a-subscription"
+    },
+    {
+      "query": "bank standing instruction card",
+      "expect": "subscriptiontracker/cancel-a-subscription"
+    },
+    {
+      "query": "notification before charge",
+      "expect": "subscriptiontracker/renewal-reminders"
+    },
+    {
+      "query": "reminder never arrived",
+      "expect": "subscriptiontracker/renewal-reminders"
+    },
+    {
+      "query": "remind me 3 days before",
+      "expect": "subscriptiontracker/renewal-reminders"
+    },
+    {
+      "query": "email alerts for renewals",
+      "expect": "subscriptiontracker/renewal-reminders"
+    },
+    {
+      "query": "notifications blocked",
+      "expect": "subscriptiontracker/renewal-reminders"
+    },
+    {
+      "query": "google calendar renewals",
+      "expect": "subscriptiontracker/calendar-feed"
+    },
+    {
+      "query": "calendar link shared by mistake",
+      "expect": "subscriptiontracker/calendar-feed"
+    },
+    {
+      "query": "outlook subscribed calendar",
+      "expect": "subscriptiontracker/calendar-feed"
+    },
+    {
+      "query": "spending limit each month",
+      "expect": "subscriptiontracker/monthly-budget"
+    },
+    {
+      "query": "over budget warning",
+      "expect": "subscriptiontracker/monthly-budget"
+    },
+    {
+      "query": "limit for streaming category",
+      "expect": "subscriptiontracker/monthly-budget"
+    },
+    {
+      "query": "switch to rupees",
+      "expect": "subscriptiontracker/currency"
+    },
+    {
+      "query": "amounts in dollars and euros",
+      "expect": "subscriptiontracker/currency"
+    },
+    {
+      "query": "currency conversion",
+      "expect": "subscriptiontracker/currency"
+    },
+    {
+      "query": "yearly total spend",
+      "expect": "subscriptiontracker/insights"
+    },
+    {
+      "query": "plans I never use",
+      "expect": "subscriptiontracker/insights"
+    },
+    {
+      "query": "trial ends charge",
+      "expect": "subscriptiontracker/free-trials"
+    },
+    {
+      "query": "price after trial",
+      "expect": "subscriptiontracker/free-trials"
+    },
+    {
+      "query": "show only trials",
+      "expect": "subscriptiontracker/free-trials"
+    },
+    {
+      "query": "record that I paid",
+      "expect": "subscriptiontracker/payments-and-history"
+    },
+    {
+      "query": "price went up history",
+      "expect": "subscriptiontracker/payments-and-history"
+    },
+    {
+      "query": "past payments list",
+      "expect": "subscriptiontracker/payments-and-history"
+    },
+    {
+      "query": "use on laptop and phone",
+      "expect": "subscriptiontracker/sync-and-devices"
+    },
+    {
+      "query": "no internet connection changes",
+      "expect": "subscriptiontracker/sync-and-devices"
+    },
+    {
+      "query": "changes couldn't sync",
+      "expect": "subscriptiontracker/sync-and-devices"
+    },
+    {
+      "query": "download csv spreadsheet",
+      "expect": "subscriptiontracker/export-your-data"
+    },
+    {
+      "query": "backup my data",
+      "expect": "subscriptiontracker/export-your-data"
+    },
+    {
+      "query": "create my own category",
+      "expect": "subscriptiontracker/categories"
+    },
+    {
+      "query": "rename category",
+      "expect": "subscriptiontracker/categories"
+    },
+    {
+      "query": "send a bug report",
+      "expect": "subscriptiontracker/report-a-problem"
+    },
+    {
+      "query": "screenshot blurred report",
+      "expect": "subscriptiontracker/report-a-problem"
+    },
+    {
+      "query": "magic link email not received",
+      "expect": "platform/sign-in-problems"
+    },
+    {
+      "query": "forgot password",
+      "expect": "platform/sign-in-problems"
+    },
+    {
+      "query": "erase my account",
+      "expect": "platform/delete-account"
+    },
+    {
+      "query": "deleting account cancels subscription",
+      "expect": "platform/delete-account"
+    },
+    {
+      "query": "sign out all sessions",
+      "expect": "platform/log-out-everywhere"
+    },
+    {
+      "query": "lost phone still signed in",
+      "expect": "platform/log-out-everywhere"
+    },
+    {
+      "query": "screenshot whole web page",
+      "expect": "fullshot/capture-full-page"
+    },
+    {
+      "query": "capture selected area",
+      "expect": "fullshot/capture-full-page"
+    },
+    {
+      "query": "countdown before capture",
+      "expect": "fullshot/capture-full-page"
+    },
+    {
+      "query": "sticky header appears many times",
+      "expect": "fullshot/missing-or-repeated-content"
+    },
+    {
+      "query": "lazy loaded images blank",
+      "expect": "fullshot/missing-or-repeated-content"
+    },
+    {
+      "query": "hide cookie popup",
+      "expect": "fullshot/missing-or-repeated-content"
+    },
+    {
+      "query": "infinite scroll feed capture",
+      "expect": "fullshot/missing-or-repeated-content"
+    },
+    {
+      "query": "export pdf a4",
+      "expect": "fullshot/export-formats"
+    },
+    {
+      "query": "webp jpeg quality",
+      "expect": "fullshot/export-formats"
+    },
+    {
+      "query": "choose download folder",
+      "expect": "fullshot/export-formats"
+    },
+    {
+      "query": "blur sensitive part",
+      "expect": "fullshot/redact-and-annotate"
+    },
+    {
+      "query": "draw arrows on screenshot",
+      "expect": "fullshot/redact-and-annotate"
+    },
+    {
+      "query": "hide email addresses automatically",
+      "expect": "fullshot/redact-and-annotate"
+    },
+    {
+      "query": "is my screenshot uploaded",
+      "expect": "fullshot/privacy-and-data"
+    },
+    {
+      "query": "clear capture history",
+      "expect": "fullshot/privacy-and-data"
+    },
+    {
+      "query": "fullshot support contact",
+      "expect": "fullshot/report-a-problem"
+    },
+    {
+      "query": "talk to someone at nikatru",
+      "expect": "platform/report-a-problem"
+    },
+    {
+      "query": "send a question to support from the website",
+      "expect": "platform/report-a-problem"
+    }
+  ]
+}

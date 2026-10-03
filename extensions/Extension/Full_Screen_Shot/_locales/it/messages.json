@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Apri il modulo"
   },
+  "optionsSectionHelp": {
+    "message": "Aiuto"
+  },
+  "optionsHelpSearch": {
+    "message": "Cerca nella guida"
+  },
+  "optionsHelpNone": {
+    "message": "Nessuna risposta corrispondente."
+  },
+  "optionsHelpAsk": {
+    "message": "Ancora bloccato? Chiedici"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Eliminare tutto ciò che FullShot ha archiviato su questo dispositivo?\n\nScreenshot nella cronologia: $COUNT$\nResidui di catture interrotte: $LEFTOVER$\nSpazio che verrà liberato: $SIZE$\n\nLe tue impostazioni non vengono modificate. L’operazione non può essere annullata.",
     "placeholders": {

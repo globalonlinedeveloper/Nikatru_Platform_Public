@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Άνοιγμα φόρμας αναφοράς"
   },
+  "optionsSectionHelp": {
+    "message": "Βοήθεια"
+  },
+  "optionsHelpSearch": {
+    "message": "Αναζήτηση στη βοήθεια"
+  },
+  "optionsHelpNone": {
+    "message": "Δεν βρέθηκε αντίστοιχη απάντηση."
+  },
+  "optionsHelpAsk": {
+    "message": "Ακόμα κολλημένοι; Ρωτήστε μας"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Να διαγραφούν όλα όσα έχει αποθηκεύσει το FullShot σε αυτήν τη συσκευή;\n\nΣτιγμιότυπα στο ιστορικό σας: $COUNT$\nΥπολείμματα από λήψεις που διακόπηκαν: $LEFTOVER$\nΧώρος που ελευθερώνεται: $SIZE$\n\nΟι ρυθμίσεις σας δεν επηρεάζονται. Αυτό δεν αναιρείται.",
     "placeholders": {

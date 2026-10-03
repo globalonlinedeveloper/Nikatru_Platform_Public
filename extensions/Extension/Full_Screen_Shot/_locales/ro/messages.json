@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Deschide formularul"
   },
+  "optionsSectionHelp": {
+    "message": "Ajutor"
+  },
+  "optionsHelpSearch": {
+    "message": "Caută în ajutor"
+  },
+  "optionsHelpNone": {
+    "message": "Niciun răspuns potrivit."
+  },
+  "optionsHelpAsk": {
+    "message": "Încă aveți probleme? Întrebați-ne"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ștergi tot ce a stocat FullShot pe acest dispozitiv?\n\nCapturi în istoricul tău: $COUNT$\nRămășițe de la capturi întrerupte: $LEFTOVER$\nSpațiul eliberat: $SIZE$\n\nSetările tale nu sunt afectate. Această acțiune nu poate fi anulată.",
     "placeholders": {

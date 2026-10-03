@@ -7,7 +7,7 @@
      report form on nikatru.com's /support page, with the extension's OWN state
      filled in. The person writes the description there, sees exactly what is
      sent, and sends it; the site's same-origin Pages Function forwards it to the
-     private intake (services/feedback). So the extension itself makes NO network
+     private intake (the platform Worker's POST /v1/feedback). So the extension itself makes NO network
      call (policy-check gate 1 stays "zero network") and asks for no permission.
 
    WHAT THE LINK MAY CARRY — a closed list, built here and nowhere else
@@ -17,6 +17,11 @@
      plat      the coarse platform ("chromium 130", "firefox 131"), never a
                user-agent string
      category  one of the intake's categories
+     q         the words the person typed into the Help panel's search, for
+               "Still stuck? Ask us" (lane help-search): at most 200
+               characters, and dropped whole when it looks like a URL, a host
+               or an e-mail address — the form shows it, editable, before
+               anything is sent
    NOTHING ABOUT A PAGE: no URL, no title, no host, no tab, no capture. A key
    outside the list is dropped, and a value that is not its key's shape (a
    version is digits and dots, a locale a language tag) is dropped even under a
@@ -28,7 +33,7 @@
   'use strict';
 
   var FORM = 'https://nikatru.com/support';
-  var KEYS = ['app', 'v', 'loc', 'plat', 'category'];
+  var KEYS = ['app', 'v', 'loc', 'plat', 'category', 'q'];
   var CATEGORIES = ['bug', 'crash', 'billing', 'accessibility', 'translation', 'question', 'other'];
   /* One shape per key: a value that is not its key's shape is dropped. A
      generic "short and plain" test let a host name through under `loc`, which
@@ -38,7 +43,8 @@
     v: /^\d{1,5}(\.\d{1,5}){0,3}$/,
     loc: /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/,
     plat: /^(chromium|firefox) \d{1,4}$|^other$/,
-    category: /^[a-z]{2,16}$/
+    category: /^[a-z]{2,16}$/,
+    q: /^(?!.*(?:\/\/|@|www\.|\.[a-z]{2,}(?:\/|$|\s)))[^\u0000-\u001f<>]{1,200}$/i
   };
 
   /* The coarse platform: engine and major version only. */
@@ -61,7 +67,8 @@
       v: s.version,
       loc: s.uiLocale,
       plat: coarsePlatform(s.userAgent),
-      category: CATEGORIES.indexOf(s.category) >= 0 ? s.category : 'bug'
+      category: CATEGORIES.indexOf(s.category) >= 0 ? s.category : 'bug',
+      q: typeof s.query === 'string' ? s.query.replace(/\s+/g, ' ').trim() : undefined
     };
     for (var i = 0; i < KEYS.length; i++) {
       var k = KEYS[i];

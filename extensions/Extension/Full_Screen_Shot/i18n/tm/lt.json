@@ -445,5 +445,9 @@
   "optionsSectionReport": "Pranešti apie problemą",
   "optionsReport": "Papasakokite, kas nutiko",
   "optionsReportDesc": "Naujame skirtuke atidaro nikatru.com pranešimo formą, kurioje užpildyta tik FullShot versija, kalba ir naršyklė.",
-  "optionsReportBtn": "Atidaryti pranešimo formą"
+  "optionsReportBtn": "Atidaryti pranešimo formą",
+  "optionsSectionHelp": "Pagalba",
+  "optionsHelpSearch": "Ieškoti pagalboje",
+  "optionsHelpNone": "Atitinkančio atsakymo nėra.",
+  "optionsHelpAsk": "Vis dar nepavyksta? Klauskite mūsų"
 }

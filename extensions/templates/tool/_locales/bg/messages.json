@@ -451,6 +451,22 @@
     "message": "Отвори формуляра",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Помощ",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Търсене в помощта",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Няма съвпадащ отговор.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Все още имате проблем? Попитайте ни",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Подготви доклад",
     "description": "en: Prepare a report"

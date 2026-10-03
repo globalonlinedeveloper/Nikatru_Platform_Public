@@ -427,5 +427,9 @@
   "optionsSectionReport": "Sorun bildir",
   "optionsReport": "Neyin yanlış gittiğini bize anlatın",
   "optionsReportDesc": "nikatru.com'daki bildirim formunu yeni bir sekmede açar; formda yalnızca FullShot sürümü, dil ve tarayıcı doldurulmuştur.",
-  "optionsReportBtn": "Bildirim formunu aç"
+  "optionsReportBtn": "Bildirim formunu aç",
+  "optionsSectionHelp": "Yardım",
+  "optionsHelpSearch": "Yardımda ara",
+  "optionsHelpNone": "Eşleşen yanıt yok.",
+  "optionsHelpAsk": "Hâlâ takıldınız mı? Bize sorun"
 }

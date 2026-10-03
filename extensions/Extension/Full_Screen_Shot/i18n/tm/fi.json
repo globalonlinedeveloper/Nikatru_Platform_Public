@@ -427,5 +427,9 @@
   "optionsSectionReport": "Ilmoita ongelmasta",
   "optionsReport": "Kerro meille, mikä meni vikaan",
   "optionsReportDesc": "Avaa nikatru.comin ilmoituslomakkeen uudelle välilehdelle, ja siihen on täytetty vain FullShotin versio, kieli ja selain.",
-  "optionsReportBtn": "Avaa ilmoituslomake"
+  "optionsReportBtn": "Avaa ilmoituslomake",
+  "optionsSectionHelp": "Ohje",
+  "optionsHelpSearch": "Hae ohjeesta",
+  "optionsHelpNone": "Vastaavaa vastausta ei löytynyt.",
+  "optionsHelpAsk": "Etkö vieläkään löydä apua? Kysy meiltä"
 }

@@ -427,5 +427,9 @@
   "optionsSectionReport": "Teata probleemist",
   "optionsReport": "Kirjutage meile, mis läks valesti",
   "optionsReportDesc": "Avab nikatru.com-i teatamisvormi uuel vahekaardil, kuhu on täidetud ainult FullShoti versioon, keel ja brauser.",
-  "optionsReportBtn": "Ava teatamisvorm"
+  "optionsReportBtn": "Ava teatamisvorm",
+  "optionsSectionHelp": "Abi",
+  "optionsHelpSearch": "Otsi abist",
+  "optionsHelpNone": "Sobivat vastust pole.",
+  "optionsHelpAsk": "Ikka ei saa hakkama? Küsige meilt"
 }

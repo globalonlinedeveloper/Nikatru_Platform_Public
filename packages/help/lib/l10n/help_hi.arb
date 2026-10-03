@@ -1,0 +1,13 @@
+{
+  "@@locale": "hi",
+  "helpCentreTitle": "सहायता",
+  "helpSearchLabel": "सहायता में खोजें",
+  "helpNoResults": "कोई लेख मेल नहीं खाता। नीचे हमसे पूछें।",
+  "helpKnownIssuesTitle": "ज्ञात समस्याएँ",
+  "helpNoKnownIssues": "कोई ज्ञात समस्या नहीं",
+  "helpFixedIn": "{version} में ठीक किया गया",
+  "helpStillStuck": "अब भी अटके हैं?",
+  "helpAskUs": "हमसे पूछें",
+  "helpAccessibility": "सुलभता विवरण",
+  "helpArticlesInEnglish": "सहायता लेख अभी केवल अंग्रेज़ी में हैं।"
+}

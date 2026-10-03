@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "فتح نموذج الإبلاغ"
   },
+  "optionsSectionHelp": {
+    "message": "مساعدة"
+  },
+  "optionsHelpSearch": {
+    "message": "البحث في المساعدة"
+  },
+  "optionsHelpNone": {
+    "message": "لا توجد إجابة مطابقة."
+  },
+  "optionsHelpAsk": {
+    "message": "هل ما زلت بحاجة إلى مساعدة؟ اسألنا"
+  },
   "optionsDeleteAllConfirm": {
     "message": "هل تريد حذف كل ما خزّنه FullShot على هذا الجهاز؟\n\nاللقطات في سجلك: $COUNT$\nبقايا عمليات الالتقاط المنقطعة: $LEFTOVER$\nالمساحة التي ستتحرر: $SIZE$\n\nلن تتأثر إعداداتك. لا يمكن التراجع عن هذا.",
     "placeholders": {

@@ -436,5 +436,9 @@
   "optionsSectionReport": "Пријави проблем",
   "optionsReport": "Реците нам шта је пошло наопако",
   "optionsReportDesc": "Отвара образац за пријаву на nikatru.com у новој картици, у коме су попуњени само верзија FullShot-а, језик и прегледач.",
-  "optionsReportBtn": "Отвори образац"
+  "optionsReportBtn": "Отвори образац",
+  "optionsSectionHelp": "Помоћ",
+  "optionsHelpSearch": "Претражи помоћ",
+  "optionsHelpNone": "Нема одговарајућег одговора.",
+  "optionsHelpAsk": "И даље не иде? Питајте нас"
 }

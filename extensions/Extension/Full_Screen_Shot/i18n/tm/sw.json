@@ -427,5 +427,9 @@
   "optionsSectionReport": "Ripoti tatizo",
   "optionsReport": "Tuambie kilichoharibika",
   "optionsReportDesc": "Hufungua fomu ya ripoti kwenye nikatru.com katika kichupo kipya, ikiwa na toleo la FullShot, lugha na kivinjari pekee vilivyojazwa.",
-  "optionsReportBtn": "Fungua fomu ya ripoti"
+  "optionsReportBtn": "Fungua fomu ya ripoti",
+  "optionsSectionHelp": "Msaada",
+  "optionsHelpSearch": "Tafuta msaada",
+  "optionsHelpNone": "Hakuna jibu linalolingana.",
+  "optionsHelpAsk": "Bado umekwama? Tuulize"
 }

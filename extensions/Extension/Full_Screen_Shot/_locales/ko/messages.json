@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "신고 양식 열기"
   },
+  "optionsSectionHelp": {
+    "message": "도움말"
+  },
+  "optionsHelpSearch": {
+    "message": "도움말 검색"
+  },
+  "optionsHelpNone": {
+    "message": "일치하는 답변이 없습니다."
+  },
+  "optionsHelpAsk": {
+    "message": "아직 해결되지 않았나요? 문의하세요"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot이 이 기기에 저장한 모든 것을 삭제할까요?\n\n기록의 스크린샷: $COUNT$\n중단된 캡처의 잔여물: $LEFTOVER$\n확보되는 공간: $SIZE$\n\n설정에는 영향을 주지 않습니다. 이 작업은 되돌릴 수 없습니다.",
     "placeholders": {

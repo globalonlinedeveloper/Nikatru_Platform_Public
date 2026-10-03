@@ -418,5 +418,9 @@
   "optionsSectionReport": "Laporkan masalah",
   "optionsReport": "Beri tahu kami apa yang salah",
   "optionsReportDesc": "Membuka formulir laporan di nikatru.com di tab baru, hanya dengan versi FullShot, bahasa, dan browser yang terisi.",
-  "optionsReportBtn": "Buka formulir laporan"
+  "optionsReportBtn": "Buka formulir laporan",
+  "optionsSectionHelp": "Bantuan",
+  "optionsHelpSearch": "Cari bantuan",
+  "optionsHelpNone": "Tidak ada jawaban yang cocok.",
+  "optionsHelpAsk": "Masih bingung? Tanyakan kepada kami"
 }

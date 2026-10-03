@@ -451,6 +451,22 @@
     "message": "Buka formulir laporan",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Bantuan",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Cari bantuan",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Tidak ada jawaban yang cocok.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Masih bingung? Tanyakan kepada kami",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Siapkan laporan",
     "description": "en: Prepare a report"

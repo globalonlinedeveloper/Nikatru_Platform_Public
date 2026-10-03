@@ -427,5 +427,9 @@
   "optionsSectionReport": "Problem melden",
   "optionsReport": "Sagen Sie uns, was schiefgelaufen ist",
   "optionsReportDesc": "Öffnet das Meldeformular auf nikatru.com in einem neuen Tab, in dem nur die FullShot-Version, die Sprache und der Browser ausgefüllt sind.",
-  "optionsReportBtn": "Meldeformular öffnen"
+  "optionsReportBtn": "Meldeformular öffnen",
+  "optionsSectionHelp": "Hilfe",
+  "optionsHelpSearch": "Hilfe durchsuchen",
+  "optionsHelpNone": "Keine passende Antwort.",
+  "optionsHelpAsk": "Immer noch nicht gelöst? Fragen Sie uns"
 }

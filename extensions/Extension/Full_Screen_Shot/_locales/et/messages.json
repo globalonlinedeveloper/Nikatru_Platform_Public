@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Ava teatamisvorm"
   },
+  "optionsSectionHelp": {
+    "message": "Abi"
+  },
+  "optionsHelpSearch": {
+    "message": "Otsi abist"
+  },
+  "optionsHelpNone": {
+    "message": "Sobivat vastust pole."
+  },
+  "optionsHelpAsk": {
+    "message": "Ikka ei saa hakkama? Küsige meilt"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Kas kustutada kõik, mille FullShot on sellesse seadmesse salvestanud?\n\nEkraanipilte sinu ajaloos: $COUNT$\nKatkenud jäädvustuste jäänuseid: $LEFTOVER$\nVabanev ruum: $SIZE$\n\nSinu seadeid see ei mõjuta. Seda ei saa tagasi võtta.",
     "placeholders": {

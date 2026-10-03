@@ -1121,6 +1121,8 @@ class SettingsScreen extends ConsumerWidget {
     context,
     decoration: cardDecoration(context),
     row: _LinkRow.new,
+    helpCentreLabel: helpCentreLabelOf(context),
+    openHelpCentre: () => openHelp(context, ref),
     contactPageLabel: l10n.helpAndSupport,
     openContactPage: () => openExternalUrl(AppConfig.contactUrl),
     contactSupportLabel: l10n.contactSupport,

@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Отвори формуляра"
   },
+  "optionsSectionHelp": {
+    "message": "Помощ"
+  },
+  "optionsHelpSearch": {
+    "message": "Търсене в помощта"
+  },
+  "optionsHelpNone": {
+    "message": "Няма съвпадащ отговор."
+  },
+  "optionsHelpAsk": {
+    "message": "Все още имате проблем? Попитайте ни"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Да изтрием ли всичко, което FullShot е съхранил на това устройство?\n\nЕкранни снимки в историята ви: $COUNT$\nОстанки от прекъснати заснемания: $LEFTOVER$\nОсвободено място: $SIZE$\n\nНастройките ви не се засягат. Това не може да бъде отменено.",
     "placeholders": {

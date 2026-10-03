@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Meldeformular öffnen"
   },
+  "optionsSectionHelp": {
+    "message": "Hilfe"
+  },
+  "optionsHelpSearch": {
+    "message": "Hilfe durchsuchen"
+  },
+  "optionsHelpNone": {
+    "message": "Keine passende Antwort."
+  },
+  "optionsHelpAsk": {
+    "message": "Immer noch nicht gelöst? Fragen Sie uns"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Alles löschen, was FullShot auf diesem Gerät gespeichert hat?\n\nScreenshots in Ihrem Verlauf: $COUNT$\nReste unterbrochener Aufnahmen: $LEFTOVER$\nDadurch frei werdender Speicher: $SIZE$\n\nIhre Einstellungen sind nicht betroffen. Dies kann nicht rückgängig gemacht werden.",
     "placeholders": {

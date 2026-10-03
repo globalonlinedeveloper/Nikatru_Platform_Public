@@ -427,5 +427,9 @@
   "optionsSectionReport": "Rapportér et problem",
   "optionsReport": "Fortæl os, hvad der gik galt",
   "optionsReportDesc": "Åbner rapportformularen på nikatru.com i en ny fane, hvor kun FullShots version, sprog og browser er udfyldt.",
-  "optionsReportBtn": "Åbn rapportformularen"
+  "optionsReportBtn": "Åbn rapportformularen",
+  "optionsSectionHelp": "Hjælp",
+  "optionsHelpSearch": "Søg i hjælp",
+  "optionsHelpNone": "Intet svar matcher.",
+  "optionsHelpAsk": "Sidder du stadig fast? Spørg os"
 }

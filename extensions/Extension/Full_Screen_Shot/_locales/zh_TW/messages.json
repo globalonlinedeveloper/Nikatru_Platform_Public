@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "開啟回報表單"
   },
+  "optionsSectionHelp": {
+    "message": "說明"
+  },
+  "optionsHelpSearch": {
+    "message": "搜尋說明"
+  },
+  "optionsHelpNone": {
+    "message": "沒有相符的答案。"
+  },
+  "optionsHelpAsk": {
+    "message": "仍未解決？向我們提問"
+  },
   "optionsDeleteAllConfirm": {
     "message": "要刪除 FullShot 在本裝置上儲存的所有內容嗎？\n\n歷史記錄中的螢幕擷圖：$COUNT$\n中斷擷取的殘留：$LEFTOVER$\n可釋出的空間：$SIZE$\n\n你的設定不受影響。此操作無法復原。",
     "placeholders": {

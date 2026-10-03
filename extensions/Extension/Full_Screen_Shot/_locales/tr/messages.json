@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Bildirim formunu aç"
   },
+  "optionsSectionHelp": {
+    "message": "Yardım"
+  },
+  "optionsHelpSearch": {
+    "message": "Yardımda ara"
+  },
+  "optionsHelpNone": {
+    "message": "Eşleşen yanıt yok."
+  },
+  "optionsHelpAsk": {
+    "message": "Hâlâ takıldınız mı? Bize sorun"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot’ın bu cihazda sakladığı her şey silinsin mi?\n\nGeçmişinizdeki ekran görüntüleri: $COUNT$\nYarıda kesilen yakalamalardan kalanlar: $LEFTOVER$\nAçılacak yer: $SIZE$\n\nAyarlarınız bundan etkilenmez. Bu geri alınamaz.",
     "placeholders": {

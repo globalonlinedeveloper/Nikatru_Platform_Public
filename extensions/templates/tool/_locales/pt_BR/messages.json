@@ -451,6 +451,22 @@
     "message": "Abrir o formulário",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Ajuda",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Pesquisar na ajuda",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Nenhuma resposta corresponde.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Ainda com dúvidas? Pergunte para nós",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Preparar um relatório",
     "description": "en: Prepare a report"

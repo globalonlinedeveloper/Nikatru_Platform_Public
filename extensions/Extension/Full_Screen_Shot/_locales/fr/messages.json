@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Ouvrir le formulaire"
   },
+  "optionsSectionHelp": {
+    "message": "Aide"
+  },
+  "optionsHelpSearch": {
+    "message": "Rechercher dans l'aide"
+  },
+  "optionsHelpNone": {
+    "message": "Aucune réponse correspondante."
+  },
+  "optionsHelpAsk": {
+    "message": "Toujours bloqué ? Posez-nous la question"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Supprimer tout ce que FullShot a stocké sur cet appareil ?\n\nCaptures dans votre historique : $COUNT$\nRésidus de captures interrompues : $LEFTOVER$\nEspace ainsi libéré : $SIZE$\n\nVos réglages ne sont pas concernés. Cette action est irréversible.",
     "placeholders": {

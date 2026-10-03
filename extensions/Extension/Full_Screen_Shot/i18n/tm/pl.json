@@ -445,5 +445,9 @@
   "optionsSectionReport": "Zgłoś problem",
   "optionsReport": "Powiedz nam, co poszło nie tak",
   "optionsReportDesc": "Otwiera formularz zgłoszenia na nikatru.com w nowej karcie, w którym wypełnione są tylko wersja FullShot, język i przeglądarka.",
-  "optionsReportBtn": "Otwórz formularz"
+  "optionsReportBtn": "Otwórz formularz",
+  "optionsSectionHelp": "Pomoc",
+  "optionsHelpSearch": "Szukaj w pomocy",
+  "optionsHelpNone": "Brak pasującej odpowiedzi.",
+  "optionsHelpAsk": "Nadal masz problem? Zapytaj nas"
 }

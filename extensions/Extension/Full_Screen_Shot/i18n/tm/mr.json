@@ -427,5 +427,9 @@
   "optionsSectionReport": "समस्येची तक्रार करा",
   "optionsReport": "काय चुकले ते आम्हाला सांगा",
   "optionsReportDesc": "nikatru.com वरील तक्रार फॉर्म नवीन टॅबमध्ये उघडतो, ज्यात फक्त FullShot ची आवृत्ती, भाषा आणि ब्राउझर भरलेले असतात.",
-  "optionsReportBtn": "तक्रार फॉर्म उघडा"
+  "optionsReportBtn": "तक्रार फॉर्म उघडा",
+  "optionsSectionHelp": "मदत",
+  "optionsHelpSearch": "मदतीमध्ये शोधा",
+  "optionsHelpNone": "जुळणारे उत्तर नाही.",
+  "optionsHelpAsk": "अजूनही अडचण आहे? आम्हाला विचारा"
 }

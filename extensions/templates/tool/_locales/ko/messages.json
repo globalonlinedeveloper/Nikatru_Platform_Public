@@ -451,6 +451,22 @@
     "message": "신고 양식 열기",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "도움말",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "도움말 검색",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "일치하는 답변이 없습니다.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "아직 해결되지 않았나요? 문의하세요",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "보고서 준비",
     "description": "en: Prepare a report"

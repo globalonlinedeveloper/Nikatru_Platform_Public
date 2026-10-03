@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Mở biểu mẫu báo cáo"
   },
+  "optionsSectionHelp": {
+    "message": "Trợ giúp"
+  },
+  "optionsHelpSearch": {
+    "message": "Tìm trong trợ giúp"
+  },
+  "optionsHelpNone": {
+    "message": "Không có câu trả lời phù hợp."
+  },
+  "optionsHelpAsk": {
+    "message": "Vẫn gặp khó khăn? Hãy hỏi chúng tôi"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Xoá mọi thứ FullShot đã lưu trên thiết bị này?\n\nẢnh chụp trong lịch sử: $COUNT$\nPhần sót lại từ các lần chụp bị gián đoạn: $LEFTOVER$\nDung lượng được giải phóng: $SIZE$\n\nCài đặt của bạn không bị ảnh hưởng. Không thể hoàn tác.",
     "placeholders": {

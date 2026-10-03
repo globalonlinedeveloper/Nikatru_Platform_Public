@@ -436,5 +436,9 @@
   "optionsSectionReport": "דיווח על בעיה",
   "optionsReport": "ספרו לנו מה השתבש",
   "optionsReportDesc": "פותח את טופס הדיווח באתר nikatru.com בכרטיסייה חדשה, כשרק הגרסה של FullShot, השפה והדפדפן ממולאים.",
-  "optionsReportBtn": "פתיחת טופס הדיווח"
+  "optionsReportBtn": "פתיחת טופס הדיווח",
+  "optionsSectionHelp": "עזרה",
+  "optionsHelpSearch": "חיפוש בעזרה",
+  "optionsHelpNone": "אין תשובה מתאימה.",
+  "optionsHelpAsk": "עדיין תקועים? שאלו אותנו"
 }

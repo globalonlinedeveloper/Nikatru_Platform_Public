@@ -427,5 +427,9 @@
   "optionsSectionReport": "समस्या की रिपोर्ट करें",
   "optionsReport": "हमें बताएँ कि क्या गलत हुआ",
   "optionsReportDesc": "nikatru.com पर रिपोर्ट फ़ॉर्म नए टैब में खोलता है, जिसमें केवल FullShot का संस्करण, भाषा और ब्राउज़र भरे होते हैं।",
-  "optionsReportBtn": "रिपोर्ट फ़ॉर्म खोलें"
+  "optionsReportBtn": "रिपोर्ट फ़ॉर्म खोलें",
+  "optionsSectionHelp": "सहायता",
+  "optionsHelpSearch": "सहायता में खोजें",
+  "optionsHelpNone": "कोई मिलता-जुलता उत्तर नहीं।",
+  "optionsHelpAsk": "अब भी अटके हैं? हमसे पूछें"
 }

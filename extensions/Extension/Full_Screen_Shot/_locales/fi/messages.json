@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Avaa ilmoituslomake"
   },
+  "optionsSectionHelp": {
+    "message": "Ohje"
+  },
+  "optionsHelpSearch": {
+    "message": "Hae ohjeesta"
+  },
+  "optionsHelpNone": {
+    "message": "Vastaavaa vastausta ei löytynyt."
+  },
+  "optionsHelpAsk": {
+    "message": "Etkö vieläkään löydä apua? Kysy meiltä"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Poistetaanko kaikki, mitä FullShot on tallentanut tälle laitteelle?\n\nKuvakaappauksia historiassasi: $COUNT$\nKeskeytyneiden kuvausten jäänteitä: $LEFTOVER$\nVapautuva tila: $SIZE$\n\nAsetuksiisi tämä ei vaikuta. Tätä ei voi perua.",
     "placeholders": {

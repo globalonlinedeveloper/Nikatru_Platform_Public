@@ -451,6 +451,22 @@
     "message": "報告フォームを開く",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "ヘルプ",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "ヘルプを検索",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "一致する回答はありません。",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "解決しない場合はお問い合わせください",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "レポートを準備",
     "description": "en: Prepare a report"

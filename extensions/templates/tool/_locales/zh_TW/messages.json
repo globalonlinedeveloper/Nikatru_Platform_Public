@@ -451,6 +451,22 @@
     "message": "開啟回報表單",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "說明",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "搜尋說明",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "沒有相符的答案。",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "仍未解決？向我們提問",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "準備報告",
     "description": "en: Prepare a report"

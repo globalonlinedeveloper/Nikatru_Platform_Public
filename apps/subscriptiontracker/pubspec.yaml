@@ -61,6 +61,9 @@ dependencies:
   # Lane feedback-intake: "Report a problem", opened from Settings' Help card.
   nikatru_feedback:
     path: ../../packages/feedback
+  # Lane help-search: the help centre, opened from Settings' Help card.
+  nikatru_help:
+    path: ../../packages/help
   # [13]T-9 The shared notifications adapter, taken for ONE reason: it is the
   # only thing in the tree that registers a tap callback with the plugin, and
   # without a tap Subly's renewal reminders wake the user and open nothing.

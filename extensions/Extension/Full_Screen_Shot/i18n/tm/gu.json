@@ -427,5 +427,9 @@
   "optionsSectionReport": "સમસ્યાની જાણ કરો",
   "optionsReport": "શું ખોટું થયું તે અમને જણાવો",
   "optionsReportDesc": "nikatru.com પરનું રિપોર્ટ ફોર્મ નવા ટૅબમાં ખોલે છે, જેમાં ફક્ત FullShot નું સંસ્કરણ, ભાષા અને બ્રાઉઝર ભરેલાં હોય છે.",
-  "optionsReportBtn": "રિપોર્ટ ફોર્મ ખોલો"
+  "optionsReportBtn": "રિપોર્ટ ફોર્મ ખોલો",
+  "optionsSectionHelp": "મદદ",
+  "optionsHelpSearch": "મદદમાં શોધો",
+  "optionsHelpNone": "કોઈ મેળ ખાતો જવાબ નથી.",
+  "optionsHelpAsk": "હજુ પણ મુશ્કેલી છે? અમને પૂછો"
 }

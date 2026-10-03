@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Åpne rapportskjemaet"
   },
+  "optionsSectionHelp": {
+    "message": "Hjelp"
+  },
+  "optionsHelpSearch": {
+    "message": "Søk i hjelp"
+  },
+  "optionsHelpNone": {
+    "message": "Ingen svar samsvarer."
+  },
+  "optionsHelpAsk": {
+    "message": "Står du fortsatt fast? Spør oss"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vil du slette alt FullShot har lagret på denne enheten?\n\nSkjermbilder i historikken din: $COUNT$\nRester etter avbrutte opptak: $LEFTOVER$\nPlass dette frigjør: $SIZE$\n\nInnstillingene dine påvirkes ikke. Dette kan ikke angres.",
     "placeholders": {

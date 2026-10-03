@@ -54,6 +54,9 @@ abstract final class HelpKeys {
   /// "Report a problem" (lane feedback-intake): the row that used to be a
   /// "Send feedback" mail.
   static const Key reportProblem = Key('settings.help.reportProblem');
+  /// "Help" (lane help-search): packages/help's centre — articles searched
+  /// on the device, known issues, the accessibility statement, "Ask us".
+  static const Key helpCentre = Key('settings.help.helpCentre');
 }
 
 /// A mail to [email] with [subject] pre-filled, so it arrives labelled.
@@ -61,7 +64,8 @@ Uri supportMailUri(String email, String subject) =>
     Uri.parse('mailto:$email?subject=${Uri.encodeComponent(subject)}');
 
 /// Settings' ONE Help section (audit D12/F53) as a card in [decoration], top
-/// to bottom: the contact page, the support mail, Rate, Report a problem —
+/// to bottom: the help centre (when [helpCentreLabel] and [openHelpCentre] are
+/// given; lane help-search), the contact page, the support mail, Rate, Report a problem —
 /// each drawn by [row]. The two support routes used to sit in two different cards,
 /// and there was no way to rate the app or send a suggestion at all.
 ///
@@ -81,6 +85,8 @@ Widget helpCard(
   BuildContext context, {
   required Decoration decoration,
   required HelpRowBuilder row,
+  String? helpCentreLabel,
+  VoidCallback? openHelpCentre,
   required String contactPageLabel,
   required VoidCallback openContactPage,
   required String contactSupportLabel,
@@ -104,6 +110,8 @@ Widget helpCard(
 
   final List<(Key, String, String, String?, VoidCallback)> links =
       <(Key, String, String, String?, VoidCallback)>[
+        if (helpCentreLabel != null && openHelpCentre != null)
+          (HelpKeys.helpCentre, 'ⓘ', helpCentreLabel, null, openHelpCentre),
         (HelpKeys.contactPage, '?', contactPageLabel, null, openContactPage),
         (
           HelpKeys.contactSupport,

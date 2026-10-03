@@ -1929,7 +1929,12 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
     { app: tool.id, version: '1.2.3', uiLocale: 'en', userAgent: 'Mozilla/5.0 Chrome/130.0', category: 'bug',
       url: 'https://' + SECRET + '/inbox', tabUrl: 'https://' + SECRET + '/', href: 'https://' + SECRET + '/a',
       pageTitle: 'Inbox of ' + SECRET, title: SECRET, host: SECRET },
-    { app: tool.id, version: 'https://' + SECRET + '/x', uiLocale: SECRET, userAgent: 'Mozilla/5.0 Firefox/131.0', category: 'bug' }
+    { app: tool.id, version: 'https://' + SECRET + '/x', uiLocale: SECRET, userAgent: 'Mozilla/5.0 Firefox/131.0', category: 'bug' },
+    // ⏱ 2026-10-03 · lane help-search: `q` carries what the person typed into the Help panel's
+    // search. A query that is a URL, a host or an address is dropped whole.
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'https://' + SECRET + '/inbox' },
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'why is ' + SECRET + ' blank' },
+    { app: tool.id, version: '1.2.3', uiLocale: 'en', category: 'question', query: 'me@' + SECRET }
   ];
   for (const rel of reporters) {
     const sandbox = { self: {} };
@@ -1957,6 +1962,9 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
       if (link.includes(SECRET)) leaks.push('the link carries the page: ' + link);
       if (!/^https:\/\/nikatru\.com\/support\b/.test(link)) leaks.push('the link is not the nikatru.com report form: ' + link);
     }
+    // The query itself must still arrive when it is words: "Ask us" is worthless if it never does.
+    const asked = api.payload({ app: tool.id, category: 'question', query: 'capture is blank' });
+    if (!asked || asked.q !== 'capture is blank') leaks.push('a plain-words query does not reach the link as `q` (got ' + JSON.stringify(asked && asked.q) + '), so "Ask us" loses what was typed');
     if (leaks.length) {
       r.fail('a problem report carries no page URL',
         rel + ':\n  ' + [...new Set(leaks)].join('\n  ') + '\n' +
@@ -1964,6 +1972,45 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
         'was on, its URL, title or host, must never leave in it: the options page promises exactly that.');
     } else {
       r.pass('a problem report carries no page URL', rel + ' — ' + probes.length + ' probe state(s) carrying a page, none of it in the payload or the link');
+    }
+  }
+}
+
+/* ---------------- 11. a Help panel ships its index ----------------
+   Lane help-search (Do 5), 2026-10-03. The options page's Help panel searches
+   an index BUNDLED with the tool (help-index.js, written with the ranker
+   help-search.js by tooling/help/build-index.mjs): no request, so no index in
+   the package is a panel that finds nothing, silently. A tool whose packaged
+   pages load help-panel.js must package both files, the index must be the
+   builder's shape and carry at least one article, and the ranker must export
+   `search`. A tool with no Help panel is told so. */
+{
+  const panels = files.filter(f => path.basename(f) === 'help-panel.js');
+  if (panels.length === 0) r.note('no packaged help-panel.js, so there is no bundled help index to grade (gate 11)');
+  for (const rel of panels) {
+    const src = read(rel);
+    const problems = [];
+    const imports = [...src.matchAll(/^import\s+[^'"]*['"]([^'"]+)['"]/gm)].map(m => path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1])));
+    const indexRel = imports.find(p => path.basename(p) === 'help-index.js');
+    const searchRel = imports.find(p => path.basename(p) === 'help-search.js');
+    if (!indexRel || !files.includes(indexRel)) problems.push('the bundled index ' + (indexRel || 'help-index.js') + ' is not in the package');
+    if (!searchRel || !files.includes(searchRel)) problems.push('the ranker ' + (searchRel || 'help-search.js') + ' is not in the package');
+    if (indexRel && files.includes(indexRel)) {
+      let index = null;
+      try {
+        index = JSON.parse(read(indexRel).replace(/^\/\/.*\n/gm, '').replace(/^export default\s*/, '').replace(/;\s*$/, ''));
+      } catch (e) {
+        problems.push(indexRel + ' is not `export default <the index JSON>`: ' + (e && e.message));
+      }
+      if (index && (!Array.isArray(index.docs) || index.docs.length === 0 || !index.postings || typeof index.avgdl !== 'number')) {
+        problems.push(indexRel + ' carries no article (docs ' + (Array.isArray(index && index.docs) ? index.docs.length : 'absent') + ')');
+      }
+    }
+    if (searchRel && files.includes(searchRel) && !/export function search\(/.test(read(searchRel))) problems.push(searchRel + ' exports no `search`');
+    if (problems.length) {
+      r.fail('the Help panel ships its index', rel + ':\n  ' + problems.join('\n  ') + '\nRun node tooling/help/build-index.mjs, and keep both files inside the package include rules.');
+    } else {
+      r.pass('the Help panel ships its index', rel + ' — ' + indexRel + ' and ' + searchRel + ' are packaged');
     }
   }
 }

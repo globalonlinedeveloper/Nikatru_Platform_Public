@@ -427,5 +427,9 @@
   "optionsSectionReport": "ಸಮಸ್ಯೆಯನ್ನು ವರದಿ ಮಾಡಿ",
   "optionsReport": "ಏನು ತಪ್ಪಾಯಿತು ಎಂದು ನಮಗೆ ತಿಳಿಸಿ",
   "optionsReportDesc": "nikatru.com ನಲ್ಲಿನ ವರದಿ ಫಾರ್ಮ್ ಅನ್ನು ಹೊಸ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ತೆರೆಯುತ್ತದೆ, ಅದರಲ್ಲಿ FullShot ಆವೃತ್ತಿ, ಭಾಷೆ ಮತ್ತು ಬ್ರೌಸರ್ ಮಾತ್ರ ತುಂಬಿರುತ್ತವೆ.",
-  "optionsReportBtn": "ವರದಿ ಫಾರ್ಮ್ ತೆರೆಯಿರಿ"
+  "optionsReportBtn": "ವರದಿ ಫಾರ್ಮ್ ತೆರೆಯಿರಿ",
+  "optionsSectionHelp": "ಸಹಾಯ",
+  "optionsHelpSearch": "ಸಹಾಯದಲ್ಲಿ ಹುಡುಕಿ",
+  "optionsHelpNone": "ಹೊಂದುವ ಉತ್ತರವಿಲ್ಲ.",
+  "optionsHelpAsk": "ಇನ್ನೂ ಸಮಸ್ಯೆಯೇ? ನಮ್ಮನ್ನು ಕೇಳಿ"
 }

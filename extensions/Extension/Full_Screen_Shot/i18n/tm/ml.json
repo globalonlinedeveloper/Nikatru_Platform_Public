@@ -427,5 +427,9 @@
   "optionsSectionReport": "പ്രശ്നം റിപ്പോർട്ട് ചെയ്യുക",
   "optionsReport": "എന്താണ് തെറ്റിയതെന്ന് ഞങ്ങളോട് പറയൂ",
   "optionsReportDesc": "nikatru.com-ലെ റിപ്പോർട്ട് ഫോം പുതിയ ടാബിൽ തുറക്കുന്നു, അതിൽ FullShot പതിപ്പ്, ഭാഷ, ബ്രൗസർ എന്നിവ മാത്രം പൂരിപ്പിച്ചിരിക്കും.",
-  "optionsReportBtn": "റിപ്പോർട്ട് ഫോം തുറക്കുക"
+  "optionsReportBtn": "റിപ്പോർട്ട് ഫോം തുറക്കുക",
+  "optionsSectionHelp": "സഹായം",
+  "optionsHelpSearch": "സഹായത്തിൽ തിരയുക",
+  "optionsHelpNone": "പൊരുത്തപ്പെടുന്ന ഉത്തരമില്ല.",
+  "optionsHelpAsk": "ഇപ്പോഴും പ്രശ്നമുണ്ടോ? ഞങ്ങളോട് ചോദിക്കൂ"
 }

@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "เปิดแบบฟอร์มรายงาน"
   },
+  "optionsSectionHelp": {
+    "message": "ความช่วยเหลือ"
+  },
+  "optionsHelpSearch": {
+    "message": "ค้นหาความช่วยเหลือ"
+  },
+  "optionsHelpNone": {
+    "message": "ไม่มีคำตอบที่ตรงกัน"
+  },
+  "optionsHelpAsk": {
+    "message": "ยังแก้ไม่ได้ใช่ไหม ถามเรา"
+  },
   "optionsDeleteAllConfirm": {
     "message": "ลบทุกอย่างที่ FullShot จัดเก็บไว้บนอุปกรณ์นี้หรือไม่\n\nภาพหน้าจอในประวัติ: $COUNT$\nสิ่งตกค้างจากการจับภาพที่ถูกขัดจังหวะ: $LEFTOVER$\nพื้นที่ที่จะคืนมา: $SIZE$\n\nการตั้งค่าของคุณไม่ได้รับผลกระทบ การกระทำนี้ย้อนกลับไม่ได้",
     "placeholders": {

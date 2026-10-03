@@ -436,5 +436,9 @@
   "optionsSectionReport": "Signaler un problème",
   "optionsReport": "Dites-nous ce qui n'a pas fonctionné",
   "optionsReportDesc": "Ouvre le formulaire de signalement de nikatru.com dans un nouvel onglet, avec seulement la version de FullShot, la langue et le navigateur renseignés.",
-  "optionsReportBtn": "Ouvrir le formulaire"
+  "optionsReportBtn": "Ouvrir le formulaire",
+  "optionsSectionHelp": "Aide",
+  "optionsHelpSearch": "Rechercher dans l'aide",
+  "optionsHelpNone": "Aucune réponse correspondante.",
+  "optionsHelpAsk": "Toujours bloqué ? Posez-nous la question"
 }

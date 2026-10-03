@@ -418,5 +418,9 @@
   "optionsSectionReport": "报告问题",
   "optionsReport": "告诉我们出了什么问题",
   "optionsReportDesc": "在新标签页中打开 nikatru.com 上的报告表单，只预先填写 FullShot 的版本、语言和浏览器。",
-  "optionsReportBtn": "打开报告表单"
+  "optionsReportBtn": "打开报告表单",
+  "optionsSectionHelp": "帮助",
+  "optionsHelpSearch": "搜索帮助",
+  "optionsHelpNone": "没有匹配的答案。",
+  "optionsHelpAsk": "仍未解决？向我们提问"
 }

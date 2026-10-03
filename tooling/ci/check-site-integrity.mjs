@@ -345,7 +345,7 @@ for (const root of siteRoots) {
   }
 }
 
-// ── the accessibility statement exists and every footer reaches it ───────────
+// ── the accessibility statement and the help centre exist, and every footer reaches both ──
 // ⏱ 2026-10-03 · lane a11y-statement (O-A11Y-STATEMENT-UNPUBLISHED). C-WCAG-22-AA
 // says the claim is PUBLISHED; a statement nobody can reach from the page they are
 // on is not. On a root named in REQUIRED_LEGAL_ROOTS: `accessibility.html` must
@@ -354,12 +354,18 @@ for (const root of siteRoots) {
 // except the dated legal snapshots under legal/, which are frozen as published.
 // A root with no chrome footer at all is COVERAGE LOST for this limb, never a pass.
 const A11Y_STATEMENT = 'accessibility.html';
+const HELP_PAGES = ['help/index.html', 'help/fullshot/index.html', 'help/known-issues.html'];
 let a11yFootersChecked = 0;
 for (const root of siteRoots) {
   const name = root.slice(SITES.length + 1);
   if (!(SCANNING_OWN_REPO && REQUIRED_LEGAL_ROOTS.includes(name))) continue;
   if (!existsSync(join(root, A11Y_STATEMENT))) {
     problems.push(`missing ${relative(repoRoot, join(root, A11Y_STATEMENT))} — the accessibility statement (run node tooling/sites/gen-accessibility-statement.mjs)`);
+  }
+  // ⏱ 2026-10-03 · lane help-search (O-HELP-CENTRE-UNBUILT): the help centre and FullShot's own
+  // support page, written by tooling/help/build-index.mjs, and the footer reaches the first.
+  for (const page of HELP_PAGES) {
+    if (!existsSync(join(root, ...page.split('/')))) problems.push(`missing ${relative(repoRoot, join(root, ...page.split('/')))} — the help centre (run node tooling/help/build-index.mjs)`);
   }
   let footers = 0;
   for (const f of htmlIn(root)) {
@@ -369,6 +375,9 @@ for (const root of siteRoots) {
     footers++;
     if (!/href\s*=\s*["']\/accessibility["']/.test(m[1])) {
       problems.push(`${relative(repoRoot, f)}: the footer does not link /accessibility (tooling/sites/chrome.mjs footer())`);
+    }
+    if (!/href\s*=\s*["']\/help\/["']/.test(m[1])) {
+      problems.push(`${relative(repoRoot, f)}: the footer does not link /help/ (tooling/sites/chrome.mjs footer())`);
     }
   }
   if (footers === 0) problems.push(`COVERAGE LOST — no page under ${relative(repoRoot, root)} carries the chrome footer, so no footer was checked for the /accessibility link`);

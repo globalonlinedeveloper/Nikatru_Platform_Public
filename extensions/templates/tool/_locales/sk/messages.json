@@ -451,6 +451,22 @@
     "message": "Otvoriť formulár",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Pomocník",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Hľadať v pomocníkovi",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Žiadna zodpovedajúca odpoveď.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Stále neviete? Opýtajte sa nás",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Pripraviť hlásenie",
     "description": "en: Prepare a report"

@@ -436,5 +436,9 @@
   "optionsSectionReport": "Raportează o problemă",
   "optionsReport": "Spune-ne ce nu a mers",
   "optionsReportDesc": "Deschide formularul de raportare de pe nikatru.com într-o filă nouă, cu doar versiunea FullShot, limba și browserul completate.",
-  "optionsReportBtn": "Deschide formularul"
+  "optionsReportBtn": "Deschide formularul",
+  "optionsSectionHelp": "Ajutor",
+  "optionsHelpSearch": "Caută în ajutor",
+  "optionsHelpNone": "Niciun răspuns potrivit.",
+  "optionsHelpAsk": "Încă aveți probleme? Întrebați-ne"
 }

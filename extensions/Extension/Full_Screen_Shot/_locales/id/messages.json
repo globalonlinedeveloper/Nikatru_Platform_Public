@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Buka formulir laporan"
   },
+  "optionsSectionHelp": {
+    "message": "Bantuan"
+  },
+  "optionsHelpSearch": {
+    "message": "Cari bantuan"
+  },
+  "optionsHelpNone": {
+    "message": "Tidak ada jawaban yang cocok."
+  },
+  "optionsHelpAsk": {
+    "message": "Masih bingung? Tanyakan kepada kami"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Hapus semua yang disimpan FullShot di perangkat ini?\n\nTangkapan layar di riwayat Anda: $COUNT$\nSisa dari pengambilan yang terputus: $LEFTOVER$\nRuang yang dibebaskan: $SIZE$\n\nPengaturan Anda tidak terpengaruh. Tindakan ini tidak dapat dibatalkan.",
     "placeholders": {

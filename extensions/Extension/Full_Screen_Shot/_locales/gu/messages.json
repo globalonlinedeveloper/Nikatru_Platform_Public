@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "રિપોર્ટ ફોર્મ ખોલો"
   },
+  "optionsSectionHelp": {
+    "message": "મદદ"
+  },
+  "optionsHelpSearch": {
+    "message": "મદદમાં શોધો"
+  },
+  "optionsHelpNone": {
+    "message": "કોઈ મેળ ખાતો જવાબ નથી."
+  },
+  "optionsHelpAsk": {
+    "message": "હજુ પણ મુશ્કેલી છે? અમને પૂછો"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot એ આ ઉપકરણ પર સંગ્રહેલું બધું કાઢી નાખવું?\n\nતમારા ઇતિહાસમાં સ્ક્રીનશૉટ: $COUNT$\nઅટકી ગયેલા કૅપ્ચરના અવશેષ: $LEFTOVER$\nઆનાથી ખાલી થતી જગ્યા: $SIZE$\n\nતમારી સેટિંગ્સ પર અસર થશે નહીં. આ પાછું લાવી શકાતું નથી.",
     "placeholders": {

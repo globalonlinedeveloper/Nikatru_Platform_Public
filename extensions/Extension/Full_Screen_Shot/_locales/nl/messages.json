@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Meldformulier openen"
   },
+  "optionsSectionHelp": {
+    "message": "Help"
+  },
+  "optionsHelpSearch": {
+    "message": "Zoeken in help"
+  },
+  "optionsHelpNone": {
+    "message": "Geen passend antwoord."
+  },
+  "optionsHelpAsk": {
+    "message": "Kom je er nog niet uit? Vraag het ons"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Alles verwijderen wat FullShot op dit apparaat heeft opgeslagen?\n\nSchermafbeeldingen in uw geschiedenis: $COUNT$\nResten van onderbroken opnamen: $LEFTOVER$\nRuimte die dit vrijmaakt: $SIZE$\n\nUw instellingen worden niet geraakt. Dit kan niet ongedaan worden gemaakt.",
     "placeholders": {

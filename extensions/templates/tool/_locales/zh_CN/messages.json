@@ -451,6 +451,22 @@
     "message": "打开报告表单",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "帮助",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "搜索帮助",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "没有匹配的答案。",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "仍未解决？向我们提问",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "准备报告",
     "description": "en: Prepare a report"

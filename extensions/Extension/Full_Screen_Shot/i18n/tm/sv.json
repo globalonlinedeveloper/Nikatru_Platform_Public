@@ -427,5 +427,9 @@
   "optionsSectionReport": "Rapportera ett problem",
   "optionsReport": "Berätta vad som gick fel",
   "optionsReportDesc": "Öppnar rapportformuläret på nikatru.com i en ny flik, där bara FullShots version, språk och webbläsare är ifyllda.",
-  "optionsReportBtn": "Öppna rapportformuläret"
+  "optionsReportBtn": "Öppna rapportformuläret",
+  "optionsSectionHelp": "Hjälp",
+  "optionsHelpSearch": "Sök i hjälpen",
+  "optionsHelpNone": "Inget matchande svar.",
+  "optionsHelpAsk": "Fortfarande fast? Fråga oss"
 }

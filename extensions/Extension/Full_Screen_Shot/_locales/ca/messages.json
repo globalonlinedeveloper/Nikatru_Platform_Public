@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Obre el formulari"
   },
+  "optionsSectionHelp": {
+    "message": "Ajuda"
+  },
+  "optionsHelpSearch": {
+    "message": "Cerca a l'ajuda"
+  },
+  "optionsHelpNone": {
+    "message": "No hi ha cap resposta que coincideixi."
+  },
+  "optionsHelpAsk": {
+    "message": "Encara teniu problemes? Pregunteu-nos"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Voleu esborrar tot el que el FullShot ha desat en aquest dispositiu?\n\nCaptures a l’historial: $COUNT$\nRestes de captures interrompudes: $LEFTOVER$\nEspai que s’allibera: $SIZE$\n\nLa vostra configuració no es veu afectada. Això no es pot desfer.",
     "placeholders": {

@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Відкрити форму"
   },
+  "optionsSectionHelp": {
+    "message": "Довідка"
+  },
+  "optionsHelpSearch": {
+    "message": "Пошук у довідці"
+  },
+  "optionsHelpNone": {
+    "message": "Немає відповідної відповіді."
+  },
+  "optionsHelpAsk": {
+    "message": "Досі не виходить? Запитайте нас"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Видалити все, що FullShot зберіг на цьому пристрої?\n\nЗнімків екрана в історії: $COUNT$\nЗалишків від перерваних захоплень: $LEFTOVER$\nЗвільниться місця: $SIZE$\n\nВаших налаштувань це не стосується. Скасувати цю дію неможливо.",
     "placeholders": {

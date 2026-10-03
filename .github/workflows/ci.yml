@@ -1446,6 +1446,7 @@ jobs:
           node tooling/sites/generate-landing-payload.mjs
           node tooling/sites/gen-auth-mail.mjs
           node tooling/sites/gen-accessibility-statement.mjs
+          node tooling/sites/gen-help-centre.mjs
           node tooling/sites/generate-discovery.mjs
           node tooling/sites/generate-well-known.mjs
           node tooling/sites/generate-personal-site.mjs

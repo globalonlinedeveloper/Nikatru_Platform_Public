@@ -436,5 +436,9 @@
   "optionsSectionReport": "Informa d'un problema",
   "optionsReport": "Explica'ns què ha fallat",
   "optionsReportDesc": "Obre el formulari d'informe de nikatru.com en una pestanya nova, amb només la versió de FullShot, l'idioma i el navegador emplenats.",
-  "optionsReportBtn": "Obre el formulari"
+  "optionsReportBtn": "Obre el formulari",
+  "optionsSectionHelp": "Ajuda",
+  "optionsHelpSearch": "Cerca a l'ajuda",
+  "optionsHelpNone": "No hi ha cap resposta que coincideixi.",
+  "optionsHelpAsk": "Encara teniu problemes? Pregunteu-nos"
 }

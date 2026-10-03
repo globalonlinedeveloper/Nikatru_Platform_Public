@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "रिपोर्ट फ़ॉर्म खोलें"
   },
+  "optionsSectionHelp": {
+    "message": "सहायता"
+  },
+  "optionsHelpSearch": {
+    "message": "सहायता में खोजें"
+  },
+  "optionsHelpNone": {
+    "message": "कोई मिलता-जुलता उत्तर नहीं।"
+  },
+  "optionsHelpAsk": {
+    "message": "अब भी अटके हैं? हमसे पूछें"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot ने इस डिवाइस पर जो कुछ संग्रहित किया है, वह सब मिटाएँ?\n\nआपके इतिहास में स्क्रीनशॉट: $COUNT$\nरुके हुए कैप्चर के अवशेष: $LEFTOVER$\nइससे खाली होगी जगह: $SIZE$\n\nआपकी सेटिंग पर कोई असर नहीं होगा। इसे पूर्ववत नहीं किया जा सकता।",
     "placeholders": {

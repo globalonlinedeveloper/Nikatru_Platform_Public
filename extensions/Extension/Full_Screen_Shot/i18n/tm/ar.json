@@ -463,5 +463,9 @@
   "optionsSectionReport": "الإبلاغ عن مشكلة",
   "optionsReport": "أخبرنا بما حدث من خطأ",
   "optionsReportDesc": "يفتح نموذج الإبلاغ على nikatru.com في علامة تبويب جديدة، مع ملء إصدار FullShot واللغة والمتصفح فقط.",
-  "optionsReportBtn": "فتح نموذج الإبلاغ"
+  "optionsReportBtn": "فتح نموذج الإبلاغ",
+  "optionsSectionHelp": "مساعدة",
+  "optionsHelpSearch": "البحث في المساعدة",
+  "optionsHelpNone": "لا توجد إجابة مطابقة.",
+  "optionsHelpAsk": "هل ما زلت بحاجة إلى مساعدة؟ اسألنا"
 }

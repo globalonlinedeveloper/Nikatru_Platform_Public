@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Fungua fomu ya ripoti"
   },
+  "optionsSectionHelp": {
+    "message": "Msaada"
+  },
+  "optionsHelpSearch": {
+    "message": "Tafuta msaada"
+  },
+  "optionsHelpNone": {
+    "message": "Hakuna jibu linalolingana."
+  },
+  "optionsHelpAsk": {
+    "message": "Bado umekwama? Tuulize"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ufute kila kitu ambacho FullShot imehifadhi kwenye kifaa hiki?\n\nPicha za skrini kwenye historia yako: $COUNT$\nMabaki ya unasaji uliokatizwa: $LEFTOVER$\nNafasi itakayopatikana: $SIZE$\n\nMipangilio yako haiathiriki. Hatua hii haiwezi kutenduliwa.",
     "placeholders": {

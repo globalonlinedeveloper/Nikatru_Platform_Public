@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Atvērt ziņošanas veidlapu"
   },
+  "optionsSectionHelp": {
+    "message": "Palīdzība"
+  },
+  "optionsHelpSearch": {
+    "message": "Meklēt palīdzībā"
+  },
+  "optionsHelpNone": {
+    "message": "Nav atbilstošas atbildes."
+  },
+  "optionsHelpAsk": {
+    "message": "Joprojām neizdodas? Jautājiet mums"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vai dzēst visu, ko FullShot saglabājis šajā ierīcē?\n\nEkrānuzņēmumi jūsu vēsturē: $COUNT$\nPārtrauktu tveršanu atliekas: $LEFTOVER$\nAtbrīvotā vieta: $SIZE$\n\nJūsu iestatījumus tas neietekmē. To nevar atsaukt.",
     "placeholders": {

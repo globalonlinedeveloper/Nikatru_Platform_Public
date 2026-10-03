@@ -418,5 +418,9 @@
   "optionsSectionReport": "รายงานปัญหา",
   "optionsReport": "บอกเราว่าเกิดอะไรขึ้น",
   "optionsReportDesc": "เปิดแบบฟอร์มรายงานบน nikatru.com ในแท็บใหม่ โดยกรอกไว้เพียงเวอร์ชันของ FullShot ภาษา และเบราว์เซอร์",
-  "optionsReportBtn": "เปิดแบบฟอร์มรายงาน"
+  "optionsReportBtn": "เปิดแบบฟอร์มรายงาน",
+  "optionsSectionHelp": "ความช่วยเหลือ",
+  "optionsHelpSearch": "ค้นหาความช่วยเหลือ",
+  "optionsHelpNone": "ไม่มีคำตอบที่ตรงกัน",
+  "optionsHelpAsk": "ยังแก้ไม่ได้ใช่ไหม ถามเรา"
 }

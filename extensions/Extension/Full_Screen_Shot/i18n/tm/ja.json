@@ -418,5 +418,9 @@
   "optionsSectionReport": "問題を報告",
   "optionsReport": "何が起きたか教えてください",
   "optionsReportDesc": "nikatru.com の報告フォームを新しいタブで開きます。入力済みなのは FullShot のバージョン、言語、ブラウザーだけです。",
-  "optionsReportBtn": "報告フォームを開く"
+  "optionsReportBtn": "報告フォームを開く",
+  "optionsSectionHelp": "ヘルプ",
+  "optionsHelpSearch": "ヘルプを検索",
+  "optionsHelpNone": "一致する回答はありません。",
+  "optionsHelpAsk": "解決しない場合はお問い合わせください"
 }

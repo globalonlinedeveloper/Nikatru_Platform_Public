@@ -14,8 +14,11 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_feedback/nikatru_feedback.dart'
     show FeedbackHost, buildFeedbackHost, openReportProblem;
 
+import 'package:nikatru_help/nikatru_help.dart' show openHelpCentre;
+
 export 'package:nikatru_feedback/nikatru_feedback.dart'
     show reportProblemLabelOf;
+export 'package:nikatru_help/nikatru_help.dart' show helpCentreLabelOf;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
@@ -43,3 +46,12 @@ final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
 /// The Help card's "Report a problem" action: packages/feedback's page.
 Future<void> openFeedback(BuildContext context, WidgetRef ref) =>
     openReportProblem(context, ref.read(feedbackHostProvider));
+
+/// The Help card's "Help" action (lane help-search): packages/help's centre,
+/// whose "Ask us" opens the same report sheet with category question.
+Future<void> openHelp(BuildContext context, WidgetRef ref) => openHelpCentre(
+  context,
+  host: ref.read(feedbackHostProvider),
+  appId: AppConfig.appId,
+  openUrl: (String url) => externalLinks.open(Uri.parse(url)),
+);

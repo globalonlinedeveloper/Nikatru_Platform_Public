@@ -50,6 +50,9 @@ dependencies:
   # Lane feedback-intake: "Report a problem", opened from Settings.
   nikatru_feedback:
     path: ../../packages/feedback
+  # Lane help-search: the help centre, opened from Settings.
+  nikatru_help:
+    path: ../../packages/help
   nikatru_platform_storage:
     path: ../../packages/platform_storage
   # [pipeline C-2] Had ZERO consumers despite 21 passing tests. Wired into the

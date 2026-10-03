@@ -427,5 +427,9 @@
   "optionsSectionReport": "گزارش مشکل",
   "optionsReport": "به ما بگویید چه مشکلی پیش آمد",
   "optionsReportDesc": "فرم گزارش را در nikatru.com در یک برگه جدید باز می‌کند و فقط نسخه FullShot، زبان و مرورگر در آن پر شده است.",
-  "optionsReportBtn": "باز کردن فرم گزارش"
+  "optionsReportBtn": "باز کردن فرم گزارش",
+  "optionsSectionHelp": "راهنما",
+  "optionsHelpSearch": "جستجو در راهنما",
+  "optionsHelpNone": "پاسخ مطابقی وجود ندارد.",
+  "optionsHelpAsk": "هنوز مشکل دارید؟ از ما بپرسید"
 }

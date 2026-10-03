@@ -427,5 +427,9 @@
   "optionsSectionReport": "Mag-ulat ng problema",
   "optionsReport": "Sabihin sa amin kung ano ang nagkamali",
   "optionsReportDesc": "Binubuksan ang report form sa nikatru.com sa bagong tab, na ang bersyon ng FullShot, wika at browser lang ang nakalagay.",
-  "optionsReportBtn": "Buksan ang report form"
+  "optionsReportBtn": "Buksan ang report form",
+  "optionsSectionHelp": "Tulong",
+  "optionsHelpSearch": "Maghanap sa tulong",
+  "optionsHelpNone": "Walang tumutugmang sagot.",
+  "optionsHelpAsk": "Hindi pa rin maayos? Magtanong sa amin"
 }

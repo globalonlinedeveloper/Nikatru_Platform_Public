@@ -451,6 +451,22 @@
     "message": "فتح نموذج الإبلاغ",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "مساعدة",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "البحث في المساعدة",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "لا توجد إجابة مطابقة.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "هل ما زلت بحاجة إلى مساعدة؟ اسألنا",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "إعداد تقرير",
     "description": "en: Prepare a report"

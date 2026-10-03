@@ -427,5 +427,9 @@
   "optionsSectionReport": "சிக்கலைப் புகாரளி",
   "optionsReport": "என்ன தவறு நடந்தது என்று சொல்லுங்கள்",
   "optionsReportDesc": "nikatru.com இல் உள்ள புகார் படிவத்தைப் புதிய தாவலில் திறக்கும்; அதில் FullShot பதிப்பு, மொழி, உலாவி மட்டுமே நிரப்பப்பட்டிருக்கும்.",
-  "optionsReportBtn": "புகார் படிவத்தைத் திற"
+  "optionsReportBtn": "புகார் படிவத்தைத் திற",
+  "optionsSectionHelp": "உதவி",
+  "optionsHelpSearch": "உதவியில் தேடுங்கள்",
+  "optionsHelpNone": "பொருந்தும் பதில் இல்லை.",
+  "optionsHelpAsk": "இன்னும் சிக்கலா? எங்களிடம் கேளுங்கள்"
 }

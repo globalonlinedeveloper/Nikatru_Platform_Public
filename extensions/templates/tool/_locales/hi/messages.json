@@ -451,6 +451,22 @@
     "message": "रिपोर्ट फ़ॉर्म खोलें",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "सहायता",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "सहायता में खोजें",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "कोई मिलता-जुलता उत्तर नहीं।",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "अब भी अटके हैं? हमसे पूछें",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "रिपोर्ट तैयार करें",
     "description": "en: Prepare a report"

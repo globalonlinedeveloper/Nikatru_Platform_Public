@@ -301,6 +301,27 @@
     </div>
   </div>
 
+  <!-- HELP (lane help-search). Searches FullShot's help articles BUNDLED with
+       the extension (help-index.js, built from content/help/ by
+       tooling/help/build-index.mjs) on this device as you type: no request is
+       made and the words never leave the page. Each answer links to its
+       article on nikatru.com/help/fullshot/. "Still stuck? Ask us" opens the
+       report form with the question category and your search words, which you
+       read and edit before sending. scripts/policy-check.mjs gate 11 fails the
+       build if the bundled index is missing. -->
+  <div class="section" id="helpSection" data-app="fullshot">
+    <h2 data-i18n="optionsSectionHelp">Help</h2>
+    <div class="opt">
+      <div class="text">
+        <label for="helpQuery"><b data-i18n="optionsHelpSearch">Search help</b></label>
+        <input type="search" id="helpQuery" autocomplete="off">
+        <ul id="helpResults"></ul>
+        <small id="helpNone" role="status" data-i18n="optionsHelpNone" hidden>No matching answer.</small>
+      </div>
+      <button class="btn" id="helpAskBtn" type="button" data-i18n="optionsHelpAsk">Still stuck? Ask us</button>
+    </div>
+  </div>
+
   <!-- REPORT A PROBLEM (lane feedback-intake). Opens the report form on
        nikatru.com in a new tab with FullShot's OWN facts filled in — its
        version, the UI language and the coarse browser — and nothing about any
@@ -339,5 +360,6 @@
 <script src="../vendor/core/report-link.js"></script>
 <script src="common.js"></script>
 <script src="options.js"></script>
+<script type="module" src="help-panel.js"></script>
 </body>
 </html>

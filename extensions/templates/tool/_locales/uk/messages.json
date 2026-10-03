@@ -451,6 +451,22 @@
     "message": "Відкрити форму",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Довідка",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Пошук у довідці",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Немає відповідної відповіді.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Досі не виходить? Запитайте нас",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Підготувати звіт",
     "description": "en: Prepare a report"

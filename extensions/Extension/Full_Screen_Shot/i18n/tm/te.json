@@ -427,5 +427,9 @@
   "optionsSectionReport": "సమస్యను నివేదించండి",
   "optionsReport": "ఏమి తప్పు జరిగిందో మాకు చెప్పండి",
   "optionsReportDesc": "nikatru.com లోని నివేదిక ఫారమ్‌ను కొత్త ట్యాబ్‌లో తెరుస్తుంది, అందులో FullShot వెర్షన్, భాష, బ్రౌజర్ మాత్రమే నింపబడి ఉంటాయి.",
-  "optionsReportBtn": "నివేదిక ఫారమ్‌ను తెరవండి"
+  "optionsReportBtn": "నివేదిక ఫారమ్‌ను తెరవండి",
+  "optionsSectionHelp": "సహాయం",
+  "optionsHelpSearch": "సహాయంలో వెతకండి",
+  "optionsHelpNone": "సరిపోలే సమాధానం లేదు.",
+  "optionsHelpAsk": "ఇంకా సమస్యా? మమ్మల్ని అడగండి"
 }

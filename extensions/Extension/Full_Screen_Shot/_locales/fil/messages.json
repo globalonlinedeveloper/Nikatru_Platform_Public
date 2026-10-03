@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Buksan ang report form"
   },
+  "optionsSectionHelp": {
+    "message": "Tulong"
+  },
+  "optionsHelpSearch": {
+    "message": "Maghanap sa tulong"
+  },
+  "optionsHelpNone": {
+    "message": "Walang tumutugmang sagot."
+  },
+  "optionsHelpAsk": {
+    "message": "Hindi pa rin maayos? Magtanong sa amin"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Burahin ang lahat ng iniimbak ng FullShot sa device na ito?\n\nMga screenshot sa iyong history: $COUNT$\nMga natira mula sa naantalang pagkuha: $LEFTOVER$\nEspasyong mababakante: $SIZE$\n\nHindi maaapektuhan ang iyong mga setting. Hindi ito maibabalik.",
     "placeholders": {

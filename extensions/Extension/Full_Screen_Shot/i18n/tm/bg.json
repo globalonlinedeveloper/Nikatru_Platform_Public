@@ -427,5 +427,9 @@
   "optionsSectionReport": "Съобщете за проблем",
   "optionsReport": "Кажете ни какво се обърка",
   "optionsReportDesc": "Отваря формуляра за съобщение на nikatru.com в нов раздел, като са попълнени само версията на FullShot, езикът и браузърът.",
-  "optionsReportBtn": "Отвори формуляра"
+  "optionsReportBtn": "Отвори формуляра",
+  "optionsSectionHelp": "Помощ",
+  "optionsHelpSearch": "Търсене в помощта",
+  "optionsHelpNone": "Няма съвпадащ отговор.",
+  "optionsHelpAsk": "Все още имате проблем? Попитайте ни"
 }

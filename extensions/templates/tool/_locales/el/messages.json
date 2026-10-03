@@ -451,6 +451,22 @@
     "message": "Άνοιγμα φόρμας αναφοράς",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Βοήθεια",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Αναζήτηση στη βοήθεια",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Δεν βρέθηκε αντίστοιχη απάντηση.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Ακόμα κολλημένοι; Ρωτήστε μας",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Προετοιμασία αναφοράς",
     "description": "en: Prepare a report"

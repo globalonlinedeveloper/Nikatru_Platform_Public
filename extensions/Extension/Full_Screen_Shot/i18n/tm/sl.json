@@ -445,5 +445,9 @@
   "optionsSectionReport": "Prijavi težavo",
   "optionsReport": "Povejte nam, kaj je šlo narobe",
   "optionsReportDesc": "Odpre obrazec za prijavo na nikatru.com v novem zavihku, v katerem so izpolnjeni samo različica FullShot, jezik in brskalnik.",
-  "optionsReportBtn": "Odpri obrazec"
+  "optionsReportBtn": "Odpri obrazec",
+  "optionsSectionHelp": "Pomoč",
+  "optionsHelpSearch": "Iskanje po pomoči",
+  "optionsHelpNone": "Ni ustreznega odgovora.",
+  "optionsHelpAsk": "Še vedno ne gre? Vprašajte nas"
 }

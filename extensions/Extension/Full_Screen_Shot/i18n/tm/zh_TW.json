@@ -418,5 +418,9 @@
   "optionsSectionReport": "回報問題",
   "optionsReport": "告訴我們發生了什麼問題",
   "optionsReportDesc": "在新分頁中開啟 nikatru.com 上的回報表單，只預先填入 FullShot 的版本、語言和瀏覽器。",
-  "optionsReportBtn": "開啟回報表單"
+  "optionsReportBtn": "開啟回報表單",
+  "optionsSectionHelp": "說明",
+  "optionsHelpSearch": "搜尋說明",
+  "optionsHelpNone": "沒有相符的答案。",
+  "optionsHelpAsk": "仍未解決？向我們提問"
 }

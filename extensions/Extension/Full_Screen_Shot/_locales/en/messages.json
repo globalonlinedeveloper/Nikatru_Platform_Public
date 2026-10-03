@@ -765,6 +765,22 @@
     "message": "Open the report form",
     "description": "The button that opens the report form in a new tab."
   },
+  "optionsSectionHelp": {
+    "message": "Help",
+    "description": "Heading of the options page section that searches FullShot's help articles."
+  },
+  "optionsHelpSearch": {
+    "message": "Search help",
+    "description": "Label of the search box in the Help section. The search runs on the device; nothing is sent."
+  },
+  "optionsHelpNone": {
+    "message": "No matching answer.",
+    "description": "Shown under the Help search box when no article matches what was typed."
+  },
+  "optionsHelpAsk": {
+    "message": "Still stuck? Ask us",
+    "description": "Button that opens the report form on nikatru.com with the question category and the search words filled in."
+  },
   "optionsDeleteAllConfirm": {
     "message": "Delete everything FullShot has stored on this device?\n\nScreenshots in your History: $COUNT$\nLeftovers from interrupted captures: $LEFTOVER$\nSpace this frees: $SIZE$\n\nYour settings are not affected. This cannot be undone.",
     "description": "The confirmation shown before anything is destroyed. It must state plainly what will go, how much of it there is, and what will NOT be touched. Keep the blank lines and the line breaks, and keep the final warning. $COUNT$ and $LEFTOVER$ are whole numbers, $SIZE$ an already-formatted size.",

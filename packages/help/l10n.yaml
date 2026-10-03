@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# The help centre strings — lane help-search.
+#
+# 🔴 NOT A gen-l10n ROOT: this package's pubspec sets no `generate: true`, and it
+# must not, because gen-l10n would make it declare `intl`, which
+# assert-package-boundaries.mjs reads as an adapter seam (the reason
+# packages/design_system/l10n.yaml gives). The table is rendered from these ARBs
+# by `node tooling/i18n/locales.mjs --write`, one ARB per SUPPORTED code of the
+# locale register, and tooling/ci/assert-locale-register.mjs fails CI on a
+# supported code with no ARB here (its L2 limb reads this file to find the set)
+# and on a table that is not what the ARBs render.
+#
+# `output-localization-file` is the generated table's name, which
+# assert-no-hardcoded-strings.mjs reads to skip it.
+# ─────────────────────────────────────────────────────────────────────────────
+arb-dir: lib/l10n
+template-arb-file: help_en.arb
+output-dir: lib/src/l10n
+output-localization-file: help_strings.g.dart

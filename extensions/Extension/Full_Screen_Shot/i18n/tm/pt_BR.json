@@ -436,5 +436,9 @@
   "optionsSectionReport": "Relatar um problema",
   "optionsReport": "Conte o que deu errado",
   "optionsReportDesc": "Abre o formulário de relato em nikatru.com em uma nova guia, com apenas a versão do FullShot, o idioma e o navegador preenchidos.",
-  "optionsReportBtn": "Abrir o formulário"
+  "optionsReportBtn": "Abrir o formulário",
+  "optionsSectionHelp": "Ajuda",
+  "optionsHelpSearch": "Pesquisar na ajuda",
+  "optionsHelpNone": "Nenhuma resposta corresponde.",
+  "optionsHelpAsk": "Ainda com dúvidas? Pergunte para nós"
 }

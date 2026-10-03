@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Otwórz formularz"
   },
+  "optionsSectionHelp": {
+    "message": "Pomoc"
+  },
+  "optionsHelpSearch": {
+    "message": "Szukaj w pomocy"
+  },
+  "optionsHelpNone": {
+    "message": "Brak pasującej odpowiedzi."
+  },
+  "optionsHelpAsk": {
+    "message": "Nadal masz problem? Zapytaj nas"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Usunąć wszystko, co FullShot zapisał na tym urządzeniu?\n\nZrzuty ekranu w historii: $COUNT$\nPozostałości po przerwanych przechwytywaniach: $LEFTOVER$\nZwalniane miejsce: $SIZE$\n\nTwoje ustawienia pozostaną bez zmian. Tego nie można cofnąć.",
     "placeholders": {

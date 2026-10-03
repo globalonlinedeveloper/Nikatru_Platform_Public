@@ -451,6 +451,22 @@
     "message": "Bildirim formunu aç",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Yardım",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Yardımda ara",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Eşleşen yanıt yok.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Hâlâ takıldınız mı? Bize sorun",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Rapor hazırla",
     "description": "en: Prepare a report"

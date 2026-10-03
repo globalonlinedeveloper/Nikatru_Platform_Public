@@ -199,6 +199,26 @@
     </div>
   </div>
 
+  <!-- HELP (lane help-search). Searches the help articles BUNDLED with the
+       extension (lib/help-index.js, built from content/help/ by
+       tooling/help/build-index.mjs) on this device: no request, nothing sent.
+       "Still stuck? Ask us" opens the report form with the question category
+       and the search words, which the person reads before sending.
+       data-app is PLACEHOLDER(id) — the tool.json id, as in pages/options.js.
+       scripts/policy-check.mjs gate 11 fails the build if the index is missing. -->
+  <div class="section" id="helpSection" data-app="skeleton">
+    <h2 data-i18n="optHelpSection">Help</h2>
+    <div class="opt">
+      <div class="text">
+        <label for="helpQuery"><b data-i18n="optHelpSearch">Search help</b></label>
+        <input type="search" id="helpQuery" autocomplete="off">
+        <ul id="helpResults"></ul>
+        <small id="helpNone" role="status" data-i18n="optHelpNone" hidden>No matching answer.</small>
+      </div>
+      <button class="btn" id="helpAskBtn" type="button" data-i18n="optHelpAsk">Still stuck? Ask us</button>
+    </div>
+  </div>
+
   <div class="section">
     <h2 data-i18n="optionsSectionAbout">About</h2>
     <div class="opt">
@@ -225,5 +245,6 @@
 <script src="../lib/report-link.js"></script>
 <script src="common.js"></script>
 <script src="options.js"></script>
+<script type="module" src="help-panel.js"></script>
 </body>
 </html>

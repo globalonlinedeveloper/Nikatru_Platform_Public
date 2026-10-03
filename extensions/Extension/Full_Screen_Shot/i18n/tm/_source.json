@@ -427,5 +427,9 @@
   "optionsSectionReport": "24f3f52d",
   "optionsReport": "1603303b",
   "optionsReportDesc": "4e8f43f4",
-  "optionsReportBtn": "7db0de1c"
+  "optionsReportBtn": "7db0de1c",
+  "optionsSectionHelp": "c47ae153",
+  "optionsHelpSearch": "d192d8a2",
+  "optionsHelpNone": "93182939",
+  "optionsHelpAsk": "da8d5d91"
 }

@@ -451,6 +451,22 @@
     "message": "Öppna rapportformuläret",
     "description": "en: Open the report form"
   },
+  "optHelpSection": {
+    "message": "Hjälp",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Sök i hjälpen",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Inget matchande svar.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Fortfarande fast? Fråga oss",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Förbered en rapport",
     "description": "en: Prepare a report"

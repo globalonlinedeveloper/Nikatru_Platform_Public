@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Bejelentőűrlap megnyitása"
   },
+  "optionsSectionHelp": {
+    "message": "Súgó"
+  },
+  "optionsHelpSearch": {
+    "message": "Keresés a súgóban"
+  },
+  "optionsHelpNone": {
+    "message": "Nincs egyező válasz."
+  },
+  "optionsHelpAsk": {
+    "message": "Még mindig elakadt? Kérdezzen minket"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Törli mindazt, amit a FullShot ezen az eszközön tárol?\n\nKépernyőképek az előzményekben: $COUNT$\nMegszakadt rögzítések maradványai: $LEFTOVER$\nEzzel felszabaduló hely: $SIZE$\n\nA beállításait ez nem érinti. A művelet nem vonható vissza.",
     "placeholders": {

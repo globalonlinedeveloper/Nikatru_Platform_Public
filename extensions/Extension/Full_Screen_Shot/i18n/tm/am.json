@@ -427,5 +427,9 @@
   "optionsSectionReport": "ችግርን ሪፖርት ያድርጉ",
   "optionsReport": "ምን እንደተበላሸ ይንገሩን",
   "optionsReportDesc": "በnikatru.com ላይ ያለውን የሪፖርት ቅጽ በአዲስ ትር ይከፍታል፤ የFullShot ስሪት፣ ቋንቋ እና አሳሽ ብቻ ተሞልተው።",
-  "optionsReportBtn": "የሪፖርት ቅጹን ክፈት"
+  "optionsReportBtn": "የሪፖርት ቅጹን ክፈት",
+  "optionsSectionHelp": "እገዛ",
+  "optionsHelpSearch": "እገዛ ይፈልጉ",
+  "optionsHelpNone": "የሚዛመድ መልስ የለም።",
+  "optionsHelpAsk": "አሁንም ተቸግረዋል? ይጠይቁን"
 }

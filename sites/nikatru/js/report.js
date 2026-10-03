@@ -1,5 +1,5 @@
 // nikatru.com /support — "Report a problem" (lane feedback-intake, Do 9).
-// Two jobs, no network of its own (the form posts same-origin to /api/report):
+// Three jobs, no network of its own (the form posts same-origin to /api/report):
 //   1. on submit, fill the time the form was open and a one-time key, which the
 //      intake uses against scripted posts and against a double submit;
 //   2. after the redirect back, say what happened, from the query the Pages
@@ -15,6 +15,30 @@
     if (!key.value) key.value = 'site-' + opened.toString(36) + '-' + Math.random().toString(36).slice(2, 12);
   });
   var params = new URLSearchParams(window.location.search);
+
+  // 3. Arriving from a link — the help centre's "Ask us" (lane help-search) or an
+  //    extension's report button (extensions/core/v1/report-link.js) — fill what
+  //    the link carries, for the person to read and change before sending: the
+  //    category, the words they searched (`q`, into the description, never over
+  //    anything already typed), and an extension's own facts as hidden fields
+  //    (its id, version, UI locale and coarse browser; functions/api/report.js
+  //    drops any value that is not its key's shape).
+  var category = params.get('category');
+  var select = document.getElementById('report-category');
+  if (category && select && select.querySelector('option[value="' + category.replace(/[^a-z]/g, '') + '"]')) select.value = category;
+  var q = (params.get('q') || '').slice(0, 200);
+  var description = document.getElementById('report-description');
+  if (q && description && !description.value) description.value = q;
+  ['app', 'v', 'loc', 'plat'].forEach(function (k) {
+    var v = params.get(k);
+    if (!v || v.length > 64) return;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = k;
+    input.value = v;
+    form.appendChild(input);
+  });
+
   var outcome = params.get('report');
   if (!outcome) return;
   var messages = {

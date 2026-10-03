@@ -427,5 +427,9 @@
   "optionsSectionReport": "Probléma bejelentése",
   "optionsReport": "Mondja el, mi romlott el",
   "optionsReportDesc": "Új lapon megnyitja a nikatru.com bejelentőűrlapját, amelyben csak a FullShot verziója, a nyelv és a böngésző van kitöltve.",
-  "optionsReportBtn": "Bejelentőűrlap megnyitása"
+  "optionsReportBtn": "Bejelentőűrlap megnyitása",
+  "optionsSectionHelp": "Súgó",
+  "optionsHelpSearch": "Keresés a súgóban",
+  "optionsHelpNone": "Nincs egyező válasz.",
+  "optionsHelpAsk": "Még mindig elakadt? Kérdezzen minket"
 }

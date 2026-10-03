@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "റിപ്പോർട്ട് ഫോം തുറക്കുക"
   },
+  "optionsSectionHelp": {
+    "message": "സഹായം"
+  },
+  "optionsHelpSearch": {
+    "message": "സഹായത്തിൽ തിരയുക"
+  },
+  "optionsHelpNone": {
+    "message": "പൊരുത്തപ്പെടുന്ന ഉത്തരമില്ല."
+  },
+  "optionsHelpAsk": {
+    "message": "ഇപ്പോഴും പ്രശ്നമുണ്ടോ? ഞങ്ങളോട് ചോദിക്കൂ"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot ഈ ഉപകരണത്തിൽ സംഭരിച്ചതെല്ലാം ഇല്ലാതാക്കണോ?\n\nനിങ്ങളുടെ ചരിത്രത്തിലെ സ്ക്രീൻഷോട്ടുകൾ: $COUNT$\nനിന്നുപോയ ക്യാപ്ചറുകളുടെ അവശിഷ്ടങ്ങൾ: $LEFTOVER$\nഇതുവഴി ഒഴിവാകുന്ന സ്ഥലം: $SIZE$\n\nനിങ്ങളുടെ ക്രമീകരണങ്ങളെ ബാധിക്കില്ല. ഇത് പഴയപടിയാക്കാനാവില്ല.",
     "placeholders": {

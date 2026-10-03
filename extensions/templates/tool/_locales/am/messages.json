@@ -448,6 +448,18 @@
   "optReportSendButton": {
     "message": "Open the report form"
   },
+  "optHelpSection": {
+    "message": "Help"
+  },
+  "optHelpSearch": {
+    "message": "Search help"
+  },
+  "optHelpNone": {
+    "message": "No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "ሪፖርት አዘጋጅ",
     "description": "en: Prepare a report"

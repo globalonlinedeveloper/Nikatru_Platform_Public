@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "तक्रार फॉर्म उघडा"
   },
+  "optionsSectionHelp": {
+    "message": "मदत"
+  },
+  "optionsHelpSearch": {
+    "message": "मदतीमध्ये शोधा"
+  },
+  "optionsHelpNone": {
+    "message": "जुळणारे उत्तर नाही."
+  },
+  "optionsHelpAsk": {
+    "message": "अजूनही अडचण आहे? आम्हाला विचारा"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot ने या उपकरणावर साठवलेले सर्व काही हटवायचे?\n\nतुमच्या इतिहासातील स्क्रीनशॉट: $COUNT$\nथांबलेल्या कॅप्चरचे अवशेष: $LEFTOVER$\nयाने मोकळी होणारी जागा: $SIZE$\n\nतुमच्या सेटिंग्जवर परिणाम होणार नाही. हे पूर्ववत करता येणार नाही.",
     "placeholders": {

@@ -436,5 +436,9 @@
   "optionsSectionReport": "Segnala un problema",
   "optionsReport": "Dicci cosa non ha funzionato",
   "optionsReportDesc": "Apre il modulo di segnalazione su nikatru.com in una nuova scheda, con solo la versione di FullShot, la lingua e il browser compilati.",
-  "optionsReportBtn": "Apri il modulo"
+  "optionsReportBtn": "Apri il modulo",
+  "optionsSectionHelp": "Aiuto",
+  "optionsHelpSearch": "Cerca nella guida",
+  "optionsHelpNone": "Nessuna risposta corrispondente.",
+  "optionsHelpAsk": "Ancora bloccato? Chiedici"
 }

@@ -418,5 +418,9 @@
   "optionsSectionReport": "문제 신고",
   "optionsReport": "무엇이 잘못되었는지 알려 주세요",
   "optionsReportDesc": "nikatru.com의 신고 양식을 새 탭에서 엽니다. FullShot 버전, 언어, 브라우저만 미리 입력됩니다.",
-  "optionsReportBtn": "신고 양식 열기"
+  "optionsReportBtn": "신고 양식 열기",
+  "optionsSectionHelp": "도움말",
+  "optionsHelpSearch": "도움말 검색",
+  "optionsHelpNone": "일치하는 답변이 없습니다.",
+  "optionsHelpAsk": "아직 해결되지 않았나요? 문의하세요"
 }

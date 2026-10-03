@@ -53,6 +53,24 @@ const text = (form, name) => {
   return typeof v === "string" ? v : "";
 };
 
+/**
+ * An extension's own facts, carried from its report link (extensions/core/v1/
+ * report-link.js) by js/report.js into hidden fields: its id, version, UI locale
+ * and coarse browser. Each must be its key's shape or it is dropped; with no
+ * valid id the report is the site's own. Never anything about a page.
+ */
+const EXT_ID = /^[a-z][a-z0-9-]{1,40}$/;
+const EXT_SHAPES = { v: /^\d{1,5}(\.\d{1,5}){0,3}$/, loc: /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/, plat: /^(chromium|firefox) \d{1,4}$|^other$/ };
+function sourceOf(form) {
+  const app = text(form, "app");
+  if (!EXT_ID.test(app) || app === "nikatru") return { appId: "nikatru", surface: "site", diagnostics: { platform: "web", channel: "site" } };
+  const shaped = (k) => (EXT_SHAPES[k].test(text(form, k)) ? text(form, k) : undefined);
+  const diagnostics = { platform: shaped("plat") ?? "other", channel: "extension" };
+  if (shaped("v")) diagnostics.appVersion = shaped("v");
+  if (shaped("loc")) diagnostics.locale = shaped("loc").replace("_", "-");
+  return { appId: app, surface: "extension", diagnostics };
+}
+
 export async function onRequestPost({ request, env }) {
   if (!env.PLATFORM || typeof env.PLATFORM.fetch !== "function") return back("failed");
   const declared = Number(request.headers.get("content-length") ?? "0");
@@ -67,12 +85,10 @@ export async function onRequestPost({ request, env }) {
   const category = text(form, "category");
   const report = {
     idempotencyKey: text(form, "key") || crypto.randomUUID(),
-    appId: "nikatru",
-    surface: "site",
+    ...sourceOf(form),
     category: CATEGORIES.has(category) ? category : "other",
     description: text(form, "description"),
     steps: text(form, "steps") || undefined,
-    diagnostics: { platform: "web", channel: "site" },
     consent: { reply: form.get("reply") === "on", notifyFixed: form.get("notify") === "on" },
     contactEmail: text(form, "email") || undefined,
     // The honeypot: a person never sees it; the Worker accepts and drops a filled one.

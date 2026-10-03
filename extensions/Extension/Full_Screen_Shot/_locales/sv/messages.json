@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Öppna rapportformuläret"
   },
+  "optionsSectionHelp": {
+    "message": "Hjälp"
+  },
+  "optionsHelpSearch": {
+    "message": "Sök i hjälpen"
+  },
+  "optionsHelpNone": {
+    "message": "Inget matchande svar."
+  },
+  "optionsHelpAsk": {
+    "message": "Fortfarande fast? Fråga oss"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vill du radera allt som FullShot har lagrat på den här enheten?\n\nSkärmbilder i din historik: $COUNT$\nRester från avbrutna inspelningar: $LEFTOVER$\nUtrymme som frigörs: $SIZE$\n\nDina inställningar påverkas inte. Detta går inte att ångra.",
     "placeholders": {

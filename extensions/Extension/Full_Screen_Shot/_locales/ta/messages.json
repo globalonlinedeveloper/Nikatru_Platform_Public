@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "புகார் படிவத்தைத் திற"
   },
+  "optionsSectionHelp": {
+    "message": "உதவி"
+  },
+  "optionsHelpSearch": {
+    "message": "உதவியில் தேடுங்கள்"
+  },
+  "optionsHelpNone": {
+    "message": "பொருந்தும் பதில் இல்லை."
+  },
+  "optionsHelpAsk": {
+    "message": "இன்னும் சிக்கலா? எங்களிடம் கேளுங்கள்"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot இந்தச் சாதனத்தில் சேமித்திருக்கும் அனைத்தையும் நீக்கவா?\n\nஉங்கள் வரலாற்றில் திரைப்பிடிப்புகள்: $COUNT$\nநின்றுபோன பிடிப்புகளின் எச்சங்கள்: $LEFTOVER$\nஇதனால் விடுபடும் இடம்: $SIZE$\n\nஉங்கள் அமைப்புகள் பாதிக்கப்படா. இதைத் திரும்பப் பெற முடியாது.",
     "placeholders": {

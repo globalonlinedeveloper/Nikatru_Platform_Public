@@ -445,5 +445,9 @@
   "optionsSectionReport": "Повідомити про проблему",
   "optionsReport": "Розкажіть, що пішло не так",
   "optionsReportDesc": "Відкриває форму повідомлення на nikatru.com у новій вкладці, де заповнено лише версію FullShot, мову та браузер.",
-  "optionsReportBtn": "Відкрити форму"
+  "optionsReportBtn": "Відкрити форму",
+  "optionsSectionHelp": "Довідка",
+  "optionsHelpSearch": "Пошук у довідці",
+  "optionsHelpNone": "Немає відповідної відповіді.",
+  "optionsHelpAsk": "Досі не виходить? Запитайте нас"
 }

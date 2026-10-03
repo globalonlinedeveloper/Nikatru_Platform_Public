@@ -47,5 +47,9 @@
   "optionsSectionReport": "Reportar un problema",
   "optionsReport": "Cuéntanos qué salió mal",
   "optionsReportDesc": "Abre el formulario de reporte de nikatru.com en una pestaña nueva, con solo la versión de FullShot, el idioma y el navegador completados.",
-  "optionsReportBtn": "Abrir el formulario"
+  "optionsReportBtn": "Abrir el formulario",
+  "optionsSectionHelp": "Ayuda",
+  "optionsHelpSearch": "Buscar en la ayuda",
+  "optionsHelpNone": "No hay ninguna respuesta que coincida.",
+  "optionsHelpAsk": "¿Sigues con dudas? Pregúntanos"
 }

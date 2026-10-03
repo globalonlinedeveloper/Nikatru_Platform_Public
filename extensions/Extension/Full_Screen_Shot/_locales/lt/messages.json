@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Atidaryti pranešimo formą"
   },
+  "optionsSectionHelp": {
+    "message": "Pagalba"
+  },
+  "optionsHelpSearch": {
+    "message": "Ieškoti pagalboje"
+  },
+  "optionsHelpNone": {
+    "message": "Atitinkančio atsakymo nėra."
+  },
+  "optionsHelpAsk": {
+    "message": "Vis dar nepavyksta? Klauskite mūsų"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ištrinti viską, ką „FullShot“ išsaugojo šiame įrenginyje?\n\nEkrano kopijų jūsų istorijoje: $COUNT$\nNutrūkusių fiksavimų likučių: $LEFTOVER$\nBus atlaisvinta vietos: $SIZE$\n\nJūsų nustatymams tai neturi įtakos. To atšaukti negalima.",
     "placeholders": {

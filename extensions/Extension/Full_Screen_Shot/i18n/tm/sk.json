@@ -445,5 +445,9 @@
   "optionsSectionReport": "Nahlásiť problém",
   "optionsReport": "Povedzte nám, čo sa pokazilo",
   "optionsReportDesc": "Otvorí formulár na nahlásenie na nikatru.com na novej karte, v ktorom je vyplnená iba verzia FullShot, jazyk a prehliadač.",
-  "optionsReportBtn": "Otvoriť formulár"
+  "optionsReportBtn": "Otvoriť formulár",
+  "optionsSectionHelp": "Pomocník",
+  "optionsHelpSearch": "Hľadať v pomocníkovi",
+  "optionsHelpNone": "Žiadna zodpovedajúca odpoveď.",
+  "optionsHelpAsk": "Stále neviete? Opýtajte sa nás"
 }

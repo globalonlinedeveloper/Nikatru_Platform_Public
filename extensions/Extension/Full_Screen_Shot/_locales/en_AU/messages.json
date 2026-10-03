@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Open the report form"
   },
+  "optionsSectionHelp": {
+    "message": "Help"
+  },
+  "optionsHelpSearch": {
+    "message": "Search help"
+  },
+  "optionsHelpNone": {
+    "message": "No matching answer."
+  },
+  "optionsHelpAsk": {
+    "message": "Still stuck? Ask us"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Delete everything FullShot has stored on this device?\n\nScreenshots in your History: $COUNT$\nLeftovers from interrupted captures: $LEFTOVER$\nSpace this frees: $SIZE$\n\nYour settings are not affected. This cannot be undone.",
     "placeholders": {

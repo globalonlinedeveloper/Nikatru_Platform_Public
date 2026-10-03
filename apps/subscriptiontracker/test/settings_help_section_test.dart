@@ -22,7 +22,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show kSupportedLocaleCodes;
 import 'package:nikatru_feedback/nikatru_feedback.dart'
-    show FeedbackKeys, FeedbackStrings, ReportProblemPage;
+    show FeedbackCategory, FeedbackKeys, FeedbackStrings, ReportProblemPage;
+import 'package:nikatru_help/nikatru_help.dart'
+    show HelpCentreKeys, HelpCentrePage;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
@@ -157,6 +159,7 @@ void main() {
       final double legalY = tester.getTopLeft(legal).dy;
 
       for (final Finder row in <Finder>[
+        find.byKey(HelpKeys.helpCentre),
         find.text(en.helpAndSupport),
         find.byKey(HelpKeys.contactSupport),
         find.byKey(HelpKeys.rate),
@@ -197,6 +200,29 @@ void main() {
         reason: 'Report a problem needs no store listing: it works everywhere',
       );
     });
+
+    // Lane help-search: Settings > Help opens packages/help, whose "Ask us"
+    // opens the report sheet with category question and the search text.
+    testWidgets(
+      '🔴 Help opens the help centre, and "Ask us" opens the report sheet with the query',
+      (WidgetTester tester) async {
+        await _pump(tester);
+        await tester.ensureVisible(find.byKey(HelpKeys.helpCentre));
+        await tester.tap(find.byKey(HelpKeys.helpCentre));
+        await tester.pumpAndSettle();
+        expect(find.byType(HelpCentrePage), findsOneWidget);
+        await tester.enterText(find.byKey(HelpCentreKeys.search), 'renewal reminder late');
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(HelpCentreKeys.askUs));
+        await tester.tap(find.byKey(HelpCentreKeys.askUs));
+        await tester.pumpAndSettle();
+        final ReportProblemPage sheet = tester.widget<ReportProblemPage>(
+          find.byType(ReportProblemPage),
+        );
+        expect(sheet.initialCategory, FeedbackCategory.question);
+        expect(sheet.initialDescription, 'renewal reminder late');
+      },
+    );
 
     testWidgets(
       'Report a problem opens packages/feedback\'s page, not a mail',

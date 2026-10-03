@@ -418,5 +418,9 @@
   "optionsSectionReport": "Báo cáo sự cố",
   "optionsReport": "Cho chúng tôi biết điều gì đã xảy ra",
   "optionsReportDesc": "Mở biểu mẫu báo cáo trên nikatru.com trong thẻ mới, chỉ điền sẵn phiên bản FullShot, ngôn ngữ và trình duyệt.",
-  "optionsReportBtn": "Mở biểu mẫu báo cáo"
+  "optionsReportBtn": "Mở biểu mẫu báo cáo",
+  "optionsSectionHelp": "Trợ giúp",
+  "optionsHelpSearch": "Tìm trong trợ giúp",
+  "optionsHelpNone": "Không có câu trả lời phù hợp.",
+  "optionsHelpAsk": "Vẫn gặp khó khăn? Hãy hỏi chúng tôi"
 }

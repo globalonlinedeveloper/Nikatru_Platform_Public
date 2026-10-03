@@ -427,5 +427,9 @@
   "optionsSectionReport": "Een probleem melden",
   "optionsReport": "Vertel ons wat er misging",
   "optionsReportDesc": "Opent het meldformulier op nikatru.com in een nieuw tabblad, waarin alleen de versie van FullShot, de taal en de browser zijn ingevuld.",
-  "optionsReportBtn": "Meldformulier openen"
+  "optionsReportBtn": "Meldformulier openen",
+  "optionsSectionHelp": "Help",
+  "optionsHelpSearch": "Zoeken in help",
+  "optionsHelpNone": "Geen passend antwoord.",
+  "optionsHelpAsk": "Kom je er nog niet uit? Vraag het ons"
 }

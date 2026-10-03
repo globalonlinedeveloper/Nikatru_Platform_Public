@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Otvori obrazac"
   },
+  "optionsSectionHelp": {
+    "message": "Pomoć"
+  },
+  "optionsHelpSearch": {
+    "message": "Pretraži pomoć"
+  },
+  "optionsHelpNone": {
+    "message": "Nema odgovarajućeg odgovora."
+  },
+  "optionsHelpAsk": {
+    "message": "I dalje ne ide? Pitajte nas"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Obrisati sve što je FullShot pohranio na ovom uređaju?\n\nSnimke zaslona u povijesti: $COUNT$\nOstaci prekinutih snimanja: $LEFTOVER$\nProstor koji se oslobađa: $SIZE$\n\nVaše postavke time nisu obuhvaćene. Ovo se ne može poništiti.",
     "placeholders": {

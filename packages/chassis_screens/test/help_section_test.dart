@@ -44,6 +44,7 @@ void main() {
     WidgetTester tester, {
     bool canRate = true,
     StoreListingOutcome outcome = StoreListingOutcome.opened,
+    VoidCallback? openHelpCentre,
   }) async {
     mails.clear();
     listingOpens = 0;
@@ -56,6 +57,8 @@ void main() {
               context,
               decoration: const BoxDecoration(),
               row: _Row.new,
+              helpCentreLabel: openHelpCentre == null ? null : 'Help centre',
+              openHelpCentre: openHelpCentre,
               contactPageLabel: 'Help',
               openContactPage: () {},
               contactSupportLabel: 'Contact support',
@@ -213,4 +216,26 @@ void main() {
     'heading and Help card fit at kDesktop',
     (WidgetTester tester) => fits(tester, kDesktop),
   );
+
+  // Lane help-search: the help centre row, first, only when the app gives one.
+  testWidgets('🔴 the help centre row comes first and opens the centre', (
+    WidgetTester tester,
+  ) async {
+    int opened = 0;
+    await pump(tester, openHelpCentre: () => opened++);
+    expect(find.byKey(HelpKeys.helpCentre), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(HelpKeys.helpCentre)).dy,
+      lessThan(tester.getTopLeft(find.byKey(HelpKeys.contactPage)).dy),
+    );
+    await tester.tap(find.byKey(HelpKeys.helpCentre));
+    expect(opened, 1);
+  });
+
+  testWidgets('no help centre row when the app gives none', (
+    WidgetTester tester,
+  ) async {
+    await pump(tester);
+    expect(find.byKey(HelpKeys.helpCentre), findsNothing);
+  });
 }

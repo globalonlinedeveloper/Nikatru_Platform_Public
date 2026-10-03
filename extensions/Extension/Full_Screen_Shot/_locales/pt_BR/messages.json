@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "Abrir o formulário"
   },
+  "optionsSectionHelp": {
+    "message": "Ajuda"
+  },
+  "optionsHelpSearch": {
+    "message": "Pesquisar na ajuda"
+  },
+  "optionsHelpNone": {
+    "message": "Nenhuma resposta corresponde."
+  },
+  "optionsHelpAsk": {
+    "message": "Ainda com dúvidas? Pergunte para nós"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Apagar tudo o que o FullShot guardou neste dispositivo?\n\nCapturas no seu histórico: $COUNT$\nRestos de capturas interrompidas: $LEFTOVER$\nEspaço que isto libera: $SIZE$\n\nSuas configurações não são afetadas. Isto não pode ser desfeito.",
     "placeholders": {

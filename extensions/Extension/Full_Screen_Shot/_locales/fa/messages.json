@@ -617,6 +617,18 @@
   "optionsReportBtn": {
     "message": "باز کردن فرم گزارش"
   },
+  "optionsSectionHelp": {
+    "message": "راهنما"
+  },
+  "optionsHelpSearch": {
+    "message": "جستجو در راهنما"
+  },
+  "optionsHelpNone": {
+    "message": "پاسخ مطابقی وجود ندارد."
+  },
+  "optionsHelpAsk": {
+    "message": "هنوز مشکل دارید؟ از ما بپرسید"
+  },
   "optionsDeleteAllConfirm": {
     "message": "همهٔ آنچه FullShot روی این دستگاه ذخیره کرده حذف شود؟\n\nتصاویر در تاریخچهٔ شما: $COUNT$\nباقی‌ماندهٔ ضبط‌های نیمه‌کاره: $LEFTOVER$\nفضایی که آزاد می‌شود: $SIZE$\n\nتنظیمات شما تحت تأثیر قرار نمی‌گیرد. این کار بازگشت‌پذیر نیست.",
     "placeholders": {
