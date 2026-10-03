@@ -141,6 +141,29 @@ describe('GET /config/:app', () => {
     ]);
   });
 
+  // ⏱ 2026-10-03 · merge of main's `?market=` (O-WEB-INR-PRICE-BOOK) over this
+  // cache. Red control: key on ['channel'] alone in routes/config.ts and the
+  // no-market GET below is a HIT on the India answer, served in INR.
+  it('🔴 `?market=` is part of the key: an India answer is never served to a buyer who declared no market', async () => {
+    type Offering = { currency_code: string };
+    const currencies = async (res: Response) =>
+      ((await res.json()) as { paywall: { offerings: Offering[] } }).paywall.offerings.map((o) => o.currency_code);
+    const kv = new FakeKv();
+    const india = await get(kv, '/config/subscriptiontracker?market=IN');
+    expect(india.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+    expect(new Set(await currencies(india))).toEqual(new Set(['INR']));
+    const none = await get(kv, '/config/subscriptiontracker?cb=1');
+    expect(none.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+    expect(new Set(await currencies(none))).toEqual(new Set(['USD']));
+    const indiaAgain = await get(kv, '/config/subscriptiontracker?cb=2&market=IN');
+    expect(indiaAgain.headers.get(EDGE_CACHE_HEADER)).toBe('HIT');
+    expect(new Set(await currencies(indiaAgain))).toEqual(new Set(['INR']));
+    expect(cache.puts).toEqual([
+      'https://platform.nikatru.com/config/subscriptiontracker?market=IN',
+      'https://platform.nikatru.com/config/subscriptiontracker',
+    ]);
+  });
+
   it('an unknown app or channel is answered before the cache is even asked', async () => {
     const kv = new FakeKv();
     expect((await get(kv, '/config/__proto__')).status).toBe(404);

@@ -171,7 +171,7 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 3160 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3130 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
@@ -194,11 +194,10 @@ import 'support/width_harness.dart';
 // joined the privacy card on top of every growth above, and Settings scrolled
 // by 41 px at 3080 — measured by [_everythingIsLaidOut].
 // ⏱ 2026-10-03 · help-search: the Help card's "Help centre" row was 28 px
-// short at 3080 on its own branch. Merged over T16 XP-03: 3130 -> 3160, the
-// two growths added (3080 + 41 + 28 = 3149) and rounded up; a taller surface
-// cannot pass a scrolling screen, since [_everythingIsLaidOut] asserts
-// `maxScrollExtent == 0` either way.
-const Size kKeyboardSurface = Size(1079, 3160);
+// short at 3080 on its own branch. Merged over T16 XP-03 the two growths
+// together are 38 px short at 3080 — measured by [_everythingIsLaidOut] on the
+// merged tree — so 3130 holds both and stays.
+const Size kKeyboardSurface = Size(1079, 3130);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
