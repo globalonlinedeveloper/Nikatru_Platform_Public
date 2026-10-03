@@ -12,7 +12,12 @@
 //   R1  take no `ref` dispatch input (it runs on the ref it is dispatched on);
 //   R2  check out `github.ref`;
 //   R3  write no cache: setup-flutter `cache: 'false'`, setup-java `cache` empty,
-//       no actions/cache (or cache/save, cache/restore) step anywhere;
+//       no actions/cache (or cache/save, cache/restore) step anywhere. ⏱ 2026-10-03
+//       (nit 1 of review 289b2f60 on #1185): not only the two caching steps the
+//       workflow has today — ANY cache step is refused: an action with a `cache`
+//       path segment (any publisher's), any `with:` input naming a cache that is
+//       not off, and any setup-* action that sets no cache input off (setup-gradle,
+//       setup-go and setup-node v5 cache by default);
 //   R4  refuse `refs/heads/main` in a step that exits 1, before the checkout, in a
 //       job every other job `needs` (the gate).
 // And (NIT 2): before upload-artifact, verification goes back to strict, Gradle
@@ -38,6 +43,23 @@ import { dispatchInputs, parseWorkflow, workflowSteps } from '../workflow-scan.m
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const REL = '.github/workflows/regen-gradle-verify.yml';
 const REAL = readFileSync(join(REPO, REL), 'utf8');
+
+/** An action whose path has a `cache` segment: actions/cache and its save/restore,
+ *  or any other publisher's cache action. */
+const CACHE_ACTION = /(?:^|\/)cache(?:\/|@|$)/;
+
+/** A setup-* action, published (`actions/setup-java@…`, `gradle/actions/setup-gradle@…`)
+ *  or local (`./.github/actions/setup-flutter`). Several cache BY DEFAULT
+ *  (setup-gradle, setup-go, setup-node from v5), so each must set one cache input off. */
+const SETUP_ACTION = /(?:^|\/)setup-[^/@]*(?:@|$)/;
+
+/** Whether one `with:` input whose name mentions a cache leaves it off: empty or
+ *  `false`, or `true` for an inverted `*-disabled` input (setup-gradle's
+ *  `cache-disabled`). An expression is not off: it may evaluate to on. */
+function cacheOff(key, raw) {
+  const v = String(raw ?? '').trim().replace(/^(['"])(.*)\1$/, '$2').trim().toLowerCase();
+  return /-disabled$/i.test(key) ? v === 'true' : v === '' || v === 'false';
+}
 
 /** Every rule this test holds the workflow to, as finding strings (empty = clean). */
 function findings(root) {
@@ -76,8 +98,16 @@ function findings(root) {
         out.push(`R2 (${job.name}): checkout at line ${s.first} is not of \${{ github.ref }}`);
       }
       if (/^actions\/cache(?:\/(?:save|restore))?@/.test(uses)) out.push(`R3 (${job.name}): an actions/cache step at line ${s.first}`);
+      else if (CACHE_ACTION.test(uses)) out.push(`R3 (${job.name}): a cache action (${uses}) at line ${s.first}`);
       if (uses === './.github/actions/setup-flutter' && cache !== 'false') out.push(`R3 (${job.name}): setup-flutter cache is not 'false'`);
       if (/^actions\/setup-java@/.test(uses) && cache !== '') out.push(`R3 (${job.name}): setup-java cache is not '' (it is ${JSON.stringify(cache ?? null)})`);
+      const cacheInputs = [...s.with.entries()].filter(([k]) => /cache/i.test(k));
+      for (const [k, v] of cacheInputs) {
+        if (!cacheOff(k, v?.value)) out.push(`R3 (${job.name}): ${uses || 'a step'} at line ${s.first} turns a cache on (${k}: ${String(v?.value ?? '').trim()})`);
+      }
+      if (SETUP_ACTION.test(uses) && !cacheInputs.some(([k, v]) => cacheOff(k, v?.value))) {
+        out.push(`R3 (${job.name}): ${uses} at line ${s.first} sets no cache input off, and a setup-* action may cache by default`);
+      }
     }
     const upload = idx((s) => /^actions\/upload-artifact@/.test(s.uses ?? ''));
     if (upload === -1) continue;
@@ -154,6 +184,34 @@ describe('regen-gradle-verify.yml — branch scope only, no cache, main refused,
       ),
     );
     named(findings(dir), 'R3');
+  });
+
+  /** The workflow with `step` (YAML at step indent) inserted before the workspace resolve. */
+  const withStep = (step) => (s) => s.replace('      - name: Resolve the workspace\n', `${step}      - name: Resolve the workspace\n`);
+
+  test("R3: another publisher's cache action is named", () => {
+    const dir = mutated('third-party-cache', withStep('      - uses: buildjet/cache@0000000000000000000000000000000000000001 # a fixture pin\n        timeout-minutes: 5\n        with:\n          path: ~/.gradle/caches\n          key: x\n'));
+    named(findings(dir), 'R3');
+  });
+
+  test('R3: a setup-* action with a truthy cache input (setup-node, cache: npm) is named', () => {
+    const dir = mutated('setup-node-cache', withStep("      - uses: actions/setup-node@0000000000000000000000000000000000000002 # a fixture pin\n        timeout-minutes: 5\n        with:\n          node-version: '24'\n          cache: npm\n"));
+    named(findings(dir), 'R3');
+  });
+
+  test('R3: a setup-* action that caches by default and sets no cache input (setup-gradle) is named', () => {
+    const dir = mutated('setup-gradle-default', withStep('      - uses: gradle/actions/setup-gradle@0000000000000000000000000000000000000003 # a fixture pin\n        timeout-minutes: 5\n'));
+    named(findings(dir), 'R3');
+  });
+
+  test('R3: an inverted cache input left on (setup-gradle, cache-disabled: false) is named', () => {
+    const dir = mutated('setup-gradle-enabled', withStep('      - uses: gradle/actions/setup-gradle@0000000000000000000000000000000000000003 # a fixture pin\n        timeout-minutes: 5\n        with:\n          cache-disabled: false\n'));
+    named(findings(dir), 'R3');
+  });
+
+  test('R3 control: a setup-* action with its cache set off is NOT named', () => {
+    const dir = mutated('setup-gradle-off', withStep('      - uses: gradle/actions/setup-gradle@0000000000000000000000000000000000000003 # a fixture pin\n        timeout-minutes: 5\n        with:\n          cache-disabled: true\n'));
+    assert.deepEqual(findings(dir), []);
   });
 
   test('R4: the main refusal removed is named', () => {
