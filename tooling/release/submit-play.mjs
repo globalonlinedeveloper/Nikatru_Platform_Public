@@ -235,6 +235,11 @@ async function cli() {
 const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-play');
 
 const DRY_RUN = flag('dry-run');
+// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): `--dry-run --touch-store` is the
+// lane's rehearsal. It REQUIRES the service account, then opens an edit, reads its tracks and DELETES it
+// uncommitted — the only proof a dry run can give that the key still authenticates and still sees the app.
+// Without the flag a dry run stays local (a laptop, a test) and sends nothing, as before.
+const TOUCH_STORE = flag('touch-store');
 const SUBMIT = flag('submit');
 /** ⏱ 2026-10-01 (lane prep-play-first-release). The third mode: push the repo's listing tree to
  *  Play — text, contact details, graphics and screenshots — in an edit of its own. Measured that
@@ -309,6 +314,12 @@ let TOKEN_URL = GOOGLE_TOKEN_URL;
 if (SYNC_LISTING) {
   // The same loopback-only test seam as --submit. PG-1…PG-6 do not apply: this mode uploads no
   // bundle and refuses, at run time, any app where what it writes could reach a user.
+  PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
+  TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
+}
+
+if (DRY_RUN && TOUCH_STORE) {
+  // The same loopback-only test seam: the rehearsal sends a bearer token, so it gets the same rule.
   PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
   TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
 }
@@ -931,6 +942,7 @@ if (saRaw === '') {
   // authenticate without it.
   const line = `SERVICE ACCOUNT NOT CONFIGURED — ${SA_ENV} is absent. The Play Developer account is verified (register accountStatus, 2026-08-04) and a Google Cloud service account was granted Admin on it (ADR 031), so this is now a WIRING gap rather than an account one: the key exists and the repository secret is what carries it into a job.`;
   if (SUBMIT || SYNC_LISTING) problems.push(`${line} ${SUBMIT ? '--submit' : '--sync-listing'} cannot mint an access token without it.`);
+  else if (TOUCH_STORE) problems.push(`${line} --touch-store rehearses against Play itself and cannot authenticate without it: an absent secret is a FAILED rehearsal, never a skipped one.`);
   else prints.push(line);
 } else {
   let sa = null;
@@ -1023,18 +1035,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-if (DRY_RUN) {
-  console.log('');
-  console.log('submit-play: DRY RUN OK — nothing was sent to Google.');
-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
-  console.log('   ⬜ The 12-tester / 14-continuous-day closed test does NOT gate this account and never did.');
-  console.log('      Google scopes that rule to "personal accounts created after November 13, 2023"');
-  console.log('      (support.google.com/googleplay/android-developer/answer/14151465); NIKATRU is a verified');
-  console.log('      ORGANIZATION account. A closed test is still good practice — it is simply not a gate.');
-  console.log('   ⬜ What IS still true: the register keeps android-play `served: false`, and [10]D-9 has no');
-  console.log('      submission record. Only an owner-approved dispatch of submit-play.yml can create one.');
-  process.exit(0);
-}
+// The dry run's verdict is printed further down, after the API helpers it may use exist
+// (`--touch-store`); a dry run without it reaches that block having sent nothing.
 
 // ═════════════════════════════════════════════════════════════════════════════
 // --submit · THE GOOGLE PLAY DEVELOPER API EDIT LIFECYCLE
@@ -1114,6 +1116,58 @@ async function mintAccessToken(sa) {
 
 const editsBase = `${PLAY_BASE}/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
 const uploadBase = `${PLAY_BASE}/upload/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
+
+// ── --dry-run --touch-store · open an edit, read it, DELETE it (review AA-17) ──
+// edits.insert, edits.tracks.list and edits.delete, each sourced above (PRIMARY_SOURCES.editsInsert,
+// tracksList, editsDelete). NO commit is reachable from this function: an uncommitted edit changes
+// nothing users see, and `editsGuide` says an edit is not live until it is committed. The edit is
+// deleted on every path, success or failure, because an abandoned edit blocks the next run.
+async function rehearseEdit() {
+  let tok;
+  let edit = null;
+  try {
+    step('minting an access token (JWT-bearer, RS256) — the assertion and the token are never printed');
+    tok = await mintAccessToken(serviceAccount);
+    ok('access token — the service-account assertion was accepted');
+    step(`POST ${editsBase}  (edits.insert — a rehearsal edit, never committed)`);
+    edit = (await asJson(await request('edits.insert', 'POST', editsBase, { token: tok, headers: { 'content-type': 'application/json' }, body: '{}' }))).id;
+    if (typeof edit !== 'string' || edit === '') throw new Error('edits.insert returned no edit id.');
+    const tracks = (await asJson(await request('edits.tracks.list', 'GET', `${editsBase}/${edit}/tracks`, { token: tok }))).tracks ?? [];
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      throw new Error('edits.tracks.list returned ZERO tracks: this service account cannot see this app (a permissions grant, not a code fault).');
+    }
+    ok(`edit ${edit} opened and read — ${tracks.length} track(s) visible: ${tracks.map((t) => t.track).join(', ')}`);
+  } finally {
+    if (edit !== null) {
+      await request('edits.delete', 'DELETE', `${editsBase}/${edit}`, { token: tok, expect: [200, 204] });
+      ok(`edit ${edit} DELETED, uncommitted — nothing in the Play Console changed`);
+    }
+  }
+}
+
+if (DRY_RUN) {
+  if (TOUCH_STORE) {
+    try {
+      await rehearseEdit();
+    } catch (err) {
+      console.error('');
+      console.error(`FAIL the store rehearsal failed: ${REDACT(err.message)}`);
+      console.error('\nsubmit-play: FAILED');
+      process.exitCode = 1;
+    }
+  }
+  if (!process.exitCode) {
+    console.log('');
+    console.log(`submit-play: DRY RUN OK — ${TOUCH_STORE ? 'an edit was opened, read and deleted uncommitted; nothing was committed to Google.' : 'nothing was sent to Google.'}`);
+    console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
+    console.log('   ⬜ The 12-tester / 14-continuous-day closed test does NOT gate this account and never did.');
+    console.log('      Google scopes that rule to "personal accounts created after November 13, 2023"');
+    console.log('      (support.google.com/googleplay/android-developer/answer/14151465); NIKATRU is a verified');
+    console.log('      ORGANIZATION account. A closed test is still good practice — it is simply not a gate.');
+    console.log('   ⬜ What IS still true: the register keeps android-play `served: false`, and [10]D-9 has no');
+    console.log('      submission record. Only an owner-approved dispatch of submit-play.yml can create one.');
+  }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // --sync-listing · THE REPO'S LISTING TREE, PUSHED TO PLAY IN AN EDIT OF ITS OWN

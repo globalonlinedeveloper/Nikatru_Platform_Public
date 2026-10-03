@@ -257,6 +257,42 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.doesNotMatch(out, /ghs-fixture/);
   });
 
+  // ⏱ 2026-10-01 (review AA-23): PG-5 takes the dry-run job as the packer when the submit
+  // job checks that job's sha256 before it submits — and only then.
+  const handOffLane = (check) =>
+    'name: Submit\non:\n  workflow_dispatch:\njobs:\n' +
+    '  dry-run:\n    runs-on: ubuntu-24.04\n    steps:\n' +
+    '      - run: node tooling/ci/assert-snapcraft-generable.mjs\n' +
+    '      - run: snapcraft pack\n' +
+    '  submit:\n    runs-on: ubuntu-24.04\n    needs: [dry-run]\n    environment: store-publish\n    steps:\n' +
+    (check ? "      - run: printf '%s  %s\\n' \"$EXPECTED_SHA256\" \"$SNAP\" | sha256sum --check --strict -\n" : '') +
+    '      - run: node tooling/release/submit-snap.mjs --submit --app subscriptiontracker\n';
+  const submitWith = (lane) => {
+    const root = tree({ withArtifact: true });
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(root, '.github', 'workflows', 'submit-snap.yml'), lane);
+    return run(root, ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/edge'], {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REPOSITORY: 'o/r',
+      GITHUB_TOKEN: 'ghs-fixture',
+      GITHUB_API_URL: 'http://127.0.0.1:9',
+    });
+  };
+
+  test('PG-5 · a submit job that checks the dry-run job\'s sha256 is shaped: that job graded and packed the bytes', () => {
+    const { code, out } = submitWith(handOffLane(true));
+    assert.equal(code, 1, out);
+    assert.match(out, /PG-5 lane shape — .*in the dry-run job whose sha256 it checks/);
+    assert.match(out, /FAIL PG-6 · could not reach/);
+  });
+
+  test('PG-5 · the same lane with NO sha256 check is refused: nothing ties the bytes to the job that packed them', () => {
+    const { code, out } = submitWith(handOffLane(false));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL \.github\/workflows\/submit-snap\.yml job "submit" runs `--submit` and never runs `assert-snapcraft-generable\.mjs`/);
+    assert.doesNotMatch(out, /PG-5 lane shape — /);
+  });
+
   test('FAILS when neither --dry-run nor --submit is given', () => {
     const { code, out } = run(tree(), []);
     assert.equal(code, 1, out);

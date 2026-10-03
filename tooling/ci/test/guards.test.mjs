@@ -2204,7 +2204,8 @@ describe('assert-workflow-hardening', () => {
       // replacement is a substitution pattern and would eat the very braces
       // under test.
       const anchor = '          echo "installing: ${deps}"\n';
-      assert.equal(REAL_SNAP.split(anchor).length - 1, 2, 'the run: body this case extends must still be there');
+      // ⏱ 2026-10-01: once, not twice — the submit job takes the dry run's .snap and installs no build deps.
+      assert.equal(REAL_SNAP.split(anchor).length - 1, 1, 'the run: body this case extends must still be there');
       const shellier = REAL_SNAP.replace(
         anchor,
         () => `${anchor}          echo "\${SNAP_NAME:-subscriptiontracker}" "\${RUNNER_TEMP}/x" "\${#deps}"\n`,
@@ -3842,7 +3843,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    *  because gradeDomain holds a stamp to the row's platforms; the four lane
    *  builds plus CENSUS_FILL undeclared ones make the eighteen.
    *  ⏱ 2026-09-25 — sixteen: MIN_GRADED re-based 18 → 16 when C2 removed the two
-   *  submit-job rebuilds, so CENSUS_FILL is twelve. */
+   *  submit-job rebuilds, so CENSUS_FILL is twelve.
+   *  ⏱ 2026-10-01 — fifteen: re-based 16 → 15 when submit-snap.yml#submit stopped
+   *  rebuilding (review AA-23), so CENSUS_FILL is eleven. */
   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
   // ⏱ 2026-10-01 — every row carries a `crashSink` (O-CRASHSINK-DECLARATION-UNGRADED):
   // the guard now fails a graded Flutter row that declares none, so a fixture row
@@ -3872,9 +3875,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     '  </application>\n</manifest>\n';
   const APP1_MANIFEST = 'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml';
   /** The graded builds beyond the four lanes that bring the fixture's census to
-   *  the guard's MIN_GRADED (16 since 2026-09-25; 18 before): the real tree's census
-   *  grades 16, most of them in jobs no row names, which is the point of grading a census. */
-  const CENSUS_FILL = 12;
+   *  the guard's MIN_GRADED (15 since 2026-10-01; 16 from 2026-09-25; 18 before): the real
+   *  tree's census grades 15, most of them in jobs no row names, which is the point of grading a census. */
+  const CENSUS_FILL = 11;
   /** `count` web builds, one per job, in a workflow no row declares. */
   const censusFill = (count) => {
     const jobs = [];
@@ -4282,7 +4285,7 @@ Future<void> main() async {
       cwd: build('seams-census-shrunk', { fill: CENSUS_FILL - 1 }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
+    assert.match(out, /the census graded only 14 release build\(s\) on a Flutter channel, fewer than the 15 that exist today/);
   });
 
   // A lane naming a job that is gone is a register that has drifted from the
@@ -4354,7 +4357,7 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /NOT GRADED — \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\): a fixture preview build: deployed to a throwaway URL/);
-    assert.match(out, /crash sink wired — 16 census-graded release build\(s\).*1 exempt build\(s\) named above/);
+    assert.match(out, /crash sink wired — 15 census-graded release build\(s\).*1 exempt build\(s\) named above/);
   });
 
   test('T5 · FAILS when a `#` on the build line puts the define behind a comment', () => {
@@ -4386,7 +4389,7 @@ Future<void> main() async {
       cwd: build('seams-exempt-below-floor', { register: JSON.stringify(exempted, null, 2) }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
+    assert.match(out, /the census graded only 14 release build\(s\) on a Flutter channel, fewer than the 15 that exist today/);
     assert.match(out, /NOT GRADED — \.github\/workflows\/census-fill\.yml:8 \(job "fill_0", `flutter build web`\)/);
   });
 

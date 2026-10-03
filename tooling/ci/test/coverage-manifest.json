@@ -33,13 +33,13 @@
     4,
 
   "android-signing.test.mjs":
-    66,
+    68,
 
   "android-target-sdk.test.mjs":
     34,
 
   "android-vapt-manifest.test.mjs":
-    55,
+    57,
 
   "app-address-shape.test.mjs":
     32,
@@ -87,7 +87,7 @@
     19,
 
   "apple-signing.test.mjs":
-    125,
+    127,
 
   "apps-gov-in-apk.test.mjs":
     57,
@@ -729,7 +729,7 @@
     36,
 
   "platform-proof-fresh.test.mjs":
-    91,
+    102,
 
   "platform-register.test.mjs":
     107,
@@ -741,7 +741,7 @@
     61,
 
   "play-submission.test.mjs":
-    112,
+    117,
 
   "policy-archive.test.mjs":
     31,
@@ -954,7 +954,7 @@
     9,
 
   "signing-seam.test.mjs":
-    40,
+    44,
 
   "signup-consent-shape.test.mjs":
     34,
@@ -987,7 +987,7 @@
     36,
 
   "snap-submission.test.mjs":
-    48,
+    50,
 
   "snapcraft-generable.test.mjs":
     92,
@@ -1083,7 +1083,7 @@
     7,
 
   "submit-lanes-take-dry-run-bytes.test.mjs":
-    10,
+    11,
 
   "supabase-templates.test.mjs":
     48,
@@ -1113,7 +1113,7 @@
     26,
 
   "update-coverage.test.mjs":
-    35,
+    41,
 
   "vacuity-a.test.mjs":
     4,

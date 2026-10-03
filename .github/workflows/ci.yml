@@ -460,6 +460,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
+      # why: the four store dry runs' rehearsals, graded the same way (review AA-03): four run-history
+      # reads, each a page and possibly two cross-reads, so 6 minutes, not 3. Prints before 2026-10-21.
+      - name: The store dry runs are fresh
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs --store-lanes
       # why: NO CLOUDFLARE TOKEN (#1095 review, finding 2; limb 8d): a PR runs this job, and a D1
       # read token reads every production row. The OUTCOME record is graded here; the D1 TIMER
       # row is read on schedule by ops-watch.yml's heartbeats job. The flag is a standing policy,
@@ -2279,6 +2287,11 @@ jobs:
           node tooling/ci/assert-android-vapt-manifest.mjs
           ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
+      # why: apps.gov.in installs THIS .apk, a fourth build of its own — the .aab's 16 KB check never read it (review AA-23).
+      - name: The apps.gov.in .apk's native libraries are aligned for a 16 KB memory page
+        run: >
+          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
+          ${{ steps.agi_apk.outputs.apk }}
       # why debug: no key is in reach, so the .apk is debug-signed, and --posture debug
       # is the posture that REQUIRES the debug signer; the permission, form and minSdk
       # checks run in every posture.
@@ -2424,7 +2437,7 @@ jobs:
           echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
-  # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
+  # why: the Linux desktop bundle the linux-snap row ships from (it was stamped linux-appimage until 2026-10-01), built on every PR.
   # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
   # included. Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
   linux-artifacts:
@@ -2463,7 +2476,7 @@ jobs:
       - name: Build linux
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage --lane pr
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-snap --lane pr
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs

@@ -445,11 +445,11 @@ The workflows read **50** secret names (`GITHUB_TOKEN` is not counted: GitHub is
 | `ANDROID_KEY_ALIAS` | `build-platforms.yml`, `submit-play.yml` |
 | `ANDROID_KEY_PASSWORD` | `build-platforms.yml`, `submit-play.yml` |
 | `APPIMAGE_SIGNING_KEY_B64` | `build-platforms.yml` |
-| `APPLE_DIST_CERT_P12_BASE64` | `build-platforms.yml` |
-| `APPLE_DIST_CERT_PASSWORD` | `build-platforms.yml` |
-| `APPLE_INSTALLER_CERT_P12_BASE64` | `build-platforms.yml` |
-| `APPLE_PROVISIONING_PROFILES_BASE64` | `build-platforms.yml` |
-| `APPLE_TEAM_ID` | `build-platforms.yml` |
+| `APPLE_DIST_CERT_P12_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
+| `APPLE_DIST_CERT_PASSWORD` | `build-platforms.yml`, `submit-appstore.yml` |
+| `APPLE_INSTALLER_CERT_P12_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
+| `APPLE_PROVISIONING_PROFILES_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
+| `APPLE_TEAM_ID` | `build-platforms.yml`, `submit-appstore.yml` |
 | `APPSGOVIN_KEYSTORE_BASE64` | `build-platforms.yml` |
 | `APPSGOVIN_KEYSTORE_PASSWORD` | `build-platforms.yml` |
 | `APPSGOVIN_KEY_ALIAS` | `build-platforms.yml` |
@@ -578,7 +578,7 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from 
 | `actions/cache/restore` | GitHub | `ci.yml` |
 | `actions/cache/save` | GitHub | `ci.yml` |
 | `actions/checkout` | GitHub | `apple-expiry-write.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
-| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
+| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
 | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
 | `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
@@ -844,10 +844,10 @@ naming the job it belonged to and the line it sat above.
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
 | [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | Store screenshots | `workflow_dispatch` | 5 |
-| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch` | 2 |
-| [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch` | 3 |
-| [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch` | 3 |
-| [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | Store submit: Microsoft Store | `workflow_dispatch` | 3 |
+| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch`, `schedule` | 2 |
+| [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch`, `schedule` | 3 |
+| [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch`, `schedule` | 3 |
+| [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | Store submit: Microsoft Store | `workflow_dispatch`, `schedule` | 3 |
 | [`symbolication-proof.md`](symbolication-proof.md) | `.github/workflows/symbolication-proof.yml` | Symbolication proof | `workflow_dispatch` | 2 |
 | none | `.github/workflows/trufflehog.yml` | TruffleHog | `schedule`, `workflow_dispatch` | 1 |
 | [`update-goldens.md`](update-goldens.md) | `.github/workflows/update-goldens.yml` | Update goldens | `workflow_dispatch` | 2 |

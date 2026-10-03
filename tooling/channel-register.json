@@ -1372,18 +1372,19 @@
         "and never the SIGNING secrets: an ANDROID_* upload key, an APPLE_*_P12* certificate or a provisioning profile could be read",
         "by any env-less job with every guard green. assert-channel-register 8c rule (e) now holds every read whose name matches",
         "`match` to a job bound to `environment`, or to a job this block licenses by name in `repositoryFallback` until its date.",
-        "The three fallbacks are today's env-less signing jobs. store-publish carries a REQUIRED REVIEWER, so binding the main",
+        "The four fallbacks are today's env-less signing jobs. store-publish carries a REQUIRED REVIEWER, so binding the main",
         "build to it would pause every build for a person; the owner's choice is that, or a signing environment with a main-only",
         "branch policy and no reviewer (`moveStep`). Every fallback expires on #1095's move date; after it the read FAILS."
       ],
       "match": ["^ANDROID_", "^APPLE_[A-Z0-9_]*P12", "PROVISIONING"],
       "environment": "store-publish",
       "storedAt": "repository",
-      "moveStep": "Owner (a GitHub setting): create the signing environment (or reuse store-publish), copy the ANDROID_* and APPLE_* signing secrets into it with `gh secret set --env`, bind the three jobs below to it, then delete the repository copies and remove each fallback.",
+      "moveStep": "Owner (a GitHub setting): create the signing environment (or reuse store-publish), copy the ANDROID_* and APPLE_* signing secrets into it with `gh secret set --env`, bind the four jobs below to it, then delete the repository copies and remove each fallback.",
       "repositoryFallback": [
         { "job": ".github/workflows/build-platforms.yml#linux_web_android", "until": "2026-11-30", "why": "The main build signs the Android release bundle with the upload key on every push; binding it to store-publish would add a required reviewer to every build." },
         { "job": ".github/workflows/build-platforms.yml#apple", "until": "2026-11-30", "why": "The main build signs the iOS and macOS builds with the distribution certificates and profiles; same reviewer cost as the Android job." },
-        { "job": ".github/workflows/submit-play.yml#dry-run", "until": "2026-11-30", "why": "The Play rehearsal builds and signs the exact bundle the submit job uploads, so the submit job can verify its sha256; it uploads nothing." }
+        { "job": ".github/workflows/submit-play.yml#dry-run", "until": "2026-11-30", "why": "The Play rehearsal builds and signs the exact bundle the submit job uploads, so the submit job can verify its sha256; it uploads nothing." },
+        { "job": ".github/workflows/submit-appstore.yml#dry-run", "until": "2026-11-30", "why": "Lead ruling R1 (club-rt-store, 2026-10-03), the twin of the Play rehearsal above: the Apple rehearsal signs the .ipa and .pkg in-lane (review AA-18, C-07) so the owner uploads exactly the validated signed bytes; it uploads nothing. Same reviewer cost as the Play dry run." }
       ]
     },
     "nonSigning": [

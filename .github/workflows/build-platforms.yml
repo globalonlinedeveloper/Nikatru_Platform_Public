@@ -145,7 +145,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage
+        # why linux-snap: the Linux store artifact is the .snap packed below; linux-appimage is deferred by
+        # ADR 015, so its channel define left this lane (review AA-04, O-LINUX-BUILD-STAMPED-AS-APPIMAGE).
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-snap
+      # why KEPT while ADR 015 defers linux-appimage: it is this seam's only workflow invocation, and
+      # assert-guard-coverage.mjs refuses a tooling/ci file nothing runs. The row is unarmed, so it signs nothing.
       - name: Prepare the AppImage signing key
         env:
           APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
@@ -157,11 +161,43 @@ jobs:
           --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
           --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
           --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-      - name: The generated recipe is complete and still derived from the tree
+      - name: The generated recipe is complete, still derived, and packable here
         run: >
           node tooling/ci/assert-snapcraft-generable.mjs
           --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
           --app ${{ matrix.app }}
+          --pack-runner ubuntu-24.04
+      # why: the TRACK is tooling/versions.json snapcraft_track, the one submit-snap.yml packs with;
+      # assert-update-coverage.mjs refuses an install with no --channel read from it (review AA-04).
+      - name: Install snapcraft (the track tooling/versions.json pins)
+        run: |
+          set -euo pipefail
+          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
+          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
+          sudo snap install snapcraft --classic --channel "$track"
+      # why: the weekly proof packs the Linux STORE artifact, not only the bundle inside it (review AA-04):
+      # until 2026-10-01 a .snap was packed only by a dispatch of submit-snap.yml. No upload: nothing here
+      # reaches the store; the .snap is kept below as `store-<app>-linux-snap`, outside the release download.
+      - name: Pack the snap (no upload)
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          project="${RUNNER_TEMP}/snapcraft-${APP}"
+          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
+          cd "$project"
+          sudo snapcraft pack --destructive-mode
+          count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
+          if [ "$count" -ne 1 ]; then
+            echo "FAIL snapcraft exited 0 and left ${count} .snap file(s) in ${project}; exactly one is required." >&2
+            find "$project" -maxdepth 1 -type f -name '*.snap' >&2
+            exit 1
+          fi
+          built="$(find "$project" -maxdepth 1 -type f -name '*.snap')"
+          mkdir -p "$(dirname "$collected")"
+          sudo mv "$built" "$collected"
+          sudo chown "$(id -u):$(id -g)" "$collected"
+          ls -l "$collected"
       - name: Prepare the Android upload key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -409,6 +445,13 @@ jobs:
             apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab.channel.json
           retention-days: 90
           if-no-files-found: error
+      # why `store-`: the .snap is store-only (Canonical signs it at upload), so it stays outside the release job's `<app>-*` download — docs/ci/build-platforms.md §store-only.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: store-${{ matrix.app }}-linux-snap
+          path: apps/${{ matrix.app }}/build/linux/snap/${{ matrix.app }}.snap
+          retention-days: 90
+          if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
@@ -422,6 +465,11 @@ jobs:
           node tooling/ci/assert-android-vapt-manifest.mjs
           ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
+      # why: apps.gov.in installs THIS .apk, a fourth build of its own — the .aab's 16 KB check never read it (review AA-23).
+      - name: The apps.gov.in .apk's native libraries are aligned for a 16 KB memory page
+        run: >
+          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
+          ${{ steps.agi_apk.outputs.apk }}
       # why: the listing media is derived from the Play set, never hand-edited — §apps-gov-in.
       - name: The apps.gov.in listing media is still the derivation of the Play set
         run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs

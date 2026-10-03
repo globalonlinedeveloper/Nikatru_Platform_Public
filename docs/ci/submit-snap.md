@@ -242,7 +242,12 @@ the launcher resolves inside the snap. Each carries the exact string
 snapcraft failed with, so the next reader does not have to spend a runner
 to find out what these limbs are for.
 
-### before step **Install snapcraft**
+### before step **Install snapcraft (the track tooling/versions.json pins)**
+
+⏱ 2026-10-01 (review AA-04): the TRACK is `tooling/versions.json` `snapcraft_track`, read at run time;
+`assert-update-coverage.mjs` refuses an install with no `--channel` from it. Until this date the
+install took whatever the store's default track served that day.
+
 
 ── PACK ────────────────────────────────────────────────────────────────
 `--destructive-mode` builds on the host; see the header for why that is the
@@ -359,101 +364,14 @@ refuses …" invents a record call for an environment named "refuses", in a
 step that records nothing. Measured here 2026-08-26. A guard cannot tell a
 mention from a call, so do not write one.
 
-### before step **Resolve the workspace**
+### before step **Take the dry-run job's snap**
 
-apps/subscriptiontracker is a pub WORKSPACE member: resolution happens at the repo
-root, not in the app directory.
-
-### before step **Derive the release line from pubspec**
-
-── [9]R-2 · THE RELEASE LINE, DERIVED, NEVER TYPED ─────────────────────
-The same step build-platforms.yml and deploy-web.yml run, reading the same
-pubspec with the same parser the guard uses. The recipe's `version` and the
-binary's `--build-name` come from this one value: the Snap Store orders
-revisions by the recipe's version, and a recipe versioned differently from
-the binary it packages is two release lines wearing one name.
-
-### before step **Build linux**
-
-🔴 THE DEFINES ARE WHAT MAKE THIS A REAL BUILD RATHER THAN THE DEMO.
-`AppConfig.isBackendLive` compares each of them against a PLACEHOLDER;
-left unpassed, the .snap packed below would ship `MockAuthRepository` and
-`SeedApiClient` — the exact state the Google Play lane was found in on
-2026-08-04, with every check green. Graded by
-tooling/ci/assert-store-build-config.mjs, which derives the required set
-from `isBackendLive` and the lane from this row's `lane`/`submission`.
-
-RELEASE_CHANNEL is `linux-snap` and NOT `linux-appimage`, which is the one
-place this job differs from build-platforms.yml's Linux build. That build
-stamps `linux-appimage` because it is a build PROOF that no channel
-consumes and the register names exactly one direct Linux download channel;
-this one packs the artifact the Snap Store would take, so the closest true
-answer here is the exact one. assert-channel-register.mjs §6b resolves the
-value against a register row, so a typo cannot compile.
-
-### before step **Generate the snapcraft recipe**
-
-── the recipe, DERIVED from the bundle just built ───────────────────────
-The same invocation build-platforms.yml makes, against the bundle this job
-produced. The recipe is generated and never committed: a committed one is a
-SECOND COPY of five facts that already have one home each — the snap name,
-the summary, the description, the licence and the Linux binary identity.
-`--out` IS the snapcraft project directory; `snap/snapcraft.yaml` is the
-fixed path inside it, and `snapcraft` is run from there below.
-
-### before step **The generated recipe is complete, still derived, and packable here**
-
-A GENERATOR THAT HAS STOPPED READING THE TREE STILL WRITES A FILE. Same
-step build-platforms.yml runs, plus the two questions only a job that is
-about to PACK can ask: does the `base` match the host packing it, and does
-`source:` resolve — from the project directory, which is how snapcraft
-resolves it — to a directory holding this app's binary. Both are cheap here
-and both are silent everywhere else: a wrong base produces a snap that
-installs and misbehaves, and a `source` off by one `..` is still relative,
-still free of host paths, and still points at nothing.
-
-✅ AND, SINCE THE FIRST DISPATCH, THE TWO RULES OF THE SNAP FORMAT ITSELF
-that no amount of comparing the recipe to this tree could ever have caught:
-the licence is an SPDX expression snapd accepts or the key is absent, and
-the launcher resolves inside the snap. Each carries the exact string
-snapcraft failed with, so the next reader does not have to spend a runner
-to find out what these limbs are for.
-
-### before step **Install snapcraft**
-
-── PACK ────────────────────────────────────────────────────────────────
-`--destructive-mode` builds on the host; see the header for why that is the
-right choice on a runner whose release already matches the recipe's base.
-✅ `sudo` is not caution: snapcraft's build-environment page (fetched
-2026-08-09) states that a core22+ destructive-mode build needs root-level
-permissions to install packages, snaps and repositories — which is exactly
-what `stage-packages` makes it do.
-
-✅ THE FIRST DISPATCH (run 31294305898, 2026-08-09) PROVED THE MECHANISM,
-and this note records it rather than leaving the claim aspirational. It
-reached snapcraft's own validation, which means: the Flutter build, the
-recipe generation, `--destructive-mode` on this runner, `plugin: dump`
-ingesting a `source:` that points OUTSIDE the project directory, and
-`stage-packages` resolving under snapcraft's own apt handling ALL WORK.
-
-🔴 WHAT IT REJECTED WAS THE RECIPE'S CONTENT, in two ways no check in this
-repository could have seen, because every check compared the recipe to THE
-TREE and none knew a rule of the snap FORMAT:
-  · `cannot validate license "proprietary": unknown license: proprietary`
-  · `Icon 'com.nikatru.subscriptiontracker' … not found in prime directory`
-Both are fixed at their source in tooling/release/generate-snapcraft.mjs
-(the `license:` key is omitted, and the launcher moved to `snap/gui/` with
-an absolute `${SNAP}/meta/gui/…` icon path), and BOTH ARE NOW ASSERTED by
-the step above — with the failing input recorded, so re-introducing either
-reddens before a runner is spent rather than after a full Linux build.
-
-🔴 THE OUTPUT NAME IS SNAPCRAFT'S, AND THE PATH THIS REPO COLLECTS IT AT IS
-OURS. snapcraft writes `<name>_<version>_<arch>.snap`; submit-snap.mjs
-validates `apps/<app>/build/linux/snap/<app>.snap`, a convention this
-repository chose. So the file is MOVED rather than guessed at, and the move
-refuses unless there is EXACTLY ONE candidate: zero means the pack produced
-nothing while exiting 0, and two means this step would have to choose which
-snap the channel submits, silently.
+⏱ 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT): this job no longer builds,
+generates a recipe or packs. It takes the dry-run job's `.snap`, checks it against the sha256 that
+job emitted, re-keeps that job's symbols for 90 days, installs snapcraft from the same pinned track
+and uploads. `submit-snap.mjs` PG-5 reads the recipe guard and the pack off the dry-run job this one
+`needs`, because the sha256 check ties these bytes to it. Steps that used to run here (the build, the
+recipe, its grade, the pack) are documented under job `dry-run` above.
 
 ### before step **Upload to the Snap Store**
 
@@ -566,19 +484,13 @@ limb that refuses everything.
 
 ---
 
-## ⏱ 2026-09-25 — why `submit` still packs here, when Play and Windows no longer rebuild
+## ⏱ 2026-09-25 — why `submit` still packed here (RETIRED 2026-10-01)
 
-O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT moved `submit-play.yml` and `submit-windows-store.yml` onto
-the dry-run job's bytes, checked by sha256. This lane was left as it is, on purpose:
-`tooling/release/submit-snap.mjs` PG-5(c) REFUSES `--submit` unless the SAME job runs `snapcraft pack`
-before it ("this job built the bytes it is sending"), and the change that moved the other two lanes
-was not allowed to edit a submit script. So this job still builds and packs a second time per
-dispatch.
-
-`tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` records this as its one exception and
-reads it off `submit-snap.mjs` on every run: when PG-5(c) stops naming the pack, the test fails this
-lane until it takes its dry run's `.snap` by sha256 too. The same-run sha256 hand-off is at least
-the provenance PG-5(c) asks for; the script change is the open follow-up.
+Until 2026-10-01 this lane was the one exception to O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT:
+`tooling/release/submit-snap.mjs` PG-5(c) refused `--submit` unless the SAME job ran `snapcraft pack`.
+PG-5 now also accepts the run's dry-run job as the packer when the submit job checks that job's sha256
+before it submits (review AA-23), the submit job takes the dry run's `.snap`, and
+`tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` grades this lane with no exception.
 
 ---
 

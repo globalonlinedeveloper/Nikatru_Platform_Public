@@ -1269,8 +1269,12 @@ try {
    *  ⏱ RE-BASED 18 → 16 on 2026-09-25 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), measured
    *  on the C2 tree: 16 graded, and the two gone are exactly the builds C2 removed —
    *  submit-play.yml#submit `flutter build appbundle` and submit-windows-store.yml#submit
-   *  `flutter build windows`, whose jobs now ship their dry-run job's bytes. */
-  const MIN_GRADED = 16;
+   *  `flutter build windows`, whose jobs now ship their dry-run job's bytes.
+   *
+   *  ⏱ RE-BASED 16 → 15 on 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT),
+   *  measured on that tree: 15 graded, and the one gone is exactly the build that change removed —
+   *  submit-snap.yml#submit `flutter build linux`, whose job now ships its dry-run job's .snap. */
+  const MIN_GRADED = 15;
   const DSN_QUESTION = 'whether its release builds must --dart-define GLITCHTIP_DSN';
 
   let register = null;

@@ -465,15 +465,19 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     // RE-PINNED 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the certificate was issued on
     // 2026-09-09, so "no distribution certificate" was the stale reason. The measured one:
     // unsigned by choice until the signing seam lands in the lane, and --submit refuses.
-    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses/);
+    // RE-PINNED 2026-10-01 (review AA-18): the lane now signs in-lane and never passes the flag.
+    assert.match(out, /The submit-appstore\.yml lane never passes this flag: it signs and packages first/);
+    assert.doesNotMatch(out, /builds unsigned by choice/, 'the 2026-09-26 reason is gone with the unsigned lane');
     assert.doesNotMatch(out, /needs a distribution certificate|returned an EMPTY set/, 'the stale reason is gone');
     assert.doesNotMatch(out, /OWNER_QUEUE A-4 gates/, 'A-4 closed 2026-08-31');
   });
 
+  // THE RED CONTROL of review AA-18: the lane's own dry run, with the artifact missing, FAILS.
   test('the absent-artifact refusal gives the measured reason, not the stale one', () => {
     const { code, out } = ios(tree());
     assert.equal(code, 1, out);
-    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact/);
+    assert.match(out, /submit-appstore\.yml signs and packages it immediately before running this dry run/);
+    assert.doesNotMatch(out, /builds unsigned by choice/);
     assert.doesNotMatch(out, /cannot be produced without a distribution certificate/);
   });
 

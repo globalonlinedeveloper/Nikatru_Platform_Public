@@ -2559,6 +2559,18 @@ let releaseCensus;
         'web SHIPS from deploy-web.yml#deploy-web (its lane). This build is the compile proof, not the deploy, ' +
         'so the stamp is correct and the job is not the lane.',
     },
+    // ⏱ 2026-10-01 — the weekly proof packs the Linux STORE artifact (review AA-04,
+    // O-LINUX-BUILD-STAMPED-AS-APPIMAGE). Its bundle used to be stamped linux-appimage,
+    // a channel ADR 015 defers, while the .snap it now packs is linux-snap's format.
+    {
+      workflow: '.github/workflows/build-platforms.yml',
+      job: 'linux_web_android',
+      channel: 'linux-snap',
+      why:
+        'the six-platform proof compiles the Linux bundle for the Snap Store and PACKS the .snap with the ' +
+        'recipe and the snapcraft track submit-snap.yml uses, uploading nothing. linux-snap SHIPS from ' +
+        'submit-snap.yml (its lane), so the stamp is correct and this job is the proof, not the lane.',
+    },
     // ⏱ 2026-09-23 — the store-screenshot capture jobs (O-STORE-SCREENSHOTS). Each
     // builds the app FOR a channel only to photograph it: the frames must show that
     // channel's purchase rail, so the stamp is correct, and the binary is thrown
