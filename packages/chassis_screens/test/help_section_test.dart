@@ -38,6 +38,7 @@ class _Row extends StatelessWidget {
 void main() {
   final List<Uri> mails = <Uri>[];
   int listingOpens = 0;
+  int reports = 0;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -46,6 +47,7 @@ void main() {
   }) async {
     mails.clear();
     listingOpens = 0;
+    reports = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -59,8 +61,8 @@ void main() {
               contactSupportLabel: 'Contact support',
               supportEmail: 'support@example.com',
               supportSubject: 'App support',
-              feedbackLabel: 'Send feedback',
-              feedbackSubject: 'App feedback',
+              reportProblemLabel: 'Report a problem',
+              onReportProblem: () => reports++,
               openMail: (Uri mail) async => mails.add(mail),
               canRate: canRate,
               rateLabel: 'Rate App',
@@ -101,7 +103,7 @@ void main() {
       HelpKeys.contactPage,
       HelpKeys.contactSupport,
       HelpKeys.rate,
-      HelpKeys.feedback,
+      HelpKeys.reportProblem,
     ];
     double y = -1;
     for (final Key k in order) {
@@ -110,7 +112,7 @@ void main() {
       expect(top, greaterThan(y), reason: '$k is out of order');
       y = top;
     }
-    expect(find.text('Send feedback (last)'), findsOneWidget);
+    expect(find.text('Report a problem (last)'), findsOneWidget);
   });
 
   testWidgets('no Rate row where there is no store listing', (
@@ -118,23 +120,20 @@ void main() {
   ) async {
     await pump(tester, canRate: false);
     expect(find.byKey(HelpKeys.rate), findsNothing);
-    expect(find.text('Send feedback (last)'), findsOneWidget);
+    expect(find.text('Report a problem (last)'), findsOneWidget);
   });
 
   testWidgets(
-    'the two mails go to the support address, each with its subject',
+    'the support mail keeps its subject, and Report a problem opens the sheet, not a mail',
     (WidgetTester tester) async {
       await pump(tester);
       await tester.tap(find.byKey(HelpKeys.contactSupport));
-      await tester.tap(find.byKey(HelpKeys.feedback));
+      await tester.tap(find.byKey(HelpKeys.reportProblem));
       await tester.pump();
-      expect(mails, <Uri>[
-        supportMailUri('support@example.com', 'App support'),
-        supportMailUri('support@example.com', 'App feedback'),
-      ]);
-      expect(mails.last.scheme, 'mailto');
-      expect(mails.last.path, 'support@example.com');
-      expect(mails.last.queryParameters['subject'], 'App feedback');
+      expect(mails, <Uri>[supportMailUri('support@example.com', 'App support')]);
+      expect(mails.single.scheme, 'mailto');
+      expect(mails.single.path, 'support@example.com');
+      expect(reports, 1);
     },
   );
 
@@ -176,8 +175,8 @@ void main() {
                 contactSupportLabel: 'Contact support',
                 supportEmail: 'support@example.com',
                 supportSubject: 'App support',
-                feedbackLabel: 'Send feedback',
-                feedbackSubject: 'App feedback',
+                reportProblemLabel: 'Report a problem',
+                onReportProblem: () {},
                 openMail: (Uri mail) async {},
                 canRate: true,
                 rateLabel: 'Rate App',
@@ -192,7 +191,7 @@ void main() {
     expect(tester.takeException(), isNull);
     for (final Finder f in <Finder>[
       find.byType(SettingsHeading),
-      find.byKey(HelpKeys.feedback),
+      find.byKey(HelpKeys.reportProblem),
     ]) {
       expect(
         tester.getRect(f).right,

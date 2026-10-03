@@ -24,3 +24,28 @@ class Sensitive extends SingleChildRenderObjectWidget {
 class RenderSensitive extends RenderProxyBox {
   RenderSensitive({RenderBox? child}) : super(child);
 }
+
+/// Where a "Report a problem" screenshot is taken from: the app root mounts
+/// ONE [ScreenCaptureBoundary] above its Navigator (the chassis `NikatruApp`
+/// does it in `MaterialApp.router`'s builder), and packages/feedback captures
+/// what is under it, with every [Sensitive] widget and every text field
+/// painted over before the image leaves the device.
+abstract final class ScreenCapture {
+  static final GlobalKey boundaryKey = GlobalKey(debugLabel: 'screen.capture');
+}
+
+/// A [RepaintBoundary] keyed [ScreenCapture.boundaryKey] (or [boundaryKey]).
+/// Paints nothing of its own.
+class ScreenCaptureBoundary extends StatelessWidget {
+  const ScreenCaptureBoundary({super.key, required this.child, this.boundaryKey});
+
+  final Widget child;
+
+  /// Overrides [ScreenCapture.boundaryKey]; tests and an app with its own
+  /// root boundary pass theirs.
+  final GlobalKey? boundaryKey;
+
+  @override
+  Widget build(BuildContext context) =>
+      RepaintBoundary(key: boundaryKey ?? ScreenCapture.boundaryKey, child: child);
+}

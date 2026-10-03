@@ -1,7 +1,7 @@
 /// "Report a problem" — the one feedback sheet every app adopts (lane
-/// feedback-intake). The app builds a [FeedbackHost] over its own providers,
-/// wraps its UI in [FeedbackCaptureScope] once, and calls [openReportProblem]
-/// from the chassis Help section.
+/// feedback-intake). The app builds a [FeedbackHost] over its own providers and
+/// calls [openReportProblem] from the chassis Help section; the screenshot is
+/// taken under design_system's ScreenCaptureBoundary, which the app root mounts.
 library;
 
 export 'src/capture.dart';

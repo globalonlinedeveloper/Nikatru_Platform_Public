@@ -186,6 +186,8 @@ class SettingsView extends StatelessWidget {
     this.profile,
     this.onEditProfile,
     this.onReportContent,
+    this.onReportProblem,
+    this.reportProblemLabel,
     super.key,
   });
 
@@ -196,6 +198,7 @@ class SettingsView extends StatelessWidget {
   static const Key managePlanTile = Key('settingsManagePlan');
   static const Key deleteAccountTile = Key('settingsDeleteAccount');
   static const Key contactSupportTile = Key('settingsContactSupport');
+  static const Key reportProblemTile = Key('settingsReportProblem');
   static const Key reportContentTile = Key('settingsReportContent');
   // 🔴 THESE FOUR KEYS WERE ADDED 2026-09-06 SO THE CONTROLS COULD BE TAPPED IN
   // A TEST, and that is not tidying — it is the second half of a defect a review
@@ -233,6 +236,14 @@ class SettingsView extends StatelessWidget {
   /// `AppConfig.generatesAiContent` is true; Google Play requires an in-app
   /// report control in every app that generates content with AI.
   final VoidCallback? onReportContent;
+
+  /// "Report a problem" (lane feedback-intake): the adapter opens
+  /// packages/feedback's sheet. Null (or no [reportProblemLabel]) and there is
+  /// no tile; the support mail tile above it stays either way, as the fallback.
+  final VoidCallback? onReportProblem;
+
+  /// The tile's words, from packages/feedback's own strings.
+  final String? reportProblemLabel;
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -618,6 +629,13 @@ class SettingsView extends StatelessWidget {
                   trailing: const Icon(Icons.open_in_new),
                   onTap: onContactSupport,
                 ),
+                if (onReportProblem != null && reportProblemLabel != null)
+                  ListTile(
+                    key: reportProblemTile,
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: Text(reportProblemLabel!),
+                    onTap: onReportProblem,
+                  ),
                 if (onReportContent != null)
                   ListTile(
                     key: reportContentTile,

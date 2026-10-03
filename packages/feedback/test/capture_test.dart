@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show Sensitive;
+    show ScreenCaptureBoundary, Sensitive;
 import 'package:nikatru_feedback/nikatru_feedback.dart';
 
 final GlobalKey _boundary = GlobalKey();
@@ -12,7 +12,7 @@ final GlobalKey _field = GlobalKey();
 final GlobalKey _secret = GlobalKey();
 
 Widget _screen() => MaterialApp(
-  home: FeedbackCaptureScope(
+  home: ScreenCaptureBoundary(
     boundaryKey: _boundary,
     child: Scaffold(
       body: Column(

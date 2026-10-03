@@ -44,6 +44,7 @@ class FeedbackHost {
     this.errorCodes,
     this.crashEventId,
     this.readLogs,
+    this.boundaryKey,
   });
 
   final FeedbackAppInfo app;
@@ -67,6 +68,10 @@ class FeedbackHost {
   /// The opt-in logs, already scrubbed (`RecentActivity.breadcrumbs`); null
   /// hides the logs box altogether.
   final List<String> Function()? readLogs;
+
+  /// The root boundary the screenshot is taken from, when the app mounts its
+  /// own rather than design_system's ScreenCaptureBoundary.
+  final GlobalKey? boundaryKey;
 }
 
 /// Captures the current screen (redaction rectangles found BEFORE the page

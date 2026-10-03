@@ -4,37 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show RenderSensitive;
-
-/// Where a screenshot is taken from: the app wraps its whole UI ONCE in
-/// [FeedbackCaptureScope] (the brick does it in `MaterialApp.builder`), and
-/// "Report a problem" captures what is under it.
-abstract final class FeedbackCapture {
-  static final GlobalKey boundaryKey = GlobalKey(
-    debugLabel: 'feedback.capture',
-  );
-}
-
-/// The boundary a report's screenshot is captured from. Paints nothing of its
-/// own: a [RepaintBoundary] keyed [FeedbackCapture.boundaryKey].
-class FeedbackCaptureScope extends StatelessWidget {
-  const FeedbackCaptureScope({
-    super.key,
-    required this.child,
-    this.boundaryKey,
-  });
-
-  final Widget child;
-
-  /// Overrides [FeedbackCapture.boundaryKey]; tests pass their own.
-  final GlobalKey? boundaryKey;
-
-  @override
-  Widget build(BuildContext context) => RepaintBoundary(
-    key: boundaryKey ?? FeedbackCapture.boundaryKey,
-    child: child,
-  );
-}
+    show RenderSensitive, ScreenCapture;
 
 /// 🔴 THE DEFAULT BLUR, decided BEFORE anything leaves the device (lane
 /// feedback-intake, Do 2): every text field's content ([RenderEditable]) and
@@ -77,7 +47,8 @@ class FeedbackShot {
   final double pixelRatio;
 }
 
-/// Captures the screen under [boundaryKey] (default [FeedbackCapture.boundaryKey])
+/// Captures the screen under [boundaryKey] (default design_system's
+/// [ScreenCapture.boundaryKey], which the chassis app root mounts)
 /// with its redaction rectangles, or null when nothing is mounted there. The
 /// returned [FeedbackShot.image] is NOT yet redacted: [renderShot] paints the
 /// locked rectangles over it, and is the only way out of this package.
@@ -85,7 +56,7 @@ Future<FeedbackShot?> captureScreen({
   GlobalKey? boundaryKey,
   double pixelRatio = 1,
 }) async {
-  final RenderObject? ro = (boundaryKey ?? FeedbackCapture.boundaryKey)
+  final RenderObject? ro = (boundaryKey ?? ScreenCapture.boundaryKey)
       .currentContext
       ?.findRenderObject();
   if (ro is! RenderRepaintBoundary || !ro.hasSize) return null;
