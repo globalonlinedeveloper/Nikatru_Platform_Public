@@ -83,6 +83,7 @@ import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
     show SetupStepsView;
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
+import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
@@ -503,6 +504,49 @@ void main() {
         .where((String s) => s.trim().isNotEmpty)
         .take(25);
     return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
+  /// Answers Home's catch-up nudge ("Your reminder was due") if it is up.
+  ///
+  /// ⏱ 2026-10-03 · RUN 37116134381 PHOTOGRAPHED NOTHING, BUT IT WOULD HAVE
+  /// PHOTOGRAPHED THIS. `CatchUpNudgeBanner` (home_screen.dart) shows on a
+  /// target that cannot schedule notifications — the WEB build this lane
+  /// drives — once the day's reminder time has passed, until it is answered.
+  /// So whether it is on screen depends on the CLOCK the drive runs at. The
+  /// Play listing describes the Android build, which schedules reminders and
+  /// never shows it, so a frame carrying it would show a screen the product
+  /// does not have. It is answered the way a user answers it — its own
+  /// "Got it", found by that control and inside the banner, never by what
+  /// kind of widget the banner is (assert-modal-detection.mjs) — and the
+  /// receipt is that the banner is gone. Absent, this does nothing.
+  Future<void> dismissCatchUpNudge(WidgetTester tester) async {
+    final Finder nudge = find.byType(CatchUpNudgeBanner);
+    if (nudge.evaluate().isEmpty) return;
+    final String gotIt = AppLocalizations.of(
+      tester.element(nudge.first),
+    ).catchUpDismiss;
+    final Finder answer = find.descendant(
+      of: nudge,
+      matching: find.text(gotIt),
+    );
+    if (answer.evaluate().isEmpty) return;
+    expect(
+      answer.hitTestable(),
+      findsOneWidget,
+      reason:
+          'Home\'s catch-up nudge is up but its "$gotIt" cannot be reached, '
+          'so the frames below would photograph it. On screen: '
+          '${onScreen(tester)}',
+    );
+    await tester.tap(answer);
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(
+      await waitGone(tester, answer),
+      isTrue,
+      reason:
+          '"$gotIt" did not take Home\'s catch-up nudge down, so the frames '
+          'below would photograph it. On screen: ${onScreen(tester)}',
+    );
   }
 
   // 🔴 THERE IS NO `shot(name)` WRAPPER ANY MORE, AND ITS ABSENCE IS LOAD-
@@ -1474,43 +1518,44 @@ void main() {
         },
       );
 
+      await dismissCatchUpNudge(tester);
+
       // ⚠️ ASSERTED WHERE IT LIES, NOT AFTER A SCROLL, AND THE DIFFERENCE FROM
       // `app_test.dart` IS DELIBERATE. That suite scrolls before its read-back
       // and is right to — it reads back a row it created at an arbitrary price
       // into a lazy `ListView`. This one must not: the very next thing it does
       // is photograph `01-home`, and a scroll here would put a mid-list frame
-      // on the store listing. It is safe BECAUSE OF WHERE THIS PARTICULAR ROW
-      // LANDS, measured rather than hoped. `SubMath.upcoming` takes the four
-      // soonest, and `kIllustrative.first` carries the smallest renewal offset
-      // of the six (3 days), so it is FIRST in the upcoming block by date
-      // alone: pumped at 360x640 with these six rows its TREE position is
-      // y=507.5, inside the 640 the viewport has.
+      // on the store listing.
       //
-      // ⏱ 2026-09-22 · WAS "every row seeded above renews on the same day
-      // (one monthly cycle from today, the sheet's default), so the stable
-      // sort leaves `kIllustrative.first` FIRST". That was true until the
-      // fourth column; the rows now tie on nothing, and the row is first for a
-      // reason that holds on the server's order too. y=507.5 was measured on
-      // the old seed; the row keeps the same slot, and the number was not
-      // re-measured.
+      // ⏱ 2026-10-03 · IT USED TO ASK FOR `kIllustrative.first`'s NAME, AND
+      // THAT STOPPED BEING ON SCREEN. The old reasoning: the soonest row is
+      // first in the upcoming block, at tree y=507.5 of 640 (measured on the
+      // 2026-09-22 Home). #1130 put the search and sort controls between the
+      // header and the summary card, so at 360x640 the upcoming block now
+      // starts at the fold, and a lazy `ListView` builds nothing past it: run
+      // 37116134381 seeded all six rows (`6 active`, `$93.47` on screen) and
+      // failed here with `Found 0 widgets with text "Video streaming"`. The
+      // question this limb asks is unchanged — did the board round-trip to the
+      // Home the frame photographs — and it is now asked of what that frame
+      // DOES show: the summary card's count, `l10n.activeCount` over the
+      // charging rows, which Home renders from the same provider. WHICH rows
+      // they are is the census right below, by name, on both viewports.
       //
-      // ⚠️ READ THAT AS "NOT SCROLLED OUT OF THE LIST", NOT AS "A FINGER COULD
-      // REACH IT". y=507.5 is a layout coordinate and nothing here has checked
-      // it against the bottom navigation bar, which is drawn over that region.
-      // The assertion is `findsWidgets` — PRESENCE — and presence is the right
-      // question for a row that is about to be PHOTOGRAPHED rather than tapped,
-      // which is why this one carries no `hitTestable()` limb while every
-      // control above it does. Adding one here would be asserting something
-      // the capture does not need and the number does not support.
+      // ⚠️ PRESENCE, NOT REACHABILITY: the pill is photographed, never tapped,
+      // so it carries no `hitTestable()` limb.
+      final AppLocalizations homeText = AppLocalizations.of(
+        tester.element(find.byType(HomeScreen)),
+      );
       expect(
-        find.text(kIllustrative.first[0]),
+        find.text(homeText.activeCount(kIllustrative.length)),
         findsWidgets,
         reason:
             'The illustrative rows did not round-trip to Home, so the capture '
             'would photograph an empty board and call it the product. Every '
             'row seeded above was receipted individually, so reaching this line '
-            'means the sheets closed and the board still does not show them. On '
-            'screen: ${onScreen(tester)}',
+            'means the sheets closed and the summary card the frame shows does '
+            'not count them ("${homeText.activeCount(kIllustrative.length)}" is '
+            'not on screen). On screen: ${onScreen(tester)}',
       );
 
       // ── 🔴 THE BOARD IS EXACTLY THE ILLUSTRATIVE SET, ASSERTED ────────────
@@ -1523,10 +1568,10 @@ void main() {
       // would be published exactly as they were in #854. So the run REFUSES a
       // board it did not mean to photograph, rather than photographing it.
       //
-      // This fires on BOTH viewports, which is the half `kIllustrative.first`
-      // above cannot do: that limb asks whether one name is somewhere on
-      // screen, and `findsWidgets` passes just as happily on a board holding
-      // that name twice. `pass.board` is the board read back AFTER the seed,
+      // This fires on BOTH viewports, which is the half the summary-count limb
+      // above cannot do by itself: that limb asks whether the frame counts the
+      // right NUMBER of rows, and it passes just as happily on six rows that
+      // are not these six. `pass.board` is the board read back AFTER the seed,
       // through the same wait as the census before it.
       final List<Subscription> board = pass.board;
       final List<String> complaints = pass.complaints;
@@ -1595,6 +1640,9 @@ void main() {
     // public listing; see the header.
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(HomeScreen), findsWidgets);
+    // The seeding block answers it on a live drive; a demo drive skips that
+    // block, so it is asked again here (a no-op when it is already down).
+    await dismissCatchUpNudge(tester);
     await captureFrame(take: shutter, frame: '01-home', forbidden: forbidden);
     markFrame('01-home');
     recordFold(tester, '01-home');
