@@ -1663,9 +1663,11 @@ describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gate
   const YAML = 'apps/subscriptiontracker/app.yaml';
   const dated = (root) =>
     editText(root, YAML, (s) => {
-      const a = '  android-play:\n    state: pending\n    declaredOn: null\n';
-      assert.ok(s.includes(a), 'app #1 declares android-play pending and undeclared');
-      return s.replace(a, '  android-play:\n    state: pending\n    declaredOn: 2026-09-26\n');
+      // ⏱ 2026-10-03: android-play is `issued` (the Play app signing SHA-256 is
+      // read); declaredOn is still null, and only declaredOn is edited here.
+      const a = '  android-play:\n    state: issued\n    declaredOn: null\n';
+      assert.ok(s.includes(a), 'app #1 declares android-play issued and undeclared');
+      return s.replace(a, '  android-play:\n    state: issued\n    declaredOn: 2026-09-26\n');
     });
 
   test('🔴 a REAL submission of a channel whose declaredOn is null is refused (exit 1), naming the files and the field', () => {
