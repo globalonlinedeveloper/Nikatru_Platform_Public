@@ -348,7 +348,9 @@ void main() {
   // screens must lay out at it on the narrowest phone with nothing clipped.
   // ═══════════════════════════════════════════════════════════════════════════
   group('text scale 2.0 at 375', () {
-    for (final Locale locale in const <Locale>[Locale('en'), Locale('ta')]) {
+    for (final Locale locale in kSupportedLocales.map(
+      (RegisteredLocale r) => r.locale,
+    )) {
       testWidgets('[${locale.languageCode}] detail and notifications do not '
           'overflow', (WidgetTester tester) async {
         for (final Widget screen in const <Widget>[

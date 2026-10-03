@@ -19,9 +19,11 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/settings/help_section.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show kSupportedLocaleCodes;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/width_harness.dart';
@@ -274,7 +276,7 @@ void main() {
     }
 
     test('neither arb file carries a year literal in the footer', () {
-      for (final String locale in <String>['en', 'ta']) {
+      for (final String locale in kSupportedLocaleCodes) {
         final AppLocalizations l = lookupAppLocalizations(Locale(locale));
         expect(
           l.versionFooter('A', '1', 'C', '1999'),

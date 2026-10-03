@@ -15,7 +15,7 @@ import '../../data/models/budget_info.dart';
 import '../../data/models/category.dart';
 import '../../data/models/subscription.dart';
 import '../../data/seed/demo_data.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart'
     show
         categoriesProvider,

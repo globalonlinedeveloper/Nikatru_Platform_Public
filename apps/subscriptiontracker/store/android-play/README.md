@@ -158,6 +158,21 @@ been the demo build, with mock auth and seeded data). Every answer is still
 recorded for **both** postures, and the guard reads the workflow to say which
 column to type into the console.
 
+## Declaring the Data safety form — by API, from `data-safety.json`
+
+The console form is never typed by hand. `tooling/release/play-data-safety.mjs`
+renders `data-safety.json` into Play's Data safety CSV for the posture
+`assert-play-declarations.mjs` confirms against the `.aab` lane, and refuses on
+any `null`, unknown ID or declared type missing its purposes. A lead step:
+
+1. **Dry run, review:** `node tooling/release/play-data-safety.mjs --app subscriptiontracker --out <file>.csv`
+   (add `--template <console-export>.csv` to check the IDs against Play's own export and use its labels).
+   It sends nothing; read the CSV and the printed summary, including the questions it left blank.
+2. **Apply:** the same command with `--apply`, and env `PLAY_SERVICE_ACCOUNT_FILE` set to the
+   service-account JSON's path. It prints HTTP statuses only.
+3. **Record:** set `declaredOn` for `android-play` in `apps/subscriptiontracker/app.yaml` — a separate
+   one-line change.
+
 ## What this channel needs that lives OUTSIDE this directory
 
 - ✅ **Data safety form** → `data-safety.json` **in this directory**, since

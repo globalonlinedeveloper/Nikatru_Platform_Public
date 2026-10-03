@@ -941,6 +941,18 @@ jobs:
       - name: No hardcoded user-facing strings in the brick
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-hardcoded-strings.mjs
+      # why: one locale register (tooling/i18n/locales.json) — every ARB root, native manifest, picker and CI list reads it (O-LOCALES-HAND-TYPED-IN-12-PLACES).
+      - name: Every surface that names the languages reads the one locale register
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-locale-register.mjs
+      # why: no RTL locale ships yet, so a hard-wired left/right is invisible to every test that runs today (lane i18n-pipeline).
+      - name: No shipped screen hard-wires left and right (RTL readiness)
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-rtl-directional.mjs
+      # why: the ARB/ICU placeholder-safety step — every shipped translation (ARBs and the server e-mail copy) keeps English's placeholders and plural/select shape (lane i18n-pipeline).
+      - name: Every translation keeps English's placeholders and ICU shape
+        if: ${{ !cancelled() }}
+        run: node tooling/i18n/translation-qa.mjs --all
       - name: The stop-a-charge copy never claims we cancel or names a debit time
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-stop-copy.mjs
@@ -1181,6 +1193,15 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      # why: the recurring CodeQL shapes (file-system-race, missing-regexp-anchor, incomplete-sanitization and its
+      # multi-character, url-substring and hostname variants, insecure-temporary-file, an unused import) on this PR's
+      # changed lines, in about a second, before the CodeQL rule below waits minutes to say the same (lane codeql-lite).
+      # Lanes run it before the push through affected-guards.mjs; here it is the same check, against the PR's own base.
+      - name: This pull request's changed lines carry none of the recurring CodeQL shapes (codeql-lite)
+        if: ${{ !cancelled() }}
+        env:
+          CODEQL_LITE_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
+        run: node tooling/ci/assert-codeql-lite.mjs
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
       # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
       # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
@@ -1960,12 +1981,12 @@ jobs:
           # Missing files fail HERE, under `set -e`, rather than being hashed as
           # an empty set — "pub get produced nothing" and "the rebuild matched"
           # must not share an exit code.
-          # ⏱ T20 (XP-06): _hi is the third locale; a locale missing from
-          # this list is a generated file nothing compares.
-          sha256sum packages/design_system/lib/src/l10n/chassis_localizations.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_en.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_ta.dart \
-                    packages/design_system/lib/src/l10n/chassis_localizations_hi.dart \
+          # The file list is the LOCALE REGISTER's (tooling/i18n/locales.json):
+          # one generated file per supported locale. A typed list here once had to
+          # be hand-extended for Hindi; a locale missing from it is a generated
+          # file nothing compares (assert-locale-register L4/L5).
+          files=$(node tooling/i18n/locales.mjs --files chassis_localizations dart)
+          (cd packages/design_system/lib/src/l10n && sha256sum $files) \
             > "$RUNNER_TEMP/chassis-l10n-before.sha256"
       - name: Delete the generated chassis localisations so gen-l10n has to produce them
         run: rm -f packages/design_system/lib/src/l10n/chassis_localizations*.dart
@@ -1973,12 +1994,13 @@ jobs:
         run: |
           set -euo pipefail
           (cd packages/design_system && flutter gen-l10n)
-          for f in chassis_localizations.dart chassis_localizations_en.dart chassis_localizations_ta.dart chassis_localizations_hi.dart; do
+          files=$(node tooling/i18n/locales.mjs --files chassis_localizations dart)
+          for f in $files; do
             test -s "packages/design_system/lib/src/l10n/$f"
           done
           # The half with a failing input: `sha256sum -c` fails on a file that
           # came back different and on a file that did not come back at all.
-          sha256sum -c "$RUNNER_TEMP/chassis-l10n-before.sha256"
+          (cd packages/design_system/lib/src/l10n && sha256sum -c "$RUNNER_TEMP/chassis-l10n-before.sha256")
           # Tamil parity, from gen-l10n's own diagnostic. The ENFORCEMENT half is
           # packages/design_system/test/chassis_l10n_parity_test.dart, which names
           # the keys; this is the cheap early read of the same fact.
