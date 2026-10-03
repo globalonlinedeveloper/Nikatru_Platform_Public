@@ -548,6 +548,24 @@
       "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/state/providers/auth.dart (sendProviderRefreshToken, wired into appleTokenKeeperProvider) posts every non-Apple provider token through packages/api_client/lib/src/account_deletion_request.dart (storeProviderRefreshToken). No shipped build produces one yet: Google sign-in is the Dart half of O-GOOGLE-SIGN-IN-NOT-BUILT. Proven in services/platform/test/provider-token.test.ts."
     },
     {
+      "id": "account-apple-code",
+      "method": "PUT",
+      "path": "/v1/account/apple-code",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/apple-code.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 1 (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE, the native sheet's half). The native Sign in with Apple sheet (iOS, macOS) signs in through `signInWithIdToken`, whose session carries NO provider refresh token; it returns a one-time `authorizationCode` instead. Body `{authorizationCode, appId}`: the Worker exchanges the code at 'POST https://appleid.apple.com/auth/token' with client_id = the bundle id `com.nikatru.<appId>` (client secret minted with the same four APPLE_REVOKE_* secrets as the revoke) and stores the refresh token encrypted in platform_db.provider_tokens under `apple`, with `client_id` (migration 0024) so the revoke signs for the client the token belongs to. Refused (400) for an account whose verified token does not list apple, a malformed code or app id, and a code Apple refuses; 503 when the Apple secrets are missing (nothing stored); 502 when Apple cannot be reached. The response is a COUNT; the code and the token are never logged or echoed.",
+      "unconsumedReason": "CONSUMED: packages/core/lib/src/auth/provider_token_keeper.dart (keepProviderRefreshToken's sendAuthorizationCode) posts the code through packages/api_client/lib/src/account_deletion_request.dart (exchangeAppleAuthorizationCode), wired by appleTokenKeeperProvider (apps/subscriptiontracker/lib/state/providers/auth.dart sendAppleAuthorizationCode). Proven in services/platform/test/provider-revoke.test.ts."
+    },
+    {
+      "id": "account-identity-change",
+      "method": "POST",
+      "path": "/v1/account/identity-change",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/identity-change.ts",
+      "purpose": "⏱ 2026-10-02 · review of #1155, finding 3. Asked by the app BEFORE it links or unlinks a sign-in method (Settings › Connected accounts): 200 `{ok:true}` when the verified token's newest `amr` timestamp is inside RECENT_AUTH_SECONDS (the deletion path's recency rule, services/_shared/src/auth.ts), for every account, password accounts included; otherwise 403 `reauth_required` (never 401, which the client reads as a dead session). Reads nothing and writes nothing.",
+      "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart (confirmSignInMethodChangeAtServer, the serverCheck of core.guardSignInMethodChange) through packages/api_client/lib/src/account_deletion_request.dart (checkSignInMethodChange). Proven in services/platform/test/identity-change.test.ts."
+    },
+    {
       "id": "entitlements",
       "method": "GET",
       "path": "/v1/entitlements",

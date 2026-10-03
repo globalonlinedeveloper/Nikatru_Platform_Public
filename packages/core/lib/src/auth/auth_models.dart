@@ -168,6 +168,7 @@ class AuthSession {
     this.expiresAt,
     this.providerRefreshToken,
     this.oauthProvider,
+    this.providerAuthorizationCode,
   });
 
   final String accessToken;
@@ -187,6 +188,14 @@ class AuthSession {
   /// say, which the keeper reads as Apple's: until Google sign-in, Apple's was
   /// the only provider token any app kept.
   final String? oauthProvider;
+
+  /// ⏱ 2026-10-02 · review of #1155, finding 1. Apple's one-time
+  /// AUTHORIZATION CODE from the native sign-in sheet, on the session that
+  /// sheet produced. An ID-token sign-in carries no [providerRefreshToken];
+  /// the code is what the server exchanges for one (`PUT
+  /// /account/apple-code`), so a deletion still revokes at Apple. Null on
+  /// every browser-door session, and nothing writes it to the device.
+  final String? providerAuthorizationCode;
 
   /// Absolute expiry, UTC. Null when the provider does not report one — treated
   /// as "unknown", never as "never expires".
@@ -311,6 +320,21 @@ class AuthFailure implements Exception {
   /// refusal that may be told as "that password is not right".
   static const String invalidCredentials = 'invalid_credentials';
   static const String overRequestRateLimit = 'over_request_rate_limit';
+
+  /// ⏱ 2026-10-01 · SE-04 — GoTrue's code for unlinking the one identity an
+  /// account has left. The adapters raise it themselves before asking, so the
+  /// refusal reads the same whichever side said no.
+  static const String lastSignInMethod = 'single_identity_not_deletable';
+
+  /// ⏱ 2026-10-01 · EN-21 — GoTrue's code for a one-time code that is wrong
+  /// or has expired.
+  static const String codeInvalid = 'otp_expired';
+
+  /// ⏱ 2026-10-02 · review of #1155, finding 3 — the platform Worker's
+  /// `reauth_required`: this session's last sign-in is too old for the change
+  /// it asked for (a sign-in method linked or unlinked). Nothing was changed;
+  /// signing in again is the way on.
+  static const String reauthRequired = 'reauth_required';
 
   /// The [weakPassword] reasons GoTrue sends (`internal/api/password.go`).
   static const String reasonLength = 'length';

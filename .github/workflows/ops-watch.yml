@@ -78,6 +78,9 @@ jobs:
     # why: 15, not 10 — the daily OSV steps below carry their own 3 + 5 minute bounds on top of the readers.
     timeout-minutes: 15
     permissions:
+      # why: the checkout, and the laptop heartbeat (`beat.json` on ref refs/lead/heartbeat, not a branch)
+      # assert-ops-register reads through the contents API when a laptop duty is
+      # failing, to grade it DEGRADED during a proven outage (O-LAPTOP-OUTAGE-READS-AS-RED).
       contents: read
       actions: read
       issues: read

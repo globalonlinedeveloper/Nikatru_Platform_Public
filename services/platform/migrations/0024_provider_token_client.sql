@@ -1,0 +1,31 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0024_provider_token_client.sql — WHICH OAUTH CLIENT A STORED PROVIDER TOKEN
+-- WAS ISSUED TO (⏱ 2026-10-02 · review of #1155, finding 1).
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- ONE ADDITIVE, NULLABLE COLUMN, and nothing else in this file:
+--   client_id — the OAuth client the token belongs to, when that is not the
+--               Worker's APPLE_REVOKE_CLIENT_ID. Apple's native sign-in sheet
+--               issues its authorization code to the app's BUNDLE ID
+--               (`com.nikatru.<appId>`), not to the web Services ID, and Apple
+--               revokes a token only when the revoke names the client it was
+--               issued to. PUT /v1/account/apple-code (src/routes/apple-code.ts)
+--               exchanges such a code and writes the bundle id here;
+--               `revokeAppleToken` (src/lib/provider-revoke.ts) mints its
+--               client secret for this client when the column is set.
+--
+-- NULL is every row stored before this file and every web or Google token:
+-- those revoke exactly as they did, under APPLE_REVOKE_CLIENT_ID. It is not a
+-- credential (a bundle id is public), so the nightly backup carries it as is.
+--
+-- ⚠️ THE OLD WORKER KEEPS WORKING IN THE DEPLOY WINDOW: it names its columns,
+-- so it neither sees nor breaks this one.
+--
+-- REPLAY: `ALTER TABLE … ADD COLUMN` is the one ledger-protected form
+-- test/migrations-replay.test.ts allows, so this file is NOT in
+-- REPLAY_SAFE_MIGRATIONS (test/harness.ts); D1's ledger applies it once.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE provider_tokens ADD COLUMN client_id TEXT;

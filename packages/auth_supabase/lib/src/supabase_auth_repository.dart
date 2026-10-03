@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'auth_redirect.dart';
 import 'browser_handoff_client.dart' show HandoffTokens;
 import 'native_attestation_client.dart' show RetryAfterLatch;
+import 'native_sign_in_sheets.dart';
 
 /// Supabase (GoTrue) implementation of core's [core.AuthRepository].
 ///
@@ -32,6 +33,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     Future<Uri?> Function()? deepLink,
     this.deepLinkTimeout = const Duration(seconds: 2),
     RetryAfterLatch? retryAfter,
+    this.nativeSheets = NativeSignInSheets.none,
   })  : _injected = client,
         _retryAfter = retryAfter,
         _launchUri = launchUri ?? (() => Uri.base),
@@ -71,6 +73,14 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// which is the same observable behaviour as passing null. A misconfigured
   /// allow-list therefore looks exactly like a working one.
   final AuthRedirects redirects;
+
+  /// ⏱ 2026-10-01 · EN-19 — the native Apple/Google sheets this build may use.
+  /// A provider with a sheet signs in IN-PROCESS: the sheet hands back an ID
+  /// token and GoTrue's `signInWithIdToken` mints the session, so no browser
+  /// opens and no PKCE verifier is involved. A provider with no sheet (web,
+  /// Windows, Linux, and Google with no server client id) keeps the browser
+  /// door. [NativeSignInSheets.none], the default, is the browser everywhere.
+  final NativeSignInSheets nativeSheets;
 
   /// How far AHEAD of the real expiry a token counts as expired.
   ///
@@ -507,6 +517,11 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // Completion surfaces on authStateChanges(), never as a return value —
     // the app is torn down and rebuilt by the redirect on some platforms, so
     // there is no continuation to return to.
+    final NativeSignInSheet? sheet = nativeSheets.apple;
+    if (sheet != null) {
+      await _signInWithSheet(sheet, sb.OAuthProvider.apple, 'apple');
+      return;
+    }
     await _signInWithOAuth(sb.OAuthProvider.apple, 'apple');
   }
 
@@ -515,9 +530,68 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// scope is added: Supabase's default Google scopes (email, profile) are the
   /// whole of what this app reads.
   @override
-  Future<void> signInWithGoogle() =>
-      _signInWithOAuth(sb.OAuthProvider.google, 'google',
-          queryParams: googleQueryParams);
+  Future<void> signInWithGoogle() async {
+    final NativeSignInSheet? sheet = nativeSheets.google;
+    if (sheet != null) {
+      await _signInWithSheet(sheet, sb.OAuthProvider.google, 'google');
+      return;
+    }
+    await _signInWithOAuth(sb.OAuthProvider.google, 'google',
+        queryParams: googleQueryParams);
+  }
+
+  /// ⏱ 2026-10-01 · EN-19. The native door: the provider's own sheet, then
+  /// the ID token to GoTrue. Completion still surfaces on
+  /// authStateChanges() (`signInWithIdToken` saves the session and emits
+  /// `signedIn`), the same contract as the browser door.
+  ///
+  /// 🔴 A CANCELLED SHEET RETURNS QUIETLY — no throw, no session, no browser.
+  /// The person is left on the screen they started from.
+  ///
+  /// The provider is recorded first, as [_signInWithOAuth] does, so the
+  /// provider-token keeper still files whatever this session carries under
+  /// the right provider ([oauthProviderOf]).
+  Future<void> _signInWithSheet(
+    NativeSignInSheet sheet,
+    sb.OAuthProvider provider,
+    String name,
+  ) async {
+    final NativeIdToken? token;
+    try {
+      token = await sheet.obtain();
+    } on Object catch (e) {
+      // The vendor's text can carry an account hint; it stays out of the
+      // failure, which only says which door failed.
+      debugPrint('auth: the $name sheet failed (${e.runtimeType})');
+      throw core.AuthFailure('Sign-in failed', code: 'native_sheet_failed');
+    }
+    if (token == null) return;
+    _launchedProvider = name;
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.signInWithIdToken(
+        provider: provider,
+        idToken: token.idToken,
+        nonce: token.rawNonce,
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+    // ⏱ 2026-10-02 · review of #1155, finding 1: the sheet's authorization
+    // code, held for THIS account's session only, so the provider-token
+    // keeper can post it ([core.AuthSession.providerAuthorizationCode]).
+    final String? code = token.authorizationCode;
+    final String? owner = res.user?.id ?? res.session?.user.id;
+    _pendingCode =
+        name == 'apple' && code != null && code.isNotEmpty && owner != null
+            ? (owner: owner, code: code)
+            : null;
+  }
+
+  /// The last native Apple sheet's authorization code and the account it
+  /// signed in. Offered on that account's sessions until a sign-out or the
+  /// next sheet; the keeper sends it once.
+  ({String owner, String code})? _pendingCode;
 
   /// 🔴 WHY GOOGLE IS ASKED FOR `offline` ACCESS WITH `consent`: without both,
   /// Google issues no refresh token on a returning sign-in, so there is nothing
@@ -714,6 +788,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // A launch record outlives nothing it names: the next account on this
     // device must not inherit the last one's provider.
     _launchedProvider = null;
+    _pendingCode = null;
     if (scope == core.SignOutScope.local) {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
@@ -839,6 +914,98 @@ class SupabaseAuthRepository implements core.AuthRepository {
         queryParams: googleQueryParams,
       );
 
+  /// ⏱ 2026-10-01 · SE-04. Refuses by the one rule before it asks — GoTrue
+  /// refuses the last identity too, and this does not lean on it — then
+  /// unlinks the provider's identity and refreshes, so the user (and the JWT's
+  /// `app_metadata.providers`) no longer carry it.
+  @override
+  Future<core.AuthUser> unlinkIdentity(core.SignInMethod method) async {
+    if (!core.mayUnlinkMethod(currentUser, method)) {
+      throw core.AuthFailure(
+        'You cannot remove your only way to sign in.',
+        code: core.AuthFailure.lastSignInMethod,
+      );
+    }
+    try {
+      final List<sb.UserIdentity> identities = await _auth.getUserIdentities();
+      final sb.UserIdentity? identity = identities
+          .where((sb.UserIdentity i) => i.provider == method.id)
+          .firstOrNull;
+      if (identity == null) {
+        throw core.AuthFailure('That sign-in method is not on this account.');
+      }
+      await _auth.unlinkIdentity(identity);
+      final sb.AuthResponse res = await _auth.refreshSession();
+      final core.AuthUser? u = _map(res.user) ?? currentUser;
+      if (u == null) throw core.AuthFailure('Sign in again to continue.');
+      return u;
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
+
+  /// ⏱ 2026-10-01 · EN-21. A code can be SENT only where the send can reach
+  /// GoTrue: the native credential route serves `token`, `signup`, `recover`
+  /// and `resend`, not `/otp`, and GoTrue captchas `/otp`. So a native build
+  /// with that route says no rather than drawing a button that always fails.
+  @override
+  bool get emailCodeAvailable => _native == null;
+
+  /// ⏱ 2026-10-01 · EN-21. `shouldCreateUser: false` — a code never makes an
+  /// account; signing up keeps its clickwrap.
+  ///
+  /// 🔴 NO ACCOUNT ORACLE. For an address with no account GoTrue refuses
+  /// (`otp_disabled`, "Signups not allowed for otp"); that refusal is swallowed
+  /// here, so the caller hears the same "sent" for every address. A captcha or
+  /// rate-limit refusal is NOT swallowed: it does not depend on the address.
+  @override
+  Future<void> sendEmailCode(String email, {String? captchaToken}) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    try {
+      await _credentials.signInWithOtp(
+        email: email,
+        shouldCreateUser: false,
+        captchaToken: _captcha(captchaToken),
+        // The mail's link, when its template carries one, lands in THIS app.
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      if (isNoAccountRefusal(e.code, e.message)) return;
+      throw _failureOf(e);
+    }
+  }
+
+  /// The refusals GoTrue gives a code request for an address it does not
+  /// hold — the answers that would make the send an account oracle.
+  @visibleForTesting
+  static bool isNoAccountRefusal(String? code, String message) =>
+      code == 'otp_disabled' ||
+      code == 'user_not_found' ||
+      message.toLowerCase().contains('signups not allowed');
+
+  /// ⏱ 2026-10-01 · EN-21. `/verify` is not captcha-gated, so this goes to
+  /// the main client on every target; the session it mints is the main
+  /// client's, and the auth stream carries the sign-in.
+  @override
+  Future<core.AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final sb.AuthResponse res;
+    try {
+      res = await _auth.verifyOTP(
+        email: email,
+        token: code.trim(),
+        type: sb.OtpType.email,
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+    final core.AuthUser? u = _map(res.user);
+    if (u == null) throw core.AuthFailure('Sign-in failed');
+    return u;
+  }
+
   /// The one `linkIdentity` call every provider's link goes through.
   Future<void> _linkIdentity(
     sb.OAuthProvider provider,
@@ -960,14 +1127,18 @@ class SupabaseAuthRepository implements core.AuthRepository {
                 i.provider,
             ],
           );
+    final ({String owner, String code})? pending = _pendingCode;
+    final String? code =
+        pending != null && pending.owner == s.user.id ? pending.code : null;
     return core.AuthSession(
       accessToken: s.accessToken,
       refreshToken: s.refreshToken,
+      providerAuthorizationCode: code,
       // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the provider's own
       // refresh token, which gotrue puts on the session that completes the
       // OAuth redirect and on no session after it.
       providerRefreshToken: provider == null ? null : s.providerRefreshToken,
-      oauthProvider: provider,
+      oauthProvider: provider ?? (code == null ? null : 'apple'),
       // GoTrue reports expiry as UNIX seconds; null when it does not know.
       expiresAt: s.expiresAt == null
           ? null
