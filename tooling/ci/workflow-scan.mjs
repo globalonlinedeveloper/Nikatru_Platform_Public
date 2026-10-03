@@ -1894,6 +1894,39 @@ export function parseResolvedWorkflows(root) {
   return { workflows: resolved.filter((wf) => !callOnly(wf)), filesRead, refusal };
 }
 
+/**
+ * ⏱ 2026-10-03 (review of #1160, nit 2) · A PRELOAD NAMED BY A VARIABLE, JOB-SCOPED.
+ * `node --import "$VAR"` names the file(s) quoted in the run text of the step of
+ * the SAME job that writes VAR to $GITHUB_ENV — its own steps, or a local composite
+ * it `uses:` (inlined by parseResolvedWorkflows). → Map `<workflow>#<job>` → Map
+ * VAR → [tooling/….mjs]. A callee job is keyed both as its caller's child and under
+ * its own file. A job that never runs the exporting step has no entry, so a
+ * `--import "$SPAWN_CEILING"` without `uses: ./.github/actions/setup-node` names
+ * nothing; the repo-wide map this replaces credited it as WIRED.
+ */
+export function jobPreloadVars(root) {
+  const out = new Map();
+  const put = (key, vars) => {
+    if (!out.has(key)) out.set(key, new Map());
+    const into = out.get(key);
+    for (const [name, paths] of vars) into.set(name, [...(into.get(name) ?? []), ...paths]);
+  };
+  for (const wf of parseResolvedWorkflows(root).workflows) {
+    for (const job of wf.jobs.values()) {
+      const steps = workflowSteps(job);
+      const vars = new Map();
+      for (const w of githubEnvWrites(job)) {
+        const step = steps.find((x) => x.index === w.stepIndex);
+        const paths = [...String(step?.run?.text ?? '').matchAll(/['"](tooling\/[A-Za-z0-9._/-]+\.mjs)['"]/g)].map((x) => x[1]);
+        vars.set(w.name, [...(vars.get(w.name) ?? []), ...paths]);
+      }
+      put(`${wf.rel}#${job.name}`, vars);
+      if (job.callee) put(`${job.callee}#${job.name.slice(job.name.indexOf('/') + 1)}`, vars);
+    }
+  }
+  return out;
+}
+
 /** Where line `n` of a resolved workflow really is, for a finding that already
  *  names `wf.rel`: `:<n>` for the file's own line, `<file>:<line>` for a line
  *  inlined from a composite or a callee. */

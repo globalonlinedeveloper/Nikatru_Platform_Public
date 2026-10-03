@@ -99,6 +99,7 @@ class DestructiveConfirmDialog extends StatefulWidget {
     required this.onConfirm,
     super.key,
     this.secretRequired = true,
+    this.secretAlternative,
     this.secretFieldKey,
     this.confirmKey,
     this.resultKey,
@@ -138,6 +139,13 @@ class DestructiveConfirmDialog extends StatefulWidget {
   /// live whenever the dialog is not busy. [secret] is still owned and disposed
   /// by the caller, unread.
   final bool secretRequired;
+
+  /// ⏱ 2026-10-02 · #1142 review item 2. Set with [secretRequired] false when
+  /// the secret is OPTIONAL: a linked account may type its password, or leave
+  /// the field empty and confirm another way. The field is shown under
+  /// [secretHint], this sentence under it says what an empty field does, and
+  /// the button is live whenever the dialog is not busy.
+  final String? secretAlternative;
 
   final String cancelLabel;
 
@@ -221,7 +229,7 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
           Text(widget.body),
           const SizedBox(height: 16),
           Text(widget.secretHint),
-          if (widget.secretRequired) ...<Widget>[
+          if (widget.secretRequired || widget.secretAlternative != null) ...<Widget>[
             const SizedBox(height: 8),
             TextField(
               key: widget.secretFieldKey,
@@ -240,6 +248,10 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
             if (widget.challenge != null) ...<Widget>[
               const SizedBox(height: 12),
               widget.challenge!,
+            ],
+            if (widget.secretAlternative != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(widget.secretAlternative!),
             ],
           ],
         ],

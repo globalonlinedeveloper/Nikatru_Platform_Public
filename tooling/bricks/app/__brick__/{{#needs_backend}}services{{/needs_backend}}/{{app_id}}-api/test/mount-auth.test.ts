@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { app } from '../src/index';
 import type { AppEnv } from '../src/types';
-import { anonymousNotRefused, es256Issuer, goTrueClaims, hs256Token, jwksFetch, type Through } from '../../_shared/test/mount-auth';
+import { anonymousNotRefused, es256Issuer, goTrueClaims, hs256Token, jwksFetch, revokedNotRefused, revokedSessionKv, type Through } from '../../_shared/test/mount-auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mount-auth.test.ts — THIS WORKER'S AUTH BOUNDARIES RUN IN ITS OWN SUITE.
@@ -70,5 +70,30 @@ describe('supabaseAuth admits a verified token, and erasureAuth refuses the lega
     const headers = { Authorization: `Bearer ${token}` };
     expect((await through()('/v1/anything', { method: 'GET', headers })).status).toBe(404);
     expect((await through()('/v1/account', { method: 'DELETE', headers })).status).toBe(401);
+  });
+});
+
+// ⏱ 2026-10-03 (review of #1152, minor 1): the guard sees that each kit boundary
+// CALLS sessionRevoked(; only this run sees one that is present but neutered.
+describe('both boundaries refuse a signed-out session', () => {
+  // Its own project URL: the kit memoises one remote key set per URL, so a key
+  // minted here is never shadowed by an earlier case's (a 401 for that reason
+  // would pass the probe for the wrong one).
+  const PROJECT = 'https://revoked.example.test';
+
+  it('🔴 a verified token whose session SESSION_REVOKED lists is a 401 behind supabaseAuth AND erasureAuth', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { jwks, sign } = await es256Issuer('mount-auth-revoked');
+    vi.stubGlobal('fetch', jwksFetch(PROJECT, jwks));
+    const token = await sign(goTrueClaims(PROJECT, 'user-1', { session_id: 'sid-out' }));
+    // The control first: the same token, while only ANOTHER session is listed, gets through supabaseAuth.
+    const other = env({ SUPABASE_URL: PROJECT, SESSION_REVOKED: revokedSessionKv('user-1', 'sid-other') });
+    expect((await through(other)('/v1/anything', { method: 'GET', headers: { Authorization: `Bearer ${token}` } })).status).toBe(404);
+    const revoked = env({ SUPABASE_URL: PROJECT, SESSION_REVOKED: revokedSessionKv('user-1', 'sid-out') });
+    const probes = [
+      { method: 'GET', path: '/v1/anything' },
+      { method: 'DELETE', path: '/v1/account' },
+    ];
+    expect(await revokedNotRefused(through(revoked), token, probes)).toEqual([]);
   });
 });

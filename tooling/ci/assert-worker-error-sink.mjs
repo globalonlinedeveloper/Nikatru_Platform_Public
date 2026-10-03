@@ -327,6 +327,7 @@ let wired = 0;
  *  count, printed, so "every Worker delegates" and "no Worker delegates" are
  *  distinguishable in the log rather than both reading as ok. */
 let delegated = 0;
+const judgedAt = new Set();
 for (const name of workers) {
   if (edgeNames.has(name)) continue;
   const entryPath = `${SERVICES}/${name}/src/index.ts`;
@@ -369,7 +370,7 @@ for (const name of workers) {
       );
     }
     const sinkSubject = resolved.relPath;
-    if (resolved.delegated) delegated++;
+    if (resolved.delegated) { delegated++; judgedAt.add(resolved.relPath); }
     const sink = stripSourceComments(resolved.source, '.ts');
     if (!new RegExp(`export\\s+(async\\s+)?function\\s+${SINK_FN}\\b`).test(sink)) {
       fail(`${sinkSubject} does not export \`${SINK_FN}\`.`);
@@ -453,8 +454,8 @@ for (const name of workers) {
 const summary =
   `worker error sink — ${wired}/${workers.length - edgeNames.size} Worker(s) report unhandled errors to a declared sink ` +
   `and ${edgeJudged}/${edgeNames.size} edge pass-through(s) hand an exception to their origin ` +
-  `(${workers.join(', ')}); ${delegated} of them judged at services/_shared/src/error-sink.ts, the one home ` +
-  `their src/lib/error-sink.ts re-exports ([ADR 067] decision 2); behaviour is asserted by ` +
+  `(${workers.join(', ')}); ${delegated} of them judged at ${[...judgedAt].join(', ') || 'no shared file'}, the one home ` +
+  `their src/lib/error-sink.ts re-exports reach ([ADR 067] decision 2; since port-telemetry through services/_shared/src/error-sink.ts to the telemetry port's sentry-envelope adapter); behaviour is asserted by ` +
   'services/*/test/error-sink.test.ts';
 
 if (failed) {

@@ -328,6 +328,10 @@ export const SIGNATURES = [
   { id: 'ops-register:max-delete', re: /--max-delete threshold reached/ },
   { id: 'ops-register:alert-disposition-403', re: /Every alerting firing has a recorded disposition[\s\S]*GitHub API returned 403/ },
   { id: 'ops-register:firing-history-403', re: /limb A — a declared firing history could not be enumerated: GitHub API returned 403/ },
+  // ⏱ 2026-10-03 · limb C of assert-alert-disposition (ci.yml) and its codeql.yml twin: an open
+  // code-scanning alert with no entry in tooling/ci/codeql-dispositions.json. Keyed on the ALERT
+  // NUMBER, so each alert is its own cause row. Runs 36929056657 (#551) and 37057868484 (#560).
+  { id: 'codeql:no-disposition', re: /limb C — \d+ code-scanning alert\(s\) with NO disposition:\n\s*#(\d+)\s/, key: 1 },
   // The header says "N problem(s)"; the problem is the first INDENTED line that
   // is neither a ⬜ note nor a `·` sub-bullet nor a `[..]` legend. Keyed on it.
   { id: 'ops-register:problem', re: /✗ tooling\/ops\/register\.json[^\n]*\n(?:[^\n]*\n)*?[ \t]{2,}(?![⬜·[])(\S[^\n]{0,90})/, key: 1, normaliseKey: true },
@@ -374,6 +378,9 @@ export const SIGNATURES = [
   { id: 'supabase-templates:drift', re: /DIFFERS from live `mailer_templates/ },
   // GoTrue reads unset and 0 alike ("no limit"); the comparator did not. Run 36097413255.
   { id: 'supabase-auth:session-limit-null-read-as-drift', re: /✗ auth `sessions_(?:timebox|inactivity_timeout)`: register says null, live says 0\./ },
+  // ⏱ 2026-10-03 · a real auth-config drift, keyed on the FIELD that differs. Runs 36939849073 and
+  // 36940922904 (uri_allow_list: live carried https://nikatru.com/app/connect, the register did not).
+  { id: 'supabase-auth:drift', re: /✗ auth `(\w+)`: register says /, key: 1 },
   { id: 'catalogue:reachability', re: /✗ catalogue reachability/ },
   { id: 'privacy-notice:drift', re: /notice surface\(s\) no longer match the privacy declaration/ },
   { id: 'site-integrity', re: /✗ \d+ site problem\(s\)/ },
@@ -387,12 +394,19 @@ export const SIGNATURES = [
   // Run 36445515397 (2026-09-28).
   { id: 'smoke:deployed-unwell', re: /✗ https:\/\/([\w.-]+)\/\S* is serving build [0-9a-f]+ and reports ok:false — it deployed, and it is unwell/, key: 1 },
   { id: 'web-smoke:first-frame-timeout', re: /never reached the ready signal `flutter-first-frame`/ },
+  // ⏱ 2026-10-03 · above the step-name row it refines: smoke-web-artifact saw probe requests its
+  // interception never paused (the offline shell's service worker answered them). Runs 37020790032,
+  // 37029778489 and 37033246405 (2026-10-02).
+  { id: 'bundle-launch:probe-not-intercepted', re: /FAIL smoke-web-artifact: \d+ probe request\(s\) were NOT paused by the interception/ },
   { id: 'bundle-launch:404', re: /^Launch the built bundle once/ },
   // ── builds and toolchains ─────────────────────────────────────────────────
   { id: 'windows:max-path', re: /Unable to generate build files|cannot write keep file|Filename too long/ },
   // Keyed on the channel flutter-action was handed: a store id there means a
   // job env named CHANNEL reached it. Runs 35818955799 and 35818957977.
   { id: 'setup-flutter:version-unresolved', re: /Unable to determine Flutter version for channel: ([\w.-]+)/, key: 1 },
+  // ⏱ 2026-10-03 · the macOS image's BSD sha256sum has no --check: the archive check printed its
+  // usage and the SDK step exited 1. Run 36864391489 (build-platforms, 2026-10-01).
+  { id: 'setup-flutter:sha256sum-bsd', re: /^usage: sha256sum \[-bctwz\]/m },
   { id: 'zizmor:install-failed', re: /^Install zizmor/ },
   { id: 'macos:build-failed', re: /^Build macos[\s\S]*BUILD FAILED/ },
   { id: 'apple:signing-failed', re: /apple-signing: FAILED|assert-artifact-signed-apple: FAILED|find: build\/ios\/ipa: No such file/ },
@@ -406,6 +420,9 @@ export const SIGNATURES = [
   // `}`, which is the first line the error block sees, so the step name is the only
   // stable key. Measured on run 34429437969 (ERR_IMPORT_ATTRIBUTE_MISSING above it).
   { id: 'money-dry-run:uncaught-throw', re: /^A stored notification replayed in any order reaches the same entitlement\n\}\n/ },
+  // ⏱ 2026-10-03 · the same shape in the e2e purge step: an uncaught Node error, whose dump ends in a
+  // lone `}` and Node's version line. Run 36739638735 (native-auth-proof, Windows, 2026-09-30).
+  { id: 'purge-throwaway:uncaught-throw', re: /^Purge the throwaway user\n\}\n\s*Node\.js v\d+/ },
   { id: 'osv:known-vulnerable', re: /^Known-vulnerable dependencies/ },
   { id: 'hang-guard:ceiling', re: /hang-guard: all \d+ attempt\(s\) exceeded/ },
   { id: 'tsc:error', re: /error TS\d+/ },
@@ -418,6 +435,12 @@ export const SIGNATURES = [
   // said it must refuse. Run 36222497878 (2026-09-26, mid-cutover).
   { id: 'e2e:unnamed-issuer-accepted', re: /the Worker answered 200, not 401, to a session minted by this run's \w+ issuer, which the register does not name/ },
   { id: 'e2e:leg-failed', re: /##\[error\]Failure in method: ([^\n]+)/, key: 1 },
+  // ⏱ 2026-10-03 · the provision step died on an HTML page where GoTrue's JSON should be (a
+  // Cloudflare 5xx page for nikatru.com). Run 36880654202 (e2e, 2026-10-01: HTTP 520).
+  { id: 'e2e-provision:html-error-page', re: /^Provision throwaway confirmed user\n[\s\S]*?<\/html>\n##\[error\]Process completed with exit code/ },
+  // ⏱ 2026-10-03 · native-auth-proof.yml: the real form never reached Home, so every later proof
+  // step is missing too. Runs 36525783687 (Android, 2026-09-29) and 36736302501 (Linux, 2026-09-30).
+  { id: 'native-auth-proof:sign-in-not-home', re: /FAIL missing "NK_PROOF step=sign-in outcome=ok"/ },
   { id: 'e2e:preflight-variable-unset', re: /repository VARIABLE (\w+) is unset/, key: 1 },
   { id: 'e2e:preflight-secrets-missing', re: /auth_target=\w+ needs \w+/ },
   { id: 'e2e:integration-tests-failed', re: /^Run integration tests \(headless Chrome\)/ },
@@ -426,6 +449,10 @@ export const SIGNATURES = [
   // A job that has NEVER written its row is a different fault from one that
   // stopped: keyed on the job. Runs 36416498456 .. 36421098402 (reminder_mail).
   { id: 'heartbeat-table:never-written', re: /scheduled duty is not reporting healthy:\n(?:[^\n]*\n)*?\s+(\w+): NO heartbeat row has ever been written/, key: 1 },
+  // ⏱ 2026-10-03 · a FRESH row that says the job FAILED is the job's own verdict, and its cause is
+  // per job: keyed on it. Runs 36462165209 .. 36500171179 (ops_watchdog, 2026-09-28) and
+  // 36810231743 .. 36859712513 (backup_export, 2026-10-01).
+  { id: 'heartbeat-table:reported-failed', re: /scheduled duty is not reporting healthy:\n(?:[^\n]*\n)*?\s+(\w+): the newest heartbeat is FRESH and says the job FAILED/, key: 1 },
   { id: 'heartbeat-table:unhealthy', re: /scheduled duty is not reporting healthy/ },
   { id: 'alarm-chains:monitor-missing', re: /expected monitor "[^"]*" is not in the live list/ },
   { id: 'actions-usage:over-ceiling', re: /net-billed Actions spend is over the declared ceiling/ },
@@ -439,6 +466,9 @@ export const SIGNATURES = [
   // ── deploy and release lanes ──────────────────────────────────────────────
   { id: 'wrangler:npx-failed', re: /The process '[^']*npx' failed with exit code/ },
   { id: 'pages:ensure-project', re: /^Ensure the Pages project exists/ },
+  // ⏱ 2026-10-03 · rollback.yml was handed the deployment already serving production; Cloudflare
+  // refuses that (8000039) and nothing is re-promoted. Runs 36970520119 and 36970542712.
+  { id: 'rollback:target-is-production', re: /Cloudflare refused the Pages rollback \(HTTP 400\): 8000039/ },
   { id: 'android:gradle-failed', re: /Gradle task assembleRelease failed|^Build android/ },
   { id: 'msix:identity-guard', re: /assert-artifact-signed-msix|^The MSIX carries the identity the register declares/ },
   { id: 'play:device-coverage', re: /✗ play device coverage/ },

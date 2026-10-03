@@ -328,26 +328,30 @@ class SettingsScreen extends ConsumerWidget {
     final TextEditingController password = TextEditingController();
     // ST-A1: the reauth is a captcha-gated sign-in; owned as [password] is.
     final CaptchaTokenController captcha = newCaptchaController();
-    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
-    // kind of proof this account can give.
+    // O-OAUTH-DELETE-REAUTH, AB-A5-01 — read once, before the dialog: the proof
+    // this account gives, by the rule `_deleteAccount` runs (`deletionReauthOf`).
     final core.AuthUser? current = ref.read(authRepositoryProvider).currentUser;
-    final bool passwordless = current != null && !current.hasPasswordIdentity;
+    final bool passwordless =
+        current != null &&
+        core.deletionReauthOf(current) == core.DeletionReauth.provider;
+    // #1142 item 2: a linked account that has a password keeps it, where the grant passes.
+    final bool passwordToo =
+        current != null &&
+        core.offersPasswordReauth(
+          current,
+          passwordGrant: ref.read(authCapabilitiesProvider).passwordReauth,
+        );
     showDialog<void>(
       context: context,
-      // 🔴 WAS THE DEFAULT, WHICH IS `true`. A tap on the barrier closed the
-      // most destructive dialog in the app — and, once the request was in
-      // flight, closed it while the deletion carried on, which to the person
-      // doing it is indistinguishable from having cancelled it. The dialog also
-      // carries a `PopScope` for the routes a barrier flag cannot reach (a back
-      // gesture, an Escape key); neither covers the other.
+      // 🔴 WAS THE DEFAULT (`true`): a barrier tap closed it mid-deletion, which
+      // reads as a cancel. Its `PopScope` covers back and Escape; each needs the other.
       barrierDismissible: false,
-      // 🔴 NO `dialogContext` IS CAPTURED ANY MORE, and that is the point rather
-      // than tidiness: this closure used to hand the dialog's context to
-      // `_deleteAccount` so it could `Navigator.pop` and post a `SnackBar` on
-      // the way out — on a route the sign-out was already removing.
+      // 🔴 NO `dialogContext` IS CAPTURED: `_deleteAccount` once popped and posted a
+      // `SnackBar` through it, on a route the sign-out was already removing.
       builder: (BuildContext _) => _DeleteAccountDialog(
         l10n: l10n,
         passwordless: passwordless,
+        passwordToo: passwordToo,
         password: password,
         captcha: captcha,
         onConfirm: () => _deleteAccount(ref, password.text, captcha.consume()),
@@ -415,19 +419,19 @@ class SettingsScreen extends ConsumerWidget {
       lastAccountDeletionDetailProvider.notifier,
     );
     final List<UserStateDrop> drops = userStateDrops(ref);
+    final bool passwordGrant = ref
+        .read(authCapabilitiesProvider)
+        .passwordReauth;
     core.AccountDeletionOutcome outcome;
     String? detail;
     try {
       if (user == null) throw core.AuthFailure('Not signed in');
-      // Re-authenticate through the SAME seam sign-in uses, so it works against
-      // whatever identity provider is wired.
-      // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
-      // PASSWORD-LESS account (Sign in with Apple) has nothing to type here, so
-      // it confirms by signing in with its provider AGAIN — unless it has just
-      // done so (on web Apple's redirect reloads the app, and the user taps
-      // Delete a second time). `DELETE /v1/account` re-checks the token's own
-      // authentication time and refuses a stale one with `reauth_required`.
-      if (user.hasPasswordIdentity) {
+      // Re-authenticate through the SAME seam sign-in uses (O-OAUTH-DELETE-REAUTH,
+      // AB-A5-01, #1142 item 2): `core.deletionReauthOf`, plus a linked account's
+      // typed password where the grant passes; the server holds both to `amr`.
+      if (core.deletionReauthOf(user) == core.DeletionReauth.password ||
+          (password.isNotEmpty &&
+              core.offersPasswordReauth(user, passwordGrant: passwordGrant))) {
         await auth.signInWithEmail(
           email: user.email,
           password: password,
@@ -587,6 +591,7 @@ class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
     required this.passwordless,
+    required this.passwordToo,
     required this.password,
     required this.captcha,
     required this.onConfirm,
@@ -597,6 +602,9 @@ class _DeleteAccountDialog extends StatefulWidget {
   /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. No password field for a password-less
   /// account: the provider's own sheet is the confirmation.
   final bool passwordless;
+
+  /// #1142 item 2: the password field is OFFERED, optional, next to the sheet.
+  final bool passwordToo;
 
   /// Owned by the caller so [onConfirm] can be the zero-argument closure the
   /// stamp-properties anchor names; disposed here, the last reader.
@@ -622,24 +630,13 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
 
   /// The outcome, in words the person who asked can act on.
   ///
-  /// 🔴 THE SENTENCE COMES FROM `packages/core`, NOT FROM THE `.arb`, and the
-  /// reason is that the `.arb` cannot say two of the things that have to be
-  /// said. It has no key for a SUCCESS at all — [deleteAccountFailureMessage]
-  /// maps `deleted` to "Could not delete your account", which is only ever
-  /// reached when the mapping is asked something it was not built for — and its
-  /// `reauthFailed` arm shares `deleteAccountFailed` with `nothingDeleted`,
-  /// whose sentence does not say the two facts that matter after a refused
-  /// password: nothing was sent, and you are still signed in.
-  /// `core.AccountDeletionOutcome.plainMessage` says both, for every value, and
-  /// no app can invent a kinder one. `apps/subscriptiontracker` renders the same source on the
-  /// same surface for the same reason.
-  ///
-  /// ⚠️ THE COST IS STATED RATHER THAN HIDDEN: `plainMessage` is English only,
-  /// so this dialog's result sentence is not translated today while the form
-  /// above it is. Closing that is one `.arb` change and no code change — add
-  /// `deleteAccountDeleted` and `deleteAccountReauthFailed` with values
-  /// byte-identical to `plainMessage`, extend [deleteAccountFailureMessage] to
-  /// cover them, and call it from here instead.
+  /// 🔴 THE SENTENCE COMES FROM `packages/core`, NOT FROM THE `.arb`: the `.arb`
+  /// has no key for a SUCCESS, and its `reauthFailed` arm cannot say that nothing
+  /// was sent and you are still signed in. `core.AccountDeletionOutcome
+  /// .plainMessage` says both, for every value (`apps/subscriptiontracker` renders
+  /// the same source). ⚠️ COST: it is English only. Closing that is one `.arb`
+  /// change (`deleteAccountDeleted`, `deleteAccountReauthFailed`, byte-identical
+  /// to `plainMessage`) plus [deleteAccountFailureMessage] covering them.
   DestructiveActionReport _report(core.AccountDeletionOutcome outcome) =>
       DestructiveActionReport(
         message: outcome.plainMessage,
@@ -654,13 +651,16 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
     final ChassisLocalizations l10n = widget.l10n;
     return DestructiveConfirmDialog(
       title: l10n.deleteAccountConfirmTitle,
-      body: widget.passwordless
+      body: widget.passwordless && !widget.passwordToo
           ? l10n.deleteAccountConfirmBodyApple
           : l10n.deleteAccountConfirmBody,
-      secretHint: widget.passwordless
+      secretHint: widget.passwordless && !widget.passwordToo
           ? l10n.deleteAccountReauthHintApple
           : l10n.deleteAccountReauthHint,
       secretRequired: !widget.passwordless,
+      secretAlternative: widget.passwordToo
+          ? l10n.deleteAccountReauthHintApple
+          : null,
       secretLabel: l10n.deleteAccountPassword,
       secret: widget.password,
       challenge: TurnstileGate(

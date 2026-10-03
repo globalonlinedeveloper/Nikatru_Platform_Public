@@ -34,6 +34,7 @@
 // does it — the union read denies a row from the other world, and a row with no
 // world at all.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../../_shared/src/ports/sql';
 import { nowIso } from '../d1';
 import type { MoneyEnvironment } from './contract';
 
@@ -104,7 +105,7 @@ export interface VerifiedGrant {
 }
 
 export interface BundleStoreDeps {
-  db: D1Database;
+  db: SqlDb;
   /** From configuration, never from the payload. [5]M-12 */
   environment: MoneyEnvironment;
 }

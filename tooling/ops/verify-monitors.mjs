@@ -92,7 +92,7 @@ import { fileURLToPath } from 'node:url';
 // a fifth that spelled `nikatru.com` or `/<id>/` by hand would be the second
 // spelling of a fact, which is how a register comes to disagree with the tree.
 import { APEX_HOST, publicAppUrl, appBaseHref } from '../sites/apex.mjs';
-import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { listMonitors } from './monitor-api/index.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
 // while an undici (fetch) keep-alive handle is still open CRASHES libuv on
@@ -379,20 +379,12 @@ try {
   // exits 2 and none of them becomes a pass: the retry tells a blip from an
   // outage, it forgives neither.
   //
-  // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
-  // request carrying one with error 1000 before the origin is reached. Recorded
-  // here because this is a hand-rolled request and the mistake is cheap to make.
-  const res = await fetchWithBoundedRetry(
-    ({ signal }) =>
-      fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, {
-        headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
-        signal,
-      }),
-    // ⏱ 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): `secondLook` — one more
-    // spread-out pass before COVERAGE LOST, because a US edge stalling in front
-    // of the Mumbai tunnel can outlast the first ~50 s and red main for nothing.
-    { describe: (why) => `the monitor list: ${why}`, secondLook: true },
-  );
+  // ⏱ 2026-10-01 (port-telemetry): the request itself — the bounded GET with its
+  // `secondLook` (row O-OPS-PROBE-US-EDGE-STALL) and no `CF-Connecting-IP` header —
+  // moved VERBATIM to tooling/ops/monitor-api/glitchtip.mjs `listMonitors`, the
+  // one module ops scripts reach the monitor API through (assert-ports limb 9).
+  // What it answers is still graded here, branch for branch.
+  const res = await listMonitors({ base: BASE, org: ORG, token: TOKEN });
   // ⏱ 2026-09-11 — EVERY BRANCH BELOW IS "I COULD NOT LOOK", SO EVERY ONE IS EXIT 2.
   // All three used to set exit 1, the code this file gives "the register and the
   // live monitors DISAGREE". An expired token, a 5xx from the Oracle box, a DNS

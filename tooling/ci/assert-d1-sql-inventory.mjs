@@ -65,6 +65,8 @@ import { join, resolve } from 'node:path';
 import {
   MEASURED_CAUSE,
   REJECTED_FIXTURE,
+  SHARED_SRC,
+  fakeEngineFiles,
   holePlaceholder,
   identifierRole,
   inventoryFile,
@@ -156,8 +158,11 @@ const toolingFiles = TOOLING_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d));
 // said so rather than letting four statements slip out of the scan. A file that
 // builds a statement for a production database belongs here whether or not it is
 // deployed on its own.
-const SHARED_DIRS = ['services/_shared/src'];
-const sharedFiles = SHARED_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d));
+const SHARED_DIRS = [SHARED_SRC];
+// ⏱ 2026-10-02 · port-sql: a port's registered FAKE engine is not Worker code and
+// sends nothing to D1 (d1-sql-inventory.mjs `fakeEngineFiles`); printed below.
+const fakeEngines = fakeEngineFiles(ROOT);
+const sharedFiles = SHARED_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d)).filter((f) => !fakeEngines.has(f));
 if (sharedFiles.length === 0) {
   coverageLost([
     `not one source file was found under ${SHARED_DIRS.join(', ')}.`,
@@ -499,6 +504,10 @@ console.log(
 console.log(
   `    ${constrained} interpolated-identifier statement(s) sit in a file that constrains the identifier, and the ` +
     `cause sentence is pinned in all ${CAUSE_SITES.length} places it is explained`,
+);
+console.log(
+  `    ⬜ ${fakeEngines.size} registered fake engine(s) outside the domain by derivation (tooling/ports/*.json ` +
+    `\`status: fake\`, imported by no Worker — assert-ports limb 4): ${[...fakeEngines].join(', ') || 'none'}`,
 );
 console.log(
   `    ⬜ ${skipped.length} file(s) carry the negative-control fixture and are outside R1 by derivation ` +

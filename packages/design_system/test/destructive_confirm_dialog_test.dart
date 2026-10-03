@@ -45,6 +45,7 @@ void main() {
     String confirmLabel = 'Delete',
     String acknowledgeLabel = 'Got it',
     bool secretRequired = true,
+    String? secretAlternative,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -65,6 +66,7 @@ void main() {
                   acknowledgeLabel: acknowledgeLabel,
                   onConfirm: onConfirm,
                   secretRequired: secretRequired,
+                  secretAlternative: secretAlternative,
                   secretFieldKey: kSecret,
                   confirmKey: kConfirm,
                   resultKey: kResult,
@@ -104,6 +106,32 @@ void main() {
       );
       expect(find.byKey(kSecret), findsNothing);
       expect(find.text('Confirm your password to continue.'), findsOneWidget);
+      expect(confirmButton(tester).onPressed, isNotNull);
+      await tester.tap(find.byKey(kConfirm));
+      await tester.pumpAndSettle();
+      expect(runs, 1);
+    });
+
+    // ⏱ 2026-10-02 · #1142 review item 2 — a linked account's OPTIONAL password.
+    testWidgets('🔴 secretAlternative: the field is OFFERED, the alternative '
+        'is said, and the button is live with the field empty', (
+      WidgetTester tester,
+    ) async {
+      final TextEditingController secret = TextEditingController();
+      addTearDown(secret.dispose);
+      int runs = 0;
+      await pump(
+        tester,
+        secret: secret,
+        secretRequired: false,
+        secretAlternative: 'Or leave it empty and sign in again.',
+        onConfirm: () async {
+          runs++;
+          return const DestructiveActionReport(message: 'gone', succeeded: true);
+        },
+      );
+      expect(find.byKey(kSecret), findsOneWidget);
+      expect(find.text('Or leave it empty and sign in again.'), findsOneWidget);
       expect(confirmButton(tester).onPressed, isNotNull);
       await tester.tap(find.byKey(kConfirm));
       await tester.pumpAndSettle();

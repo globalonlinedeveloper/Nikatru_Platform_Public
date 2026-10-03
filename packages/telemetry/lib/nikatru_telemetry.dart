@@ -24,3 +24,4 @@ export 'src/sentry_telemetry_client.dart';
 export 'src/telemetry_bootstrap.dart';
 export 'src/telemetry_client.dart';
 export 'src/telemetry_config.dart';
+export 'src/telemetry_rate_bound.dart';

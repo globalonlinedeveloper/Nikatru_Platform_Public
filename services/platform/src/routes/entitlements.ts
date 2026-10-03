@@ -62,6 +62,7 @@
 // it cannot compare. `undefined` is dropped by JSON serialisation, so the key is
 // ABSENT rather than null when no grant exists ([ADR 057] §6 — additive only).
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { allRows } from '../lib/d1';
@@ -76,7 +77,7 @@ import {
 const entitlements = new Hono<AppEnv>();
 
 /** The reader's dependencies, all of them this Worker's own plumbing. */
-const readerDeps = (db: D1Database): EntitlementReadDeps => ({
+const readerDeps = (db: SqlDb): EntitlementReadDeps => ({
   db,
   allRows,
   isMoneyEnvironment,

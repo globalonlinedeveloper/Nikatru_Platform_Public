@@ -583,13 +583,32 @@
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
   // sandbox with no breaker at all, not an error anyone would see.
   //
-  // NOT BOUND, each on purpose: JWKS_CACHE (optional, src/types.ts:30);
-  // SIGNUPS and BACKUPS_R2 (optional, :46 and :54; only the nightly backup
-  // cron reads them, src/backup/index.ts); SUBSCRIPTIONTRACKER_DB and the ERASURE_* services
-  // (the nightly fan-out and account deletion — no cron runs here, and a
-  // sandbox erasure relay into production's app Worker is the one direction
-  // this block must not open); APP_ERASURE_ENDPOINTS for the same reason. No
-  // secret is set here or anywhere in this file.
+  // ⏱ 2026-10-01 · EVERY TOP-LEVEL BINDING IS TWINNED HERE, ON A SANDBOX RESOURCE
+  // (rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS). This paragraph
+  // said "NOT BOUND, each on purpose" of JWKS_CACHE, SESSION_REVOKED, SIGNUPS,
+  // BACKUPS_R2, SUBSCRIPTIONTRACKER_DB, the ERASURE_* services and
+  // APP_ERASURE_ENDPOINTS, and the cost of that was a sandbox no E2E could learn
+  // anything from about the two flows that matter most: a sign-out-everywhere
+  // wrote no revocation (no SESSION_REVOKED) and an account deletion relayed
+  // nowhere and emptied no app database (no endpoints, no binding, no DB). Its one
+  // load-bearing reason — "a sandbox erasure relay into production's app Worker is
+  // the one direction this block must not open" — is met by the twins themselves:
+  // each points at a SANDBOX resource (the app's sandbox script, its sandbox
+  // database, sandbox namespaces and bucket), never production's, and
+  // tooling/store/capture-backend.mjs refuses a sandbox id, bucket or service name
+  // that any top level binds. The three per-app twins are RENDERED from each app
+  // Worker's own env.sandbox (tooling/scripts/render-platform-app-block.mjs, the
+  // sandbox-* regions). The namespaces and the bucket are CREATED by
+  // tooling/scripts/provision-sandbox-twins.mjs --apply (create only, idempotent),
+  // which writes their ids here. ⏱ 2026-10-03: NOT YET RUN — SESSION_REVOKED and
+  // SIGNUPS still carry the all-zeros id and the bucket does not exist, so a
+  // sandbox deploy fails until that lead step lands the ids and deletes the
+  // register's `pendingTwins` rows. tooling/ci/assert-platform-register.mjs limb 8 holds the
+  // set: every top-level binding name appears here, or the register says why not.
+  // Still no cron runs here (`crons: []`), so the nightly backup and fan-out never
+  // fire in the sandbox; their bindings exist so a route that reads them is tested
+  // against the same shape it meets in production. No secret is set here or
+  // anywhere in this file.
   "env": {
     "sandbox": {
       "routes": [],
@@ -620,8 +639,24 @@
         // why: src/lib/native-attest/index.ts — a development-signed build's
         // App Attest key carries the `appattestdevelop` AAGUID; only the
         // sandbox accepts it. The top level never sets this.
-        "APP_ATTEST_ALLOW_DEVELOPMENT": "true"
+        "APP_ATTEST_ALLOW_DEVELOPMENT": "true",
+        // why: src/routes/account.ts relays a deletion to each app's SANDBOX
+        // Worker at its workers.dev origin.
+        // ── GENERATED BEGIN sandbox-app-erasure-endpoints — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
+        "APP_ERASURE_ENDPOINTS": "subscriptiontracker=https://subscriptiontracker-api-sandbox.nikatru.workers.dev"
+        // ── GENERATED END sandbox-app-erasure-endpoints ──
       },
+      // why: the erasure retry (src/types.ts, [ADR 081]) reaches the app's
+      // SANDBOX script by Service Binding, never the production Worker.
+      "services": [
+        // ── GENERATED BEGIN sandbox-app-erasure-bindings — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
+        {
+          "binding": "ERASURE_SUBSCRIPTIONTRACKER",
+          "service": "subscriptiontracker-api-sandbox",
+          "entrypoint": "ErasureEntrypoint"
+        }
+        // ── GENERATED END sandbox-app-erasure-bindings ──
+      ],
       "d1_databases": [
         {
           // why: src/types.ts:13 and the /v1/health probe (src/index.ts:169).
@@ -631,14 +666,48 @@
           "database_name": "platform_db_sandbox",
           "database_id": "ead92001-03e1-4f71-9b92-c64963a24925",
           "migrations_dir": "migrations"
+        },
+        // why: each app's SANDBOX database, which a sandbox erasure empties and
+        // the fan-out reads by APP_TARGETS' binding name. The app Worker migrates it.
+        // ── GENERATED BEGIN sandbox-app-databases — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
+        {
+          "binding": "SUBSCRIPTIONTRACKER_DB",
+          "database_name": "subscriptiontracker_db_sandbox",
+          "database_id": "4e7c7730-3dc7-4004-9895-403b17702b91"
         }
+        // ── GENERATED END sandbox-app-databases ──
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:77 reads it
         // and /v1/health probes it (src/index.ts:180), so an absent binding
         // 503s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
-        { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
+        { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" },
+        // why: the stale-JWKS fallback (services/_shared/src/auth.ts) reads it
+        // when the JWKS endpoint cannot be reached. The SAME sandbox namespace
+        // services/subscriptiontracker-api's env.sandbox binds, as production's
+        // JWKS_CACHE is one namespace for the portfolio.
+        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
+        // why: src/routes/sessions.ts WRITES the revocation list (`rev:<sub>`)
+        // and every sandbox Worker's auth reads it: without it a sandbox E2E
+        // cannot see a revoked session refused. `session-revoked-sandbox`, to be
+        // created by tooling/scripts/provision-sandbox-twins.mjs --apply (not yet
+        // run: all zeros, a `pendingTwins` row).
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" },
+        // why: src/backup/index.ts exports it nightly (its only reader; no cron
+        // runs here). `signups-sandbox`, to be created by
+        // tooling/scripts/provision-sandbox-twins.mjs --apply (not yet run: all
+        // zeros, a `pendingTwins` row), so a sandbox backup run never reads
+        // production's waitlist.
+        { "binding": "SIGNUPS", "id": "00000000000000000000000000000000" }
+      ],
+      // why: src/backup/index.ts writes it (no cron runs here, so only a test
+      // or a hand-run reaches it). `nikatru-backups-sandbox`, to be created by
+      // tooling/scripts/provision-sandbox-twins.mjs --apply (not yet run): an
+      // unresolvable bucket binding fails the sandbox deploy, so the bucket must
+      // exist before any sandbox dispatch.
+      "r2_buckets": [
+        { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups-sandbox" }
       ],
       "ratelimits": [
         {

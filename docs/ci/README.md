@@ -871,11 +871,11 @@ naming the job it belonged to and the line it sat above.
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 12 |
 | [`land.md`](land.md) | `.github/workflows/land.yml` | Land | `schedule`, `workflow_run`, `pull_request_target`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 5 |
-| [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main healthy | `workflow_run` | 1 |
+| [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main health status (posts CI's verdict) | `workflow_run` | 1 |
 | none | `.github/workflows/migrate-platform-db.yml` | Migrate PLATFORM_DB | `workflow_call` | 1 |
 | none | `.github/workflows/mutation-proofs.yml` | Mutation proofs | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
-| none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 6 |
+| none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 11 |
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 14 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/regen-gradle-verify.yml` | Regenerate Gradle verification | `workflow_dispatch` | 1 |
