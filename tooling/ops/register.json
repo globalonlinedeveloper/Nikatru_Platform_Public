@@ -3515,42 +3515,39 @@
     {
       "id": "duty.supabase-identity-log-retention",
       "kind": "duty",
-      "what": "/opt/supabase/identity-log-retention.sh (docs/platform/supabase/boxc/identity-log-retention.sh), root cron `10 4 * * *` on the auth box (Box C), via /opt/supabase/hb-run.sh, the wrapper the other Box C duties run under: it POSTs the heartbeat ONLY when the job exited 0. Once a day it cuts the request logs of supabase-auth (GoTrue) and supabase-envoy into a root-only archive and deletes anything older than RETAIN_DAYS=7. 🔴 THE PRIVACY NOTICE PUBLISHES THAT 7 DAYS (tooling/legal/policy-claims.json), so the job is watched, not assumed: since review 1 of #1140 (finding 4) each container is cut on its own, the archive prune always runs, and the script itself FAILS (exit 1, no beat) on a container it cannot find, on no archive of a container inside 36 h, and on any archive older than 7 days still present. THE BOX IS ON Asia/Kolkata (IST): `10 4 * * *` is 22:40 UTC the day before.",
-      "detector": "GlitchTip heartbeat monitor 'Supabase identity log retention', project `ops`, Heartbeat, interval 129600s (24h cadence x 1.5), on the SERVICES box (Box B) — off-host from the duty, like the other Box C duties' monitors. ⚠️ NOT YET CREATED: see `degradedUntil`.",
+      "what": "/opt/supabase/identity-log-retention.sh (docs/platform/supabase/boxc/identity-log-retention.sh), root cron `10 4,16 * * *` on the auth box (Box C), every 12 h, via /opt/supabase/hb-run.sh, the wrapper the other Box C duties run under: it POSTs the heartbeat ONLY when the job exited 0. Each run cuts the request logs of supabase-auth (GoTrue) and supabase-envoy into a root-only archive and deletes anything older than RETAIN_DAYS=7. 🔴 THE PRIVACY NOTICE PUBLISHES THAT 7 DAYS (tooling/legal/policy-claims.json), so the job is watched, not assumed: since review 1 of #1140 (finding 4) each container is cut on its own, the archive prune always runs, and the script itself FAILS (exit 1, no beat) on a container it cannot find, on no archive of a container inside 36 h, and on any archive older than 7 days still present. THE BOX IS ON Asia/Kolkata (IST): `10 4,16 * * *` is 22:40 (the day before) and 10:40 UTC. ⏱ 2026-10-03 (club-nits-b B13): twice a day because GlitchTip caps a heartbeat interval at 86400 s, so a once-a-day beat could not carry any margin; the script header in docs/platform/supabase/boxc/ still shows the once-a-day line it was first installed with.",
+      "detector": "GlitchTip heartbeat monitor 43 'Box C identity log retention', project `ops`, Heartbeat, interval 86400s (12h cadence x 2 — GlitchTip's ceiling for a monitor interval), alert rule 2, on the SERVICES box (Box B) — off-host from the duty, like the other Box C duties' monitors.",
       "response": "Read the newest lines of /var/log/nikatru-identity/run.log on Box C: every step prints `ok` or `FAIL` with the container it is about. A missing container is usually a compose rename; fix the name in the script's container list, re-install it, and run it by hand through hb-run.sh so the beat lands.",
-      "cadence": "24h",
+      "cadence": "12h",
       "mechanism": {
         "substrate": "supabase-box-cron",
         "anchor": "Private/runbooks/boxes/boxc.md",
-        "record": "GlitchTip heartbeat monitor 'Supabase identity log retention's check history",
+        "record": "GlitchTip heartbeat monitor 43 'Box C identity log retention''s check history",
         "failingValue": "no successful heartbeat inside the window — which is what a dead cron, a container the script cannot find, a cut that stopped happening, an archive kept past 7 days and a box that is off all look like",
         "readBy": "tooling/ci/assert-ops-register.mjs, through this row's `recordQuery`, and tooling/ops/verify-monitors.mjs on the ops-watch schedule",
         "recordQuery": {
           "reader": "glitchtip-heartbeat",
           "org": "nikatru",
-          "monitor": "not-yet-created",
-          "monitorName": "Supabase identity log retention — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
-          "why": "⚠️ THE MONITOR DOES NOT EXIST YET, SO THE ID IS DELIBERATELY NOT A NUMBER: the probe then answers UNREADABLE (a print) rather than reading some other monitor's history. A guessed number could name a real, green monitor and report this duty healthy. The lead creates the monitor, beats it once by hand through hb-run.sh BEFORE filling the id (TRAPS ci-26: a monitor with no beat grades absent), and replaces this value with its id."
+          "monitor": 43,
+          "monitorName": "Box C identity log retention — carried for a HUMAN READER ONLY; the reader keys by `monitor` and never asserts this string.",
+          "why": "The record is monitor 43's check history in GlitchTip, read with GLITCHTIP_TOKEN. ⏱ 2026-10-03 (club-nits-b B13): this value was the string `not-yet-created` until the monitor existed, so the probe answered UNREADABLE rather than reading another monitor's history; a lead sub-agent then read the live GlitchTip, found monitor 43 and a manual beat through hb-run.sh at 14:28:35Z answered 200 (TRAPS ci-26: a monitor with no beat grades absent), so the id is filled."
         }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
-        "what": "GlitchTip heartbeat monitor 'Supabase identity log retention', project `ops`, on the SERVICES box — off-host from the duty. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other Box C duties (tooling/ops/alarm-chains.json).",
-        "signal": "No heartbeat inside the monitor's 129600s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
-        "margin": "129600s against a 24h cadence — 1.5x, so a run that is late by hours is absorbed and one missed run alarms the next afternoon.",
+        "what": "GlitchTip heartbeat monitor 43 'Box C identity log retention', project `ops`, on the SERVICES box — off-host from the duty. The alert rule (id 2, uptime) carries the email recipient and the ntfy webhook recipient id 3, as for the other Box C duties (tooling/ops/alarm-chains.json).",
+        "signal": "No heartbeat inside the monitor's 86400s interval -> Down transition -> the `ops` uptime alert rule -> email to support@nikatru.com and a push to the nikatru-page ntfy topic.",
+        "margin": "86400s against a 12h cadence — 2x, so one missed run is absorbed and two are not. GlitchTip caps a heartbeat interval at 86400 s, which is why the cron runs every 12 h rather than the interval stretching past a day.",
         "ownerGated": true,
-        "gap": "⬜ THE MONITOR IS NOT CREATED YET (`degradedUntil`), so today NOTHING turns a failed run into a message; the script's own exit code and run.log are the whole of it until the lead step lands. And the down transition will not have been forced."
+        "gap": "The down transition has not been forced: the alert path from monitor 43 to email and ntfy is the same rule 2 the other Box C monitors use, but no deliberate missed beat has proven it for this monitor."
       },
       "accessProviders": [
         "hostinger"
       ],
       "ownerGated": true,
-      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-2 script on Box C (sha12 aacf07ad23e8, which also runs the MFA challenge address sweep; it replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id; (3) hb-run.sh is not in any backup set, as for every Box C duty.",
-      "degradedUntil": "2026-10-09",
-      "degradedWhy": "The heartbeat monitor this row reads does not exist yet (lead step of #1140 review 1, finding 4): until its id is filled, the probe is UNREADABLE and a failed run reaches nobody. One week, then this row reddens every branch until the id is in.",
-      "degradedLeadDays": 3,
-      "source": "unverified",
-      "unverifiedWhy": "Written before the monitor exists and before the review-1 script is installed on Box C: no beat has been observed. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs (a missing container, the prune that must still run, no fresh archive, a sweep that did not run); the box half is the lead's."
+      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-2 script on Box C (sha12 aacf07ad23e8, which also runs the MFA challenge address sweep; it replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) hb-run.sh is not in any backup set, as for every Box C duty.",
+      "source": "verified",
+      "verifiedHow": "2026-10-03 — measured on the live GlitchTip by a lead sub-agent (lead 7185eb, 14:55Z): monitor 43 'Box C identity log retention' exists in project `ops`, interval 86400 s, alert rule 2, created 2026-10-02T04:51:55Z, and receives beats from Box C's hb-run.sh; a manual beat at 14:28:35Z returned 200. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs."
     },
     {
       "id": "revert.worker.platform",
