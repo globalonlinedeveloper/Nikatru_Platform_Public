@@ -484,6 +484,18 @@ void main() {
     expect(authErrorText(ta, e), ta.reacceptTermsNotRecorded);
   });
 
+  test('the last sign-in method and a wrong code have their own sentences',
+      () {
+    expect(
+      authErrorText(en, coded(core.AuthFailure.lastSignInMethod)),
+      en.authLastSignInMethod,
+    );
+    expect(
+      authErrorText(en, coded(core.AuthFailure.codeInvalid)),
+      en.authCodeInvalid,
+    );
+  });
+
   test('it is localized, not hardcoded English', () {
     expect(authErrorText(ta, fail('captcha_failed')), ta.authCaptchaFailed);
     expect(

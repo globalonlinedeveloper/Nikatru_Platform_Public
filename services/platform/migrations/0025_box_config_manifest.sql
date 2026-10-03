@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0024_box_config_manifest.sql — WHAT EACH BOX SAYS ITS LIVE CONFIG IS
+-- 0025_box_config_manifest.sql — WHAT EACH BOX SAYS ITS LIVE CONFIG IS
 -- (PB-27, O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
 --
 -- Applies to the SHARED platform_db (services/platform is the sole applier):

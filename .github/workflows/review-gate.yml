@@ -1,0 +1,57 @@
+name: Review gate
+
+# Labels the pull requests that need an INDEPENDENT review before they may merge
+# (owner rule 2026-09-29; row O-REVIEWS-DEPEND-ON-THE-LAPTOP). Every decision is
+# tooling/autopilot/review-paths.mjs, unit-tested in
+# tooling/ci/test/autopilot-review-gate.test.mjs; land-next.mjs reads the labels and
+# the verdict reviews. The design is docs/autopilot/contract.md. Only `# why:` lines
+# live here, and docs/ci/README.md carries the rules every workflow obeys.
+
+on:
+  # zizmor: ignore[dangerous-triggers]
+  # why: pull_request_target ONLY to read the PR's file list over the API and set
+  # labels, which a pull_request run from a fork could not do. Safe here: the
+  # checkout names main, the only code run is review-paths.mjs from main, and
+  # nothing from the event reaches a `run:` except the PR number.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  # why: one labeller per pull request; a newer push supersedes an older run, and
+  # the newer run reads the same API, so cancelling loses nothing.
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  label:
+    name: Label review-classed pull requests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # why: add `needs-review`, and drop a `review:*` verdict label pinned to an old head.
+      pull-requests: write
+      # why: the checkout of main (this tooling), never the pull request's code.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: ./.github/actions/setup-node
+      # why: the PR number is the only event value passed to a shell; the
+      # synchronize case is a separate step chosen by `if:`, so the action name
+      # never reaches one.
+      - name: Classify the file list and set the labels
+        if: github.event.action != 'synchronize'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node tooling/autopilot/review-paths.mjs --pr "$PR_NUMBER"
+      - name: Classify the file list, set the labels and drop a verdict pinned to the old head
+        if: github.event.action == 'synchronize'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node tooling/autopilot/review-paths.mjs --pr "$PR_NUMBER" --synchronize

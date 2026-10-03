@@ -668,6 +668,9 @@ function baseRegister() {
         detector: 'a heartbeat monitor on another host',
         response: 'run it by hand and read its log',
         cadence: '8h',
+        // ⏱ 2026-10-02 — every scheduled laptop duty names its outage home
+        // (checkLaptopOutageHomes, O-LAPTOP-OUTAGE-READS-AS-RED).
+        outage: { cloudTwin: 'none: laptop-only', laptopOnly: 'the whole bundle; it catches up on boot' },
         mechanism: {
           substrate: 'windows-task-scheduler',
           anchor: 'renovate.json',
@@ -2336,8 +2339,15 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  2026-10-01: 30 → 32, the same documented raise for the next scheduled
    *  workflow, duty.freshness.time-travel (.github/workflows/time-travel.yml).
    *  The replay measured 32 after the row: one new page plus one cross-check,
-   *  answered by replayWorld's derived run. */
-  const OPS_GITHUB_REQUEST_CEILING = 32;
+   *  answered by replayWorld's derived run.
+   *  2026-10-02: 30 → 31 on main, ONE read: the laptop heartbeat (`beat.json`
+   *  on ref lead/heartbeat, the contents API), made only when a duty.laptop.*
+   *  row is failing, so the outage rule can grade it DEGRADED during a proven
+   *  outage (O-LAPTOP-OUTAGE-READS-AS-RED). A healthy run makes none.
+   *  2026-10-03: 33 at the merge of main into club/rt-ports — the two raises
+   *  above are independent (+2 time-travel, +1 heartbeat); the replay measured
+   *  33 on the merged tree, and 32 reds this test. */
+  const OPS_GITHUB_REQUEST_CEILING = 33;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
@@ -5605,8 +5615,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // ⏱ 2026-10-02: five. duty.workflow.land.yml (O-MERGES-DEPEND-ON-THE-LAPTOP) declares `workflow_dispatch`
     // and carries NO recordQuery on purpose: a transient read failure of the lander would otherwise redden
     // every PR's ci-gate until its next slot. It is excluded with that reason printed, not silently.
-    assert.equal(census.excluded.length, 5, 'the committed register has exactly five unadmitted trigger rows');
+    // ⏱ 2026-10-02: seven. duty.workflow.review-gate.yml (O-REVIEWS-DEPEND-ON-THE-LAPTOP; no
+    // workflow_dispatch, its next pull request event re-runs it) and duty.workflow.autopilot-watch.yml
+    // (O-WATCH-RUNS-ON-THE-LAPTOP; no recordQuery for land.yml's reason) — each excluded and named.
+    assert.equal(census.excluded.length, 7, 'the committed register has exactly seven unadmitted trigger rows');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.land\.yml — .* carries no `mechanism\.recordQuery`/.test(l)), 'land.yml is excluded for want of a recordQuery, and says so');
+    for (const id of ['duty.workflow.review-gate.yml', 'duty.workflow.autopilot-watch.yml']) assert.ok(census.excluded.some((l) => l.startsWith(`${id} —`)), `${id} is excluded and named`);
     assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
@@ -6202,7 +6216,13 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     }
   };
   /** Pinned, because the rule below turns on the REAL clock and a test whose
-   *  verdict changes with the hour it runs at is not a test. */
+   *  verdict changes with the hour it runs at is not a test. ⏱ 2026-10-02 · PB-09:
+   *  only the PURE cases below use it. The two SPAWNED replays serve the COMMITTED
+   *  register, whose own records are dated up to today (revert.worker.platform's
+   *  lastDone 2026-10-02): a pinned clock older than them left those unnormalised,
+   *  and the replay red on the fixture's age, never on the register. They take the
+   *  real clock, replayRegisterFile's default; their lane drills (2026-09-17/20)
+   *  and the 2099 control sit on the same side of it at any hour this suite runs. */
   const REAL_NOW = Date.parse('2026-09-20T23:59:59Z');
 
   test('drill-date replay fixture · a record the freeze CANNOT have seen is dated at the freeze; one it did see, and every dated tripwire, is untouched', () => {
@@ -6245,7 +6265,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
   test('drill-date replay fixture · the three drills dated 2026-09-17 and 2026-09-20 replay GREEN, and the guard READS each one as an observed down-transition', () => {
     const clean = replay(HOST.PR);
     assert.equal(clean.code, 0, `green control: today's register replays clean\n${clean.problems.join('\n')}`);
-    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(), realNowMs: REAL_NOW }) });
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills() }) });
     assert.equal(r.code, 0, `a record written after the freeze must not read as a break:\n${r.problems.join('\n')}\n${r.out.slice(-3000)}`);
     assert.deepEqual(r.problems, []);
     // …and NOT vacuously: each drill is read, graded and PRINTED. Without the
@@ -6262,7 +6282,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
 
   test('drill-date replay fixture · RED CONTROL — a drill dated past the REAL clock is NOT normalised and the spawned replay goes red on it', () => {
     const over = { 'duty.laptop.nikatru-pipeline-driver': { ...LANE_DRILLS['duty.laptop.nikatru-pipeline-driver'], date: '2099-01-01' } };
-    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over), realNowMs: REAL_NOW }) });
+    const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over) }) });
     assert.equal(r.code, 1, `a date nothing has reached must still BLOCK:\n${r.out.slice(-3000)}`);
     assert.equal(r.problems.length, 1, `the other two records — later than the freeze, earlier than the clock — must still be clean:\n${r.problems.join('\n')}`);
     assert.match(

@@ -238,7 +238,7 @@
         },
         "box_config_manifest": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-10-01 · PB-27. NO app_version COLUMN AND NO OTHER MARKER: 0024_box_config_manifest.sql gives this table `box`, `manifest` and `posted_at` — one row per box, replaced whole by POST /v1/ops/box-manifest, which a box's own cron calls with a secret scoped to that box (services/platform/src/routes/box-manifest.ts). `box` is a closed set of two the route enforces, `manifest` is sha256 hashes of box config files and `posted_at` is the server's instant; no row is written by an app, a build or a live verification, and none names a build, an app or a money world a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+          "reason": "⏱ 2026-10-01 · PB-27. NO app_version COLUMN AND NO OTHER MARKER: 0025_box_config_manifest.sql gives this table `box`, `manifest` and `posted_at` — one row per box, replaced whole by POST /v1/ops/box-manifest, which a box's own cron calls with a secret scoped to that box (services/platform/src/routes/box-manifest.ts). `box` is a closed set of two the route enforces, `manifest` is sha256 hashes of box config files and `posted_at` is the server's instant; no row is written by an app, a build or a live verification, and none names a build, an app or a money world a resolver could check. So it is exempt; a marker column added later re-opens this rule."
         },
         "ext_link_floor": {
           "resolver": "exempt",

@@ -18,7 +18,7 @@ legal and tax identity is a third repo this one has no path to at all.
 
 `_playwright` · `apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
 
-1 app(s) (`subscriptiontracker`) · 12 shared Dart packages · 3 Cloudflare Worker(s) ·
+1 app(s) (`subscriptiontracker`) · 14 shared Dart packages · 3 Cloudflare Worker(s) ·
 2 static site(s) · 1 extension(s). The guards are `tooling/ci/*.mjs` and their tests
 are `tooling/ci/test/*.test.mjs` — counted on every run, deliberately not written down here.
 
@@ -30,7 +30,7 @@ any repo. Do not delete, move or de-duplicate anything under `sites/`, or `pnpm-
 ## What the merge gate enforces
 
 `ci-gate` is the ONE required check and it needs 21 job(s) green; `.github/workflows/ci.yml`
-decides which lane runs what, across 30 workflow(s). Reproduce it locally with
+decides which lane runs what, across 32 workflow(s). Reproduce it locally with
 `node tooling/scripts/preflight.mjs` — verifying a subset, or outside CI's environment, passes
 while CI fails. The **spec guards** run from the git hooks instead, because their subject is
 the private corpus and no CI job can read it: `node tooling/scripts/spec-guards.mjs --fast`.

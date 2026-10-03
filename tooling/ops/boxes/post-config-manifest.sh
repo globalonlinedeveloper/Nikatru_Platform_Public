@@ -7,7 +7,7 @@
 # PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
 # The box pushes; CI never SSHes in. The chain:
 #   this script → POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts)
-#   → platform_db.box_config_manifest (migrations/0024_box_config_manifest.sql)
+#   → platform_db.box_config_manifest (migrations/0025_box_config_manifest.sql)
 #   → tooling/ops/check-box-config-drift.mjs in ops-watch, against
 #     tooling/ops/box-config-vendored.json.
 #

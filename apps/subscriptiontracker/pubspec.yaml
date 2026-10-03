@@ -97,6 +97,12 @@ dependencies:
   # lib/state/providers/links.dart; screens reach it through the core interface.
   nikatru_external_links:
     path: ../../packages/external_links
+  # XP-03 app lock (Free) and XP-04/XP-05/IM-11 glance, shortcuts and
+  # share-in: each a package the app adopts at its composition root.
+  nikatru_app_lock:
+    path: ../../packages/app_lock
+  nikatru_widgets:
+    path: ../../packages/widgets
 
   # State management
   flutter_riverpod: ^3.0.0

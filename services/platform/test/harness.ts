@@ -57,7 +57,8 @@ import reminders0020 from '../migrations/0020_reminders.sql?raw';
 import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
-import boxConfigManifest0024 from '../migrations/0024_box_config_manifest.sql?raw';
+import providerTokenClient0024 from '../migrations/0024_provider_token_client.sql?raw';
+import boxConfigManifest0025 from '../migrations/0025_box_config_manifest.sql?raw';
 
 /**
  * platform_db's migration set, IN APPLICATION ORDER, exactly as
@@ -122,9 +123,14 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // encrypted at rest: `token_ct` and `token_key_id` on provider_tokens. ADD
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   providerTokenEncryption0023,
+  // ⏱ 2026-10-02 · review of #1155, finding 1 — the OAuth client a provider
+  // token was issued to (the bundle id, for a native Apple sheet). ADD
+  // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  providerTokenClient0024,
   // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
-  // (routes/box-manifest.ts).
-  boxConfigManifest0024,
+  // (routes/box-manifest.ts). Renumbered 0024 -> 0025 at the merge of main,
+  // which landed 0024_provider_token_client first.
+  boxConfigManifest0025,
 ];
 
 /**
@@ -176,8 +182,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   reminders0020,
   // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
   nativeAttest0022,
-  // 0024 is one CREATE TABLE IF NOT EXISTS — it replays.
-  boxConfigManifest0024,
+  // 0025 is one CREATE TABLE IF NOT EXISTS — it replays.
+  boxConfigManifest0025,
 ];
 
 /**

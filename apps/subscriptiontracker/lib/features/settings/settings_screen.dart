@@ -1,10 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS — the P2.6b MERGE of the stamped chassis screen and Subly's live one.
 //
-// DRAFT for the main session. Not applied anywhere; produced read-only against
-// the live tree (`feat/subscriptiontracker-p24b-money-rail`) and the fully-stamped clone
-// (`/tmp/claude/nk-p21r`). Contract: `restamp-artifacts/overrides.md` §10-11 (R2).
-//
 // 🔴 WHY A MERGE AND NOT AN APPLY. A wholesale apply of the stamped file is
 // GREEN on every guard and still destroys product surfaces:
 //   · the consent-WITHDRAWAL row (DPDP §6(3)) — guard-invisible, because
@@ -64,6 +60,7 @@ import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
 import '../account/account_rows.dart';
+import 'app_lock_setup.dart' show AppLockSettingsRow;
 import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'delete_account_billing.dart';
 import 'reminder_settings.dart';
@@ -660,6 +657,9 @@ class SettingsScreen extends ConsumerWidget {
                           core.ConsentStatus.granted,
                     ),
                   ),
+                  // ⏱ 2026-10-01 · XP-03 · the app lock, Free (ADR 101); its
+                  // row is built in app_lock_setup.dart, in this card's shape.
+                  AppLockSettingsRow(row: _prefRow),
                 ],
               ),
             ),
@@ -821,9 +821,6 @@ class SettingsScreen extends ConsumerWidget {
                   ref.watch(authRepositoryProvider).currentUser,
                   _LinkRow.new,
                 ),
-                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                // because deleting it is a product decision, not a merge one.
-                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
               ],
               // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
               // export. test/settings_export_test.dart parses its file back.

@@ -93,6 +93,77 @@ void main() {
     });
   });
 
+  group('⏱ 2026-10-02 · #1155 review, finding 1: the native Apple sheet code',
+      () {
+    test(
+        'RED CONTROL: a native-sheet session (no refresh token, a code) hands '
+        'sendAuthorizationCode the code, once', () async {
+      final List<String> codes = <String>[];
+      final List<String> tokens = <String>[];
+      final _SessionAuth auth = _SessionAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerAuthorizationCode: 'c.native-code',
+          oauthProvider: 'apple',
+        );
+      final StreamSubscription<AuthUser?> sub = keepProviderRefreshToken(
+        auth: auth,
+        send: (String p, String t) async => tokens.add('$p:$t'),
+        sendAuthorizationCode: (String p, String c) async =>
+            codes.add('$p:$c'),
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(_signedIn);
+      await Future<void>.delayed(Duration.zero);
+      auth.users.add(_signedIn);
+      await Future<void>.delayed(Duration.zero);
+      expect(codes, <String>['apple:c.native-code']);
+      expect(tokens, isEmpty);
+    });
+
+    test('a session with a refresh token sends the token, never the code',
+        () async {
+      final List<String> codes = <String>[];
+      final List<String> tokens = <String>[];
+      final _SessionAuth auth = _SessionAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerRefreshToken: 'apple-refresh-1',
+          providerAuthorizationCode: 'c.native-code',
+          oauthProvider: 'apple',
+        );
+      final StreamSubscription<AuthUser?> sub = keepProviderRefreshToken(
+        auth: auth,
+        send: (String p, String t) async => tokens.add('$p:$t'),
+        sendAuthorizationCode: (String p, String c) async =>
+            codes.add('$p:$c'),
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(_signedIn);
+      await Future<void>.delayed(Duration.zero);
+      expect(tokens, <String>['apple:apple-refresh-1']);
+      expect(codes, isEmpty);
+    });
+
+    test('without sendAuthorizationCode a code is never offered', () async {
+      final List<String> tokens = <String>[];
+      final _SessionAuth auth = _SessionAuth()
+        ..session = const AuthSession(
+          accessToken: 'a',
+          providerAuthorizationCode: 'c.native-code',
+          oauthProvider: 'apple',
+        );
+      final StreamSubscription<AuthUser?> sub = keepProviderRefreshToken(
+        auth: auth,
+        send: (String p, String t) async => tokens.add('$p:$t'),
+      );
+      addTearDown(sub.cancel);
+      auth.users.add(_signedIn);
+      await Future<void>.delayed(Duration.zero);
+      expect(tokens, isEmpty);
+    });
+  });
+
   group('keepAppleRefreshToken, the Apple-only name', () {
     test('is never offered a Google token', () async {
       final List<String> sent = <String>[];

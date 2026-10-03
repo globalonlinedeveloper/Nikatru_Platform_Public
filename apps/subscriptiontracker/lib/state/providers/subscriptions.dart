@@ -27,6 +27,7 @@ import '../settings_controller.dart' show currencyCodeProvider;
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
 import 'auth.dart';
 import 'config.dart';
+import 'device_surfaces.dart' show glancePublisherProvider;
 import 'persistence.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -121,14 +122,16 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
         ref.read(authRepositoryProvider),
         // The same ordered helper every sign-out runs; the queue is KEPT on a
         // forced 401, for this user's return.
-        onSignedOut: () => forgetSignedInUser(
-          offlineStateDrops(
+        onSignedOut: () => forgetSignedInUser(<UserStateDrop>[
+          ...offlineStateDrops(
             api: client,
             store: store,
             owner: null,
             discardQueue: false,
           ),
-        ),
+          // ⏱ 2026-10-02 · review of #1155, finding 7: the glance too.
+          clearGlanceDrop(ref.read(glancePublisherProvider)),
+        ]),
       ),
       // ST-C1: a currency-less row is read in the user's currency, asked at
       // decode time. `read` inside the closure, not `watch` here: a currency
