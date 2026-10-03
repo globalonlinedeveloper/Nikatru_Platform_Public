@@ -893,6 +893,9 @@
   "regen-chain.test.mjs":
     6,
 
+  "rehearse-app2.test.mjs":
+    16,
+
   "release-durable.test.mjs":
     200,
 
@@ -1111,6 +1114,9 @@
 
   "store-key-secret.test.mjs":
     8,
+
+  "store-listings.test.mjs":
+    22,
 
   "store-metadata.test.mjs":
     171,
