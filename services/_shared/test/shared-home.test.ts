@@ -240,3 +240,77 @@ describe('services/_shared is dependency-free except where it declares otherwise
     expect(stale, stale.join('\n\n')).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · review of #1152, minor 2. assert-erasure-reach limb 3 reads
+// each carrier's `src/middleware/auth.ts`, which is now a one-line binding of
+// the kit, so an HS256 fallback added to the kit's `erasureAuth` passed it. This
+// rule reads the kit itself: from `erasureAuth`, follow every call to a function
+// or const declared at top level in services/_shared/src (any module), and no
+// declaration reached may name `verifySupabaseToken`, `legacyHs256Secret` or
+// `SUPABASE_JWT_SECRET`. Comments are dropped first — the kit's headers name all
+// three to say they are NOT reached.
+// ─────────────────────────────────────────────────────────────────────────────
+const SYMMETRIC_REACH = /\b(?:verifySupabaseToken|legacyHs256Secret|SUPABASE_JWT_SECRET)\b/;
+
+/** The code of a module with its comment lines and trailing ` // …` comments dropped. */
+function codeOf(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !l.trimStart().startsWith('//'))
+    .map((l) => l.replace(/\s\/\/\s.*$/, ''))
+    .join('\n');
+}
+
+/** Every top-level function or const declared across the shared home, name → its text
+ *  (from its declaration to the next declaration at column 0). */
+function topLevelDeclarations(): Map<string, string> {
+  const decls = new Map<string, string>();
+  const opener = /^(?:export\s+)?(?:async\s+)?(?:function\s*\*?\s*|const\s+|let\s+)([A-Za-z_$][\w$]*)/gm;
+  for (const m of modules) {
+    const code = codeOf(fs.readFileSync(`${SHARED_SRC}/${m}`, 'utf8'));
+    const starts = [...code.matchAll(opener)];
+    starts.forEach((s, i) => {
+      const end = code.slice(s.index! + 1).search(/^(?:export\s|(?:async\s+)?function\s|const\s|let\s|class\s|interface\s|type\s)/m);
+      const text = end < 0 ? code.slice(s.index!) : code.slice(s.index!, s.index! + 1 + end);
+      decls.set(s[1]!, `${decls.get(s[1]!) ?? ''}\n${text}`);
+    });
+  }
+  return decls;
+}
+
+/** The declarations reachable from `from` by name, `from` included. */
+function reachFrom(from: string, decls: Map<string, string>): string[] {
+  const seen = new Set<string>([from]);
+  const queue = [from];
+  while (queue.length) {
+    const body = decls.get(queue.shift()!) ?? '';
+    for (const [id] of body.matchAll(/[A-Za-z_$][\w$]*/g)) {
+      if (decls.has(id) && !seen.has(id)) {
+        seen.add(id);
+        queue.push(id);
+      }
+    }
+  }
+  return [...seen];
+}
+
+describe('the kit\'s erasure boundary cannot reach a shared secret', () => {
+  const decls = topLevelDeclarations();
+  const reached = reachFrom('erasureAuth', decls);
+
+  it('the walk finds erasureAuth and follows its calls (verifyAsymmetric, sessionRevoked)', () => {
+    expect(decls.has('erasureAuth'), 'no top-level erasureAuth in services/_shared/src').toBe(true);
+    expect(reached).toEqual(expect.arrayContaining(['erasureAuth', 'verifyAsymmetric', 'sessionRevoked']));
+  });
+
+  it('🔴 nothing erasureAuth reaches names verifySupabaseToken, legacyHs256Secret or SUPABASE_JWT_SECRET', () => {
+    const named = reached.filter((n) => SYMMETRIC_REACH.test(decls.get(n) ?? '')).map((n) => `${n}: ${(decls.get(n) ?? '').match(SYMMETRIC_REACH)![0]}`);
+    expect(named, `erasureAuth reaches a symmetric path:\n${named.join('\n')}`).toEqual([]);
+  });
+
+  it('the rule can fire: supabaseAuthWith, the permissive boundary, does reach verifySupabaseToken', () => {
+    expect(reachFrom('supabaseAuthWith', decls).some((n) => SYMMETRIC_REACH.test(decls.get(n) ?? ''))).toBe(true);
+  });
+});
