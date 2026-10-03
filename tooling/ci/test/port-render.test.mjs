@@ -10,7 +10,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART } from '../../ports/render.mjs';
+import { cancelPathOf, checkoutRailsOf, renderPortsTs, renderCheck, renderRailsDart, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART } from '../../ports/render.mjs';
+
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: the render reads the register payments.json `selection.source`
+// cites (the web checkout rail per market) — CHANNEL_REGISTER, which every scratch root already carries.
+const CHANNELS = CHANNEL_REGISTER;
+const REGISTER = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', CHANNELS), 'utf8'));
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ports', 'render.mjs');
@@ -106,6 +111,26 @@ describe('render.mjs — the payments table', () => {
       assert.equal(run(['--check', '--root', scratch]).code, 0);
     } finally { rmSync(scratch, { recursive: true, force: true }); }
   });
+  it('COVERAGE LOST: an unreadable selection source (the channel register) is exit 2, never a pass', () => {
+    const rel = join(root, CHANNELS);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, '{ not json');
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /^LOST render --check — tooling\/channel-register\.json#purchaseRails could not be read/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a region rail added to the web row and not re-rendered exits 1', () => {
+    const rel = join(root, CHANNELS);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const reg = JSON.parse(before);
+      reg.channels.find((c) => c.id === 'web').purchaseRail.regionRails.push({ region: 'BD', rail: 'razorpay', why: 'fixture', source: 'fixture' });
+      writeFileSync(rel, JSON.stringify(reg));
+      assert.equal(run(['--check', '--root', root]).code, 1);
+    } finally { writeFileSync(rel, before); }
+  });
   it('refuses an unknown flag (exit 2)', () => {
     assert.equal(run(['--chek']).code, 2);
   });
@@ -187,13 +212,26 @@ describe('render.mjs — what the table derives', () => {
     assert.equal(cancelPathOf(['verify', 'cancel-store']), 'store');
     assert.equal(cancelPathOf(['verify']), 'none');
   });
-  it('a fake never joins MOR_VERIFIER_IDS or the live set, and the checkout rail is the ONE real seller', () => {
+  it('a fake never joins MOR_VERIFIER_IDS or the live set', () => {
     const doc = JSON.parse(readFileSync(join(REPO, PAYMENTS_REGISTRY), 'utf8'));
-    const ts = renderPortsTs(doc);
+    const ts = renderPortsTs(doc, REGISTER);
     assert.match(ts, /export const MOR_VERIFIER_IDS = \['paddle', 'razorpay', 'revenuecat'\] as const/);
     assert.match(ts, /live: \['paddle', 'razorpay', 'revenuecat'\],/);
+  });
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: two real sellers no longer render null — the web
+  // channel's purchaseRail decides per buyer-declared market, and the default is CHECKOUT_RAIL_ID.
+  it('the checkout rail per market is the web row\'s purchaseRail, restricted to adapters that declare checkout', () => {
+    const doc = JSON.parse(readFileSync(join(REPO, PAYMENTS_REGISTRY), 'utf8'));
+    const ts = renderPortsTs(doc, REGISTER);
+    assert.match(ts, /export const CHECKOUT_RAIL_BY_MARKET: Readonly<Record<string, PaymentsAdapterId \| null>> = \{\n {2}default: 'paddle',\n {2}IN: 'razorpay',\n\};/);
     assert.match(ts, /export const CHECKOUT_RAIL_ID: PaymentsAdapterId \| null = 'paddle';/);
-    const two = { ...doc, adapters: doc.adapters.map((a) => (a.id === 'razorpay' ? { ...a, capabilities: [...a.capabilities, 'checkout'] } : a)) };
-    assert.match(renderPortsTs(two), /CHECKOUT_RAIL_ID: PaymentsAdapterId \| null = null;/, 'two sellers render null: the route refuses rather than guesses');
+    // red: razorpay without `checkout` drops out of the table — the region falls back to the default.
+    const noSell = { ...doc, adapters: doc.adapters.map((a) => (a.id === 'razorpay' ? { ...a, capabilities: a.capabilities.filter((c) => c !== 'checkout') } : a)) };
+    assert.deepEqual(checkoutRailsOf(noSell, REGISTER).table, { default: 'paddle' });
+    // red: a default rail that cannot sell renders null, so the route refuses rather than guesses.
+    const noDefault = { ...doc, adapters: doc.adapters.map((a) => (a.id === 'paddle' ? { ...a, capabilities: ['verify'] } : a)) };
+    assert.match(renderPortsTs(noDefault, REGISTER), /CHECKOUT_RAIL_ID: PaymentsAdapterId \| null = null;/);
+    // a register with no web row cannot be rendered at all (the caller's LOST).
+    assert.throws(() => renderPortsTs(doc, { channels: [] }), /checkout selection cannot be rendered/);
   });
 });

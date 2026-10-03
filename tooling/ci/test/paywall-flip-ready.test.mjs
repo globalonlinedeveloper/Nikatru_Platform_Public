@@ -59,9 +59,24 @@ function register(signIn = true) {
   };
 }
 
-function run({ list = checklist(), cfg = config(false), evidence = true, reg = register() } = {}) {
+/** The payments registry limb 5 reads: razorpay declares checkout with nothing pending unless told otherwise. */
+function payments({ checkout = true, pending = [] } = {}) {
+  return {
+    adapters: [{ id: 'razorpay', capabilities: checkout ? ['verify', 'parse', 'checkout', 'cancel'] : ['verify'] }],
+    conformance: { pending: pending.map((c) => ({ adapter: 'razorpay', case: c, row: 'O-RAZORPAY-CHECKOUT-ADAPTER' })) },
+  };
+}
+
+/** The duty matrix limb 5 reads: the GST invoice duty, owner-gated when `gate` is set. */
+function duties(gate = null) {
+  return { duties: [{ id: 'india-seller-issues-gst-tax-invoice', status: gate ? 'owner-gated' : 'implemented', ...(gate ? { ownerItem: gate } : {}) }] };
+}
+
+function run({ list = checklist(), cfg = config(false), evidence = true, reg = register(), pay = payments(), duty = duties() } = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   if (list !== null) write(root, 'tooling/paywall-flip.json', JSON.stringify(list));
+  if (pay !== null) write(root, 'tooling/ports/payments.json', JSON.stringify(pay));
+  if (duty !== null) write(root, 'tooling/legal/duty-matrix.json', JSON.stringify(duty));
   if (reg !== null) write(root, 'tooling/channel-register.json', JSON.stringify(reg));
   if (cfg !== null) write(root, 'services/platform/src/app-config-data.json', JSON.stringify(cfg));
   if (evidence) write(root, 'evidence.txt', 'proof');
@@ -138,6 +153,75 @@ describe('assert-paywall-flip-ready', () => {
     const r = run({ list });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /has lost the precondition EXT-CANCEL/);
+  });
+
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (AB-M1-02, train P45): the India rail is a flip precondition.
+  test('the REAL checklist names the Razorpay adapter as an OPEN precondition for every app', () => {
+    const row = REAL_CHECKLIST.preconditions.find((p) => p.id === 'RAZORPAY-CHECKOUT-ADAPTER');
+    assert.ok(row, 'RAZORPAY-CHECKOUT-ADAPTER is missing from tooling/paywall-flip.json');
+    assert.equal(row.open, true);
+    assert.deepEqual(row.apps, ['*']);
+  });
+
+  test('🔴 FAILS with the paywall on while RAZORPAY-CHECKOUT-ADAPTER is open', () => {
+    const r = run({ list: checklist(['RAZORPAY-CHECKOUT-ADAPTER']), cfg: config(true) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /turns the paywall ON for subscriptiontracker while the precondition RAZORPAY-CHECKOUT-ADAPTER is OPEN/);
+  });
+
+  test('FAILS a checklist that DELETED RAZORPAY-CHECKOUT-ADAPTER instead of closing it', () => {
+    const list = checklist();
+    list.preconditions = list.preconditions.filter((p) => p.id !== 'RAZORPAY-CHECKOUT-ADAPTER');
+    const r = run({ list });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has lost the precondition RAZORPAY-CHECKOUT-ADAPTER/);
+  });
+
+  test('🔴 FAILS RAZORPAY-CHECKOUT-ADAPTER closed while razorpay declares no checkout', () => {
+    const r = run({ pay: payments({ checkout: false }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /razorpay declares no `checkout`/);
+  });
+
+  test('🔴 FAILS RAZORPAY-CHECKOUT-ADAPTER closed while a razorpay conformance case is pending', () => {
+    const r = run({ pay: payments({ pending: ['refund revokes'] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /carries 1 pending razorpay case\(s\): refund revokes/);
+  });
+
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: the REAL registry keeps the refund's payment → subscription
+  // link pending until a real test-mode refund proves it, so closing the row on today's tree is red even
+  // with the GST duty implemented. Deleting that pending entry from payments.json reddens THIS test.
+  test('🔴 the REAL payments registry keeps limb 5 red: razorpay `refund revokes` is pending on O-RAZORPAY-CHECKOUT-ADAPTER', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'ports', 'payments.json'), 'utf8'));
+    const r = run({ pay: real });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RAZORPAY-CHECKOUT-ADAPTER is closed, but tooling\/ports\/payments\.json carries 1 pending razorpay case\(s\): refund revokes/);
+  });
+
+  test('the REAL duty matrix holds the GST invoice duty owner-gated on Q13', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'legal', 'duty-matrix.json'), 'utf8'));
+    const row = real.duties.find((d) => d.id === 'india-seller-issues-gst-tax-invoice');
+    assert.ok(row, 'tooling/legal/duty-matrix.json has no india-seller-issues-gst-tax-invoice row');
+    assert.equal(row.status, 'owner-gated');
+    assert.equal(row.ownerItem, 'Q13');
+  });
+
+  test('🔴 FAILS RAZORPAY-CHECKOUT-ADAPTER closed while the GST invoice duty is owner-gated (Q13)', () => {
+    const r = run({ duty: duties('Q13') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /india-seller-issues-gst-tax-invoice is still owner-gated \(Q13\)/);
+  });
+
+  test('🔴 FAILS RAZORPAY-CHECKOUT-ADAPTER closed while the duty matrix has no GST invoice row', () => {
+    const r = run({ duty: { duties: [] } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has no india-seller-issues-gst-tax-invoice row/);
+  });
+
+  test('COVERAGE LOST (exit 2) when RAZORPAY-CHECKOUT-ADAPTER is closed and the registry has no razorpay adapter', () => {
+    const r = run({ pay: { adapters: [], conformance: { pending: [] } } });
+    assert.equal(r.code, 2, r.out);
   });
 
   test('COVERAGE LOST (exit 2) when the checklist is absent', () => {

@@ -146,6 +146,8 @@ import { APEX_ORIGIN, publicAppUrl, appBaseHref } from './apex.mjs';
 import { isAuthMailPath } from './gen-auth-mail.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { renderAvailability, AVAILABILITY_CSS, availabilitySummary, availabilityRow } from './availability.mjs';
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: the ONE tax mode per rail (limb I there grades it).
+import { inIndiaBook, railTaxModes, RAILS as TAX_RAILS } from '../catalog/render-rail-prices.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
  *  deliberately NOT generated into — see the note in assert-discovery-surface.mjs
@@ -940,7 +942,13 @@ ${paywallEnabled && o.trialDays ? `          <span class="trial">${o.trialDays}-
         .join('\n')}
       </div>
       <div class="note">
-        <p>${currencies.length === 1 ? `Prices are shown in ${esc(currencies[0])}.` : `Prices are shown in ${esc(currencies.join(', '))}.`} Tax is added at checkout where your country requires it.</p>
+${ctx.tax?.sentences
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (business-004): the per-rail tax sentences, the same
+  // bytes pricing.html and terms.html carry. Until today this line said "Tax is added at checkout
+  // where your country requires it", which no rail's taxMode said. A tree with no price book
+  // (`prices`) states its currency and makes NO tax claim.
+  ? `        ${TAX_OPEN}\n${taxBlock(ctx.tax.sentences, 'p', '        ')}\n        ${TAX_CLOSE}`
+  : `        <p>Prices are shown in ${esc(currencies.join(', '))}.</p>`}
 ${paywallEnabled ? '' : `        <p>Paid checkout is not open yet. These are the plans ${esc(app.name)} will charge for; nothing can be bought today.</p>\n`}      </div>
 ${pricingLink ? `      <p><a href="${esc(pricingHref)}">See the full price list</a></p>\n` : ''}    </div>
   </section>
@@ -1702,9 +1710,10 @@ export function pricingProducts(products) {
  *
  * @param {string} html `pricing.html` as it is on disk
  * @param {object[]|null} products `pricedProducts()`'s list; null or empty sells nothing
+ * @param {{body: string}} [india] `pricingIndia()`'s span, for a page carrying the `PRICING:india` pair
  * @returns {string}
  */
-export function applyPricing(html, products) {
+export function applyPricing(html, products, india) {
   for (const region of RETIRED_PRICING_REGIONS) {
     if (html.includes(pricingOpen(region)) || html.includes(pricingClose(region))) {
       throw new Error(
@@ -1742,7 +1751,199 @@ export function applyPricing(html, products) {
     }
     out = `${out.slice(0, start + open.length)}\n${bodies.get(region)}\n${out.slice(end)}`;
   }
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (business-017): the rupee price book. OPTIONAL HERE
+  // (a fixture price list carries no India pair), REQUIRED on the real page by
+  // assert-discovery-surface.mjs limb T, so deleting the pair is not a way back to a USD-only page.
+  if (india !== undefined && (out.includes(pricingOpen('india')) || out.includes(pricingClose('india')))) {
+    out = spliceSentinel(out, PRICING_PAGE, pricingOpen('india'), pricingClose('india'), india.body);
+  }
   return out;
+}
+
+// -----------------------------------------------------------------------------
+// ⏱ 2026-10-01 · fix-india-rail-tax-data — THE TAX SENTENCES AND THE RUPEE BOOK
+// (O-TAX-TREATMENT-STATED-TWO-WAYS; business-004, business-017)
+//
+// 🔴 THE SITE STATED TAX THREE WAYS. terms.html §4 said "Prices are inclusive of
+// applicable taxes unless stated otherwise"; pricing.html said tax "is added at
+// checkout"; the generated landing said the same as pricing — and pricing told
+// EVERY buyer USD while the India rail (Razorpay, ADR 093/094) sells in rupees,
+// GST-inclusive, with Nikatru as the seller. Each page was hand-written and none
+// read the price book, so three sentences could disagree with each other and with
+// the rails without anything going red.
+//
+// NOW: ONE sentence per rail, rendered from `railTaxModes` (render-rail-prices.mjs
+// limb I: every price-book entry of a rail states the same `taxMode`), spliced
+// between a `TAX:sentences` pair on pricing.html and terms.html and written into
+// the generated landing. A mode the table below has no TRUE sentence for is a
+// PROBLEM, never a fallback: `unread` exists only for Paddle (a vendor read-back
+// not yet recorded), so its sentence says only what holds in every mode.
+// The rupee book is the `PRICING:india` pair on pricing.html: `webInrMinor` per
+// priced offering the India rail can sell (no one-time offering until the Razorpay
+// order path exists: render-rail-prices.mjs `inIndiaBook`, limb J), Indian digit
+// grouping, and the razorpay tax mode in words.
+// assert-discovery-surface.mjs limb T re-derives both and fails a published
+// sentence that differs, a hand tax sentence outside the pair, and an India block
+// that renders a dollar.
+// -----------------------------------------------------------------------------
+export const TAX_OPEN = '<!-- TAX:sentences -->';
+export const TAX_CLOSE = '<!-- /TAX:sentences -->';
+/** The hand-written pages that carry the pair (the landing is generated whole). */
+export const TERMS_PAGE = `${DEPLOY_ROOT}/terms.html`;
+export const TAX_PAGES = [PRICING_PAGE, TERMS_PAGE];
+/** rail → mode → the one sentence. The currency is the rail's (render-rail-prices.mjs:
+ *  paddle sells `amount_minor` in USD, razorpay `webInrMinor` in INR). The razorpay
+ *  sentence names the seller the provider register's role gives (payment_gateway →
+ *  sellerIs `nikatru`), which assert-policy-claims.mjs §3b holds on terms.html. */
+export const TAX_SENTENCES = Object.freeze({
+  paddle: Object.freeze({
+    unread:
+      'Outside India, prices on nikatru.com are in US dollars (USD). Paddle, our Merchant of Record, works out any ' +
+      'sales tax, VAT or GST due where you live and shows it at checkout before you pay.',
+    inclusive:
+      'Outside India, prices on nikatru.com are in US dollars (USD) and include any sales tax, VAT or GST due where ' +
+      'you live. Paddle, our Merchant of Record, collects it and shows it at checkout before you pay.',
+    exclusive:
+      'Outside India, prices on nikatru.com are in US dollars (USD). Any sales tax, VAT or GST due where you live is ' +
+      'added at checkout by Paddle, our Merchant of Record, and shown before you pay.',
+  }),
+  razorpay: Object.freeze({
+    inclusive:
+      'In India, prices on nikatru.com are in Indian rupees (INR) and include GST. Nikatru is the seller and ' +
+      'Razorpay processes the payment.',
+    exclusive:
+      'In India, prices on nikatru.com are in Indian rupees (INR), and GST is added at checkout. Nikatru is the ' +
+      'seller and Razorpay processes the payment.',
+  }),
+});
+
+/**
+ * The tax sentences, one per rail in `RAILS` order, from the price book's tax modes.
+ * `null` sentences when the rail config carries no `prices` section at all (a fixture
+ * tree with no price book renders no tax sentence); a price book whose modes are
+ * missing, disagree, or have no sentence is a PROBLEM.
+ * @returns {{sentences: string[]|null, modes: Record<string,string>}}
+ */
+export function taxSentences(rail, problems) {
+  if (!rail || typeof rail.prices !== 'object' || rail.prices === null) return { sentences: null, modes: {} };
+  const { modes, problems: modeProblems } = railTaxModes(rail);
+  for (const p of modeProblems) problems.push(`${RAIL_CONFIG}: ${p}`);
+  const sentences = [];
+  for (const r of TAX_RAILS) {
+    const s = TAX_SENTENCES[r]?.[modes[r]];
+    if (typeof s !== 'string') {
+      if (modes[r] !== undefined) {
+        problems.push(
+          `${RAIL_CONFIG}: rail ${r} states taxMode ${JSON.stringify(modes[r])} and generate-discovery.mjs has no TRUE ` +
+            `sentence for it (TAX_SENTENCES.${r}). Write one; a tax sentence is never guessed.`,
+        );
+      }
+      return { sentences: null, modes };
+    }
+    sentences.push(s);
+  }
+  return { sentences, modes };
+}
+
+/** The pair's body: one `<tag>` per sentence, at `indent`. */
+export const taxBlock = (sentences, tag, indent) => sentences.map((s) => `${indent}<${tag}>${esc(s)}</${tag}>`).join('\n');
+
+/** Replace what sits between ONE open/close pair, keeping the open marker's indent for the
+ *  close. Refuses a duplicated, half or reversed pair (the `applyPricing` discipline). */
+function spliceSentinel(html, page, open, close, body) {
+  const opens = html.split(open).length - 1;
+  const closes = html.split(close).length - 1;
+  if (opens !== 1 || closes !== 1) {
+    throw new Error(`${page}: expected exactly one ${open} ... ${close} pair, found ${opens} opening and ${closes} closing sentinel(s).`);
+  }
+  const start = html.indexOf(open);
+  const end = html.indexOf(close);
+  if (end < start) throw new Error(`${page}: the ${open} sentinels are reversed, which would replace the rest of the document.`);
+  const indent = html.slice(html.lastIndexOf('\n', start) + 1, start).match(/^[ \t]*/)[0];
+  return `${html.slice(0, start + open.length)}\n${body === '' ? '' : `${body}\n`}${indent}${html.slice(end)}`;
+}
+
+/** Splice the tax sentences into a hand-written page that carries the pair: `<li>` on both
+ *  pages today (each states them in a list). A page without the pair is returned unchanged;
+ *  limb T requires the pair on every page of TAX_PAGES in this repository.
+ *  `null` sentences (a tree with no price book, e.g. a copy without services/) EMPTIES the pair:
+ *  no tax claim, never the last one kept. A price book whose modes are broken has already pushed
+ *  its problem in `taxSentences`, so the run refuses there, by name. */
+export function applyTaxSentences(html, page, sentences) {
+  if (!html.includes(TAX_OPEN) && !html.includes(TAX_CLOSE)) return html;
+  const at = html.indexOf(TAX_OPEN);
+  const indent = at === -1 ? '' : html.slice(html.lastIndexOf('\n', at) + 1, at).match(/^[ \t]*/)[0];
+  return spliceSentinel(html, page, TAX_OPEN, TAX_CLOSE, sentences === null ? '' : taxBlock(sentences, 'li', indent));
+}
+
+/** Minor units → rupees with INDIAN digit grouping (1,49,900), paise only when non-zero.
+ *  Hand-grouped on purpose: limb T re-formats with Intl `en-IN`, so the two are independent. */
+export function rupees(minor) {
+  const whole = String(Math.floor(minor / 100));
+  const paise = minor % 100;
+  const head = whole.slice(0, -3);
+  const grouped = head === '' ? whole : `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${whole.slice(-3)}`;
+  return `₹${grouped}${paise ? `.${String(paise).padStart(2, '0')}` : ''}`;
+}
+
+/** The India price of one priced offering: `prices.apps.<slug>.<id>.webInrMinor`, or for a
+ *  bundle the `prices.bundles` entry whose `plan` is its term's bundle plan. */
+function webInrOf(rail, p, o) {
+  if (p.kind === 'bundle') {
+    const plan = { month: 'bundle-monthly', year: 'bundle-yearly' }[o.term.unit];
+    const row = Object.values(rail?.prices?.bundles ?? {}).find((b) => b?.plan === plan);
+    return row?.webInrMinor;
+  }
+  return rail?.prices?.apps?.[p.slug]?.[o.id]?.webInrMinor;
+}
+
+/**
+ * The `PRICING:india` span: one row per priced offering, in rupees, saying the tax mode
+ * of the razorpay rail in words. A priced offering with no `webInrMinor`, or no razorpay
+ * mode, is a PROBLEM: the India block would quote a plan list the rail does not price.
+ */
+export function pricingIndia(rail, products, modes, problems) {
+  const list = Array.isArray(products) ? products.filter((p) => p && p.offerings.length > 0) : [];
+  // Nothing priced (a tree with no rail config) prices nothing in India either, and claims no tax.
+  if (list.length === 0) return { body: '  <p>No India price is published from this website today.</p>' };
+  const gst = { inclusive: 'include GST', exclusive: 'do not include GST, which is added at checkout' }[modes?.razorpay];
+  if (gst === undefined) {
+    problems.push(`${PRICING_PAGE}: the India block needs the razorpay rail's taxMode (inclusive | exclusive) from ${RAIL_CONFIG}; it has ${JSON.stringify(modes?.razorpay ?? null)}.`);
+    return { body: '  <p>No India price is published from this website today.</p>' };
+  }
+  const rows = [];
+  for (const p of list) {
+    for (const o of p.offerings) {
+      // ⏱ 2026-10-02 · PR #1149 ruling item 5: a one-time offering is out of the India book until the
+      // Razorpay order path exists (render-rail-prices.mjs limb J), so the India block does not quote it.
+      if (p.kind !== 'bundle' && !inIndiaBook(o.term.unit === null ? 'one_time' : o.term.unit)) continue;
+      const minor = webInrOf(rail, p, o);
+      if (!Number.isInteger(minor) || minor <= 0) {
+        problems.push(
+          `${RAIL_CONFIG}: ${p.slug}'s ${o.id} is priced on ${PRICING_PAGE} and carries no integer webInrMinor in ` +
+            '`prices` — the India block would leave a plan an Indian buyer is shown without its rupee price.',
+        );
+        continue;
+      }
+      const per = o.term.unit ? ` / ${esc(o.term.unit)}` : ' once';
+      const plan = p.kind === 'bundle' ? esc(o.term.heading) : `Pro ${esc(o.term.heading)}`;
+      rows.push(`    <tr><td>${esc(p.name)}</td><td>${plan}</td><td>${rupees(minor)}${per}</td></tr>`);
+    }
+  }
+  const open = list.some((p) => p.paywallEnabled);
+  return {
+    body: [
+      '  <section class="india" data-region="IN">',
+      '  <h2>Prices in India</h2>',
+      `  <p>For buyers in India, prices on nikatru.com are in Indian rupees (INR) and ${gst}.</p>`,
+      '  <table>',
+      '    <tr><th>Product</th><th>Plan</th><th>Price in India</th></tr>',
+      ...rows,
+      '  </table>',
+      ...(open ? [] : ['  <p>Paid checkout is not open yet, in India or anywhere else; these are the prices it will charge.</p>']),
+      '  </section>',
+    ].join('\n'),
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -2000,6 +2201,8 @@ export function planDiscovery(repoRoot) {
     // The extension register, for the price list's priced extensions (EXM-01, 2026-10-01).
     extensions: readExtensionRows(repoRoot, problems),
   };
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: the per-rail tax sentences, read ONCE for every page.
+  ctx.tax = taxSentences(ctx.rail, problems);
 
   const live = usable.filter((a) => a.status === 'live');
   for (const app of usable) {
@@ -2086,7 +2289,14 @@ export function planDiscovery(repoRoot) {
       // above for why a hand-written page is spliced rather than generated, and
       // why leaving those numbers hand-maintained was a defect no guard in this
       // repository could see.
-      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems, ctx.extensions));
+      if (rel === PRICING_PAGE) {
+        const priced = pricedProducts(ctx, live, ctx.bundles, problems, ctx.extensions);
+        // ⏱ 2026-10-01 · fix-india-rail-tax-data: the rupee book, only for a page carrying its pair.
+        const india = out.includes(pricingOpen('india')) ? pricingIndia(ctx.rail, priced, ctx.tax.modes, problems) : undefined;
+        out = applyPricing(out, priced, india);
+      }
+      // ⏱ 2026-10-01 · fix-india-rail-tax-data: the per-rail tax sentences (pricing + terms).
+      if (TAX_PAGES.includes(rel)) out = applyTaxSentences(out, rel, ctx.tax.sentences);
       // ... and the support and about pages take one each, for the apps they
       // name. See `supportAppsBlock` above for why the list is `live`.
       if (rel === SUPPORT_PAGE) {
