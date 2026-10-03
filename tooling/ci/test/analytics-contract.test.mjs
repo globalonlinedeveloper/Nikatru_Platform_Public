@@ -742,7 +742,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 47 routes, 26 pinned, 21 printed gaps', () => {
+  test('PASSES on the real tree: 47 routes, 27 pinned, 20 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
