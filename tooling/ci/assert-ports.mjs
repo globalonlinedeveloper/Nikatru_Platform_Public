@@ -160,12 +160,22 @@ import { listDir } from './tree-walk.mjs';
 import { renderCheck } from '../ports/render.mjs';
 import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
 
-/** HTML comments out in ONE pass, then any `<!--` left over is dropped as a marker
- *  only, so the text after it is still read (CodeQL js/incomplete-multi-character-
- *  sanitization on #1182). Never repeated until stable: on `<!<!-- -->-- x -->` a
- *  second pass would swallow ` x `, which a browser shows, and the limb would read less. */
+/** HTML comments out, read left to right in ONE pass: a `<!--` with a `-->` after
+ *  it goes with everything between; one with none is dropped as a marker only, so
+ *  the text after it is still read. A plain scan, not a regex replace (CodeQL
+ *  js/incomplete-multi-character-sanitization on #1182), and never repeated until
+ *  stable: on `<!<!-- -->-- x -->` a second pass would swallow ` x `, which a
+ *  browser shows, and the limb would read less. */
 function stripHtmlComments(html) {
-  return html.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--/g, '');
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf('<!--', at);
+    if (open === -1) return out + html.slice(at);
+    out += html.slice(at, open);
+    const close = html.indexOf('-->', open + 4);
+    at = close === -1 ? open + 4 : close + 3;
+  }
 }
 
 export const PORTS_DIR = 'tooling/ports';
