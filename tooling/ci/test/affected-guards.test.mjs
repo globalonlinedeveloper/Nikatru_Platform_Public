@@ -17,6 +17,8 @@
 //        with the guard's own detector (#1076 cycle 3: tooling/ops/land-rules.mjs began
 //        to read ci.yml and assert-workflow-readers was not run; a prose edit ran no
 //        assert-mechanism-claims)
+//   AG11 a SELECT-ONLY content rule (assert-codeql-lite: any JS/TS file) selects its guard
+//        but maps nothing — a JS file no other check reads is still UNMAPPED (lane codeql-lite)
 //
 // Run:  node --test "tooling/ci/test/affected-guards.test.mjs"
 import { test } from 'node:test';
@@ -385,4 +387,19 @@ test('AG9 the REAL tree: tooling/ops/land-rules.mjs selects assert-workflow-read
   const r = await run(REPO, ['--list', '--paths', 'tooling/ops/land-rules.mjs']);
   assert.equal(r.code, 0, r.out);
   assert.ok(selectedIds(r.out).includes('guard:assert-workflow-readers'), r.out);
+});
+
+test('AG11 the REAL tree: any changed JS/TS file selects assert-codeql-lite, which maps nothing', async () => {
+  const read = await run(REPO, ['--list', '--paths', 'tooling/store/listing-qa.mjs']);
+  assert.equal(read.code, 0, read.out);
+  assert.ok(selectedIds(read.out).includes('guard:assert-codeql-lite'), read.out);
+  // RED control: a JS file nothing else reads is selected for codeql-lite AND stays UNMAPPED —
+  // a CodeQL-shape check is no evidence that anything checks what the file does.
+  const orphan = await run(REPO, ['--list', '--paths', 'zzz-no-such-dir/new.mjs']);
+  assert.equal(orphan.code, 2, orphan.out);
+  assert.deepEqual(selectedIds(orphan.out), ['guard:assert-codeql-lite'], orphan.out);
+  assert.match(orphan.out, /UNMAPPED {2}zzz-no-such-dir\/new\.mjs/);
+  // GREEN control: a file that is not code does not select it.
+  const prose = await run(REPO, ['--list', '--paths', 'zzz-no-such-dir/new.txt']);
+  assert.ok(!selectedIds(prose.out).includes('guard:assert-codeql-lite'), prose.out);
 });

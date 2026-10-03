@@ -219,6 +219,47 @@ export const playSubmitter = storeSubmitter({
   uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
 });
 
+/** Mint an access token with the JWT-bearer grant.
+ *  Source: ${PRIMARY_SOURCES.serviceAccountGrant} — header {"alg":"RS256",
+ *  "typ":"JWT"}; claims iss (service-account email), scope (space-delimited),
+ *  aud ("always https://oauth2.googleapis.com/token"), exp ("maximum of 1 hour
+ *  after the issued time"), iat; grant_type
+ *  "urn:ietf:params:oauth:grant-type:jwt-bearer"; response
+ *  {access_token, scope, token_type, expires_in}.
+ *
+ *  ⏱ 2026-10-03 (lane play-data-safety): moved out of the CLI body, unchanged in
+ *  what it signs and sends, so tooling/release/play-data-safety.mjs mints through
+ *  THE SAME code rather than a second copy. `post(url, {headers, body})` is the
+ *  caller's transport and resolves to the parsed JSON body (it owns the status
+ *  check, the redirect refusal and any time ceiling); `tokenUrl` is where the
+ *  assertion is SENT, and `aud` stays pinned to GOOGLE_TOKEN_URL whatever it is;
+ *  `keySource` names where the key came from, for the one error that mentions
+ *  it. Neither the assertion nor the token is ever printed or put in an error. */
+export async function mintPlayAccessToken(sa, { post, tokenUrl = GOOGLE_TOKEN_URL, keySource }) {
+  const b64 = (v) => Buffer.from(v).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const signingInput = `${b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64(
+    JSON.stringify({ iss: sa.client_email, scope: PLAY_SCOPE, aud: GOOGLE_TOKEN_URL, exp: now + 3600, iat: now }),
+  )}`;
+  let signature;
+  try {
+    signature = createSign('RSA-SHA256').update(signingInput).sign(sa.private_key);
+  } catch (e) {
+    // The message is about the KEY'S SHAPE and never quotes it.
+    throw new Error(
+      `the service-account private_key could not sign an RS256 assertion (${e.message}). The key material is never printed; check that ${keySource} carries the JSON exactly as Google issued it, newlines included.`,
+    );
+  }
+  const json = await post(tokenUrl, {
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${signingInput}.${b64(signature)}` }).toString(),
+  });
+  if (typeof json?.access_token !== 'string' || json.access_token === '') {
+    throw new Error('the token endpoint answered 200 with no access_token.');
+  }
+  return json.access_token;
+}
+
 // ── the CLI, which runs only when this file is the entry point ────────────────
 // ⏱ 2026-10-01 (port-channels): the export above made this file a module that
 // tooling/release/test/submitters.contract.test.mjs imports, and a script whose
@@ -1079,37 +1120,14 @@ const asJson = async (res) => {
   }
 };
 
-/** Mint an access token with the JWT-bearer grant.
- *  Source: ${PRIMARY_SOURCES.serviceAccountGrant} — header {"alg":"RS256",
- *  "typ":"JWT"}; claims iss (service-account email), scope (space-delimited),
- *  aud ("always https://oauth2.googleapis.com/token"), exp ("maximum of 1 hour
- *  after the issued time"), iat; grant_type
- *  "urn:ietf:params:oauth:grant-type:jwt-bearer"; response
- *  {access_token, scope, token_type, expires_in}. */
+/** Mint an access token with the JWT-bearer grant — through mintPlayAccessToken
+ *  above, the one copy, with this CLI's transport and its loopback seam. */
 async function mintAccessToken(sa) {
-  const b64 = (v) => Buffer.from(v).toString('base64url');
-  const now = Math.floor(Date.now() / 1000);
-  const signingInput = `${b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64(
-    JSON.stringify({ iss: sa.client_email, scope: PLAY_SCOPE, aud: GOOGLE_TOKEN_URL, exp: now + 3600, iat: now }),
-  )}`;
-  let signature;
-  try {
-    signature = createSign('RSA-SHA256').update(signingInput).sign(sa.private_key);
-  } catch (e) {
-    // The message is about the KEY'S SHAPE and never quotes it.
-    throw new Error(
-      `the service-account private_key could not sign an RS256 assertion (${e.message}). The key material is never printed; check that ${SA_ENV} carries the JSON exactly as Google issued it, newlines included.`,
-    );
-  }
-  const res = await request('token exchange', 'POST', TOKEN_URL, {
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${signingInput}.${b64(signature)}` }).toString(),
+  return mintPlayAccessToken(sa, {
+    tokenUrl: TOKEN_URL,
+    keySource: SA_ENV,
+    post: async (url, init) => asJson(await request('token exchange', 'POST', url, init)),
   });
-  const json = await asJson(res);
-  if (typeof json.access_token !== 'string' || json.access_token === '') {
-    throw new Error('the token endpoint answered 200 with no access_token.');
-  }
-  return json.access_token;
 }
 
 const editsBase = `${PLAY_BASE}/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;

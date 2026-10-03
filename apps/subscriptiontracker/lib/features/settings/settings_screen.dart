@@ -52,7 +52,7 @@ import '../../core/theme/app_theme.dart';
 // `AuthUser`, `AuthSession` and `AuthFailure` all come from `packages/core`
 // through it, so `AuthUser` and `core.AuthUser` are the same type.
 import '../../data/auth/auth_repository.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
@@ -395,21 +395,21 @@ class SettingsScreen extends ConsumerWidget {
               child: Material(
                 color: Colors.transparent,
                 child: RadioGroup<String>(
-                  groupValue: ref.watch(localeProvider)?.languageCode ?? '',
+                  groupValue: ref.watch(localeProvider)?.toLanguageTag() ?? '',
                   onChanged: (String? code) => setLocaleByUser(
                     ref,
-                    (code == null || code.isEmpty) ? null : Locale(code),
+                    (code == null || code.isEmpty) ? null : localeOfCode(code),
                   ),
                   child: Column(
                     children: <Widget>[
-                      // T20 (XP-06): हिन्दी joins the list; one tile per language.
-                      for (final (String code, String name)
-                          in <(String, String)>[
-                            ('', l10n.languageSystem),
-                            ('en', l10n.languageEnglish),
-                            ('ta', l10n.languageTamil),
-                            ('hi', l10n.languageHindi),
-                          ])
+                      for (final (String code, String name) in <(String, String)>[
+                        ('', l10n.languageSystem),
+                        // One per SUPPORTED row of tooling/i18n/locales.json,
+                        // never a typed list (assert-locale-register).
+                        // A language added to the register appears here.
+                        for (final RegisteredLocale r in kSupportedLocales)
+                          (r.code, r.nativeName),
+                      ])
                         RadioListTile<String>(value: code, title: Text(name)),
                     ],
                   ),
@@ -433,7 +433,7 @@ class SettingsScreen extends ConsumerWidget {
                 return SizedBox(
                   width: 76,
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsetsDirectional.only(end: 8),
                     // ⚠️ A SET OF CHIPS OF WHICH EXACTLY ONE IS ON, AND THE ONLY
                     // THING THAT SAID SO WAS THE GRADIENT. `selected:` is the
                     // load-bearing half here — without it a reader hears four
@@ -1098,16 +1098,15 @@ class SettingsScreen extends ConsumerWidget {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     try {
       await signOutAndForgetUser(ref, scope: scope);
-    } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            scope == core.SignOutScope.global
-                ? l10n.logOutAllDevicesFailed
-                : l10n.signOutFailed,
-          ),
-        ),
-      );
+    } catch (e) {
+      // Review 2 of #1140, finding 4: signed out everywhere, Workers not told.
+      final String text =
+          e is core.AuthFailure && e.code == core.AuthFailure.othersNotRevoked
+          ? l10n.logOutAllDevicesSignInAgain
+          : scope == core.SignOutScope.global
+          ? l10n.logOutAllDevicesFailed
+          : l10n.signOutFailed;
+      messenger.showSnackBar(SnackBar(content: Text(text)));
     }
   }
 
@@ -1768,7 +1767,7 @@ class _Toggle extends StatelessWidget {
             ),
             child: AnimatedAlign(
               duration: const Duration(milliseconds: 180),
-              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: AlignmentDirectional(value ? 1 : -1, 0),
               child: Container(
                 margin: const EdgeInsets.all(3),
                 width: 22,

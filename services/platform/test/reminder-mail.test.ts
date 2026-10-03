@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import appModel0003 from '../../subscriptiontracker-api/migrations/0003_subscription_model.sql?raw';
+import appPrefs0008 from '../../subscriptiontracker-api/migrations/0008_preferences.sql?raw';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
 import INVENTORY_RAW from '../../../tooling/legal/data-inventory.json?raw';
 import { REMINDER_MAIL_JOB, reminderMail } from '../src/scheduled';
@@ -27,6 +28,7 @@ import {
   addDays,
   appName,
   appUrl,
+  buildDigest,
   runReminderMail,
   ymdOf,
 } from '../src/lib/reminders';
@@ -35,6 +37,8 @@ import reminders, { MAX_PREFS_BODY_BYTES, parsePrefs } from '../src/routes/remin
 import { app as realApp } from '../src/index';
 import type { AppEnv, Env } from '../src/types';
 import { RealDb, realPlatformDb } from './harness';
+import { SUPPORTED_LOCALES, digestCopy, resolveLocale } from '../src/lib/digest-copy';
+import EMAIL_RAW from '../../../tooling/i18n/messages/email.json?raw';
 
 const APP = 'subscriptiontracker';
 const AUTH = 'https://auth.example';
@@ -556,6 +560,78 @@ describe('R1 — the digest prints each amount with its currency', () => {
     const text = String(net.sends()[0].body!.text);
     expect(text).toContain('- Anime — Fri, 2 Oct 2026 (monthly, JPY 1200)');
     expect(text).toContain('- Legacy — Sat, 3 Oct 2026 (monthly, 9.99)');
+  });
+});
+
+// ⏱ 2026-10-02 · lane i18n-pipeline (item 5). RED before: the digest was English
+// string literals whatever the person had chosen; the platform Worker never read
+// the stored `locale` preference.
+describe('R1 — the digest speaks the person\u2019s stored language', () => {
+  function prefsDb(): RealDb {
+    return new RealDb([appInit0001, appSchemaDebt0002, appModel0003, appPrefs0008]);
+  }
+  function seedLocale(app: RealDb, userId: string, locale: string): void {
+    app.db
+      .prepare('INSERT INTO preferences (user_id, key, value, version, updated_at) VALUES (?, ?, ?, 1, ?)')
+      .run(userId, 'locale', JSON.stringify(locale), '2026-10-01T00:00:00Z');
+  }
+  async function digestFor(locale: string | null, db: () => RealDb = prefsDb) {
+    const platform = realPlatformDb();
+    const app = db();
+    const people: Person[] = [{ id: 'u-l', optIn: true }];
+    seedPerson(platform, people[0]);
+    seedSub(app, 'u-l', 's-l', 'Netflix', '2026-10-03');
+    if (locale !== null) seedLocale(app, 'u-l', locale);
+    const net = network(people);
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    expect(net.sends()).toHaveLength(1);
+    return net.sends()[0].body!;
+  }
+
+  it('🔴 a Tamil preference gets the Tamil digest — subject, intro, cycle word and date', async () => {
+    const body = await digestFor('ta');
+    const ta = digestCopy('ta');
+    expect(String(body.text)).toContain(ta.intro);
+    expect(String(body.text)).toContain(ta.cycle.monthly);
+    expect(String(body.subject)).toContain('Netflix');
+    expect(String(body.subject)).not.toContain('renews on');
+    expect(String(body.html)).toContain(ta.stop);
+    expect(String(body.text)).not.toContain('These subscriptions renew soon');
+  });
+
+  it('🔴 a Hindi preference gets the Hindi digest', async () => {
+    const body = await digestFor('hi');
+    expect(String(body.text)).toContain(digestCopy('hi').intro);
+    expect(String(body.text)).not.toContain('These subscriptions renew soon');
+  });
+
+  it('no preference, "follow the device", an unsupported tag, or no preferences table: English, unchanged', async () => {
+    for (const body of [
+      await digestFor(null),
+      await digestFor(''),
+      await digestFor('fr'),
+      await digestFor(null, appDb),
+    ]) {
+      expect(String(body.subject)).toBe('Netflix renews on Sat, 3 Oct 2026');
+      expect(String(body.text)).toContain('These subscriptions renew soon:\n\n- Netflix — Sat, 3 Oct 2026 (monthly, 9.99)');
+    }
+  });
+
+  it('a regional tag resolves to its language; every supported locale has a digest block', () => {
+    expect(resolveLocale('ta-IN')).toBe('ta');
+    expect(resolveLocale('hi_IN')).toBe('hi');
+    expect(resolveLocale('xx')).toBe('en');
+    const digest = (JSON.parse(EMAIL_RAW) as { digest: Record<string, unknown> }).digest;
+    for (const code of SUPPORTED_LOCALES) expect(Object.keys(digest)).toContain(code);
+  });
+
+  it('a key missing from a locale falls back to English, never to an empty line', () => {
+    const d = buildDigest(APP, [
+      { subscriptionId: 's', name: 'X', dueOn: '2026-10-03', cycle: 'fortnightly', price: null, currency: null, priceMinor: null, lead: 3, kind: 'renewal' },
+    ], 'https://u', 'ta');
+    expect(d.locale).toBe('ta');
+    expect(d.text).toContain('(fortnightly)'); // no Tamil word for it: the stored value, as before
+    expect(d.text).not.toMatch(/\{\w+\}/); // every placeholder filled
   });
 });
 

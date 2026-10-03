@@ -306,6 +306,13 @@ class AuthFailure implements Exception {
   /// recorded, so the gate that asked stays shut and says why.
   static const String notRecorded = 'consent_not_recorded';
 
+  /// ⏱ 2026-10-02 · review 2 of #1140, finding 4 — OUR code for a "Log out of
+  /// all devices" that signed every device out of GoTrue (this one included)
+  /// but could not tell the Workers to refuse the access tokens already open
+  /// elsewhere. This device is signed out, so a screen says to sign in again
+  /// first, rather than "try again" with no control left to press.
+  static const String othersNotRevoked = 'others_not_revoked';
+
   /// GoTrue's codes when a signed-in password change came without the current
   /// password, or with a wrong one (`security_update_password_require_current_
   /// password`, on for this project — see `AuthRepository.updatePassword`).

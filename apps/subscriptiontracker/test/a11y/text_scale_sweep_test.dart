@@ -61,6 +61,7 @@ const Size kTextScaleSurface = Size(360, 640);
 const double kMaxPermittedScale = 2.0;
 
 /// The locales swept: the source language and the longest-running one.
+// locale-list: a deliberate two-locale selection, not the shipped set.
 const List<Locale> kTextScaleLocales = <Locale>[Locale('en'), Locale('ta')];
 
 /// One route's reading at 200 %.
