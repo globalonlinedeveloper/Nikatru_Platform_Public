@@ -118,6 +118,19 @@ const DECLARED = [
     counts: { bundle_grants: 1 },
     why: '`liveGrantsFor` — the bundle writer\'s own scan of a subject\'s live grants, used by the receipts double-billing pre-check; it renders no envelope.',
   },
+  // ⏱ 2026-10-03 · lane growth-codes. Both decide a promo grant's WRITE or an invite's eligibility, never access.
+  {
+    file: 'services/platform/src/lib/codes/grant.ts',
+    role: 'writer-lookup',
+    counts: { entitlements: 1, bundle_grants: 1 },
+    why: '`promoStart` — when free months may START (the end of a live trial, or of free months already held), so a promo grant never stacks; it shapes the expiry the one bundle writer is handed, and renders no envelope.',
+  },
+  {
+    file: 'services/platform/src/routes/invites.ts',
+    role: 'lookup',
+    counts: { entitlements: 1, bundle_grants: 1 },
+    why: 'the invite rule "no prior Pro or trial": whether the invitee EVER held a row for the app (any state) decides only whether an invite is rewarded; it answers no access question.',
+  },
   {
     file: 'services/platform/src/routes/cancellation.ts',
     role: 'lookup',

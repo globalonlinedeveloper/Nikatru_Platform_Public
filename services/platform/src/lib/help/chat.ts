@@ -21,6 +21,7 @@
 // what it is handed is the articles' text, never a URL to fetch.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiJsonSchema } from '../../../../_shared/src/ports/ai';
+// Typed by services/platform/src/lib/help/search-module.d.ts (the module is plain JavaScript).
 import { search } from '../../../../../tooling/help/search.mjs';
 import indexEn from '../../../../../sites/nikatru/help/index.en.json';
 
