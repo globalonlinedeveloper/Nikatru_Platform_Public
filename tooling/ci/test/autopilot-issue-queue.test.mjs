@@ -29,6 +29,8 @@
 //   IQ17 a migration stub is never flipped to `ready`, never offered, never launchable
 //   IQ18 fail closed: an issue without a comments array throws; free-text owner comments
 //        that start with a verb are not protocol lines
+//   IQ19 a losing claim is not activity: an invalid RECLAIM that lands 10 s short of
+//        stale (a claimant whose clock ran ahead) leaves the dead holder stale
 //
 // Every lane name and prompt below is invented. Run:
 //   node --test "tooling/ci/test/autopilot-issue-queue.test.mjs"
@@ -385,4 +387,24 @@ test('IQ18 fail closed on a missing comments array; free text is not a protocol 
   for (const body of ['CLAIM runner=laptop at=2026-10-02T12:00:00.000Z nonce=0a1b2c3d', 'YIELD runner=cloud-a', 'RELEASE runner=cloud-a', 'RECLAIM previous=cloud-a runner=laptop at=x', 'PROGRESS routine=trig_1 pr=12']) {
     assert.ok(parseEvent(c(body)), `control: ${body}`);
   }
+});
+
+test('IQ19 an invalid RECLAIM 10 s short of stale does not keep a dead holder fresh (review of #1163, minor 1)', () => {
+  // The review's repro: the holder's CLAIM at T0; the claimant's clock runs ahead,
+  // so its RECLAIM lands at server time T0 + 6 h - 10 s: invalid, a plain claim that loses.
+  const T0 = NOW - 6 * 3600_000 - 60_000;
+  const iso = (ms) => new Date(ms).toISOString();
+  const comments = [
+    c('CLAIM runner=cloud-a at=x nonce=aaaaaaaa', { id: 200, at: iso(T0) }),
+    c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 201, at: iso(T0 + 6 * 3600_000 - 10_000) }),
+  ];
+  const st = claimState(comments, { owner: OWNER, now: NOW });
+  assert.equal(st.holder.runner, 'cloud-a', 'the early RECLAIM is invalid and does not take the window');
+  assert.deepEqual([st.fresh, st.reclaimable], [false, true], 'the never-launched holder is stale by its own CLAIM, 6 h 1 min ago');
+  // and the next RECLAIM, now valid, takes it
+  const next = [...comments, c('RECLAIM previous=cloud-a runner=cloud-c at=x', { id: 202, at: iso(NOW) })];
+  assert.equal(claimWinner(next, { owner: OWNER }).runner, 'cloud-c');
+  // control: the holder's OWN re-claim is still activity
+  const own = [comments[0], c('CLAIM runner=cloud-a at=x nonce=bbbbbbbb', { id: 203, at: iso(T0 + 6 * 3600_000 - 10_000) })];
+  assert.deepEqual([claimState(own, { owner: OWNER, now: NOW }).fresh], [true]);
 });

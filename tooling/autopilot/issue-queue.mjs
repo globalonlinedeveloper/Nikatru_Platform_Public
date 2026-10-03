@@ -288,12 +288,15 @@ const msOf = (t) => (t === null || t === undefined ? NaN : Date.parse(t));
  *   · CLAIM  joins the window; it holds it only if the window had no holder.
  *   · RECLAIM is honoured (opens a new window, which it holds) only when it is valid:
  *     the window has a holder, `previous=` names that holder, the holder is provably
- *     stale by the comments' own clock — its window's newest CLAIM / RECLAIM /
- *     PROGRESS is at least CLAIM_STALE_H older than the RECLAIM's `created_at` — and
+ *     stale by the comments' own clock — its window's newest activity (the holder's
+ *     own CLAIM / RECLAIM, or a PROGRESS) is at least CLAIM_STALE_H older than the
+ *     RECLAIM's `created_at` — and
  *     the holder has no launch record (`PROGRESS` after its claim: a launched lane may
  *     still be running, so it is never reclaimed; the lead RELEASEs it instead).
  *     An invalid RECLAIM is a plain CLAIM in the current window, where it loses on id;
  *     so two concurrent reclaims of one holder resolve lowest-id-wins, like claims.
+ *     A claim that loses (a CLAIM or an invalid RECLAIM by another runner) is NOT
+ *     activity: it never refreshes the holder's window.
  *   · RELEASE by the holder's runner id empties the window; anyone else's is ignored.
  *   · PROGRESS is activity (and, after the holder, its launch record); YIELD is neither.
  * The lane PR's `updated_at` is only known as it is NOW, so it counts toward `fresh`
@@ -325,8 +328,11 @@ export function claimState(comments, { owner, prUpdatedAt = null, now = Date.now
       continue;
     }
     // CLAIM, or a RECLAIM that was not valid: a plain claim inside the current window.
+    // Only the HOLDER's own claim is activity (review of #1163, minor 1): a losing
+    // CLAIM or an invalid RECLAIM — posted on a claimant's clock that ran ahead —
+    // must not keep a dead, never-launched holder fresh for another window.
     if (!w.holder) w.holder = e;
-    w.activity.push(e.createdAt);
+    if (e.runner === w.holder.runner) w.activity.push(e.createdAt);
   }
   if (!w.holder) return { holder: null, fresh: false, launched: false, reclaimable: false };
   const times = w.activity.map(msOf).filter(Number.isFinite);
