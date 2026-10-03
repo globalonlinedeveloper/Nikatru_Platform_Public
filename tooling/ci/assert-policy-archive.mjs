@@ -46,6 +46,7 @@ import { join, resolve, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { visibleText } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { REGISTER, loadRegister, supportedCodes } from '../i18n/locales.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 
@@ -164,7 +165,7 @@ for (const [version, locales] of archived) {
   }
   for (const [locale, snap] of locales) {
     if (!/^[a-z]{2}(-[A-Za-z]{2,8})*$/.test(locale)) {
-      problems.push(`${ARCHIVE_ROOT}/${version}/${locale}/ is not a locale tag. Expected e.g. "en", "ta", "pt-BR".`);
+      problems.push(`${ARCHIVE_ROOT}/${version}/${locale}/ is not a locale tag. Expected a tag such as "en" or "pt-BR".`);
     }
     if (snap.declared !== version) {
       problems.push(
@@ -403,15 +404,18 @@ if (archived.size === 0) {
 // deliberately cut. The domain is the locale list the app ALREADY has — adding a
 // notice for a language we already ship, not adding languages.
 {
-  const L10N_DIR = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n';
-  const l10nAbs = join(repoRoot, ...L10N_DIR.split('/'));
+  // ⏱ 2026-10-02 (lane i18n-pipeline): the domain is the LOCALE REGISTER's
+  // supported set (tooling/i18n/locales.json), not the brick's ARB folder. The
+  // brick shipped en+ta while the app shipped hi as well, so reading the brick
+  // made Hindi — and its unreviewed 18+ clickwrap clause — invisible to this
+  // duty. assert-locale-register holds every ARB root to the register, so the
+  // register is now what every app actually offers.
+  const L10N_DIR = REGISTER;
   let locales = [];
-  if (existsSync(l10nAbs)) {
-    locales = listDir(l10nAbs)
-      .map((f) => f.match(/^app_([A-Za-z0-9_-]+)\.arb$/)?.[1])
-      .filter((v) => typeof v === 'string')
-      .map((v) => v.replace(/_/g, '-'))
-      .sort();
+  try {
+    locales = supportedCodes(loadRegister(repoRoot)).sort();
+  } catch {
+    locales = [];
   }
   // Gated on `problems.length === 0` like the other coverage checks added in
   // this pass: coverageLost exits immediately, so firing it while a specific
@@ -420,9 +424,9 @@ if (archived.size === 0) {
   // broken version-history walk was reported as a missing locale list.
   if (locales.length === 0 && problems.length === 0) {
     coverageLost(
-      `no locale resolved from ${L10N_DIR}/app_<locale>.arb.`,
-      'The app\'s own locale list IS the domain of this limb — it cannot be shrunk without deleting a',
-      "locale, and deleting one fails the brick's own supportedLocales.length >= 2 property test. Zero",
+      `no locale resolved from ${L10N_DIR} (missing, invalid, or no supported row).`,
+      'The supported locale list IS the domain of this limb — it cannot be shrunk without deleting a',
+      "locale, and every app's ARB set is held to it by assert-locale-register. Zero",
       'locales means the derivation broke, and "every supported language has a notice" would then be',
       'vacuously true forever.',
     );
@@ -503,7 +507,7 @@ if (archived.size === 0) {
   }
   if (missing.length) {
     prints.push(
-      `NO NOTICE IN ${missing.join(', ')} (owner-gated, propose O-4) — the brick ships ${locales.length} locale(s) ` +
+      `NO NOTICE IN ${missing.join(', ')} (owner-gated, propose O-4) — the register supports ${locales.length} locale(s) ` +
         `(${locales.join(', ')}) and version ${published} of the notice exists in ${[...current.keys()].sort().join(', ') || 'none'}. ` +
         `A reader whose app is in ${missing[0]} is asked to consent to a document they were never offered in a ` +
         'language they read. PRINTED, NOT FAILED: an unreviewed machine translation of a statutory notice is itself ' +
@@ -513,7 +517,7 @@ if (archived.size === 0) {
     );
   } else {
     prints.push(
-      `PROMOTE ME: every locale the brick supports (${locales.join(', ')}) now has a notice for version ` +
+      `PROMOTE ME: every locale the register supports (${locales.join(', ')}) now has a notice for version ` +
         `${published}. The owner-gated print in this limb has nothing left to report — turn the missing-notice ` +
         'case into a build failure, so a NEW locale cannot ship without one.',
     );

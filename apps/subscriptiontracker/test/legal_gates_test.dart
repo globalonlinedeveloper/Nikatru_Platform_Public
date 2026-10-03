@@ -45,7 +45,7 @@ import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart'
     show GradientButton;
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/l10n/app_localizations_en.dart';
 

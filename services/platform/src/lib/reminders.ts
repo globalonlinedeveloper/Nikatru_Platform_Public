@@ -42,6 +42,7 @@ import { minorUnitDigits } from '../../../../contracts/currency/iso4217.js';
 import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
 import { MAIL_FROM } from '../generated/entity';
 import { mailFor } from '../ports';
+import { SOURCE_LOCALE, digestCopy, fill, localDateLabel, readStoredLocale, resolveLocale } from './digest-copy';
 
 /**
  * [ADR 029] §2 — everything a machine sends leaves from mail.nikatru.com, typed
@@ -370,50 +371,54 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** "Mon 5 Oct 2026" — unambiguous in every locale, which a numeric date is not. */
-export function dateLabel(ymd: string): string {
-  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+/** "Mon 5 Oct 2026" — unambiguous in every locale, which a numeric date is not.
+ *  `locale` (a register code) words it in that language; English by default. */
+export function dateLabel(ymd: string, locale: string = SOURCE_LOCALE): string {
+  return localDateLabel(ymd, locale);
 }
 
 /**
  * The digest, as plain text plus MINIMAL SEMANTIC HTML: a paragraph, a list, a
  * link. Behaviour, not design — no colours, no type, no images, nothing a mail
  * client has to fetch. Every string a person typed is escaped for HTML.
+ *
+ * `locale` is the person's stored preference, resolved against the locale
+ * register (digest-copy.ts): the copy is tooling/i18n/messages/email.json's, and
+ * anything unresolved — or missing from that locale's block — is English.
  */
 export function buildDigest(
   appId: string,
   items: readonly DueItem[],
   unsubscribeUrl: string,
-): { subject: string; text: string; html: string } {
+  locale: string = SOURCE_LOCALE,
+): { subject: string; text: string; html: string; locale: string } {
+  const lang = resolveLocale(locale);
+  const copy = digestCopy(lang);
   const name = appName(appId);
   const first = items[0];
   const subject =
     items.length === 1
-      ? `${first.name} renews on ${dateLabel(first.dueOn)}`
-      : `${items.length} subscriptions renew by ${dateLabel(items[items.length - 1].dueOn)}`;
+      ? fill(copy.subjectOne, { name: first.name, date: dateLabel(first.dueOn, lang) })
+      : fill(copy.subjectMany, { count: items.length, date: dateLabel(items[items.length - 1].dueOn, lang) });
   const line = (i: DueItem): string => {
     const p = priceLabel(i.price, i.currency, i.priceMinor);
-    return `${i.name} — ${dateLabel(i.dueOn)}${i.cycle ? ` (${i.cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
+    const cycle = i.cycle ? (copy.cycle[i.cycle] ?? i.cycle) : null;
+    return `${i.name} — ${dateLabel(i.dueOn, lang)}${cycle ? ` (${cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
   };
+  const why = fill(copy.why, { app: name });
   const text =
-    `These subscriptions renew soon:\n\n` +
+    `${copy.intro}\n\n` +
     items.map((i) => `- ${line(i)}`).join('\n') +
-    `\n\nYou get this because you switched on renewal reminder emails in ${name}. ` +
-    `Change them in the app: ${appUrl(appId)}\n` +
-    `Stop these emails: ${unsubscribeUrl}\n`;
+    `\n\n${why} ` +
+    `${copy.change}: ${appUrl(appId)}\n` +
+    `${copy.stop}: ${unsubscribeUrl}\n`;
   const html =
-    `<p>These subscriptions renew soon:</p>` +
+    `<p>${escapeHtml(copy.intro)}</p>` +
     `<ul>${items.map((i) => `<li>${escapeHtml(line(i))}</li>`).join('')}</ul>` +
-    `<p>You get this because you switched on renewal reminder emails in ${escapeHtml(name)}. ` +
-    `<a href="${escapeHtml(appUrl(appId))}">Change them in the app</a>.</p>` +
-    `<p><a href="${escapeHtml(unsubscribeUrl)}">Stop these emails</a></p>`;
-  return { subject, text, html };
+    `<p>${escapeHtml(why)} ` +
+    `<a href="${escapeHtml(appUrl(appId))}">${escapeHtml(copy.change)}</a>.</p>` +
+    `<p><a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(copy.stop)}</a></p>`;
+  return { subject, text, html, locale: lang };
 }
 
 /** A fresh 256-bit token, base64url, 43 characters — the unsubscribe and feed capability. */
@@ -637,7 +642,9 @@ async function remindApp(
       const items = await claim(env, target.appId, p, p.items.slice(0, MAX_DIGEST_ITEMS), state.sentAt, hash);
       if (items.length === 0) continue;
       const unsubscribeUrl = `${REMINDER_LINK_ORIGIN}/v1/reminders/unsubscribe?t=${token}`;
-      const digest = buildDigest(target.appId, items, unsubscribeUrl);
+      // The person's own language (their stored `locale` preference), English
+      // when there is none or the register does not support it.
+      const digest = buildDigest(target.appId, items, unsubscribeUrl, (await readStoredLocale(target.db, p.userId)) ?? SOURCE_LOCALE);
       let delivered = false;
       let refused = false;
       let why = '';

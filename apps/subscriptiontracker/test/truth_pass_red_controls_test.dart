@@ -37,7 +37,7 @@ import 'package:subscriptiontracker/features/insights/forecast_card.dart';
 import 'package:subscriptiontracker/features/insights/signals.dart';
 import 'package:subscriptiontracker/features/insights/summary_tiles.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';

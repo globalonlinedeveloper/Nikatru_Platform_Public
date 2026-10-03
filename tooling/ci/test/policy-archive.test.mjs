@@ -31,7 +31,6 @@ const DART_SUBLY = join('apps', 'subscriptiontracker', 'lib', 'state', 'analytic
 const DART_BRICK = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'state', 'providers.dart');
 /** The brick's ARB directory — the app's own locale list, and the domain of the
  *  [pipeline K-14] notice-per-locale limb. */
-const L10N = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'l10n');
 
 let TMP;
 before(() => {
@@ -74,7 +73,7 @@ const g = (root, ...args) => spawnSync('git', ['-C', root, ...args], { encoding:
  * becomes a commit that edits the page and the two Dart constants IN PLACE —
  * which is the exact edit `git log -S` cannot see.
  */
-function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersion, initGit = true, locales = ['en', 'ta'] } = {}) {
+function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersion, initGit = true, locales = ['en', 'ta'] /* locale-list: a fixture register, not the real set */ } = {}) {
   const root = join(TMP, `r${seq++}`);
   mkdirSync(root, { recursive: true });
   if (initGit) {
@@ -100,15 +99,24 @@ function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersi
     if (html === null) continue;
     write(root, join('sites', 'nikatru', 'legal', version, locale, 'privacy.html'), html);
   }
-  // [pipeline K-14] The app's OWN locale list is the domain of the notice-per-
-  // locale limb, and it is read from the brick's ARB files. Every fixture needs
-  // it: without one the limb is COVERAGE LOST, which is the correct answer for a
-  // tree that has lost its locale declarations and the wrong one for a fixture
-  // that never had any.
-  for (const locale of locales) {
-    write(root, join(L10N, `app_${locale}.arb`), `{ "@@locale": "${locale}" }\n`);
-  }
+  // [pipeline K-14] The LOCALE REGISTER's supported set is the domain of the
+  // notice-per-locale limb (it read the brick's ARB folder until lane
+  // i18n-pipeline, which hid Hindi). Every fixture needs one: without it the limb
+  // is COVERAGE LOST, which is the correct answer for a tree that has lost its
+  // locale declarations and the wrong one for a fixture that never had any.
+  write(
+    root,
+    join('tooling', 'i18n', 'locales.json'),
+    `${JSON.stringify({ sourceLocale: locales[0] ?? 'en', locales: locales.map(registerRow) }, null, 2)}\n`,
+  );
   return root;
+}
+
+function registerRow(code) {
+  return {
+    code, englishName: code, nativeName: code, script: 'Latn', direction: 'ltr', plural: ['one', 'other'],
+    status: 'supported', apple: code, android: code, msix: code,
+  };
 }
 
 const run = (root) => spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
@@ -352,9 +360,9 @@ describe('assert-policy-archive', () => {
 });
 
 // ── [pipeline K-14] a notice per locale the app already supports ─────────────
-// The domain is the app's OWN locale list, read from the brick's ARB files, so
-// it cannot be shrunk without deleting a locale — and deleting one fails the
-// brick's `supportedLocales.length >= 2` property test. Mutation-proven against
+// The domain is the locale register's supported set, so it cannot be shrunk
+// without deleting a locale — and every ARB root is held to that set by
+// assert-locale-register. Mutation-proven against
 // a scratch copy of the real repository, 3/3 as intended.
 describe('assert-policy-archive — the notice-per-locale relation [pipeline K-14]', () => {
   test('a locale with no notice PRINTS and does not fail the build', () => {
@@ -456,6 +464,7 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
   test('a THIRD locale added to the app immediately owes a notice', () => {
     // The domain grows with the app. Adding a language is what makes this limb
     // demand more, which is why it is a relationship and not a list.
+    // locale-list: a fixture register that grows by one, not the real set.
     const r = run(repo({ locales: ['en', 'ta', 'hi'] }));
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, /NO NOTICE IN hi, ta/);
