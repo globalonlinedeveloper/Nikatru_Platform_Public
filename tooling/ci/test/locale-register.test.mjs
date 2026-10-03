@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import { check, findTypedLists, READERS, BRICK_APP, MIN_SCANNED } from '../assert-locale-register.mjs';
 import {
   REGISTER, DART_TABLE, validateRegister, renderInfoPlist, renderManifest, renderMsixLanguages, supportedCodes, plan,
+  renderChassisBridge,
 } from '../../i18n/locales.mjs';
 import { MESSAGES, SOURCE_DIR, TEMPLATES, renderTemplate, rows, localesWithCopy } from '../../i18n/auth-mail.mjs';
 
@@ -324,5 +325,23 @@ describe('the renderer CLI', () => {
     assert.equal(red.status, 1);
     assert.match(red.stderr, /macos\/Runner\/Info\.plist/);
     assert.ok(existsSync(join(root, REGISTER)));
+  });
+});
+
+describe('the chassis bridge is dart-format clean', () => {
+  // CI's `dart format --set-exit-if-changed apps/` re-wrapped a 3-placeholder
+  // member the renderer had left at 81+ columns; these are the shapes it wants.
+  const ph = (...names) => Object.fromEntries(names.map((n) => [n, { type: 'String' }]));
+  const body = (arb) => renderChassisBridge(arb);
+  test('one line, split after =>, then one parameter per line', () => {
+    const out = body({
+      a: 'x', '@a': { placeholders: ph('n') },
+      reacceptTermsNoteLine: 'x', '@reacceptTermsNoteLine': { placeholders: ph('line') },
+      reacceptTermsNoteHeading: 'x', '@reacceptTermsNoteHeading': { placeholders: ph('document', 'version', 'date') },
+    });
+    assert.ok(out.includes('  String a(String n) => _chassis.a(n);\n'));
+    assert.ok(out.includes('  String reacceptTermsNoteLine(String line) =>\n      _chassis.reacceptTermsNoteLine(line);\n'));
+    assert.ok(out.includes('  String reacceptTermsNoteHeading(\n    String document,\n    String version,\n    String date,\n  ) => _chassis.reacceptTermsNoteHeading(document, version, date);\n'));
+    for (const line of out.split('\n')) assert.ok(line.length <= 80, `over 80: ${line}`);
   });
 });

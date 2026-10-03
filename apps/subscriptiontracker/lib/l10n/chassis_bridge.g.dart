@@ -428,8 +428,11 @@ extension ChassisBridge on AppLocalizations {
 
   String get reacceptTermsNotRecorded => _chassis.reacceptTermsNotRecorded;
 
-  String reacceptTermsNoteHeading(String document, String version, String date) =>
-      _chassis.reacceptTermsNoteHeading(document, version, date);
+  String reacceptTermsNoteHeading(
+    String document,
+    String version,
+    String date,
+  ) => _chassis.reacceptTermsNoteHeading(document, version, date);
 
   String reacceptTermsNoteLine(String line) =>
       _chassis.reacceptTermsNoteLine(line);
