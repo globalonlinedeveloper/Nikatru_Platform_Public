@@ -66,7 +66,7 @@
     104,
 
   "app-yaml.test.mjs":
-    180,
+    193,
 
   "appimage-signing.test.mjs":
     77,
@@ -177,7 +177,7 @@
     9,
 
   "box-config-drift.test.mjs":
-    19,
+    32,
 
   "boxes.test.mjs":
     50,
@@ -507,7 +507,7 @@
     20,
 
   "green-means-ran.test.mjs":
-    49,
+    59,
 
   "guard-coverage.test.mjs":
     84,
@@ -556,6 +556,12 @@
 
   "iap-review-screenshots.test.mjs":
     16,
+
+  "identity-address-sql.test.mjs":
+    5,
+
+  "identity-log-retention.test.mjs":
+    6,
 
   "identity-one-deleter.test.mjs":
     8,
@@ -890,6 +896,9 @@
   "regen-chain.test.mjs":
     6,
 
+  "regen-gradle-verify-workflow.test.mjs":
+    11,
+
   "release-durable.test.mjs":
     200,
 
@@ -987,7 +996,7 @@
     37,
 
   "session-revocation.test.mjs":
-    18,
+    25,
 
   "setup-flutter-env.test.mjs":
     4,
