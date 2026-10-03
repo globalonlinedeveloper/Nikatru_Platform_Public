@@ -1215,6 +1215,86 @@
   "@devicesRetry": {
     "description": "SE-03 · Under 'Your devices could not be loaded.'; tapping the row reads the list again."
   },
+  "aiDisclosureTitle": "This feature uses AI",
+  "@aiDisclosureTitle": {
+    "description": "T17 · EU AI Act Art. 50(1). Heading of the disclosure shown before the first AI call, on every target."
+  },
+  "aiDisclosureBody": "What you send is processed by {processor}, an AI provider, to suggest results. The results are AI-generated and can be wrong. Nothing is saved until you review it.",
+  "@aiDisclosureBody": {
+    "description": "T17 · EU AI Act Art. 50(1). Names the processor (Apple 5.1.2(i)), says the results are AI-generated and can be wrong, and that nothing is saved without review.",
+    "placeholders": {
+      "processor": {
+        "type": "String",
+        "example": "Anthropic"
+      }
+    }
+  },
+  "aiDisclosurePrivacy": "Read the privacy notice",
+  "@aiDisclosurePrivacy": {
+    "description": "T17 · EU AI Act Art. 50(1). Link from the AI disclosure to the privacy notice."
+  },
+  "aiDisclosureAccept": "I understand, continue",
+  "@aiDisclosureAccept": {
+    "description": "T17 · EU AI Act Art. 50(1). Acknowledges the AI disclosure; no AI call is possible before it."
+  },
+  "aiDisclosureDecline": "Not now",
+  "@aiDisclosureDecline": {
+    "description": "T17 · EU AI Act Art. 50(1). Closes the AI disclosure without opting in; nothing is sent."
+  },
+  "aiCandidateLabel": "Suggested by AI: check before saving",
+  "@aiCandidateLabel": {
+    "description": "T17 · EU AI Act Art. 50(1). Label on every AI-suggested row in a review list. Never colour-only."
+  },
+  "aiSuggestionLabel": "AI suggestion",
+  "@aiSuggestionLabel": {
+    "description": "T17 · EU AI Act Art. 50(1). Label on every AI advisory suggestion. Never colour-only."
+  },
+  "aiReportAction": "Report this AI result",
+  "@aiReportAction": {
+    "description": "T17 · Play AI-generated content policy. The report action on every AI output; opens the in-app report."
+  },
+  "planEndedRefundApproved": "Your plan ended because the payment was refunded.",
+  "@planEndedRefundApproved": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `refund_approved`."
+  },
+  "planEndedChargeback": "Your plan ended because the payment was disputed with your bank.",
+  "@planEndedChargeback": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `chargeback`."
+  },
+  "planEndedChargebackReversed": "Your plan was restored: the payment dispute was resolved.",
+  "@planEndedChargebackReversed": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `chargeback_reversed`."
+  },
+  "planEndedSubscriptionExpired": "Your plan ended when its paid period ran out.",
+  "@planEndedSubscriptionExpired": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `subscription_expired`."
+  },
+  "planEndedTrialExpired": "Your free trial has ended.",
+  "@planEndedTrialExpired": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `trial_expired`."
+  },
+  "planEndedPaymentFailedFinal": "Your plan ended because the next payment could not be taken.",
+  "@planEndedPaymentFailedFinal": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `payment_failed_final`."
+  },
+  "planEndedCancelledAtPeriodEnd": "Your plan was cancelled and ended at the end of its paid period.",
+  "@planEndedCancelledAtPeriodEnd": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `cancelled_at_period_end`."
+  },
+  "planEndedSubscriptionPaused": "Your plan is paused.",
+  "@planEndedSubscriptionPaused": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `subscription_paused`."
+  },
+  "planEndedOn": "On {date}",
+  "@planEndedOn": {
+    "description": "refund-finish (MF-7) · When access ended, under the reason sentence. Shown only when the date is known.",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMd"
+      }
+    }
+  },
   "authReauthRequired": "For your security, sign in again to change how you sign in.",
   "@authReauthRequired": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart (#1155 review, finding 3). The platform Worker's reauth_required for a sign-in method change: the session's last sign-in is too old, or the person cancelled the re-authentication. Nothing was changed."
