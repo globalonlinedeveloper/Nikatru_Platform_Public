@@ -492,6 +492,8 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
     assert.match(r.out, /android-play\s+play-billing\s+≥ 0\.1815 per unit/);
     assert.match(r.out, /PASS  C7 standby: a model switch keeps `acme`; the rollback is each feature's previous model \(import: unset\)/);
     assert.match(r.out, /PASS  C17 floor: 1 feature\(s\) × 4 channel row\(s\) floored at 4× cost/);
+    // review of #1136, nit 1: the floor says what it leaves out.
+    assert.match(r.out, /C17 prices a call at its dearest single attempt: a refusal's declined attempt is excluded/);
   });
 
   it('a feature with no model yet, or no tokens per call, is LOST — never a guess', () => {

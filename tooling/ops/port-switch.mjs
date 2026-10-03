@@ -618,6 +618,11 @@ export function aiChecks(root, doc, target, model, add) {
   }
   if (lost17.length) add(17, 'floor', 'LOST', `${lost17.length} floor(s) not derived — first: ${lost17[0]}`);
   else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below)`);
+  // review of #1136, nit 1: a call that falls back also bills its declined
+  // attempt, and chainCallCostUsd prices one attempt (the dearest) — so the
+  // margin on a refused call is understated. Stated, not hidden; the hard cap
+  // (the meter's reservation) is unaffected.
+  lines.push(`    C17 prices a call at its dearest single attempt: a refusal's declined attempt is excluded, so on a call that falls back the ${AI_COST_MULTIPLE}× margin is understated (the hard cap is unaffected).`);
   return lines;
 }
 
