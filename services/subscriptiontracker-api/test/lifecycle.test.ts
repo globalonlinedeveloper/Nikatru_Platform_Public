@@ -7,10 +7,9 @@
 // Every test below FAILS on main 454dd415 (the red control): the status and
 // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
 // ─────────────────────────────────────────────────────────────────────────────
-import renewalsSrc from '../src/routes/renewals.ts?raw';
+import renewalsSrc from '../../platform/src/renewals.ts?raw';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
-import renewals from '../src/routes/renewals';
 import subscriptions, {
   CHARGING_STATUSES,
   MAX_BATCH_STATEMENTS,
@@ -24,12 +23,10 @@ type Row = Record<string, unknown>;
 
 let db: SqliteD1;
 let subs: ReturnType<typeof asUser>;
-let ren: ReturnType<typeof asUser>;
 
 beforeEach(() => {
   db = realAppDb();
   subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
-  ren = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
 });
 
 const inDays = (days: number) =>
@@ -46,11 +43,22 @@ async function create(body: Row = {}): Promise<string> {
 const patch = (id: string, body: Row) => subs(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body });
 const listIds = async () =>
   ((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).map((r) => r.id);
+// "Due" as the platform fan-out charges: a CHARGING_STATUSES row that is not
+// removed. It read this Worker's GET /v1/renewals until that route was removed
+// (rv2-services-023, lane fix-st-api-bounds); 'the charging set is ONE set'
+// below holds these literals to the fan-out's own, and 'the platform fan-out
+// charges neither…' runs the fan-out itself.
 const dueIds = async () =>
-  ((await (await ren(U, '/v1/renewals?withinDays=30')).json()) as Row[]).map((r) => r.id);
+  db
+    .rows(
+      `SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL
+         AND status IN (${CHARGING_STATUSES.map((s) => `'${s}'`).join(', ')}) ORDER BY id`,
+      U,
+    )
+    .map((r) => r.id);
 
 describe('F04 — Pause and Mark cancelled are accepted, and stop the row being due', () => {
-  it('PATCH {status: paused} is 200; the row stays listed and leaves /v1/renewals', async () => {
+  it('PATCH {status: paused} is 200; the row stays listed and is no longer due', async () => {
     const id = await create();
     expect(await dueIds()).toEqual([id]);
     const res = await patch(id, { status: 'paused' });
@@ -115,9 +123,11 @@ describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/cei
 });
 
 describe('the charging set is ONE set', () => {
-  it('/v1/renewals spells out exactly CHARGING_STATUSES', () => {
-    // renewals.ts writes the set as SQL literals (a D1 statement may not
-    // interpolate it); this keeps the literals and the constant from drifting.
+  it('the platform fan-out spells out exactly CHARGING_STATUSES', () => {
+    // services/platform/src/renewals.ts writes the set as SQL literals (a D1
+    // statement may not interpolate it); this keeps the literals and the
+    // constant from drifting. (It read this Worker's GET /v1/renewals until
+    // that route was removed, rv2-services-023.)
     const src = renewalsSrc;
     const set = /status IN \(([^)]*)\)/.exec(src)?.[1];
     expect(set, 'renewals.ts no longer filters on status').toBeDefined();
@@ -126,7 +136,7 @@ describe('the charging set is ONE set', () => {
 });
 
 describe('F03 — soft delete: PATCH {deleted_at} hides the row, null brings it back', () => {
-  it('is 200, and GET / plus /v1/renewals omit the row', async () => {
+  it('is 200, and GET / and the due set omit the row', async () => {
     const id = await create();
     const res = await patch(id, { deleted_at: new Date().toISOString() });
     expect(res.status, "main answers 400: 'deleted_at cannot be set yet'").toBe(200);

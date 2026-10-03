@@ -3686,6 +3686,11 @@
       "firstSeen": "2026-09-25",
       "evidence": []
     },
+    "tooling/ops/check-box-config-drift.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-code-scanning-age.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",

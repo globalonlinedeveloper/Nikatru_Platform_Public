@@ -249,7 +249,7 @@ import { flutterAppChannel, undeclaredSurfaceLine } from '../ci/channel-surface.
 // ⏱ 2026-09-25 [ADR 095 §4] — which workflow's runs carry a lane's stamps is the
 // workflow scanner's run-host answer: a `workflow_call`-only lane runs as its one
 // caller's child, and inherits that caller's run_number and GITHUB_WORKFLOW_REF.
-import { parseResolvedWorkflows, laneRunHost, laneRefusalText, WORKFLOW_DIR } from '../ci/workflow-scan.mjs';
+import { parseResolvedWorkflows, laneRunHost, laneRefusalText, WORKFLOW_DIR, isPostGateRun } from '../ci/workflow-scan.mjs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry, fetchWithBoundedRetry, backoffPlan } from './bounded-retry.mjs';
 // ⏱ 2026-09-23 — the non-release stamp shapes live in ONE module, which the
 // store capture's define helper and assert-live-writer-provenance also import:
@@ -414,9 +414,13 @@ function servedWitness(envs, lanes) {
  *  is a push OR a dispatch of main (POST_GATE_EVENTS): land.yml merges with
  *  GITHUB_TOKEN and starts main's run as a dispatch, and the listing takes one
  *  event, so a push-only filter would leave every build it deploys unattributable.
- *  A fork PR from a branch named main also lists here and is harmless: a hit needs
- *  the stamp's run number AND its full head_sha, and such a run deploys nothing. */
+ *  ⏱ 2026-10-02 (review of #1158, nit 11) — NARROWED: the listing still takes
+ *  `branch=main` (it takes one event), and every run it answers is then held to
+ *  the post-gate class itself (`hostRunAdmits`: a push or a dispatch, on main), so
+ *  a fork PR from a branch named main, or a schedule run, is never a caller run. */
 export const HOST_RUN_FILTER = 'branch=main';
+/** Is this listed caller run one the post-gate class could have deployed from? */
+export const hostRunAdmits = (run) => isPostGateRun(run);
 
 /** ⏱ 2026-09-25 [ADR 095 §4] WHICH WORKFLOW'S RUNS CARRY A LANE'S STAMPS.
  *  A workflow_call-only lane (deploy-web.yml once ci.yml calls it) has no runs
@@ -465,6 +469,9 @@ function withRunHosts(lanes, { lenientWhenUnread }) {
 /** The listing filter a lane's run workflow is read with: '' for its own file,
  *  the host filter for its caller's. */
 const runFilterOf = (lane, wf) => (lane.host && wf === lane.host.workflow ? lane.host.filter : '');
+/** The rows of a lane's run workflow it reads: all of its own file's, and only the
+ *  post-gate runs of its caller's (`hostRunAdmits`). */
+const runAdmitsOf = (lane, wf) => (runFilterOf(lane, wf) ? hostRunAdmits : () => true);
 
 /** A lane's run workflows; a lane built by hand without them (an exported
  *  resolver's caller) runs as its own workflow. */
@@ -1592,7 +1599,7 @@ async function pointReadBuild({ value, read, lanes }) {
       const runs = listing.body?.workflow_runs;
       if (!Array.isArray(runs)) throw new CouldNotLook(`point read · ${value}: GET ${path} carried no workflow_runs array`);
       floorRuns(runs, wf);
-      const hit = runs.find((r) => String(r.run_number) === n && String(r.head_sha ?? '').toLowerCase() === full);
+      const hit = runs.find((r) => runAdmitsOf(lane, wf)(r) && String(r.run_number) === n && String(r.head_sha ?? '').toLowerCase() === full);
       if (hit) return { value, found: { ...hit, workflow: wf }, reads, verdict: null };
       // One commit with more than a page of completed runs on one lane is not a
       // shape this repository produces; if it ever does, the unread page could hold
@@ -2189,7 +2196,7 @@ async function main() {
     : (
         await Promise.all(
           [...laneByWorkflow.entries()].map(async ([wf, lane]) =>
-            (await githubRuns(wf, { filter: runFilterOf(lane, wf) })).map((r) => ({ ...r, workflow: wf })),
+            (await githubRuns(wf, { filter: runFilterOf(lane, wf) })).filter(runAdmitsOf(lane, wf)).map((r) => ({ ...r, workflow: wf })),
           ),
         )
       ).flat();

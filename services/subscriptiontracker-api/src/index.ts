@@ -4,7 +4,8 @@
 //
 //   PUBLIC   GET    /v1/health              — no auth (deploy verification)
 //   ES256    DELETE /v1/account             — erasure. ASYMMETRIC-ONLY (see below)
-//   AUTH     *      /v1/subscriptions ...   — Supabase JWT required
+//   AUTH     *      /v1/subscriptions ...   — Supabase JWT required; writes
+//                                             per-account rate limited
 //   AUTH     GET    /v1/insights            — a year of charges + price edits (ST-P6, ST-I4)
 //
 // ── 🔴 TWO AUTH BOUNDARIES ON ONE WORKER, AND THE DIFFERENCE IS THE POINT ────
@@ -37,9 +38,9 @@ import { reportWorkerError, requestSinkContext } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { requestId } from './lib/request-id';
 import { supabaseAuth, erasureAuth } from './middleware/auth';
+import { writeLimit } from './middleware/write-limit';
 import account from './routes/account';
 import subscriptions from './routes/subscriptions';
-import renewals from './routes/renewals';
 import budget from './routes/budget';
 import categories from './routes/categories';
 import preferences from './routes/preferences';
@@ -187,8 +188,16 @@ app.route('/v1', account);
 // ── Protected: everything else under /v1 requires a valid Supabase JWT ────────
 const api = new Hono<AppEnv>();
 api.use('*', supabaseAuth);
+// ⏱ 2026-10-01 · rv2-services-008: every WRITE, per verified account, AFTER the
+// token is verified (its key is the subject `supabaseAuth` set) and before any
+// route reads a body. See middleware/write-limit.ts.
+api.use('*', writeLimit);
 api.route('/subscriptions', subscriptions);
-api.route('/renewals', renewals);
+// ⏱ 2026-10-01 · rv2-services-023: `GET /v1/renewals` is GONE. It had no caller
+// in any language since 2026-08-25 (tooling/platform-register.json printed so
+// on every run); the app computes upcoming renewals from the list it holds, and
+// the nightly reminders are services/platform's. Removed with its test, its
+// tenancy case and its register row.
 api.route('/budget', budget);
 api.route('/categories', categories);
 api.route('/preferences', preferences);

@@ -56,21 +56,67 @@ class DioApiClient
 
   static String _noCurrency() => Money.fallbackCurrencyCode;
 
+  /// Rows asked for per page of `GET /subscriptions?limit=` (keyset paging,
+  /// lane fix-st-api-bounds, rv2-services-008). The Worker serves at most 500.
+  static const int subscriptionsPageSize = 200;
+
+  /// The most pages one list read follows before it gives up. The Worker caps
+  /// an account at 500 rows, so 3 pages hold any account; a cursor that never
+  /// ends is a server fault, and a client that followed it would never return.
+  static const int _maxSubscriptionPages = 20;
+
+  /// The WHOLE list, page by page.
+  ///
+  /// 🔴 BOTH WIRE SHAPES ARE READ (lane fix-st-api-bounds). A Worker that pages
+  /// answers `?limit=` with `{items, next}` and this follows `next` until it is
+  /// null; a Worker deployed BEFORE paging ignores the query and answers the
+  /// bare array it always did, which is the whole list. Reading only the new
+  /// shape would break this build against the Worker as deployed, and reading
+  /// only the first page would silently drop every row past it.
   @override
   Future<List<Subscription>> getSubscriptions() async {
-    final Object? data = await _rest.get('/subscriptions');
-    return _rest.decode(
-      data,
-      (Object? b) => (b! as List<dynamic>)
-          .map(
-            (dynamic e) => Subscription.fromJson(
-              e as Map<String, dynamic>,
-              fallbackCurrencyCode: _currencyCode(),
-            ),
-          )
-          .toList(),
+    final List<Subscription> out = <Subscription>[];
+    String? after;
+    for (int page = 0; page < _maxSubscriptionPages; page++) {
+      final String cursor = after == null
+          ? ''
+          : '&after=${Uri.encodeQueryComponent(after)}';
+      final Object? data = await _rest.get(
+        '/subscriptions?limit=$subscriptionsPageSize$cursor',
+      );
+      final ({List<Subscription> rows, String? next}) parsed = _rest.decode(
+        data,
+        (Object? b) {
+          if (b is List<dynamic>) {
+            return (rows: _subscriptionRows(b), next: null);
+          }
+          final Map<String, dynamic> m = b! as Map<String, dynamic>;
+          return (
+            rows: _subscriptionRows(m['items']! as List<dynamic>),
+            next: m['next'] as String?,
+          );
+        },
+      );
+      out.addAll(parsed.rows);
+      if (parsed.next == null) return out;
+      after = parsed.next;
+    }
+    throw ApiException(
+      0,
+      'Malformed response: GET /subscriptions paged past '
+      '$_maxSubscriptionPages pages',
+      malformed: true,
     );
   }
+
+  List<Subscription> _subscriptionRows(List<dynamic> rows) => rows
+      .map(
+        (dynamic e) => Subscription.fromJson(
+          e as Map<String, dynamic>,
+          fallbackCurrencyCode: _currencyCode(),
+        ),
+      )
+      .toList();
 
   /// A one-shot create still carries a key: a lost response to it is then at
   /// worst a missing row, never a duplicate one.

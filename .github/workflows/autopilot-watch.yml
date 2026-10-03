@@ -1,4 +1,7 @@
 name: Autopilot watch
+# why: a workflow_run workflow's own run is green whenever it did its job, so the run list must name the verdict that woke it
+# (assert-workflow-hardening limb 16, #1168); the clock and a dispatch say so instead.
+run-name: "Autopilot watch ${{ github.event_name == 'workflow_run' && format('after {0} {1} on {2}', github.event.workflow_run.name, github.event.workflow_run.conclusion, github.event.workflow_run.head_sha) || github.event_name }}"
 
 # The lane watch, the run ledger and E2E-after-deploy, on GitHub in both modes
 # (row O-WATCH-RUNS-ON-THE-LAPTOP). Every decision is tooling/autopilot/ledger.mjs,
@@ -16,7 +19,9 @@ on:
   # and E2E live on main proves it. MAIN ONLY, and not Land: every PR's CI and every
   # Land pass would wake this ~25-35 times an hour against the repo's shared 1,000
   # GITHUB_TOKEN requests an hour (review of #1171, finding 4); the board refreshes
-  # on the clock. Safe here: no expression reads the triggering run, the checkout is
+  # on the clock. Safe here: the one expression that reads the triggering run is
+  # `run-name:`'s name, conclusion and head_sha (a workflow name from the list above,
+  # a GitHub enum and a 40-hex sha, display only, never a shell), the checkout is
   # main, and the only code run is watch.mjs from main.
   workflow_run:
     workflows: [CI, E2E live]

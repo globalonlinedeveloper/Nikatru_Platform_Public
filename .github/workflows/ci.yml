@@ -1619,6 +1619,25 @@ jobs:
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
           dart format apps/probeapi
           diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
+      # why: O-BRICK-HEALTH-HAS-NO-BUILD (rv2-services-010), the class fix. The apps=2 step above runs this guard
+      # BEFORE the backend stamp, so the stamped Worker's /v1/health was never in its subject, and a template that
+      # answered no `build` reached app #2's own CI first. Here the workspace holds the backend probe too, and the
+      # guard derives services/probeapi-api from apps/probeapi, so it must exit 0 with apps=3 in its log. The probe
+      # is registered first, offline, by provision-backend.mjs's own step [6] (`--register-only`): worker-set.mjs
+      # refuses a Worker directory with no register row, which would make the guard COVERAGE LOST, not a grade.
+      # The register is restored after, pass or fail: the probe is throwaway.
+      - name: The analytics contract grades the stamped backend Worker's health route (apps=3)
+        run: |
+          trap 'git checkout -- tooling/platform-register.json' EXIT
+          node tooling/scripts/provision-backend.mjs probeapi --register-only
+          set +e
+          node tooling/ci/assert-analytics-contract.mjs > "$RUNNER_TEMP/analytics-backend.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/analytics-backend.log"
+          echo "assert-analytics-contract exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-analytics-contract exited $code with the backend probe stamped"; exit 1; fi
+          if ! grep -qE 'ok apps=3([^0-9]|$)' "$RUNNER_TEMP/analytics-backend.log"; then echo "::error::assert-analytics-contract exited 0 without an apps=3 line; the stamped backend was not in its subject"; exit 1; fi
       # why: O-APP-ID-FORM-UNVALIDATED (a). pre_gen applies contracts/app-id and
       # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
       # the id the old snake_case rule let through. Exit code alone is not the
@@ -2373,6 +2392,13 @@ jobs:
       - name: Resolve this app's base href from the catalogue
         id: base
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: deploy-web's smoke probes every connect-src origin, and #1145 broke ONLY that leg, on
+      # main, because this job probed none (lane ci-pr-web-smoke). deploy-web's list comes from a
+      # compare that reads secrets and passes only when it EQUALS _headers' connect-src, so this reads
+      # that list from _headers itself; built-artifact-pr-lane.test.mjs T16w holds the smoke equal.
+      - name: The connect-src origins the launch smoke probes, read from the app's _headers
+        id: connect
+        run: node tooling/web/connect-origins.mjs --app ${{ matrix.app }} --emit-listed >> "$GITHUB_OUTPUT"
       # why: deploy-web.yml's build, composed by the same flutter-release-build.mjs call with
       # `--lane pr` (assert-channel-register 6b-v refuses a hand-typed release build);
       # built-artifact-pr-lane.test.mjs holds the two equal. `--lane pr` blanks the backend
@@ -2401,11 +2427,22 @@ jobs:
       # package_config.json "Resolve the workspace" wrote (lead ruling PRL-R1).
       - name: Every asset the build actually shipped has a licence row
         run: node tooling/ci/assert-licence-register.mjs . --bundle apps/${{ matrix.app }}/build/web/assets --app ${{ matrix.app }}
-      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame.
-      # No --connect origin is passed: the build's URL-valued defines are empty here, so
-      # there is no origin to probe; deploy-web.yml probes each one with its real value.
+      # why: deploy-web.yml boots the bundle AFTER `sourcemaps inject` rewrites its JavaScript, so
+      # this boots the same bytes: the same pinned CLI, the same local subcommand. It sends nothing
+      # and needs no DSN or token; the release, the upload and the .map delete stay deploy-web's.
+      - name: Install glitchtip-cli (pinned by version AND by digest)
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
+      - name: Inject debug ids into the web bundle, as deploy-web does before its smoke
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/glitchtip-cli" sourcemaps inject apps/${{ matrix.app }}/build/web
+      # why: the bundle boots under its own _headers CSP, must reach flutter-first-frame, and
+      # fetches each connect-src origin from the page with its service worker bypassed, exactly
+      # as deploy-web.yml's smoke does; the smoke answers each probe itself, so nothing is sent.
       - name: Launch the built bundle once
-        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+        run: >
+          node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+          ${{ steps.connect.outputs.connect }}
       # why: SYN-X1 C-16. Every a11y test runs on the Dart VM, where enableWebSemantics() is
       # dead code (kIsWeb is false), so nothing else loads the SHIPPED bundle and reads the
       # tree a screen reader reads. This boots it as the smoke above does and grades Chrome's
@@ -2417,8 +2454,8 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform web-artifacts
-      # why: nothing here leaves the runner — no upload, no source maps sent, no
-      # GlitchTip release, no deploy. The bundle and its .map files are discarded with
+      # why: nothing here leaves the runner — no upload, no source maps sent (the debug ids are
+      # injected locally), no GlitchTip release, no deploy. The bundle and its .map files are discarded with
       # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
       # are never SERVED, and nothing is served here).
 

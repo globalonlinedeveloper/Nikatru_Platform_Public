@@ -33,6 +33,7 @@ build when the two disagree, so this table cannot silently fall behind again.
 | GET, POST | `/v1/reminders/unsubscribe` | **the token in `?t=`** | One-click unsubscribe from a reminder email (RFC 8058); GET changes nothing |
 | POST, DELETE | `/v1/calendar/feed` | Supabase JWT | Mint/rotate or revoke a private calendar feed (ST-R2) |
 | GET | `/v1/calendar/<token>.ics` | **the token is the capability** | The feed; `?download=1` for a download |
+| POST | `/v1/ops/box-manifest` | **a secret scoped to one box** | A box's cron reports the hashes of its live config (PB-27); no CORS |
 
 Three properties of that table are load-bearing and are asserted, not assumed:
 

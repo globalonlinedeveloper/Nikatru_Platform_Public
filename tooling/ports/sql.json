@@ -1,0 +1,170 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "sql",
+  "level": {
+    "claimed": 2,
+    "target": 3
+  },
+  "interface": {
+    "ts": {
+      "file": "services/_shared/src/ports/sql.ts",
+      "symbols": [
+        "SqlDb",
+        "SqlStatement",
+        "SqlResult"
+      ]
+    }
+  },
+  "adapters": [
+    {
+      "id": "d1",
+      "vendor": "cloudflare",
+      "status": "live",
+      "impl": {
+        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
+        "symbol": "cloudflareD1"
+      },
+      "capabilities": [
+        "prepare",
+        "bind",
+        "first",
+        "all",
+        "run",
+        "batch"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "sandbox",
+        "live"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "tooling/ops/check-d1-accepts-live-sql.mjs",
+        "kind": "live"
+      },
+      "exportDuty": "Leaves with us: every row of every table. The nightly export (services/platform/src/backup/) writes each D1 database to R2 as gzipped JSON lines — its schema, every row in rowid order, its indexes — and the schema is the plain-SQL migrations in services/platform/migrations and services/subscriptiontracker-api/migrations, so a target REPLAYS the migrations and LOADS the export; `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env sandbox --export <file>` rehearses exactly that, read-only. Cannot move: D1-specific limits only, which a new host must match or exceed — tooling/ceilings.json d1.queriesPerInvocation, d1.maxBoundParametersPerQuery, d1.maxDatabaseSize, d1.storagePerAccount, d1.databasesPerAccount and d1.rowsWrittenPerDay — and D1's authorizer, whose refusals tooling/ops/check-d1-accepts-live-sql.mjs measures.",
+      "readAt": null,
+      "c8Seam": {
+        "file": "packages/core/lib/src/config/config_loader.dart",
+        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport — the client's seam onto the Worker host, the substrate README section 7 keeps. D1 was the last Cloudflare surface the kv, objects and ratelimit registries waited on (their c8Seam until: port-sql); with four Cloudflare ports and one C-8 seam per vendor, re-seating it is a cross-register decision this train records and does not take.",
+        "until": "port-c8-cloudflare"
+      }
+    },
+    {
+      "id": "sqlite",
+      "vendor": null,
+      "status": "fake",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/sql.ts",
+        "symbol": "sqliteDb"
+      },
+      "capabilities": [
+        "prepare",
+        "bind",
+        "first",
+        "all",
+        "run",
+        "batch"
+      ],
+      "secrets": [],
+      "identity": [],
+      "environments": [
+        "test",
+        "sandbox"
+      ],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/ports-sql.test.ts"
+      },
+      "exportDuty": "An engine, not a store of record: node:sqlite in memory for one test, or one local file for the export dry run. Nothing of ours lives in it, so nothing to export; it is the TARGET the dry run loads an export into.",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "environment",
+    "source": null,
+    "default": {
+      "live": "d1",
+      "sandbox": "d1",
+      "test": "sqlite"
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": {
+    "suite": {
+      "file": "services/_shared/test/conformance/sql.ts",
+      "runner": "runSqlConformance"
+    },
+    "pending": [
+      {
+        "adapter": "d1",
+        "case": "prepare-bind-first — first() of a bound read, and null for no row. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "all-returns-rows — all() answers every matching row in the order asked, [] for none. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "run-reports-changes — run() meta.changes counts the rows a write touched. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "bind-returns-a-new-statement — one statement bound twice in one batch writes two rows. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "batch-answers-in-order — one result per batched statement, a read answering its rows. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "undefined-bind-is-refused — an undefined bind is refused as D1_TYPE_ERROR and writes nothing. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "unique-violation-is-classified — D1's own UNIQUE failure reads as isUniqueViolation and never as transient. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "transient-error-is-retried — a reset worded as workerd words it is retried once by withD1Retry. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "deterministic-error-is-not-retried — D1's own deterministic failure is sent once. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      },
+      {
+        "adapter": "d1",
+        "case": "batch-is-atomic — one failing statement rolls the whole batch back. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
+        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
+      }
+    ]
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#sql",
+    "dryRun": "node tooling/ops/port-switch.mjs sql --to <adapter> --dry-run"
+  },
+  "_why": [
+    "PLATFORM_DB, SUBSCRIPTIONTRACKER_DB and APP_DB are declared as SqlDb in every Worker's `interface Env` (and the brick's), and every handler, route, lib and middleware — the shared helpers in services/_shared/src/d1.ts, erasure.ts and entitlement-read.ts included — takes a SqlDb or a SqlStatement. The binding satisfies the port STRUCTURALLY; cloudflareD1 is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 12 refuses a D1Database, D1PreparedStatement or D1Result type anywhere else under services/*/src.",
+    "The surface is what the code calls, derived from every `.prepare(` site: prepare, bind, first(), all, run, batch. No raw, exec, dump or withSession — nothing calls them.",
+    "L2 claimed, L3 target. The selection is by environment (wrangler binds D1 in live and sandbox; the sqlite engine serves tests), no caller imports an adapter, and one non-fake adapter is live. The conformance suite runs against the sqlite engine — the node:sqlite engine every Worker suite already ran its SQL through, promoted from services/platform/test/harness.ts — in every Worker's npm test. Against D1 every scenario is PENDING: no Worker suite runs on workerd, and D1's conformance file is the credentialled live check (kind `live`), which proves D1 ACCEPTS the statements this repository sends and runs none of the scenarios. L3 needs a second adapter with zero pending: a workerd-backed run (Miniflare or the vitest pool) of the same suite would earn it.",
+    "Export duty: the nightly R2 export plus the migrations. A Postgres exit is a dialect question (the switch runbook), not a code change behind this port."
+  ]
+}

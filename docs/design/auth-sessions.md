@@ -42,18 +42,18 @@ the token.
 Every Worker verifies ES256 locally, against a JWKS cached in KV, and then reads three things. None of
 them is the session:
 
-- `services/_shared/src/auth.ts:92-96` — `verifyOptions`: `issuer`, `audience: 'authenticated'`,
+- `services/_shared/src/auth.ts:124-128` — `verifyOptions`: `issuer`, `audience: 'authenticated'`,
   `algorithms: ['ES256']`. `:57` `JWKS_KV_KEY = 'supabase_jwks'`, `:75` `JWKS_TTL_SECONDS = 600`.
 - ⏱ 2026-10-01: the verifying moved whole to `services/_shared/src/auth-middleware.ts` (the kit every
-  Worker binds). `:164` `jwtVerify(token, remoteJwks(…), opts)`, with the KV fallback at `:175`.
+  Worker binds). `:184` `jwtVerify(token, remoteJwks(…), opts)`, with the KV fallback at `:200`.
 - `services/platform/src/middleware/auth.ts:248` verifies through the kit with no fallback; after that,
   `:253` requires a string `payload.sub`, `:263` sets `userId`, `:269` sets `userEmail`, and `:270`
   sets `authRecency` from `amr`.
-- The app Workers' boundaries, `services/_shared/src/auth-middleware.ts:315-330` (`supabaseAuthWith`)
-  and `:371-386` (`erasureAuth`): the same three reads, `sub`, `email` and `authRecencyOf(payload)`.
+- The app Workers' boundaries, `services/_shared/src/auth-middleware.ts:340-355` (`supabaseAuthWith`)
+  and `:396-411` (`erasureAuth`): the same three reads, `sub`, `email` and `authRecencyOf(payload)`.
 
 Nothing anywhere reads `payload.session_id` or `payload.iat`. The `session_id` that does appear in
-`services/` (`services/platform/src/routes/events.ts:323`, `services/platform/src/types.ts:1006`) is the
+`services/` (`services/platform/src/routes/events.ts:320`, `services/platform/src/types.ts:1077`) is the
 analytics envelope's own field and is unrelated.
 
 **No Worker can reach Postgres.** The bindings are D1, KV, R2, a service binding and rate limits. A grep for
@@ -96,8 +96,8 @@ none of the tokens they refused can still be alive.
 
 - **Added cost per request: one KV `get`.** Note what already happens: `platformAuth` calls
   `void warmCache(c.env)`, which does a `JWKS_CACHE.get` on **every** authenticated request
-  (⏱ 2026-10-01: now the kit's `warmJwksCache`, `services/_shared/src/auth-middleware.ts:110`, called at
-  `:209` and `:365`, by every Worker). So this is a second read per request, not the first. Against
+  (⏱ 2026-10-01: now the kit's `warmJwksCache`, `services/_shared/src/auth-middleware.ts:120`, called at
+  `:234` and `:390`, by every Worker). So this is a second read per request, not the first. Against
   `kv.readsPerDay` in `tooling/ceilings.json` (Free: 100,000 per account per day), two reads per request
   caps authenticated requests at roughly half that before KV reads run out, shared with `CONFIG_KV`.
   That is the real price of this option. Measure it with the dashboard reading `ceilings.json` already

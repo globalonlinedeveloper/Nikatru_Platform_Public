@@ -34,6 +34,16 @@
 //           that imports a kit module which calls `jwtVerify(` (derived the same
 //           way). A delegate under no config binding SESSION_REVOKED is a finding,
 //           exactly as a verifier there was.
+//           ⏱ 2026-10-03 (review of #1152, minor 1): a delegate is no longer
+//           exempt from the CALL. Every kit BOUNDARY (`supabaseAuthWith`,
+//           `erasureAuth` in services/_shared/src/auth-middleware.ts) must call
+//           `sessionRevoked(` inside its own body, and every file outside the kit
+//           that calls a kit verifier directly (`verifySupabaseToken(` or
+//           `verifyAsymmetric(`, e.g. platform's `platformAuth`) must call
+//           `sessionRevoked(` outside its import line. A call that is present but
+//           neutered (`if (false && await sessionRevoked(…))`) is out of a text
+//           guard's reach; services/_shared/test/mount-auth.ts runs a revoked
+//           session against every mount and owns that case.
 //   limb 2  THE TTL. `REVOCATION_TTL_SECONDS` must equal `jwt_exp`
 //           (tooling/mail-transport.json → supabaseAuth.jwt_exp, the value read
 //           back from the live project) + `CLOCK_SKEW_SECONDS`. Shorter, and a
@@ -186,6 +196,49 @@ for (const rel of [...verifiers, ...delegates]) {
   }
 }
 
+// ── limb 1b: the boundaries and direct verifier callers CALL sessionRevoked ─
+const KIT_MIDDLEWARE = `${KIT}auth-middleware.ts`;
+const KIT_BOUNDARIES = ['supabaseAuthWith', 'erasureAuth'];
+const CALLS_SESSION_REVOKED = /\bsessionRevoked\s*\(/;
+/** Code with comments, string contents and import statements removed. */
+const callableCode = (rel) => stripStringLiterals(readCode(rel)).replace(/\bimport\s+[^;]*?\bfrom\s*['"][^'"]*['"]\s*;?/g, '');
+/** The body of a top-level `function name` declaration: from its declaration
+ *  to the first line that is a lone `}` at column 0 (the kit is formatted, one
+ *  top-level declaration per block), or null when no such declaration exists. */
+function topLevelFunction(code, name) {
+  const decl = new RegExp(String.raw`^export\s+(?:async\s+)?function\s+${name}\b`, 'm').exec(code);
+  if (!decl) return null;
+  const end = /\n\}[ \t]*(?:\n|$)/.exec(code.slice(decl.index));
+  return end === null ? code.slice(decl.index) : code.slice(decl.index, decl.index + end.index + 2);
+}
+if (!existsSync(join(ROOT, KIT_MIDDLEWARE))) {
+  coverageLost([`${KIT_MIDDLEWARE} does not exist, so the kit's auth boundaries could not be read.`]);
+}
+{
+  const kitCode = callableCode(KIT_MIDDLEWARE);
+  for (const name of KIT_BOUNDARIES) {
+    const body = topLevelFunction(kitCode, name);
+    if (body === null) {
+      coverageLost([
+        `${KIT_MIDDLEWARE} declares no top-level function ${name}, so whether that boundary consults the revocation list is unchecked.`,
+        'A rename must be carried into KIT_BOUNDARIES in this guard.',
+      ]);
+    }
+    if (!CALLS_SESSION_REVOKED.test(body)) {
+      problems.push(`${KIT_MIDDLEWARE}: the kit boundary ${name} never calls sessionRevoked( — every Worker mounting it admits a signed-out session's token.`);
+    }
+  }
+}
+const directCallers = [];
+for (const rel of [...candidates].filter((r) => !r.startsWith(KIT)).sort()) {
+  const code = callableCode(rel);
+  if (!/\b(?:verifySupabaseToken|verifyAsymmetric)\s*\(/.test(code)) continue;
+  directCallers.push(rel);
+  if (!CALLS_SESSION_REVOKED.test(code)) {
+    problems.push(`${rel}: calls a kit verifier (verifySupabaseToken( / verifyAsymmetric() directly but never calls sessionRevoked( — a signed-out session's token is admitted here.`);
+  }
+}
+
 // ── limb 2: the record lives exactly as long as the longest token it refuses ─
 const numberOf = (code, name) => {
   const m = code.match(new RegExp(String.raw`\bconst\s+${name}\s*(?::\s*number\s*)?=\s*([0-9][0-9_]*)\s*;`));
@@ -232,5 +285,6 @@ if (problems.length) {
 console.log(
   `✓ assert-session-revocation: ${carriers.length} carrier(s) (${liveCarriers.length} live, ${templateCarriers.length} template) ` +
     `bind ${BINDING}; ${verifiers.length} verifier(s) import and call revocationRefusal ` +
-    `(${verifiers.join(', ')}); REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}.`,
+    `(${verifiers.join(', ')}); ${KIT_BOUNDARIES.length} kit boundary(ies) and ${directCallers.length} direct verifier caller(s) ` +
+    `call sessionRevoked; REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}.`,
 );

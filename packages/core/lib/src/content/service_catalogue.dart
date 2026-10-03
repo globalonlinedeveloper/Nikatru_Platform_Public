@@ -34,12 +34,12 @@
 ///
 /// A price key's code must be three upper-case letters AND a member of
 /// [kServiceCatalogueCurrencies]. The list is deliberately SMALLER than ISO
-/// 4217: it holds only codes whose minor-unit precision [Money] gets right
-/// (every entry is two-decimal, except JPY at 0 and KWD at 3, which Money
-/// declares). A code Money would mis-scale — KRW has no minor unit, Money
-/// assumes two — would misprice by a factor of a hundred, so it is refused
-/// here rather than shown wrong. Widen the list only together with Money's
-/// precision table.
+/// 4217: it holds the codes the catalogue has been checked in (every entry is
+/// two-decimal, except JPY at 0 and KWD at 3). ⏱ 2026-10-01: [Money]'s
+/// precision now comes from the full ISO 4217 table
+/// (`contracts/currency/iso4217.js`), so a code such as KRW would no longer be
+/// mis-scaled — but widening THIS list is a content decision, made with the
+/// prices it admits, not a side effect of that table.
 library;
 
 import 'dart:convert';

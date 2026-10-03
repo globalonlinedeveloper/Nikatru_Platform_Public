@@ -17,7 +17,7 @@
 // a batch back — so a mock would report this route healthy either way.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
-import budget from '../src/routes/budget';
+import budget, { BUDGET_BODY_MAX_BYTES } from '../src/routes/budget';
 import { realAppDb, asUser } from './harness';
 
 const A = 'user-a';
@@ -343,6 +343,10 @@ describe('PUT /v1/budget — the budget carries its currency', () => {
     ['currency is blank', ''],
     ['currency has a digit', 'US1'],
     ['currency is an object', { code: 'INR' }],
+    // ⏱ 2026-10-01 · rv2-services-030: three letters is not enough — the code
+    // must be in contracts/currency/iso4217.js.
+    ['currency is three letters ISO 4217 never assigned', 'ZZZ'],
+    ['currency is a code with no minor unit (XAU, gold)', 'XAU'],
   ];
   for (const [label, currency] of badCurrencies) {
     it(`400s when ${label}, writing nothing`, async () => {
@@ -470,5 +474,39 @@ describe('PUT /v1/budget — a rejected body must not destroy the stored set', (
     expect(db.rows('SELECT monthly_budget FROM budgets WHERE user_id = ?', A)[0].monthly_budget).toBe(
       500,
     );
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-025 (lane fix-st-api-bounds). The body is read
+// under a cap derived from MAX_CATEGORIES and the per-field widths, BEFORE it is
+// parsed: an oversized PUT used to be materialised whole in the isolate first.
+describe('PUT /v1/budget — the body is read under a cap', () => {
+  it('the cap fits a full 200-category budget (≈ 128 KB) and no more than ~2× it', () => {
+    expect(BUDGET_BODY_MAX_BYTES).toBeGreaterThan(120 * 1024);
+    expect(BUDGET_BODY_MAX_BYTES).toBeLessThan(256 * 1024);
+  });
+
+  it('🔴 Content-Length 200000 is a 413 body_too_large, and the stored set survives', async () => {
+    const { db, call } = setup();
+    await call(A, '/v1/budget', { method: 'PUT', body: SEED });
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: '{"categories":[]}',
+      headers: { 'Content-Length': '200000' },
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: 'body_too_large' });
+    expect(caps(db)).toEqual(['Music:20', 'Video:35']);
+  });
+
+  it('a full 200-category budget at the widest names is accepted', async () => {
+    const { call } = setup();
+    const categories = Array.from({ length: 200 }, (_, i) => ({
+      name: `${String(i).padStart(3, '0')}${'😀'.repeat(58)}`,
+      cap: 1,
+      id: `id-${String(i).padStart(3, '0')}-${'x'.repeat(56)}`,
+    }));
+    const res = await call(A, '/v1/budget', { method: 'PUT', body: { monthly_budget: 1, categories } });
+    expect(res.status).toBe(200);
   });
 });

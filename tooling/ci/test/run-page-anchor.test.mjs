@@ -480,7 +480,9 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
     assert.match(c, /if \(hit \|\| !pageFull\) return hit; if \(gapBelow\) throw new StaleGap\(gapBelow\);/, 'ghNewestRun on the shared page');
     assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), all: runs, pageFull, gapBelow \};/, 'unitRunsPage passes the gap on, and the UNFILTERED page for the superseded read');
     assert.match(c, /const c = unitConclusion\(q, run, await jobsOfRun\(repo, run\.id, cache\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
-    assert.match(c, /return gapCheckedScan\(entries, pageFull, gapBelow\);/, 'scanUnit');
+    // ⏱ 2026-10-03 · the scan now also returns how far back it read (ops-watch 37080147071); the gap check is unchanged.
+    assert.match(c, /return \{ \.\.\.gapCheckedScan\(entries, pageFull, gapBelow\), reach \};/, 'scanUnit');
+    assert.match(c, /const older = olderUnitPage\(await ghJson\(olderUnitPagePath\(repo, q\.workflow, q\.headBranch, next\.boundary\)\), /, 'scanUnit reads a deeper page only through the checked keyset read');
     assert.match(c, /return withQuotaCause\(await redSincePair\(newest\), repo, cache\);/, 'probeGithubRedSince');
     assert.match(c, /out\.push\(repoWideWindow\(await io\.repoRunsPage\(repo, null\), /, 'the unfiltered repository list is one of the windows');
     assert.match(c, /if \(branch && io\.branchlessPage\) out\.push\(repoWideWindow\(await io\.branchlessPage\(repo, workflow, 1\), /, 'the workflow\'s own branchless list is one of the windows');

@@ -3,6 +3,7 @@ import type { AnalyticsBatch, AnalyticsEvent, AppEnv, EdgeGeo } from '../types';
 import { nowIso } from '../lib/d1';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
+import { requestGeo } from '../../../_shared/src/geo';
 // ONE registry predicate for the whole Worker. `routes/config.ts`,
 // `routes/entitlements.ts` and both write routes here now ask the same question
 // of the same source — an app the shared server will answer for is one thing,
@@ -130,15 +131,11 @@ export const MAX_CONSENT_BODY_BYTES = 8 * 1024;
 
 const events = new Hono<AppEnv>();
 
-/** Coarse geo from the `request.cf` object — never from a header. */
+/** Coarse geo from the `request.cf` object — never from a header. Read through
+ *  `requestGeo` (services/_shared/src/geo.ts), the one module that reads `.cf`. */
 function edgeGeo(c: { req: { raw: Request } }): EdgeGeo {
-  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
-  if (!cf) return {};
-  return {
-    country: typeof cf.country === 'string' ? cf.country : undefined,
-    region: typeof cf.region === 'string' ? cf.region : undefined,
-    city: typeof cf.city === 'string' ? cf.city : undefined,
-  };
+  const { country, region, city } = requestGeo(c.req.raw);
+  return { country, region, city };
 }
 
 const str = (v: unknown, max: number): string | null =>
