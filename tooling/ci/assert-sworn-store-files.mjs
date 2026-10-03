@@ -227,6 +227,9 @@
 //     submit the console form from the repo files first and then record the
 //     date); a dry run (no --real-submission) grades the bytes, prints the same sentence
 //     and proceeds, so no dry-run lane turns red on it.
+//     ⏱ 2026-10-03: a REAL submission whose EXPLICIT target reaches no public step
+//     (submit-preconditions.mjs PUBLIC_REACH — Play's PLAY_TRACK=internal) prints the gap
+//     and proceeds too; an unset target or a public one is refused as before.
 //
 // ── REQUIRED_COVERAGE ───────────────────────────────────────────────────────
 // The sworn set is DERIVED from tooling/channel-register.json, never listed
@@ -248,7 +251,7 @@ import { join, resolve } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { storeRecordOf, declaredOnRefusal } from '../store/store-record.mjs';
-import { DECLARATION_ONLY_CHANNELS } from './submit-preconditions.mjs';
+import { DECLARATION_ONLY_CHANNELS, PUBLIC_REACH } from './submit-preconditions.mjs';
 
 const ARGV = process.argv.slice(2);
 /** `--app` takes its value as the next word; that word is not the repo root. */
@@ -1714,7 +1717,25 @@ if (forSubmission !== null) {
     files: wanted.map(({ file }) => `apps/${appId}/store/${forSubmission}/${file}`),
     form: consoleForm,
   });
-  if (refusal !== null && submitReal) {
+  // ⏱ 2026-10-03 · A TESTING-TRACK UPLOAD IS NOT REFUSED ON THE DATE (store-readiness X2/X3).
+  // The console declarations are what a PUBLIC release is reviewed against; [ADR 031] does
+  // not gate testing-track uploads, and Play accepted the 2026-09-22 internal release
+  // (run 35787897094) with no declaration sworn. Refusing it here deadlocked the native
+  // sign-in proof (O-SUBMIT-LANES-IGNORE-NATIVE-AUTH: internal upload, a phone sign-in, then
+  // the nativeAuth flip) behind the owner's console forms. So the refusal follows the SAME
+  // public-reach table assert-channel-register.mjs --for-submission reads
+  // (submit-preconditions.mjs PUBLIC_REACH), with one difference that keeps it fail-closed:
+  // only an EXPLICIT target the table says reaches no one opens it. An unset target, a
+  // channel with no table entry, or one whose every submission is public is refused as before.
+  const reach = Object.hasOwn(PUBLIC_REACH, forSubmission) ? PUBLIC_REACH[forSubmission] : null;
+  const target = reach?.env ? (process.env[reach.env] ?? '').trim() : '';
+  const testingOnly = reach !== null && reach.env !== null && target !== '' && !reach.reaches(target);
+  if (refusal !== null && submitReal && testingOnly) {
+    notes.push(
+      `⬜  NOT YET DECLARED, AND NOT REFUSED: this real submission reaches no public step (${reach.env}=${JSON.stringify(target)}). ` +
+        `Only ${reach.step} needs the date — ${refusal}`,
+    );
+  } else if (refusal !== null && submitReal) {
     fail(`🔴 UNDECLARED — ${refusal} A real submission (--real-submission) is refused until then.`);
   } else if (refusal !== null) {
     notes.push(`⬜  NOT YET DECLARED (a dry run: the bytes are graded, the submission is not refused here) — ${refusal}`);
