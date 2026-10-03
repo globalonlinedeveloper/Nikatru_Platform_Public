@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import emailJson from '../../../../tooling/i18n/messages/email.json';
 import registerJson from '../../../../tooling/i18n/locales.json';
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { firstRow } from './d1';
 
 export interface DigestCopy {
@@ -78,7 +79,7 @@ export function localDateLabel(ymd: string, locale: string): string {
  * before subscriptiontracker-api migration 0008 — answers null, never an error:
  * a digest in English beats no digest.
  */
-export async function readStoredLocale(db: D1Database, userId: string): Promise<string | null> {
+export async function readStoredLocale(db: SqlDb, userId: string): Promise<string | null> {
   try {
     const row = await firstRow<{ value: string }>(
       db.prepare("SELECT value FROM preferences WHERE user_id = ? AND key = 'locale'").bind(userId),
