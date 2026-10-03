@@ -1551,8 +1551,9 @@ if (problems.length === problemsBeforeExport) {
 }
 
 // ── limb 10 · the identity store empties every address column on write ──────
-// SYN-P2 (2026-10-02). Every notice renders "no network address is stored", and
-// limb 3 held only privacy.yaml to it — while GoTrue on Box C wrote the client's
+// SYN-P2 (2026-10-02). Every notice renders "Apart from a pending sign-in
+// verification, … no network address is kept … with your account", and limb 3
+// held only privacy.yaml to that — while GoTrue on Box C wrote the client's
 // address into auth.sessions.ip on every sign-in and refresh. A promise wider
 // than its guard. The identity store is now inside it: each column the catalog
 // read found (tooling/legal/identity-address-columns.json) must be emptied by a
@@ -1579,7 +1580,8 @@ if (problems.length === problemsBeforeExport) {
     coverageLost([
       `limb 10 cannot read ${IDENTITY} (${e.code ?? e.message}).`,
       'It lists the identity store columns that can hold a network address; without it the notice\'s',
-      '"no network address is stored" is held to nothing on the identity side.',
+      '"Apart from a pending sign-in verification, … no network address is kept … with your account"',
+      'is held to nothing on the identity side.',
     ]);
   }
   const columns = Array.isArray(register?.columns) ? register.columns : [];
@@ -1629,7 +1631,7 @@ if (problems.length === problemsBeforeExport) {
   if (sqlRaw === null) {
     problems.push(
       `${IDENTITY}: triggerFile "${triggerRel}" does not exist. Every column it lists then keeps whatever GoTrue ` +
-        'writes, and the notice says no network address is stored.',
+        'writes, and the notice says that, apart from a pending sign-in verification, no network address is kept with your account.',
     );
   } else {
     // Comments out first: the file's header quotes a rollback that drops each
@@ -1648,7 +1650,7 @@ if (problems.length === problemsBeforeExport) {
       if (!fn) {
         problems.push(
           `${triggerRel}: no BEFORE INSERT OR UPDATE trigger on ${c.table}, so ${where} keeps the address GoTrue writes ` +
-            `(${IDENTITY} lists it). The notice says no network address is stored; add the trigger and apply it on Box C.`,
+            `(${IDENTITY} lists it). The notice says that, apart from a pending sign-in verification, no network address is kept with your account; add the trigger and apply it on Box C.`,
         );
         continue;
       }
