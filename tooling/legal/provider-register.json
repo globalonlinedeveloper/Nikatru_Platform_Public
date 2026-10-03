@@ -51,6 +51,8 @@
     "    added without somebody writing its name down                                     [K-5]",
     "  · a `merchant_of_record` row with status `live` MUST be named in BOTH terms.html",
     "    and refund.html; one that is not yet live PRINTS with its owner item             [K-5]",
+    "  · every row's `status` is in `statuses` below; a `silent` status (deferred, retired,",
+    "    not-named-not-wired) never prints a missing disclosure                           [K-5]",
     "  · every `disclosureGap` row carries an ownerItem and a `stillTrue` probe, and the",
     "    guard FAILS when the probe stops matching — the gap is resolved, retire the row   [C-6 split]",
     "  · COVERAGE LOST on an empty register or zero route paths extracted                 [F-10]",
@@ -303,6 +305,37 @@
       "sellerIs": "not-applicable"
     }
   },
+  "statuses": {
+    "_why": [
+      "⏱ 2026-10-03 · rv2-business 024. The vocabulary rows are",
+      "validated against, declared once HERE for the reason `roles` is: until today `status` was free text,",
+      "and every guard that reads it (assert-policy-claims.mjs §3(c) and the egress limb, assert-purchase-path",
+      ".mjs I4) tested it against its own hard-coded set, so a misspelt status read as 'being pursued' in one",
+      "guard and 'not happening' in another. `silent` is the one property the guards share: a silent status",
+      "is a row for a thing we are NOT doing, so a missing disclosure is not a gap and does not print, and a",
+      "page or a route that reaches it anyway is a contradiction. Every other status is being pursued."
+    ],
+    "live": {
+      "means": "the provider is in use today: an account exists and the Services reach it.",
+      "silent": false
+    },
+    "wired-not-live": {
+      "means": "the code reaches the provider and the disclosure is drafted, but nothing is processed through it in production yet.",
+      "silent": false
+    },
+    "deferred": {
+      "means": "a decision we have not taken yet: the facts are recorded so the choice is not re-researched under time pressure, and nothing is pursued until it is taken.",
+      "silent": true
+    },
+    "retired": {
+      "means": "a decision we took and reversed: the provider was chosen or pursued once and is withdrawn by a dated record. The row stays so the retirement is visible and the facts are not rediscovered; nothing routes to it and nothing names it.",
+      "silent": true
+    },
+    "not-named-not-wired": {
+      "means": "no published page names the provider and no shipped code or policy reaches it; the row exists so that reaching it fails rather than passes silently.",
+      "silent": true
+    }
+  },
   "dataCategories": {
     "_why": [
       "🔴 THE SINK VOCABULARY. Declared HERE and not inside the guard, for the same reason `roles` above is:",
@@ -464,6 +497,88 @@
       "nikatru.com",
       "rajasekarselvam.com"
     ]
+  },
+  "accessProviderMap": {
+    "_why": [
+      "⏱ 2026-10-01 · SYN-P1's CLASS FIX (O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED). tooling/ops/register.json",
+      "names, on every duty, the vendors whose accounts the duty runs through (`accessProviders`, from its own",
+      "`_providers` vocabulary). Its backup and mail duties put personal data INTO some of those vendors —",
+      "duty.oci.gt-drive-sync copies the GlitchTip dumps to the business Google Drive, duty.restic-snapshot and",
+      "duty.cloudflare-backup-pull put the D1 export there and on the OCI box, and the self-hosted services",
+      "box they run on is Hostinger's — and nothing joined that vocabulary to THIS register, so a vendor a duty sends user data to",
+      "could be absent from every disclosure the register drives. Google Drive was exactly that.",
+      "",
+      "This map is the join, written out rather than inferred: the two vocabularies name vendors at different",
+      "grains (ops says `google` once; this register has a row per Google SERVICE — Play, Sign in with Google,",
+      "the gstatic CDN — because each is disclosed separately). Every ops accessProvider has an entry, and an",
+      "entry is ONE of:",
+      "  · `rows` — the provider rows here that disclose what that vendor holds. Each must exist.",
+      "  · `notASink` — why no user data reaches that vendor through a duty, so no row is owed.",
+      "An entry may also carry `undisclosed`: a service of that vendor a duty DOES send personal data to and no",
+      "row discloses yet, each with the open row that owns it. Those PRINT on every run; they do not pass silently.",
+      "assert-sink-disclosure.mjs limb 6 enforces it: an ops accessProvider with no entry, or an entry naming a",
+      "row that does not exist, FAILS."
+    ],
+    "map": {
+      "google": {
+        "rows": [
+          "google-play",
+          "sign-in-with-google",
+          "google-gstatic",
+          "google-workspace"
+        ],
+        "why": "VENDOR-WIDE, and the reason this is a map and not a rename: one ops vendor, Google, is four disclosed services here — Google Play (the store row), Sign in with Google, the gstatic CDN, and the business Google Workspace whose Drive is the offsite target of four backup duties (duty.oci.gt-drive-sync, duty.restic-snapshot, duty.cloudflare-backup-pull, duty.supabase-backup-liveness). ⏱ 2026-10-03: the Workspace and Drive row landed with privacy 2026-10-02 (#1140, fix-syn-p2-privacy-ip), so the Drive sink this entry printed as `undisclosed` (O-GOOGLE-WORKSPACE-AND-DRIVE-UNDISCLOSED) is now a mapped row."
+      },
+      "oci": {
+        "rows": [
+          "oracle-cloud"
+        ]
+      },
+      "hostinger": {
+        "rows": [
+          "hostinger"
+        ]
+      },
+      "cloudflare": {
+        "rows": [
+          "cloudflare"
+        ]
+      },
+      "supabase": {
+        "rows": [
+          "supabase"
+        ]
+      },
+      "apple": {
+        "rows": [
+          "apple-app-store",
+          "sign-in-with-apple"
+        ]
+      },
+      "microsoft": {
+        "rows": [
+          "microsoft-store"
+        ]
+      },
+      "github": {
+        "notASink": "The code host and the CI runner. Its duties push repositories and read workflow runs; no user record is written to it, and the CI secrets it holds are ours, not a user's."
+      },
+      "mozilla": {
+        "notASink": "The addons.mozilla.org developer console. Its duties upload an extension package and read a review status; no user data passes."
+      },
+      "canonical": {
+        "notASink": "The Snap Store developer console. Its duties upload a package and read a channel; no user data passes."
+      },
+      "india-gov": {
+        "notASink": "Government portals (apps.gov.in, the statutory filings). Its duties submit our own records, not a user's."
+      },
+      "laptop": {
+        "notASink": "The owner's own machine, not a third party: nothing on it is disclosed to anybody by being there."
+      },
+      "owner": {
+        "notASink": "A person — the owner's own act — not a vendor."
+      }
+    }
   },
   "providers": [
     {
@@ -680,7 +795,7 @@
       "id": "lemon-squeezy",
       "name": "Lemon Squeezy",
       "role": "merchant_of_record",
-      "status": "deferred",
+      "status": "retired",
       "requiredWhen": {
         "kind": "never",
         "why": "Retired by [ADR 039] D4 (2026-08-09): no channel in tooling/channel-register.json sells on it, so no app configuration routes a purchase through it."
@@ -698,11 +813,13 @@
         "sunsetting under the Stripe acquisition. `privateRecord` dropped its A-1 pointer with it: there is",
         "no application to point at.",
         "",
-        "⚠️ THE ROW IS KEPT AND `status` STAYS `deferred`, WHICH IS A DECISION ABOUT THIS GUARD AND NOT A",
-        "HEDGE. assert-policy-claims.mjs §3(c) treats `deferred` as deliberately silent and every other",
-        "non-live status as 'being pursued, so the missing disclosure is a real gap that prints'. A retired",
-        "bet is the first kind, not the second: printing 'the backup merchant of record is not named in our",
-        "terms' on every CI run would be printing the absence of a decision nobody is taking. The row itself",
+        "⏱ 2026-10-01 · `status` IS NOW `retired` (rv2-business",
+        "024). It said `deferred`, which is 'a decision not yet taken', and this one WAS taken: [ADR 039] D4",
+        "withdrew it. `deferred` was chosen only because it was the one status assert-policy-claims.mjs §3(c)",
+        "kept silent, and the vocabulary had no word for a reversed choice. `statuses` above now has one, and",
+        "§3(c) keeps `retired` silent for the same reason it keeps `deferred` silent: printing 'the backup",
+        "merchant of record is not named in our terms' on every CI run would be printing the absence of a",
+        "decision nobody is taking. The row itself",
         "survives for the reason tooling/channel-register.json keeps rows for channels we do not serve — the",
         "researched facts are recorded once instead of rediscovered under time pressure, and a deletion",
         "would leave the retirement invisible.",

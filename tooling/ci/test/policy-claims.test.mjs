@@ -23,7 +23,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -93,6 +93,14 @@ const DEFAULT_PROVIDERS = {
     payment_gateway: { means: 'takes the payment on our behalf', sellerIs: 'nikatru' },
     infrastructure: { means: 'hosts the service', sellerIs: 'not-applicable' },
     iap_aggregator: { means: 'normalises purchase events', sellerIs: 'never' },
+  },
+  statuses: {
+    live: { means: 'in use', silent: false },
+    'not-yet-applied': { means: 'applied for, not live', silent: false },
+    'wired-not-live': { means: 'reached by code, not live', silent: false },
+    deferred: { means: 'a decision not yet taken', silent: true },
+    retired: { means: 'a decision taken and reversed', silent: true },
+    'not-named-not-wired': { means: 'named nowhere, reached by nothing', silent: true },
   },
   providers: [
     {
@@ -775,5 +783,122 @@ describe('the seller by rail — every page names one seller per purchase rail',
     const r = run(fixture({ channels: null }));
     assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST — tooling\/channel-register\.json does not exist/);
+  });
+});
+
+// ⏱ 2026-10-03 · rv2-business 024. `status` is read
+// against the register's own `statuses`, and `retired` is silent in §3(c) as `deferred` is.
+describe('the status vocabulary — declared in the register, and `retired` is silent', () => {
+  const withRetiredMor = (statuses) => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.providers.push({
+      id: 'old-mor', name: 'Old MoR', role: 'merchant_of_record', status: 'retired',
+      reachableAt: null, tells: ['old mor'], namedIn: [], requiredWhen: { kind: 'never', why: 'withdrawn' },
+    });
+    if (statuses) providers.statuses = statuses(providers.statuses);
+    return providers;
+  };
+
+  test('a RETIRED merchant of record named on no page passes and prints nothing about it', () => {
+    const r = run(fixture({ providers: withRetiredMor() }));
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /Old MoR \(status retired\)/);
+  });
+
+  test('RED CONTROL: the vocabulary without `retired` FAILS the retired row by name', () => {
+    const r = run(fixture({ providers: withRetiredMor((s) => { const { retired, ...rest } = s; return rest; }) }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /provider "old-mor" has status "retired", which is not defined in the register's own `statuses`/);
+  });
+
+  test('a `retired` that is NOT silent prints the missing disclosure — `silent` is what keeps it quiet', () => {
+    const r = run(fixture({ providers: withRetiredMor((s) => ({ ...s, retired: { means: 'x', silent: false } })) }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /MERCHANT OF RECORD NOT YET NAMED: Old MoR \(status retired\)/);
+  });
+
+  test('a misspelt status FAILS instead of reading as "being pursued"', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.providers[0].status = 'Live';
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /provider "cloudmark" has status "Live", which is not defined/);
+  });
+
+  test('the REAL register: lemon-squeezy is `retired` and `retired` is a silent status', () => {
+    const real = JSON.parse(readFileSync(join(CI_DIR, '..', 'legal', 'provider-register.json'), 'utf8'));
+    assert.equal(real.providers.find((p) => p.id === 'lemon-squeezy').status, 'retired');
+    assert.equal(real.statuses.retired.silent, true);
+    for (const p of real.providers) assert.ok(Object.hasOwn(real.statuses, p.status), `${p.id}: ${p.status}`);
+  });
+});
+
+// ⏱ 2026-10-03 · rv2-business 021. A `seller-by-rail` row with
+// `channelList: true` holds each of its pages to ONE <!-- SELLER-CHANNELS:<rail> --> block equal to what
+// tooling/sites/seller-channels.mjs renders from the register's rail rows that are not `ruledOutBy`.
+describe('the channel list — where a rail sells is rendered from the register, never typed', () => {
+  const block = (text) => `<p>Where Seller Co sells: <!-- SELLER-CHANNELS:paddle -->${text}<!-- /SELLER-CHANNELS:paddle -->.</p>`;
+  /** The register with a ruled-out Windows download on the paddle rail, as the real one has. */
+  const CHANNELS_WITH_RULED_OUT = (() => {
+    const c = structuredClone(DEFAULT_CHANNELS);
+    c.channels.push({ id: 'windows-store', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] } });
+    c.channels.push({ id: 'windows-direct', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] }, deferral: { reason: 'x', ruledOutBy: 'C-WINDOWS-STORE-ONLY' } });
+    return c;
+  })();
+  const withList = (pageText, channels = CHANNELS_WITH_RULED_OUT) => {
+    const claims = structuredClone(DEFAULT_CLAIMS);
+    claims.claims.find((r) => r.type === 'seller-by-rail' && r.rail === 'paddle').channelList = true;
+    return fixture({
+      claims,
+      channels,
+      pages: {
+        'terms.html': withText(withText(page('Terms', ['Cloudmark']), TERMS_SELLERS), block(pageText)),
+        'refund.html': withText(withText(page('Refunds', ['7 days']), REFUND_SELLERS), block(pageText)),
+      },
+    });
+  };
+
+  test('GREEN CONTROL: both pages carry the rendered list — the ruled-out channel is left out', () => {
+    const r = run(withList('this website and the Microsoft Store'));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /2 page channel list\(s\) equal to the register's rendering/);
+  });
+
+  test('RED CONTROL: a ruled-out channel in a page FAILS, by name', () => {
+    const r = run(withList('this website, the Microsoft Store and our Windows download'));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: the paddle channel list reads "this website, the Microsoft Store and our Windows download", and tooling\/channel-register\.json renders "this website and the Microsoft Store"\. 🔴 It names RULED-OUT channel\(s\) windows-direct/);
+  });
+
+  test('a channel that joined the rail without a re-render FAILS', () => {
+    const r = run(withList('this website'));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /renders "this website and the Microsoft Store"/);
+  });
+
+  test('a page with no block FAILS — the list cannot be typed outside it', () => {
+    const claims = structuredClone(DEFAULT_CLAIMS);
+    claims.claims.find((r) => r.type === 'seller-by-rail' && r.rail === 'paddle').channelList = true;
+    const r = run(fixture({ claims, channels: CHANNELS_WITH_RULED_OUT }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: seller-by-rail row "paddle" has channelList, and the page holds 0 <!-- SELLER-CHANNELS:paddle --> block\(s\)/);
+  });
+
+  test('a channel on the rail with no legal phrase FAILS rather than leaving the list short', () => {
+    const channels = structuredClone(CHANNELS_WITH_RULED_OUT);
+    channels.channels.push({ id: 'new-store', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] } });
+    const r = run(withList('this website and the Microsoft Store', channels));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /channel\(s\) new-store sell on rail paddle and have no phrase/);
+  });
+
+  test('the REAL register renders no ruled-out channel and no macOS download, and the paddle row carries channelList', async () => {
+    const { renderChannelList, channelsOnRail } = await import('../../sites/seller-channels.mjs');
+    const reg = JSON.parse(readFileSync(join(CI_DIR, '..', 'channel-register.json'), 'utf8'));
+    const text = renderChannelList(reg, 'paddle');
+    assert.ok(channelsOnRail(reg, 'paddle').ruledOut.includes('windows-direct'));
+    assert.doesNotMatch(text, /Windows download|macOS/);
+    const claims = JSON.parse(readFileSync(join(CI_DIR, '..', 'legal', 'policy-claims.json'), 'utf8'));
+    assert.equal(claims.claims.find((r) => r.type === 'seller-by-rail' && r.rail === 'paddle').channelList, true);
   });
 });

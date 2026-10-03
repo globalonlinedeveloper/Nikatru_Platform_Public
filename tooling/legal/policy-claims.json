@@ -214,10 +214,9 @@
     },
     {
       "page": "privacy.html",
-      "claim": "On this website, in the Microsoft Store and in our direct downloads",
-      "type": "provider",
-      "providers": ["microsoft-store"],
-      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The Paddle rail's reach, and the Microsoft Store's new place on the page: it moved OUT of the biller clause, because tooling/channel-register.json windows-store sells on `paddle` and this register's microsoft-store row says requiredWhen `never` — the old sentence called it a biller, which both registers deny. The `Paddle` and `merchant of record` spans in the same item carry the seller; the `seller-by-rail` row for paddle holds it there."
+      "claim": "Everywhere else we sell",
+      "type": "descriptive",
+      "why": "⏱ 2026-10-03 · rv2-business 021, policy 2026-10-03. The heading of §4's Paddle item. It replaces the span 'On this website, in the Microsoft Store and in our direct downloads' (policies 2026-09-26 to 2026-10-02), whose 'direct downloads' read as the Windows download that C-WINDOWS-STORE-ONLY rules out. The channels themselves follow it inside <!-- SELLER-CHANNELS:paddle -->, rendered from tooling/channel-register.json by tooling/sites/seller-channels.mjs and held there by the `channelList` of the paddle `seller-by-rail` row below; the Microsoft Store is named in that list, which is what keeps provider row microsoft-store's `namedIn` true. The seller statement is the `Paddle` and `merchant of record` spans."
     },
     {
       "page": "privacy.html",
@@ -610,8 +609,9 @@
     {
       "type": "seller-by-rail",
       "rail": "paddle",
+      "channelList": true,
       "pages": ["privacy.html", "terms.html", "refund.html"],
-      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The rail of the website, the Microsoft Store and the direct downloads ([ADR 039] D1). It resolves to the `paddle` row (requiredWhen channelRail paddle), role merchant_of_record, sellerIs `provider`: each page must carry a block naming Paddle as the merchant of record or the legal seller. It is also the BASE rail of the three channels whose regionRails move India to razorpay (chrome-webstore, edge-addons, amo), so the contradiction limb reads these pages for a block selling to India under an 'every country' clause — the defect terms.html §4 carried until 2026-09-25."
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The rail of the website, the Microsoft Store and the direct downloads ([ADR 039] D1). It resolves to the `paddle` row (requiredWhen channelRail paddle), role merchant_of_record, sellerIs `provider`: each page must carry a block naming Paddle as the merchant of record or the legal seller. It is also the BASE rail of the three channels whose regionRails move India to razorpay (chrome-webstore, edge-addons, amo), so the contradiction limb reads these pages for a block selling to India under an 'every country' clause — the defect terms.html §4 carried until 2026-09-25. ⏱ 2026-10-03 · rv2-business 021: 'the direct downloads' above is the 2026-09-26 wording, and it was wrong for Windows (windows-direct is ruled out by C-WINDOWS-STORE-ONLY) and for macOS (no such channel). `channelList: true` now holds each page to the list tooling/sites/seller-channels.mjs renders from the register's paddle rows that are not ruled out."
     },
     {
       "type": "seller-by-rail",
