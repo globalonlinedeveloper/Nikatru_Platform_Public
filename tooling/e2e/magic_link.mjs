@@ -17,7 +17,8 @@
 // for every drive: mint the next one only after the previous drive has run.
 //
 // ⚠️ The service-role key goes in and nothing but the hashed token comes out.
-// The caller masks and redacts the token; this module prints nothing.
+// The caller masks and redacts the token; this module prints nothing but the
+// one retry's status line, through `log`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 import { REQUEST_TIMEOUT_MS } from '../ops/bounded-retry.mjs';
@@ -32,7 +33,9 @@ import { REQUEST_TIMEOUT_MS } from '../ops/bounded-retry.mjs';
 // fails naming BOTH statuses. Every other answer is final on first sight: a 4xx
 // is GoTrue's verdict, not a blip. A retried mint is safe: generate_link REPLACES
 // the user's one live token (the 🔴 above), so a lost first answer leaves only
-// the second token live.
+// the second token live. (Measured 2026-10-01 15:00:51Z on the same path: a 520
+// after 12.9 s with no line in Box C's GoTrue or envoy log — the request never
+// reached the identity server; club/rt-ports' own one-retry fix merged into this.)
 
 /** The statuses that are the edge's report of an unhealthy origin, not GoTrue's answer. */
 export const EDGE_RETRY_STATUSES = Object.freeze([502, 503, 504, 520, 521, 522, 523, 524]);
@@ -68,10 +71,19 @@ export class MagicLinkRefused extends Error {
  * code, as tooling/e2e/backend.mjs answers #467).
  *
  * An EDGE_RETRY_STATUSES answer is asked ONCE more after RETRY_GAP_MS; each
- * attempt carries a REQUEST_TIMEOUT_MS ceiling. `sleep` and `timeoutMs` are the
- * test seams; production passes neither.
+ * attempt carries a REQUEST_TIMEOUT_MS ceiling, and the retry is named in `log`
+ * (stderr by default). `log`, `sleep` and `timeoutMs` are the test seams;
+ * production passes none of them.
  */
-export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl = fetch, sleep = nap, timeoutMs = REQUEST_TIMEOUT_MS }) {
+export async function mintMagicLinkTokenHash({
+  url,
+  serviceKey,
+  email,
+  fetchImpl = fetch,
+  log = (line) => console.error(line),
+  sleep = nap,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+}) {
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
     if (typeof v !== 'string' || v === '') throw new MagicLinkRefused(`cannot mint a magic-link token: ${name} is empty`);
   }
@@ -106,6 +118,9 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
   let res = await post();
   if (EDGE_RETRY_STATUSES.includes(res.status)) {
     const first = res.status;
+    // Nothing from the response, and never the key or the address: the status is the fact.
+    log(`generate_link answered HTTP ${first}, an origin fault (the request was lost before the identity server); retrying once`);
+    await res.body?.cancel().catch(() => {});
     await sleep(RETRY_GAP_MS);
     // The retry's own timeout or network error keeps the FIRST status in its
     // message (PR #1177 review, finding 4): both attempts are named, always.

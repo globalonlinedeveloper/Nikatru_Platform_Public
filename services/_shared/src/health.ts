@@ -87,6 +87,8 @@
 // bound honestly is the point; claiming a global one would be inventing it.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { issuerAt } from './auth';
+
 /** The three states a dependency reading can be in. See the header. */
 export type ProbeStatus = 'ok' | 'degraded' | 'unknown';
 
@@ -249,7 +251,7 @@ export function probeBinding(
  */
 export async function probeJwks(supabaseUrl: string | undefined): Promise<ProbeOutcome> {
   if (supabaseUrl === undefined || supabaseUrl === '') return notConfigured();
-  const res = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
+  const res = await fetch(issuerAt(supabaseUrl).jwksUrl);
   if (!res.ok) return { status: 'degraded', reason: 'jwks_unavailable' };
   const doc = (await res.json()) as { keys?: unknown };
   if (!Array.isArray(doc.keys) || doc.keys.length === 0) {

@@ -32,7 +32,9 @@ const GUARD = join(REPO, 'tooling', 'ci', 'assert-erasure-reach.mjs');
 const REGISTER = 'tooling/legal/data-inventory.json';
 const SUBLY = 'services/subscriptiontracker-api';
 const PLATFORM = 'services/platform';
-const PLATFORM_ERASURE = `${PLATFORM}/src/lib/platform-erasure.ts`;
+// ⏱ 2026-10-03 · port-auth: the one deleter is the identity port's GoTrue adapter, inside the
+// entry Worker (lib/platform-erasure.ts asks it through identityFor).
+const PLATFORM_DELETER = `${PLATFORM}/src/adapters/identity/gotrue.ts`;
 
 // ⚠️ THE MUSTACHE DIRECTORY IS TWO SEGMENTS ON DISK: `{{/needs_backend}}` holds a
 // `/`. Spelled as segments and joined, never handed to a matcher.
@@ -107,7 +109,7 @@ const put = (root, rel, body) => {
 /** The platform's one deleter, with the endpoint spelled some other way — in
  *  code AND in its header, so no reference is left behind in either. */
 const withoutPlatformDeleter = (root) =>
-  edit(root, PLATFORM_ERASURE, (t) => t.replaceAll('/auth/v1/admin/users/', '/auth/v1/some/other/'));
+  edit(root, PLATFORM_DELETER, (t) => t.replaceAll('/auth/v1/admin/users/', '/auth/v1/some/other/'));
 
 describe('limb 6 — ONE identity deleter, inside the entry Worker', () => {
   test('green on the real tree names the one deleter', () => {
@@ -115,7 +117,7 @@ describe('limb 6 — ONE identity deleter, inside the entry Worker', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.match(
       r.stdout,
-      /limb 6: ONE identity deleter — services\/platform\/src\/lib\/platform-erasure\.ts, inside the entry Worker; 0 anywhere else across \d+ Worker src file\(s\) in 4 tree\(s\) \(1 template\(s\)\)/,
+      /limb 6: ONE identity deleter — services\/platform\/src\/adapters\/identity\/gotrue\.ts, inside the entry Worker; 0 anywhere else across \d+ Worker src file\(s\) in 4 tree\(s\) \(1 template\(s\)\)/,
     );
   });
 
@@ -172,7 +174,7 @@ describe('limb 6 — ONE identity deleter, inside the entry Worker', () => {
     );
     const r = runIn(root);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /limb 6: ONE identity deleter — services\/platform\/src\/lib\/platform-erasure\.ts/);
+    assert.match(r.stdout, /limb 6: ONE identity deleter — services\/platform\/src\/adapters\/identity\/gotrue\.ts/);
   });
 
   test('no deleter found is COVERAGE LOST (exit 2)', () => {

@@ -65,7 +65,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MiddlewareHandler } from 'hono';
-import { authRecencyOf, bearer } from '../../../_shared/src/auth';
+import { authRecencyOf, bearer, trustedIssuers } from '../../../_shared/src/auth';
 import { NO_SYMMETRIC_FALLBACK, sessionRevoked, verifySupabaseToken } from '../../../_shared/src/auth-middleware';
 import type { AppEnv } from '../types';
 import { raiseLinkFloor } from '../lib/ext-links';
@@ -245,7 +245,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (token === null) return c.json({ error: 'unauthorized' }, 401);
 
   try {
-    const { payload } = await verifySupabaseToken(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, NO_SYMMETRIC_FALLBACK);
+    const { payload } = await verifySupabaseToken(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, NO_SYMMETRIC_FALLBACK, trustedIssuers(c.env));
     // `sub` IS the user id. A verified token with no subject authenticates
     // nobody, and letting it through would set `userId` to undefined and hand
     // every `WHERE user_id = ?` a null — which matches no row on a read and, on

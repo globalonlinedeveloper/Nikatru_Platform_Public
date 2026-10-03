@@ -60,8 +60,8 @@ Future<void> main() async {
       // the only legal path.
       if (AppConfig.isBackendLive) {
         await initNikatruAuth(
-          url: AppConfig.supabaseUrl,
-          publishableKey: AppConfig.supabaseAnonKey,
+          url: AppConfig.authEndpoint,
+          publishableKey: AppConfig.authPublicKey,
           // Keychain / KeyStore / DPAPI / libsecret. On web there is no OS
           // keychain a page can reach, so this degrades to ordinary web storage
           // — stated in SecureSessionStorage rather than papered over.

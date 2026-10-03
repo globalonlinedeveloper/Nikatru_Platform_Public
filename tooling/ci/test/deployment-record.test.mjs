@@ -65,6 +65,7 @@ import {
   recoveryCommand,
   WORKFLOW_REF_FORM,
 } from '../record-deployment.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -1023,7 +1024,7 @@ function recorderFixture(body) {
 describe('record-deployment — every Deployment names the run that wrote it', () => {
   test('runIdentity reads the Play upload\'s identity from the runner\'s variables', () => {
     const { payload, missing } = runIdentity({
-      GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_WORKFLOW_REF: `${RECORDED_ORG}/Nikatru_Platform_Public/.github/workflows/submit-play.yml@refs/heads/main`,
       GITHUB_RUN_ID: '35787897094',
       GITHUB_RUN_ATTEMPT: '1',
       GITHUB_RUN_NUMBER: '5',

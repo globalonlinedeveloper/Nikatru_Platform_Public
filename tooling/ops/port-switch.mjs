@@ -122,7 +122,14 @@
 //                 whose only cell is one (Play today) is LOST, never guessed.
 //                 Rounded UP at four decimals: a minimum never rounds down.
 //
-// It reads registries and nothing else: no network, no vault, no credential.
+// ⏱ 2026-10-03 · port-auth · and, for `auth` only, five more (authChecks, below): C9 the
+// cutover preflight (tooling/ops/auth-cutover-preflight.mjs, SPAWNED — its checks stay its
+// own; `--phase pre|post` and `--attest apple-return-url` are forwarded), C10 the issuer-list
+// delta, C11 the client config per channel, C12 the captcha provider, C13 the Apple Services
+// ID return URL (an owner attestation).
+//
+// It reads registries and nothing else: no network, no vault, no credential — except the
+// auth C9, whose preflight reads the target host and Cloudflare read-only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
@@ -133,9 +140,12 @@ import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER, RAILS } from '../catalog/render-rail-prices.mjs';
 import { railsOf, billsThroughStore, storeBilledRails } from '../ports/render.mjs';
 import { readExportFile, replayExport } from './sql-export-replay.mjs';
+import { renderIssuersCheck } from '../ports/render.mjs';
 
 export const NO_VALUE_FLAGS = new Set(['--dry-run']);
-export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root', '--export']);
+export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root', '--export', '--attest', '--phase']);
+/** The flags only the auth dry run reads (it forwards them to the cutover preflight). */
+export const AUTH_ONLY_FLAGS = Object.freeze(['attest', 'phase']);
 /** The ports whose dry run replays an export (C9). */
 export const EXPORT_REPLAY_PORTS = new Set(['sql']);
 export const HOUSE_IDENTITY = 'tooling/house-identity.json';
@@ -146,7 +156,7 @@ const money = (minor) => `${minor < 0 ? '-' : ''}${Math.trunc(Math.abs(minor) / 
 
 /** Parse argv. Every flag is declared; a no-value flag never eats the next argument (shell-13). */
 export function parseArgs(argv) {
-  const out = { port: null, to: null, env: 'live', from: null, root: null, export: null, dryRun: false };
+  const out = { port: null, to: null, env: 'live', from: null, root: null, export: null, attest: null, phase: null, dryRun: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -168,6 +178,9 @@ export function parseArgs(argv) {
   if (!out.to) return { error: '--to <adapter> is required' };
   if (!ENVS.has(out.env)) return { error: `--env must be live, sandbox or test, not ${JSON.stringify(out.env)}` };
   if (out.export !== null && !EXPORT_REPLAY_PORTS.has(out.port)) return { error: `--export is for ${[...EXPORT_REPLAY_PORTS].join(', ')}; the ${out.port} port has no export to replay` };
+  for (const f of AUTH_ONLY_FLAGS) if (out[f] !== null && out.port !== 'auth') return { error: `--${f} is for the auth dry run (the cutover preflight's); the ${out.port} port has none` };
+  if (out.attest !== null && out.attest !== APPLE_ATTESTATION) return { error: `--attest knows only ${APPLE_ATTESTATION}` };
+  if (out.phase !== null && out.phase !== 'pre' && out.phase !== 'post') return { error: '--phase must be pre or post' };
   return out;
 }
 
@@ -423,6 +436,7 @@ export function run(opts) {
     add(9, 'plan', p.verdict, p.detail);
     extra.push(...p.lines);
   }
+  if (opts.port === 'auth') extra.push(...authChecks(root, doc, target, current, add, opts));
   const aiLines = isObj(doc.features) ? aiChecks(root, doc, target, model, add) : [];
   return finish(checks, [...extra, ...aiLines]);
 }
@@ -741,6 +755,103 @@ export function aiChecks(root, doc, target, model, add) {
   return lines;
 }
 
+// ── auth (port-auth, 2026-10-03) ─────────────────────────────────────────────
+/** The cutover preflight this dry run WRAPS — spawned, never copied (its checks stay its own). */
+export const AUTH_PREFLIGHT = 'tooling/ops/auth-cutover-preflight.mjs';
+/** The one attestation the preflight's C14 and this C13 accept. */
+export const APPLE_ATTESTATION = 'apple-return-url';
+export const NON_PORT = 'tooling/ports/_non-port.json';
+/** The platforms the Flutter app compiles for: a channel on one of them carries the identity
+ *  endpoint and key as --dart-defines. */
+const APP_PLATFORMS = new Set(['web', 'android', 'ios', 'macos', 'windows', 'linux']);
+/** The two dart-defines a client build carries (AppConfig.authEndpoint / authPublicKey). */
+export const AUTH_DEFINES = Object.freeze(['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
+
+/** Spawn the preflight read-only; `{status, stdout, stderr}`. Injectable for tests. */
+function spawnPreflight(root, args) {
+  const r = spawnSync(process.execPath, [join(root, AUTH_PREFLIGHT), ...args, root], { cwd: root, encoding: 'utf8', timeout: 600_000 });
+  return { status: r.status ?? 124, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+
+/**
+ * C9–C13 · what an identity switch moves besides the registry row. The auth cutover of
+ * 2026-09-24 (hosted Supabase → GoTrue on Box C) is the precedent, generalised:
+ *   C9  preflight  tooling/ops/auth-cutover-preflight.mjs --phase <pre|post>, SPAWNED: its
+ *                  exit is this check's verdict (0 PASS, 1 FAIL, else LOST) and its lines are
+ *                  printed under it. It reads the target host and Cloudflare read-only.
+ *   C10 issuers    the issuer-list delta: the rows Workers trust today (auth.json `issuers`,
+ *                  rendered — a stale render is FAIL) and the second row a dual-issuer window adds.
+ *   C11 clients    per channel, where the endpoint and key live and what moving them costs: a
+ *                  --dart-define is COMPILE-TIME, so every app channel is an app release; the
+ *                  site is a deploy; each Worker a redeploy.
+ *   C12 captcha    the captcha provider the target must enforce (Turnstile, ADR 084).
+ *   C13 apple      the Apple Services ID return URL — no API exposes it: LOST until attested.
+ */
+export function authChecks(root, doc, target, current, add, opts = {}) {
+  const lines = [];
+  const phase = opts.phase ?? 'pre';
+  // C9 — the preflight, wrapped
+  const args = ['--phase', phase, ...(opts.attest ? ['--attest', opts.attest] : [])];
+  if (!existsSync(join(root, AUTH_PREFLIGHT))) add(9, 'preflight', 'LOST', `${AUTH_PREFLIGHT} does not exist; the cutover checks cannot run`);
+  else {
+    const r = (opts.preflight ?? spawnPreflight)(root, args);
+    const out = `${r.stdout}${r.stderr}`.split(/\r?\n/).filter((l) => l.trim());
+    const verdict = r.status === 0 ? 'PASS' : r.status === 1 ? 'FAIL' : 'LOST';
+    add(9, 'preflight', verdict, `node ${AUTH_PREFLIGHT} ${args.join(' ')} exit ${r.status}: ${out[0] ?? '(no output)'}`);
+    lines.push(`    ── ${AUTH_PREFLIGHT} --phase ${phase} (wrapped; its checks are its own) ──`);
+    for (const l of out) lines.push(`      ${l}`);
+  }
+  // C10 — the issuer list delta
+  const issuers = Array.isArray(doc.issuers) ? doc.issuers : [];
+  if (!issuers.length) add(10, 'issuers', 'FAIL', `tooling/ports/${doc.port}.json lists no issuer: a Worker would trust nobody`);
+  else {
+    const r = renderIssuersCheck(root);
+    lines.push('    ── trusted issuers today (tooling/ports/auth.json `issuers` → services/_shared/src/generated/ports.ts) ──');
+    for (const i of issuers) lines.push(`      ${String(i.id).padEnd(12)} origin \$${i.originEnv}${i.issuerPath} · keys ${i.jwksPath} · ${(i.algorithms ?? []).join(',')} · aud ${i.audience}`);
+    lines.push(`    ── the dual-issuer window adds ONE row (then render.mjs, deploy every Worker) ──`);
+    lines.push(`      + { id: '${target.id}', originEnv: '<a second Worker variable>', issuerPath, jwksPath, algorithms: ['ES256'], audience: 'authenticated' }`);
+    // ⏱ 2026-10-03 · review of #1182, finding 2: repointing SUPABASE_URL alone would stop trusting the OLD
+    // issuer while app builds in the field (the endpoint is a compile-time --dart-define) still hold its tokens.
+    lines.push(`      at the cutover SUPABASE_URL (row 0, the schema requires it) moves to the target AND the second row's variable is set to the OLD origin: the old issuer stays trusted`);
+    lines.push(`      remove the old issuer only once the OLDEST SUPPORTED app build has rotated (every build that compiles the old endpoint is below the minimum supported version, or has refreshed onto the target) and a further jwt_exp has passed`);
+    lines.push('      only the FIRST row keeps the KV key-set fallback (services/_shared/src/auth-middleware.ts): put the row that serves most tokens first');
+    if (!r.ok) add(10, 'issuers', r.lost ? 'LOST' : 'FAIL', r.detail);
+    else add(10, 'issuers', 'PASS', `${issuers.length} trusted issuer(s) rendered and current; the window is a second row; the old issuer is removed only after the oldest supported build has rotated`);
+  }
+  // C11 — the client config per channel
+  let ch = null;
+  try { ch = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')); } catch (e) { add(11, 'clients', 'LOST', `${CHANNEL_REGISTER} could not be read (${e.message})`); }
+  if (ch) {
+    const declared = new Set((ch.ciSecretRegister?.nonSigning ?? []).filter((x) => x?.kind === 'build-config').map((x) => x.name));
+    const undeclared = AUTH_DEFINES.filter((n) => !declared.has(n));
+    const apps = (ch.channels ?? []).filter((c) => (c.platforms ?? []).some((p) => APP_PLATFORMS.has(p)));
+    const others = (ch.channels ?? []).filter((c) => !apps.includes(c));
+    lines.push(`    ── client config per channel (${CHANNEL_REGISTER}) — ${AUTH_DEFINES.join(' and ')} are --dart-defines: COMPILE-TIME ──`);
+    for (const c of apps) {
+      const lane = c.lane?.workflow ? `${c.lane.workflow}${c.lane.job ? `#${c.lane.job}` : ''}` : 'no lane yet';
+      lines.push(`      ${String(c.id).padEnd(16)} ${c.kind === 'web' ? 'a web build (main.dart.js) → rebuild and redeploy' : 'an APP RELEASE; builds in the field keep the old endpoint until users update'} · lane ${lane}`);
+    }
+    for (const c of others) lines.push(`      ${String(c.id).padEnd(16)} compiles no identity endpoint: it signs in through nikatru.com (sites/nikatru/js/identity-client.js)`);
+    lines.push('      the site          sites/nikatru/js/signin.js SUPABASE_URL + publishable key → a site deploy (ops-watch reads them back live)');
+    lines.push('      each Worker       the SUPABASE_URL var (+ SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY secrets) → set and REDEPLOY; the preflight C9 reads what each serves');
+    if (undeclared.length) add(11, 'clients', 'FAIL', `${undeclared.join(', ')} not declared build-config in ${CHANNEL_REGISTER} ciSecretRegister.nonSigning`);
+    else if (!apps.length) add(11, 'clients', 'LOST', `${CHANNEL_REGISTER} names no channel on an app platform`);
+    else add(11, 'clients', 'PASS', `${apps.length} app channel(s) need a release (or, web, a rebuild), the site a deploy, every Worker a redeploy`);
+  }
+  // C12 — the captcha provider
+  let np = null;
+  try { np = JSON.parse(readFileSync(join(root, NON_PORT), 'utf8')); } catch (e) { add(12, 'captcha', 'LOST', `${NON_PORT} could not be read (${e.message})`); }
+  if (np) {
+    const row = (np.rows ?? []).find((r) => r?.vendor === 'cloudflare-turnstile');
+    if (!row) add(12, 'captcha', 'LOST', `${NON_PORT} places no cloudflare-turnstile row; the captcha provider is unknown`);
+    else add(12, 'captcha', 'PASS', 'the target must enforce Cloudflare Turnstile (ADR 084; a platform authority, never ported) on signup, the password grant, recover, otp, magiclink and resend — its secret is the target\'s own config, re-provisioned from the vault; the preflight C5 reads the posture');
+  }
+  // C13 — the Apple Services ID return URL
+  if (opts.attest === APPLE_ATTESTATION) add(13, 'apple', 'PASS', 'the owner attested the Apple Services ID return URL names the target');
+  else add(13, 'apple', 'LOST', `the Apple Services ID return URL is not readable by any API: an OWNER attestation (--attest ${APPLE_ATTESTATION}) after setting it to <target>/auth/v1/callback`);
+  return lines;
+}
+
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';
 export const CEILINGS = 'tooling/ceilings.json';
 const DNS_KINDS = ['spf', 'dkim', 'mx', 'dmarc'];
@@ -827,7 +938,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.error) {
     console.error(`port-switch: REFUSED — ${opts.error}`);
-    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>] [--export <file>]');
+    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>] [--export <file>] [--phase pre|post] [--attest apple-return-url]');
     process.exit(2);
   }
   const { code, out } = run(opts);

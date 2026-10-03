@@ -53,7 +53,7 @@
 //     show a fallback added here (review of #1152, minor 2).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+import { createLocalJWKSet, createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
 import {
   JWKS_KV_KEY,
   JWKS_LKG_KV_KEY,
@@ -61,12 +61,16 @@ import {
   authRecencyOf,
   bearer,
   isKeySetUnavailable,
+  issuerAt,
+  issuerNamed,
   lastKnownGoodNeedsWrite,
   revocationKey,
   revocationRefusal,
   usableJwksDocument,
+  trustedIssuers,
   verifyOptions,
   type AuthRecency,
+  type TrustedIssuer,
 } from './auth';
 import type { KvStore } from './ports/kv';
 
@@ -75,7 +79,9 @@ import type { KvStore } from './ports/kv';
  *  refuses it. */
 export type TokenAssurance = 'asymmetric' | 'symmetric';
 
-/** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
+/** The remote JWKS *getter*, cached per key-set URL for the isolate's life
+ *  (⏱ 2026-10-03 · port-auth: per ISSUER, so two trusted issuers never share
+ *  one memo — trap auth-05).
  *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
  *  and refetches on an unknown `kid` — which is the half that survives a key
  *  rotation. Rebuilding it per request would throw that away and turn every
@@ -84,13 +90,38 @@ export type TokenAssurance = 'asymmetric' | 'symmetric';
  *  fetch, not an outage. */
 const remoteSets = new Map<string, JWTVerifyGetKey>();
 
-export function remoteJwks(supabaseUrl: string): JWTVerifyGetKey {
-  let set = remoteSets.get(supabaseUrl);
+export function remoteJwks(jwksUrl: string): JWTVerifyGetKey {
+  let set = remoteSets.get(jwksUrl);
   if (!set) {
-    set = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
-    remoteSets.set(supabaseUrl, set);
+    set = createRemoteJWKSet(new URL(jwksUrl));
+    remoteSets.set(jwksUrl, set);
   }
   return set;
+}
+
+/** The refusal for a token whose `iss` no trusted issuer has. A jose-style
+ *  `ERR_` code, so `isKeySetUnavailable` can never read it as an outage. */
+function untrustedIssuer(): Error {
+  return Object.assign(new Error('the token names no trusted issuer'), { code: 'ERR_JWT_ISSUER_NOT_TRUSTED' });
+}
+
+/**
+ * ⏱ 2026-10-03 · port-auth. WHICH trusted issuer a token claims, by its `iss`
+ * read UNVERIFIED — and that is all the unverified read decides. The token is
+ * then verified against THAT issuer's own key set, with its issuer, audience
+ * and algorithms pinned, so a forged `iss` only chooses which key set refuses
+ * it. A token naming no trusted issuer is refused before any key set is fetched.
+ */
+export function issuerOf(token: string, issuers: readonly TrustedIssuer[]): TrustedIssuer {
+  let iss: unknown;
+  try {
+    iss = decodeJwt(token).iss;
+  } catch {
+    throw untrustedIssuer();
+  }
+  const found = issuerNamed(iss, issuers);
+  if (found === null) throw untrustedIssuer();
+  return found;
 }
 
 /**
@@ -122,7 +153,7 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KvStore | un
   try {
     if (!jwksCache) return;
     if (await jwksCache.get(JWKS_KV_KEY)) return; // still warm
-    const res = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
+    const res = await fetch(issuerAt(supabaseUrl).jwksUrl);
     if (!res.ok) return;
     const body = await res.text();
     await jwksCache.put(JWKS_KV_KEY, body, {
@@ -182,10 +213,19 @@ export async function localSetFromCache(
  * property of the SIGNATURE — checkable by reading four lines — rather than a
  * claim about the body that a later edit could quietly falsify.
  */
-export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KvStore): Promise<JWTPayload> {
-  const opts = verifyOptions(supabaseUrl);
+export async function verifyAsymmetric(
+  token: string,
+  supabaseUrl: string,
+  jwksCache?: KvStore,
+  issuers: readonly TrustedIssuer[] = [issuerAt(supabaseUrl)],
+): Promise<JWTPayload> {
+  // ⏱ 2026-10-03 · port-auth: the issuer the token claims, among the trusted
+  // ones (tooling/ports/auth.json `issuers`); with one row this is exactly the
+  // `${SUPABASE_URL}/auth/v1` it always was.
+  const issuer = issuerOf(token, issuers);
+  const opts = verifyOptions(issuer);
   try {
-    const { payload } = await jwtVerify(token, remoteJwks(supabaseUrl), opts);
+    const { payload } = await jwtVerify(token, remoteJwks(issuer.jwksUrl), opts);
     return payload;
   } catch (err) {
     // ⚠️ ONLY a key-set acquisition failure earns a second attempt, and it is
@@ -193,6 +233,10 @@ export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksC
     // the two cannot drift into a weaker one an attacker reaches by making the
     // JWKS endpoint unreachable. A bad token still fails here and now.
     if (!isKeySetUnavailable(err)) throw err;
+    // ⏱ 2026-10-03 · port-auth: the KV copies are the PRIMARY issuer's key set
+    // (warmJwksCache fetches that one), so only a token of the primary issuer
+    // may fall back to them. Another trusted issuer in an outage fails closed.
+    if (issuer.jwksUrl !== issuerAt(supabaseUrl).jwksUrl) throw err;
     // ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES. The 10-minute copy
     // first; the last-known-good copy ONLY when that one is unusable (expired,
     // empty or corrupt). Never both against one token: a usable 10-minute copy
@@ -232,17 +276,20 @@ export async function verifySupabaseToken(
   supabaseUrl: string,
   jwksCache: KvStore | undefined,
   fallback: SymmetricFallback,
+  issuers: readonly TrustedIssuer[] = [issuerAt(supabaseUrl)],
 ): Promise<{ payload: JWTPayload; assurance: TokenAssurance }> {
   try {
     // Fire-and-forget KV warm; verification does not block on it.
     void warmJwksCache(supabaseUrl, jwksCache);
-    return { payload: await verifyAsymmetric(token, supabaseUrl, jwksCache), assurance: 'asymmetric' };
+    return { payload: await verifyAsymmetric(token, supabaseUrl, jwksCache, issuers), assurance: 'asymmetric' };
   } catch (primaryErr) {
     const secret = fallback.legacyHs256Secret;
     if (secret) {
       const key = new TextEncoder().encode(secret);
+      // The legacy secret was only ever the PRIMARY issuer's (port-auth: its
+      // `iss` from the rendered row, as the ES256 path reads it).
       const { payload } = await jwtVerify(token, key, {
-        issuer: `${supabaseUrl}/auth/v1`,
+        issuer: issuerAt(supabaseUrl).issuer,
         audience: 'authenticated',
         algorithms: ['HS256'],
       });
@@ -338,9 +385,13 @@ export function supabaseAuthWith<E extends AuthBindings>(options: {
     }
 
     try {
-      const { payload, assurance } = await verifySupabaseToken(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, {
-        legacyHs256Secret: options.legacyHs256Secret(c.env),
-      });
+      const { payload, assurance } = await verifySupabaseToken(
+        token,
+        c.env.SUPABASE_URL,
+        c.env.JWKS_CACHE,
+        { legacyHs256Secret: options.legacyHs256Secret(c.env) },
+        trustedIssuers(c.env),
+      );
       if (!payload.sub) {
         return c.json({ error: 'unauthorized' }, 401);
       }
@@ -392,7 +443,7 @@ export async function erasureAuth<C extends AuthContext>(c: C, next: () => Promi
 
   try {
     void warmJwksCache(c.env.SUPABASE_URL, c.env.JWKS_CACHE);
-    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE);
+    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, trustedIssuers(c.env));
     // `sub` IS the user id. A verified token with no subject authenticates
     // nobody, and letting it through would hand every `WHERE user_id = ?` an
     // undefined — which on a DELETE is the difference between erasing nothing

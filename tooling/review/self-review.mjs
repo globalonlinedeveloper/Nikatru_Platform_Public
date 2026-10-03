@@ -68,12 +68,13 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 export const YIELD_REL = 'tooling/guard-yield.json';
 export const CAUSES_REL = 'tooling/ops/failed-run-causes.json';
-export const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 /** One real week, MEASURED, not estimated: the requests a full run at the defaults sent for the week to `asOf`
  *  (`--until asOf`). DEFAULT_BUDGET is sized from it with headroom (the test holds it at 1.5× or more), so the
  *  documented defaults complete a real week. Re-measure when the factory's volume moves. */

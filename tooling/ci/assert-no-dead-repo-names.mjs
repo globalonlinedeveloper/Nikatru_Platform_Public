@@ -46,6 +46,26 @@
 // the house meaning of 2: the guard did not check enough to be evidence, which is
 // deliberately NOT a pass, and must never be read as one.
 //
+// ── ⏱ 2026-10-03 · port-codehost · THE LIVE NAME, NOT ONLY THE DEAD ONES ──────
+// The same failure has a second shape: a rename of the LIVE org voids every
+// script that typed it (trap vacuous-09), and the owner's move to the
+// `nikatru-com` org is coming. So the org is CONFIG — tooling/github-org.json is
+// the one file that types it, tooling/ports/render.mjs renders it into
+// tooling/generated/codehost.mjs and services/platform/src/generated/codehost.ts
+// — and two more limbs, declared in the `codehost` block of tooling/dead-repos.json:
+//   PINS     every pubspec `repository:`/`homepage:`, the podspec `s.homepage`,
+//            every CODEOWNERS owner and every issue-chooser `url:` names the
+//            register's org (and the platform repository) — CHECKED, not trusted;
+//   LITERAL  the org name (and, once github-org.json declares it, `movingTo`) is
+//            refused in every code and config file (comments stripped, strings
+//            kept) outside the register, the generated outputs, this
+//            declaration, the recorded fixtures, the ONE test-fixture constant
+//            the tests import, a checked pin, and `mentions` rows counted exactly
+//            as `codeMentions` are. Markdown is prose and out of scope; the org
+//            move (tooling/ops/org-move.mjs) lists it.
+// Absent `codehost` block: the two limbs print NOT DECLARED (the real declaration
+// is held to carrying it by test/dead-repo-names.test.mjs).
+//
 // Usage:  node tooling/ci/assert-no-dead-repo-names.mjs [repoRoot]
 // Exit 0 = no live surface names a dead repository.
 //      1 = at least one does. Every hit is printed with file, line and the
@@ -311,6 +331,123 @@ if (staleMentions.length) {
   ]);
 }
 
+// ── 3c. the code host's names (port-codehost) ────────────────────────────────
+const codehost = decl.codehost;
+const hostFindings = [];
+const hostNotes = [];
+let hostFiles = 0;
+if (codehost === undefined) {
+  hostNotes.push('code-host limbs (PINS, LITERAL): NOT DECLARED — tooling/dead-repos.json carries no `codehost` block');
+} else {
+  const regRel = codehost.register;
+  let reg;
+  try { reg = JSON.parse(readFileSync(join(ROOT, regRel), 'utf8')); } catch (e) {
+    coverageLost([`✗ COVERAGE LOST — codehost.register ${regRel} could not be read (${e.message}). The org cannot be checked against a register nobody can read.`]);
+  }
+  const org = typeof reg?.org === 'string' ? reg.org : '';
+  const platformRepo = (Array.isArray(reg?.platform) ? reg.platform : []).find((x) => x?.visibility === 'PUBLIC')?.repo;
+  if (!/^[A-Za-z0-9-]{2,}$/.test(org) || typeof platformRepo !== 'string') {
+    coverageLost([`✗ COVERAGE LOST — ${regRel} names no org and PUBLIC platform repository; there is nothing to hold the tree to.`]);
+  }
+  const web = 'https://github.com';
+  const names = [org, ...(typeof reg.movingTo === 'string' && reg.movingTo ? [reg.movingTo] : [])];
+  // movingTo is held to org's own shape, and every name is escaped whole (CodeQL
+  // js/incomplete-sanitization on #1182: escaping `-` alone left a backslash live).
+  if (!names.every((n) => /^[A-Za-z0-9-]{2,}$/.test(n))) {
+    coverageLost([`✗ COVERAGE LOST — ${regRel} movingTo is not an org name ([A-Za-z0-9-]{2,}); the literal limb cannot be built from it.`]);
+  }
+  const nameRe = new RegExp(names.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|'), 'gi');
+  const hostGlobs = (Array.isArray(codehost.globs) ? codehost.globs : []).map(toRe);
+  const hostExcluded = Array.isArray(codehost.excludedPaths) ? codehost.excludedPaths : [];
+  const isHostExcluded = (rel) => hostExcluded.some((e) => (e.endsWith('/') ? rel.startsWith(e) : rel === e));
+  if (!hostGlobs.length) coverageLost(['✗ COVERAGE LOST — codehost.globs is empty: the literal limb would scan nothing.']);
+  const hostMentions = new Map((codehost.mentions ?? []).map((m) => [m.path, m]));
+  for (const m of codehost.mentions ?? []) {
+    if (typeof m.path !== 'string' || !Number.isInteger(m.count) || m.count < 1 || typeof m.why !== 'string' || m.why.length < 40) {
+      coverageLost(['✗ COVERAGE LOST — a codehost.mentions row is not usable:', `    ${JSON.stringify(m)}`, '  Every row needs a path, an integer count of at least 1 and a reason long enough to read aloud.']);
+    }
+  }
+  const pinnedFiles = [];
+  const scanned = [];
+  const hostWalk = (abs, rel) => {
+    let entries;
+    try { entries = listDir(abs, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (SKIP_DIRS.has(e.name) || isHostExcluded(`${r}/`)) continue;
+        hostWalk(join(abs, e.name), r);
+      } else if (e.isFile() && hostGlobs.some((re) => re.test(r)) && !isHostExcluded(r)) scanned.push(r);
+    }
+  };
+  hostWalk(ROOT, '');
+  scanned.sort();
+  hostFiles = scanned.length;
+  const want = `${web}/${org}/${platformRepo}`;
+  // PINS — each a form whose VALUE is checked against the register; an occurrence inside a
+  // checked pin is the register's name, and so not a literal.
+  const pinOf = (rel) => (/(^|\/)pubspec\.yaml$/.test(rel) ? 'pubspec' : /\.podspec$/.test(rel) ? 'podspec'
+    : rel === '.github/CODEOWNERS' ? 'codeowners' : rel === '.github/ISSUE_TEMPLATE/config.yml' ? 'issue-chooser' : null);
+  const checkPins = (rel, kind, code) => {
+    const lines = code.split('\n');
+    let pinned = 0;
+    lines.forEach((line, i) => {
+      let m;
+      if (kind === 'pubspec' && (m = /^(repository|homepage):\s*(\S+)\s*$/.exec(line))) {
+        if (m[2] !== want) hostFindings.push({ file: rel, line: i + 1, what: `pubspec \`${m[1]}: ${m[2]}\` is not ${want} (tooling/github-org.json)` });
+        else pinned += 1;
+      } else if (kind === 'podspec' && (m = /^\s*s\.homepage\s*=\s*'([^']*)'/.exec(line))) {
+        if (m[1] !== want) hostFindings.push({ file: rel, line: i + 1, what: `podspec \`s.homepage = '${m[1]}'\` is not ${want} (tooling/github-org.json)` });
+        else pinned += 1;
+      } else if (kind === 'codeowners') {
+        for (const o of line.matchAll(/@([A-Za-z0-9-]+)(?:\/[A-Za-z0-9_.-]+)?/g)) {
+          if (o[1].toLowerCase() !== org.toLowerCase()) hostFindings.push({ file: rel, line: i + 1, what: `CODEOWNERS owner \`${o[0]}\` is not of the org ${org} (tooling/github-org.json)` });
+          else pinned += 1;
+        }
+      } else if (kind === 'issue-chooser' && (m = /^\s*url:\s*(\S+)\s*$/.exec(line)) && m[1].startsWith(`${web}/`)) {
+        if (m[1] !== want && !m[1].startsWith(`${want}/`)) hostFindings.push({ file: rel, line: i + 1, what: `issue-chooser url ${m[1]} is not under ${want} (tooling/github-org.json)` });
+        else pinned += 1;
+      }
+    });
+    return pinned;
+  };
+  const fixture = codehost.fixtureConstant;
+  let fixtureSeen = 0;
+  const mentionCount = new Map();
+  for (const rel of scanned) {
+    let text;
+    try { text = readFileSync(join(ROOT, rel), 'utf8'); } catch { continue; }
+    const ext = extOf(rel);
+    const kind = pinOf(rel);
+    const code = kind === 'codeowners' || kind === 'podspec' ? stripSourceComments(text, '.yaml')
+      : isYaml(rel) ? text.split('\n').map(stripYamlComments).join('\n')
+        : stripSourceComments(text, ext);
+    const hits = [...code.matchAll(nameRe)];
+    if (!hits.length && !kind) continue;
+    const pinned = kind ? checkPins(rel, kind, code) : 0;
+    let loose = hits.length - pinned;
+    if (rel === fixture?.path) { fixtureSeen = loose; continue; }
+    if (loose <= 0) continue;
+    const row = hostMentions.get(rel);
+    if (row) {
+      mentionCount.set(rel, loose);
+      if (loose <= row.count) continue;
+    }
+    const first = code.slice(0, hits[pinned]?.index ?? hits[0].index).split('\n').length;
+    hostFindings.push({ file: rel, line: first, what: `names the org \`${hits[0][0]}\` ${loose} time(s)${row ? ` (declares ${row.count})` : ''} — import it from tooling/generated/codehost.mjs (a script), services/platform/src/generated/codehost.ts (the platform Worker), use \${{ github.repository_owner }} (a workflow), or — a TEST — ${fixture?.path ?? 'the fixture constant'}` });
+  }
+  const stale = [...hostMentions.values()].filter((m) => (mentionCount.get(m.path) ?? 0) < m.count).map((m) => `${m.path}: declares ${m.count}, found ${mentionCount.get(m.path) ?? 0}`);
+  if (stale.length) coverageLost(['✗ COVERAGE LOST — a codehost.mentions row excuses more than the tree contains:', ...stale.map((x) => `    ${x}`), '  Retire the row in the same commit as the line it named.']);
+  if (fixture && fixtureSeen !== fixture.count) {
+    if (fixtureSeen > fixture.count) hostFindings.push({ file: fixture.path, line: 1, what: `the test-fixture constant file names the org ${fixtureSeen} time(s); it is the ONE place tests take it from (${fixture.count})` });
+    else coverageLost([`✗ COVERAGE LOST — ${fixture.path} names the org ${fixtureSeen} time(s), not ${fixture.count}: the one constant the tests import is gone or moved.`]);
+  }
+  const floor = Number(codehost.floors?.files ?? 0);
+  if (hostFiles < floor) coverageLost([`✗ COVERAGE LOST — the code-host literal limb scanned ${hostFiles} file(s), floor ${floor}. A walk that matches nothing because it walked nothing reads exactly like a pass.`]);
+  pinnedFiles.push(...scanned.filter((r) => pinOf(r)));
+  hostNotes.push(`code-host limbs: ${hostFiles} code/config file(s) scanned for the org (${names.join(', ')}) from ${regRel}; ${pinnedFiles.length} pinned file(s) checked against ${want}; ${hostMentions.size} counted mention row(s); excluded: ${hostExcluded.join('  ')}`);
+}
+
 // ── 4. floors ────────────────────────────────────────────────────────────────
 const floorFailures = [];
 if (files.length < FLOOR_FILES) floorFailures.push(`${files.length} file(s) scanned, floor ${FLOOR_FILES}`);
@@ -327,6 +464,16 @@ if (floorFailures.length) {
 console.log(`assert-no-dead-repo-names: ${files.length} machine-read file(s) scanned against ${repos.length} dead repository name(s) from ${DECL_REL}`);
 console.log(`  scan set: ${globs.join('  ')}`);
 console.log(`  excluded (dated records and fixtures, declared not hidden): ${excluded.join('  ') || 'none'}`);
+
+for (const n of hostNotes) console.log(`  ${n}`);
+if (hostFindings.length) {
+  console.error('');
+  console.error(`✗ ${hostFindings.length} place(s) type the code host's name instead of reading the register:`);
+  for (const f of hostFindings) console.error(`  ${f.file}:${f.line} — ${f.what}`);
+  console.error('  tooling/github-org.json is the ONE file that types the org; an org move must be a one-line edit there');
+  console.error('  plus `node tooling/ports/render.mjs` (trap vacuous-09: a rename voids every script that hard-coded it).');
+  if (findings.length === 0) process.exit(1);
+}
 
 if (findings.length === 0) {
   if (excused.length) {

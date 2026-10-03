@@ -10,6 +10,13 @@ import {
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
+import GITHUB_ORG_RAW from '../../../tooling/github-org.json?raw';
+
+/** ⏱ 2026-10-03 · port-codehost: the org and the public platform repo, read from the ONE
+ *  register that types them — so a target the render did not produce from it is red here. */
+const CODEHOST = JSON.parse(GITHUB_ORG_RAW) as { org: string; platform: { repo: string; visibility: string }[] };
+const ORG = CODEHOST.org;
+const PLATFORM_REPO = CODEHOST.platform.find((p) => p.visibility === 'PUBLIC')!.repo;
 
 /** Every workflow file, as a fact about the directory rather than a list a
  *  future edit can silently shorten — the reason insights-queries.test.ts
@@ -80,7 +87,8 @@ describe('the declared targets are safe by construction', () => {
       // a target pointing at a feature branch would let that branch decide what
       // the portfolio's alarm clock runs. This is the assertion that stops it.
       expect(t.ref).toBe('main');
-      expect(t.owner).toBe('globalonlinedeveloper');
+      expect(t.owner).toBe(ORG);
+      expect(t.repo).toBe(PLATFORM_REPO);
       expect(t.workflow).toMatch(/\.ya?ml$/);
     }
   });
@@ -387,7 +395,7 @@ describe('🔴 e2e.yml is pinned to its own 03:17Z firing', () => {
     const seen = stubFetch(204);
     await dispatchGithubWorkflows(envWith(db, 'tok'), E2E_DISPATCH_CRON);
     expect(seen.map((s) => s.url)).toEqual([
-      'https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows/e2e.yml/dispatches',
+      `https://api.github.com/repos/${ORG}/${PLATFORM_REPO}/actions/workflows/e2e.yml/dispatches`,
     ]);
     expect(workflowRows(db).map((r) => r.target)).toEqual([E2E]);
     expect(String(dispatcherRow(db)?.detail)).toMatch(/fired=1 skipped=\d+/);

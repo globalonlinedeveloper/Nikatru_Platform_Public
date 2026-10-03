@@ -469,10 +469,15 @@ export function checkConnectOrigins({
     }
     fromKeys.push([origin, key]);
   }
+  // ⏱ 2026-10-03 · port-auth: an ALIAS of a define-backed constant — the `@Deprecated`
+  // old name kept one release, `supabaseUrl = authEndpoint` — IS that define, not a
+  // second origin to classify.
+  const aliasOfUrlBacked = (c, depth = 0) => depth < 16 && 'ref' in c && constants.has(c.ref)
+    && (urlBacked.includes(constants.get(c.ref)) || aliasOfUrlBacked(constants.get(c.ref), depth + 1));
   for (const c of constants.values()) {
     const value = resolveConstant(constants, c.name);
     if (!value || !/^https?:\/\//i.test(value)) continue;
-    if (connectKeys.includes(c.name) || linkKeys.includes(c.name) || urlBacked.includes(c) || fallbacks.has(c.name)) continue;
+    if (connectKeys.includes(c.name) || linkKeys.includes(c.name) || urlBacked.includes(c) || fallbacks.has(c.name) || aliasOfUrlBacked(c)) continue;
     findings.push(`unclassified origin constant ${c.name} (${originOf(value) ?? 'unparsed'}) in app_config.dart: add it to CONNECT_KEYS or LINK_KEYS`);
   }
   if (result.lost.length) return result;

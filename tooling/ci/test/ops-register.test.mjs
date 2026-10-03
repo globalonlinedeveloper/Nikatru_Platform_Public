@@ -213,6 +213,7 @@ import {
   probeUnitFreshness,
   UNIT_WINDOW_PAGES,
 } from '../assert-ops-register.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-ops-register.mjs');
@@ -2374,7 +2375,7 @@ describe('assert-ops-register — end to end, against the real repository', () =
       GLITCHTIP_TOKEN: 'replay',
       CLOUDFLARE_API_TOKEN: 'replay',
       CLOUDFLARE_ACCOUNT_ID: 'replay',
-      GITHUB_REPOSITORY: 'globalonlinedeveloper/Nikatru_Platform_Public',
+      GITHUB_REPOSITORY: `${RECORDED_ORG}/Nikatru_Platform_Public`,
     });
     const r = spawnSync(process.execPath, ['--import', replayStubUrl(), GUARD], { cwd: resolve(CI_DIR, '..', '..'), encoding: 'utf8', env });
     const counts = existsSync(countFile) ? JSON.parse(readFileSync(countFile, 'utf8')) : null;
@@ -4073,7 +4074,7 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
     const limbErrors = (reg) => evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
     const NOWF = Date.parse('2026-09-03T06:00:00Z');
     const MULT = () => REAL()._recordReaders._windowMultiplier;
-    const EMPTY = { lastSuccessMs: NaN, detail: 'globalonlinedeveloper/X has NO successful `schedule` run of w.yml in its run history at all.' };
+    const EMPTY = { lastSuccessMs: NaN, detail: `${RECORDED_ORG}/X has NO successful \`schedule\` run of w.yml in its run history at all.` };
     const rowWith = (firstDue) => ({
       id: 'duty.workflow.test.yml',
       kind: 'duty',
@@ -6028,7 +6029,7 @@ describe('assert-ops-register — [14]O-3b · a run that died ONLY on the instal
 describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answers run 34546423386 received', () => {
   const REPO = resolve(CI_DIR, '..', '..');
   const FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
-  const R = 'globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows';
+  const R = `${RECORDED_ORG}/Nikatru_Platform_Public/.github/workflows`;
   const HOST = {
     PR: { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '1', GITHUB_EVENT_NAME: 'pull_request', GITHUB_WORKFLOW: 'CI', GITHUB_REF: 'refs/pull/620/merge', GITHUB_WORKFLOW_REF: `${R}/ci.yml@refs/pull/620/merge` },
     PUSH: { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '2', GITHUB_EVENT_NAME: 'push', GITHUB_WORKFLOW: 'CI', GITHUB_REF: 'refs/heads/main', GITHUB_WORKFLOW_REF: `${R}/ci.yml@refs/heads/main` },
@@ -6048,7 +6049,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       GLITCHTIP_TOKEN: 'replay',
       CLOUDFLARE_API_TOKEN: 'replay',
       CLOUDFLARE_ACCOUNT_ID: 'replay',
-      GITHUB_REPOSITORY: 'globalonlinedeveloper/Nikatru_Platform_Public',
+      GITHUB_REPOSITORY: `${RECORDED_ORG}/Nikatru_Platform_Public`,
       ...host,
       ...extra,
     });
@@ -6818,7 +6819,7 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     ['Guards — chassis, app surface and packages', 'success'],
     ['ci-gate', 'success'],
   ].map(([name, conclusion]) => j(name, conclusion));
-  const REF = (file) => ({ path: `globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/${file}@c02e6d3304b4024208ac3c69b25654f0bf923f00` });
+  const REF = (file) => ({ path: `${RECORDED_ORG}/Nikatru_Platform_Public/.github/workflows/${file}@c02e6d3304b4024208ac3c69b25654f0bf923f00` });
   const RUN_3848 = { id: 36106900356, conclusion: 'success', updated_at: '2026-09-25T07:53:19Z', head_branch: 'main', event: 'push', referenced_workflows: [REF('extensions-ci.yml')] };
 
   test('RC-a — run 3848 predates the call (referenced_workflows names only extensions-ci.yml), a push to main: neutral, where it was lost', () => {
@@ -6928,7 +6929,7 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
   // ⏱ 2026-09-28 · OPS-WATCH 36445522260. Main CI run 4270 (36445259496) as the API gave
   // it: cancelled at 15:41:40Z by the concurrency group when run 4271 (36445515397, still
   // pending) was pushed; /jobs total_count 0; referenced_workflows naming both callees.
-  const REF_4270 = (file) => ({ path: `globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/${file}@6b8f28540ce3ce5babef3882619a9f9ffd5df4c2` });
+  const REF_4270 = (file) => ({ path: `${RECORDED_ORG}/Nikatru_Platform_Public/.github/workflows/${file}@6b8f28540ce3ce5babef3882619a9f9ffd5df4c2` });
   const RUN_4270 = {
     id: 36445259496, run_number: 4270, status: 'completed', conclusion: 'cancelled', event: 'push', head_branch: 'main',
     created_at: '2026-09-28T15:39:35Z', updated_at: '2026-09-28T15:41:40Z',

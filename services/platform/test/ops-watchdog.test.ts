@@ -32,6 +32,7 @@ import ciYml from '../../../.github/workflows/ci.yml?raw';
 import opsWatchYml from '../../../.github/workflows/ops-watch.yml?raw';
 import type { Env } from '../src/types';
 import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
+import { CODEHOST_ORG, PLATFORM_REPO } from '../src/generated/codehost';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The laptop watchdog's portable work, on the
@@ -205,7 +206,7 @@ describe('checkStuckRuns — flag always, cancel only when allowed', () => {
     const row = await checkStuckRuns(env({ GITHUB_DISPATCH_TOKEN: TOKEN, OPS_WATCHDOG_CANCEL_STUCK: 'true' }).e, NOW);
     const posts = calls.filter((c) => c.method === 'POST');
     expect(posts).toHaveLength(OPS_MAX_CANCELS_PER_RUN);
-    expect(posts[0].url).toBe('https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/100/cancel');
+    expect(posts[0].url).toBe(`https://api.github.com/repos/${CODEHOST_ORG}/${PLATFORM_REPO}/actions/runs/100/cancel`);
     expect(row.ok).toBe(true);
     expect(row.detail).toMatch(new RegExp(`cancelled=${OPS_MAX_CANCELS_PER_RUN} refused=0`));
   });
@@ -633,7 +634,7 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
   // becomes fails the HEAD anchor too, and the second path is still what answers.
   const HEAD_RUN = { ...FRESH_RUN, head_branch: 'main' };
   const NOT_HEAD_RUN = { id: 35300000000, head_sha: 'c'.repeat(40), head_branch: 'main', status: 'completed', conclusion: 'success', created_at: '2026-09-18T02:00:00Z', updated_at: '2026-09-18T02:07:00Z' };
-  const SECOND_URL = `https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows/ci.yml/runs?head_sha=${HEAD_553}&per_page=5`;
+  const SECOND_URL = `https://api.github.com/repos/${CODEHOST_ORG}/${PLATFORM_REPO}/actions/workflows/ci.yml/runs?head_sha=${HEAD_553}&per_page=5`;
 
   function secondPath(second: unknown[] | number | Error) {
     const urls: string[] = [];

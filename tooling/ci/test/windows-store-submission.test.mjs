@@ -37,6 +37,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from '../text-reductions.mjs';
 import { parseWorkflow, workflowSteps, jobEnvironment } from '../workflow-scan.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-windows-store.mjs');
@@ -186,7 +187,7 @@ function run(root, args, env = {}) {
     env: {
       ...process.env,
       MS_STORE_TENANT_ID: '', MS_STORE_CLIENT_ID: '', MS_STORE_CLIENT_SECRET: '', MS_STORE_SELLER_ID: '',
-      GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'globalonlinedeveloper/Nikatru_Platform_Public',
+      GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: `${RECORDED_ORG}/Nikatru_Platform_Public`,
       ...env,
     },
   });
@@ -353,7 +354,7 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       GITHUB_API_URL: 'http://127.0.0.1:9',
     });
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL PG-6 · could not reach http:\/\/127\.0\.0\.1:9\/repos\/globalonlinedeveloper\/Nikatru_Platform_Public\/environments\/store-publish/);
+    assert.match(out, new RegExp(`FAIL PG-6 · could not reach http://127\\.0\\.0\\.1:9/repos/${RECORDED_ORG}/Nikatru_Platform_Public/environments/store-publish`));
     assert.match(out, /submit-windows-store: FAILED/);
     assert.doesNotMatch(out, /ghs-fixture/);
   });

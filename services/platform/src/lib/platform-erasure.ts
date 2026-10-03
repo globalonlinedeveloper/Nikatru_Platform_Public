@@ -13,6 +13,7 @@
 //   · *_user_id  → the row REFERENCES this person  → NULL the column
 // ─────────────────────────────────────────────────────────────────────────────
 import type { SqlDb } from '../../../_shared/src/ports/sql';
+import type { IdentityAdmin } from '../../../_shared/src/ports/identity';
 import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type PlatformErasureResult =
@@ -77,11 +78,10 @@ export type SignupPurgeOutcome =
 
 export async function purgeVerifiedSignups(
   db: SqlDb,
-  supabaseUrl: string | undefined,
-  serviceRoleKey: string,
+  identity: IdentityAdmin,
   userId: string,
 ): Promise<SignupPurgeOutcome> {
-  const account = await readAccount(supabaseUrl, serviceRoleKey, userId);
+  const account = await readAccount(identity, userId);
   if (account.kind === 'transient' || account.kind === 'failed') return account;
   if (account.kind === 'no_account') return { kind: 'skipped', why: 'no_account' };
   if (account.email === '') return { kind: 'skipped', why: 'no_email' };
@@ -140,7 +140,7 @@ export const ACCOUNT_READ_TIMEOUT_MS = ACCOUNT_READ_ATTEMPTS * ACCOUNT_READ_ATTE
  *   `failed`     — any other non-2xx (e.g. a refused service-role key).
  *
  * The key is never echoed; the address is returned to the caller and never logged
- * here. `fetchImpl` is injectable for tests, as in lib/report-notify.ts.
+ * here. The provider is the identity port (`identityFor`, src/ports.ts), injectable for tests.
  *
  * A `transient` outcome is tried again once (ACCOUNT_READ_ATTEMPTS, each bounded
  * by `attemptMs`), so every caller — the signup purge on the request path, the
@@ -153,37 +153,30 @@ export type AccountRead =
   | { kind: 'failed'; why: string };
 
 export async function readAccount(
-  supabaseUrl: string | undefined,
-  serviceRoleKey: string,
+  identity: IdentityAdmin,
   userId: string,
-  fetchImpl: typeof fetch = fetch,
   attemptMs: number = ACCOUNT_READ_ATTEMPT_MS,
 ): Promise<AccountRead> {
   let read: AccountRead = { kind: 'transient', why: 'the identity provider was not asked' };
   for (let attempt = 1; attempt <= ACCOUNT_READ_ATTEMPTS; attempt++) {
-    read = await readAccountOnce(supabaseUrl, serviceRoleKey, userId, fetchImpl, attemptMs);
+    read = await readAccountOnce(identity, userId, attemptMs);
     if (read.kind !== 'transient') return read;
   }
   return read;
 }
 
-async function readAccountOnce(
-  supabaseUrl: string | undefined,
-  serviceRoleKey: string,
-  userId: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number,
-): Promise<AccountRead> {
-  let res: Response;
-  try {
-    res = await fetchImpl(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-      method: 'GET',
-      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch {
-    return { kind: 'transient', why: 'the identity provider could not be reached' };
+async function readAccountOnce(identity: IdentityAdmin, userId: string, timeoutMs: number): Promise<AccountRead> {
+  // ⏱ 2026-10-03 · port-auth: the request is the identity port's `readUser`
+  // (src/adapters/identity/gotrue.ts); what each answer means is decided here.
+  const answer = await identity.readUser(userId, { signal: AbortSignal.timeout(timeoutMs) });
+  // A refusal (a redirect, which is never followed, or no key) is `failed`: it
+  // fails closed, as a refused key's 401 always did (review of #1182, finding 1).
+  if (!answer.ok) {
+    return answer.kind === 'refused'
+      ? { kind: 'failed', why: answer.detail }
+      : { kind: 'transient', why: 'the identity provider could not be reached' };
   }
+  const res = answer.res;
   if (res.status === 404) return { kind: 'no_account' };
   if (res.status >= 500 || res.status === 429) return { kind: 'transient', why: `the identity provider answered ${res.status}` };
   if (!res.ok) return { kind: 'failed', why: `the identity provider answered ${res.status}` };
@@ -209,14 +202,18 @@ export function signupPurgeToken(o: SignupPurgeOutcome): string {
 /** The identity record, LAST. 404 counts as done (the user is already gone). The
  *  key is never echoed, logged, or returned. */
 export async function deleteIdentity(
-  supabaseUrl: string | undefined,
-  serviceRoleKey: string,
+  identity: IdentityAdmin,
   userId: string,
 ): Promise<{ ok: true } | { ok: false; status: number }> {
-  const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-    method: 'DELETE',
-    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-  });
+  // ⏱ 2026-10-03 · port-auth: the identity port's `deleteUser`. A call that got
+  // no answer THROWS, as the bare fetch it replaces did: each caller already
+  // handles that (the request fails; the nightly retry keeps the order open).
+  // A REFUSAL is a failed delete, not a throw: a redirect (never followed —
+  // review of #1182, finding 1) answers its own status, as the non-2xx it is.
+  const answer = await identity.deleteUser(userId);
+  if (!answer.ok && answer.kind === 'refused') return { ok: false, status: answer.status ?? 0 };
+  if (!answer.ok) throw answer.cause ?? new Error(answer.detail);
+  const res = answer.res;
   if (!res.ok && res.status !== 404) return { ok: false, status: res.status };
   return { ok: true };
 }

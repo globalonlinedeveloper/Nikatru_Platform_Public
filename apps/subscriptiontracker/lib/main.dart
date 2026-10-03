@@ -147,10 +147,10 @@ Future<void> main() async {
       // decision, one predicate: `isSupabaseConfigured && isApiConfigured`.
       if (AppConfig.isBackendLive) {
         await initNikatruAuth(
-          url: AppConfig.supabaseUrl,
+          url: AppConfig.authEndpoint,
           // Same string the define still calls SUPABASE_ANON_KEY; the SDK
           // renamed the parameter, which is why the deprecation is now gone.
-          publishableKey: AppConfig.supabaseAnonKey,
+          publishableKey: AppConfig.authPublicKey,
           // Keychain / KeyStore / DPAPI / libsecret; on web, ordinary web storage
           // (SecureSessionStorage says what does, and does not, bound it there).
           secureStore: FlutterSecureStore(),

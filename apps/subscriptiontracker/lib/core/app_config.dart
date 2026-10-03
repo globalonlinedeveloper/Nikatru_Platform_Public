@@ -98,21 +98,33 @@ class AppConfig {
   // ── Supabase (shared across ALL apps in the portfolio) ────────────────────
   //
   // 🔴 THE DEFAULT IS A PLACEHOLDER, NOT AN EMPTY STRING. The stamp defaults
-  // `supabaseUrl` to `''` and tests `isNotEmpty`; live defaults it to
+  // `authEndpoint` to `''` and tests `isNotEmpty`; live defaults it to
   // [_phSupabaseUrl] and tests `!= _phSupabaseUrl`. The live shape is kept
   // because `assert-store-build-config.mjs` derives the set of defines a store
   // artifact must pass by WALKING `isBackendLive` through the getters it names,
   // and the live shape keeps that walk three getters long and legible. Both
   // shapes reach the same three defines; only one of them also survives a
   // future field being added to `isSupabaseConfigured`.
-  static const String supabaseUrl = String.fromEnvironment(
+  //
+  // ⏱ 2026-10-03 · port-auth: named for what they ARE — the identity
+  // provider's endpoint and its public (publishable) key — not for the vendor
+  // that serves them today (tooling/ports/auth.json).
+  static const String authEndpoint = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: _phSupabaseUrl,
   );
-  static const String supabaseAnonKey = String.fromEnvironment(
+  static const String authPublicKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   );
+
+  // ⏱ 2026-10-03 · port-auth — THE OLD, VENDOR-SHAPED NAMES, kept ONE release
+  // so a caller outside this tree still compiles. The dart-defines keep their
+  // names (SUPABASE_URL, SUPABASE_ANON_KEY): they are the build's interface.
+  @Deprecated('Use authEndpoint. Removed one release after port-auth.')
+  static const String supabaseUrl = authEndpoint;
+  @Deprecated('Use authPublicKey. Removed one release after port-auth.')
+  static const String supabaseAnonKey = authPublicKey;
 
   // ── This app's Cloudflare Worker API ──────────────────────────────────────
   //
@@ -324,7 +336,7 @@ class AppConfig {
 
   /// Whether this build has a real IDENTITY to talk to the backend with.
   static bool get isSupabaseConfigured =>
-      supabaseUrl != _phSupabaseUrl && supabaseAnonKey.isNotEmpty;
+      authEndpoint != _phSupabaseUrl && authPublicKey.isNotEmpty;
 
   /// Whether the per-app API host has been pointed at something real. See the
   /// sentinel note on [_phApiBase] before touching this.

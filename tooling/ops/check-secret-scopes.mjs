@@ -51,6 +51,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows } from '../ci/workflow-scan.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const REGISTER_REL = 'tooling/channel-register.json';
@@ -230,7 +231,7 @@ async function main() {
   const root = resolve(flag(argv, '--root') ?? DEFAULT_ROOT);
   const today = flag(argv, '--today') ?? new Date().toISOString().slice(0, 10);
   const until = flag(argv, '--unreadable-until');
-  const repo = flag(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? 'globalonlinedeveloper/Nikatru_Platform_Public';
+  const repo = flag(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? PLATFORM_REPO_SLUG;
   const namesFile = flag(argv, '--names-file');
   for (const [k, v] of [['--today', today], ['--unreadable-until', until]]) {
     if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { console.error(`COVERAGE LOST — ${k} "${v}" is not YYYY-MM-DD`); process.exitCode = 2; return; }

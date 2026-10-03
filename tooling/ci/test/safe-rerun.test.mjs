@@ -68,6 +68,7 @@ import {
   fromVault,
   LIVE_STATUSES,
 } from '../../ops/safe-rerun.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -146,7 +147,7 @@ function cli(fixture, args = [], env = {}) {
 
 /** The 2026-08-12 incident, as data. */
 const incident = (over = {}) => ({
-  repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+  repo: `${RECORDED_ORG}/Project_Cross_Platform_Apps`,
   runs: { 16000000001: mkRun(over.target) },
   branchHeads: { main: HEAD },
   runsByBranch: {
@@ -617,7 +618,7 @@ jobs:
    *  answer to `GET /releases/tags/<tag>`; absent means 404, which is how the
    *  live transport reports "no release". */
   const tagPush = (releases = {}) => ({
-    repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+    repo: `${RECORDED_ORG}/Project_Cross_Platform_Apps`,
     runs: {
       16000000001: mkRun({
         name: 'Build all 6 platforms',
@@ -858,7 +859,7 @@ describe('🔴 `--failed` lifts the release refusal ONLY on a measured job concl
   ];
 
   const tagPush = (over = {}) => ({
-    repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+    repo: `${RECORDED_ORG}/Project_Cross_Platform_Apps`,
     runs: { 16000000001: mkRun({ name: 'Build all 6 platforms', path: BP, event: 'push', head_branch: TAG }) },
     branchHeads: { [TAG]: OLD },
     runsByBranch: { [TAG]: [] },

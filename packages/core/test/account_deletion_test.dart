@@ -1,44 +1,8 @@
 import 'dart:async';
 
 import 'package:nikatru_core/nikatru_core.dart';
+import 'package:nikatru_core/testing.dart';
 import 'package:test/test.dart';
-
-/// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — a repository whose provider sign-in
-/// can land, land as SOMEBODY ELSE, or never land.
-class _ProviderAuth extends AuthRepository {
-  final StreamController<AuthUser?> users =
-      StreamController<AuthUser?>.broadcast();
-  int appleCalls = 0;
-  AuthUser? emitOnApple;
-
-  @override
-  Stream<AuthUser?> authStateChanges() => users.stream;
-
-  @override
-  Future<void> signInWithApple() async {
-    appleCalls++;
-    if (emitOnApple != null) users.add(emitOnApple);
-  }
-
-  int googleCalls = 0;
-  AuthUser? emitOnGoogle;
-
-  @override
-  Future<void> signInWithGoogle() async {
-    googleCalls++;
-    if (emitOnGoogle != null) users.add(emitOnGoogle);
-  }
-
-  /// The session [currentSession] hands back — the ONE place Apple's own refresh
-  /// token ever appears.
-  AuthSession? session;
-
-  @override
-  Future<AuthSession?> currentSession() async => session;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
 
 /// THE CHASSIS HALF OF [ADR 027].
 ///
@@ -255,7 +219,7 @@ void main() {
 
     test('a sign-in inside the freshness window needs no second sheet',
         () async {
-      final _ProviderAuth auth = _ProviderAuth();
+      final FakeAuthRepository auth = FakeAuthRepository();
       await confirmIdentityWithProvider(
         auth: auth,
         user: apple(now.subtract(const Duration(minutes: 2))),
@@ -267,7 +231,7 @@ void main() {
     test(
         'a stale sign-in opens the sheet and returns on a NEWER sign-in of the SAME account',
         () async {
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..emitOnApple = apple(now.add(const Duration(seconds: 5)));
       await confirmIdentityWithProvider(
         auth: auth,
@@ -278,7 +242,7 @@ void main() {
     });
 
     test('🔴 a DIFFERENT account arriving is not a confirmation', () async {
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..emitOnApple =
             apple(now.add(const Duration(seconds: 5)), id: 'someone-else');
       await expectLater(
@@ -296,7 +260,7 @@ void main() {
         '🔴 the same session re-emitted (a refresh, no new sign-in) is not a confirmation',
         () async {
       final DateTime old = now.subtract(const Duration(hours: 3));
-      final _ProviderAuth auth = _ProviderAuth()..emitOnApple = apple(old);
+      final FakeAuthRepository auth = FakeAuthRepository()..emitOnApple = apple(old);
       await expectLater(
         confirmIdentityWithProvider(
           auth: auth,
@@ -311,7 +275,7 @@ void main() {
     test(
         '🔴 a sheet that never completes times out as an AuthFailure (reauthFailed)',
         () async {
-      final _ProviderAuth auth = _ProviderAuth();
+      final FakeAuthRepository auth = FakeAuthRepository();
       await expectLater(
         confirmIdentityWithProvider(
           auth: auth,
@@ -341,7 +305,7 @@ void main() {
 
     test('🔴 a Google-only account is re-proved by the GOOGLE sheet, never Apple',
         () async {
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..emitOnGoogle = googleOnly(now.add(const Duration(seconds: 5)));
       await confirmIdentityWithProvider(
         auth: auth,
@@ -360,7 +324,7 @@ void main() {
         lastSignInAt: now.subtract(const Duration(hours: 3)),
         oauthProviders: const <String>['apple', 'google'],
       );
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..emitOnApple = apple(now.add(const Duration(seconds: 5)));
       await confirmIdentityWithProvider(auth: auth, user: both, now: () => now);
       expect(auth.appleCalls, 1);
@@ -523,7 +487,7 @@ void main() {
   group('keepAppleRefreshToken', () {
     test('sends the token the moment a sign-in carries one', () async {
       final List<String> sent = <String>[];
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerRefreshToken: 'apple-refresh-1',
@@ -533,14 +497,14 @@ void main() {
         send: (String t) async => sent.add(t),
       );
       addTearDown(sub.cancel);
-      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      auth.emit(const AuthUser(id: 'u1', email: 'a@b.test'));
       await Future<void>.delayed(Duration.zero);
       expect(sent, <String>['apple-refresh-1']);
     });
 
     test('🔴 the SAME token is never sent twice, and a NEW one is', () async {
       final List<String> sent = <String>[];
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerRefreshToken: 'apple-refresh-1',
@@ -551,12 +515,12 @@ void main() {
       );
       addTearDown(sub.cancel);
       const AuthUser u = AuthUser(id: 'u1', email: 'a@b.test');
-      auth.users.add(u);
+      auth.emit(u);
       await Future<void>.delayed(Duration.zero);
       // A token refresh re-emits the same user; the session's provider token is
       // the same string, and re-posting it every time would be a credential on
       // the wire for no reason.
-      auth.users.add(u);
+      auth.emit(u);
       await Future<void>.delayed(Duration.zero);
       expect(sent, <String>['apple-refresh-1']);
 
@@ -564,29 +528,29 @@ void main() {
         accessToken: 'a',
         providerRefreshToken: 'apple-refresh-2',
       );
-      auth.users.add(u);
+      auth.emit(u);
       await Future<void>.delayed(Duration.zero);
       expect(sent, <String>['apple-refresh-1', 'apple-refresh-2']);
     });
 
     test('a sign-out, and a session with no provider token, send nothing', () async {
       final List<String> sent = <String>[];
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(accessToken: 'a');
       final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
         auth: auth,
         send: (String t) async => sent.add(t),
       );
       addTearDown(sub.cancel);
-      auth.users.add(null);
-      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      auth.emit(null);
+      auth.emit(const AuthUser(id: 'u1', email: 'a@b.test'));
       await Future<void>.delayed(Duration.zero);
       expect(sent, isEmpty);
     });
 
     test('🔴 a failed send never breaks the sign-in', () async {
       final List<Object> errors = <Object>[];
-      final _ProviderAuth auth = _ProviderAuth()
+      final FakeAuthRepository auth = FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerRefreshToken: 'apple-refresh-1',
@@ -598,7 +562,7 @@ void main() {
         retryDelays: const <Duration>[],
       );
       addTearDown(sub.cancel);
-      auth.users.add(const AuthUser(id: 'u1', email: 'a@b.test'));
+      auth.emit(const AuthUser(id: 'u1', email: 'a@b.test'));
       await Future<void>.delayed(Duration.zero);
       expect(errors, hasLength(1));
       expect(errors.single, isA<AppleTokenNotKept>());
@@ -626,7 +590,7 @@ void main() {
         }
       }
 
-      _ProviderAuth signedInWithApple() => _ProviderAuth()
+      FakeAuthRepository signedInWithApple() => FakeAuthRepository()
         ..session = const AuthSession(
           accessToken: 'a',
           providerRefreshToken: 'apple-refresh-1',
@@ -637,7 +601,7 @@ void main() {
         int attempts = 0;
         final List<String> landed = <String>[];
         final List<Object> errors = <Object>[];
-        final _ProviderAuth auth = signedInWithApple();
+        final FakeAuthRepository auth = signedInWithApple();
         final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
           auth: auth,
           send: (String t) async {
@@ -649,14 +613,14 @@ void main() {
           retryDelays: quick,
         );
         addTearDown(sub.cancel);
-        auth.users.add(u);
+        auth.emit(u);
         await settle();
         expect(attempts, 2, reason: 'the refused send must be tried again');
         expect(landed, <String>['apple-refresh-1']);
         expect(errors, isEmpty, reason: 'a round that landed reports nothing');
 
         // Landed means recorded: the same token is not posted again.
-        auth.users.add(u);
+        auth.emit(u);
         await settle();
         expect(attempts, 2);
       });
@@ -665,7 +629,7 @@ void main() {
           () async {
         int attempts = 0;
         final List<Object> errors = <Object>[];
-        final _ProviderAuth auth = signedInWithApple();
+        final FakeAuthRepository auth = signedInWithApple();
         final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
           auth: auth,
           send: (String t) async {
@@ -678,7 +642,7 @@ void main() {
           retryDelays: quick,
         );
         addTearDown(sub.cancel);
-        auth.users.add(u);
+        auth.emit(u);
         await settle();
         expect(attempts, 3, reason: 'one attempt, then one per retry delay');
         expect(errors, hasLength(1));
@@ -692,7 +656,7 @@ void main() {
 
         // …and the next auth-state change starts a fresh bounded round,
         // because the token was never recorded as delivered.
-        auth.users.add(u);
+        auth.emit(u);
         await settle();
         expect(attempts, 6);
         expect(errors, hasLength(2));
@@ -700,7 +664,7 @@ void main() {
 
       test('a sign-out abandons a pending retry', () async {
         int attempts = 0;
-        final _ProviderAuth auth = signedInWithApple();
+        final FakeAuthRepository auth = signedInWithApple();
         final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
           auth: auth,
           send: (String _) async {
@@ -710,10 +674,10 @@ void main() {
           retryDelays: const <Duration>[Duration(milliseconds: 30)],
         );
         addTearDown(sub.cancel);
-        auth.users.add(u);
+        auth.emit(u);
         await Future<void>.delayed(Duration.zero);
         expect(attempts, 1);
-        auth.users.add(null);
+        auth.emit(null);
         await Future<void>.delayed(const Duration(milliseconds: 80));
         expect(attempts, 1, reason: 'no retry may fire after the sign-out');
       });
@@ -721,7 +685,7 @@ void main() {
       test('cancelling the keeper cancels a pending retry', () async {
         int attempts = 0;
         final List<Object> errors = <Object>[];
-        final _ProviderAuth auth = signedInWithApple();
+        final FakeAuthRepository auth = signedInWithApple();
         final StreamSubscription<AuthUser?> sub = keepAppleRefreshToken(
           auth: auth,
           send: (String _) async {
@@ -731,7 +695,7 @@ void main() {
           onError: errors.add,
           retryDelays: const <Duration>[Duration(milliseconds: 30)],
         );
-        auth.users.add(u);
+        auth.emit(u);
         await Future<void>.delayed(Duration.zero);
         expect(attempts, 1);
         await sub.cancel();

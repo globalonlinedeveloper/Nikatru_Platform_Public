@@ -210,6 +210,9 @@ describe('the reader over the contents API', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'hb-'));
     try {
       const src = resolve(HERE, '..', '..', 'autopilot');
+      // heartbeat.mjs reads its default repo from ../generated/codehost.mjs (⏱ 2026-10-03).
+      mkdirSync(join(tmp, 'generated'));
+      copyFileSync(resolve(HERE, '..', '..', 'generated', 'codehost.mjs'), join(tmp, 'generated', 'codehost.mjs'));
       // One directory per contract: cli.mjs (which reads contract.json) is cached per URL.
       const copy = (name, ref) => {
         const dir = join(tmp, name);

@@ -294,7 +294,9 @@ describe('app_config.dart', () => {
     assert.equal(resolveConstant(constants, 'updateUrl'), resolveConstant(constants, 'companyUrl'), 'a defaultValue reference is followed');
     assert.equal(constants.get('apiBaseUrl').define, 'API_BASE_URL');
     assert.match(originOf(resolveConstant(constants, 'apiBaseUrl')), /your_/);
-    assert.equal(constants.get('supabaseUrl').define, 'SUPABASE_URL');
+    // ⏱ 2026-10-03 · port-auth: the define is read as authEndpoint; supabaseUrl is its deprecated alias.
+    assert.equal(constants.get('authEndpoint').define, 'SUPABASE_URL');
+    assert.equal(constants.get('supabaseUrl').ref, 'authEndpoint');
     assert.match(originOf(resolveConstant(constants, 'supabaseUrl')), /your_/);
   });
 });
@@ -423,6 +425,18 @@ describe('the compare, on the real tree and on mutated copies of it (red control
     );
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /unclassified origin constant statusUrl \(https:\/\/status\.nikatru\.com\) in app_config\.dart: add it to CONNECT_KEYS or LINK_KEYS/);
+  });
+
+  test('RC9b (port-auth) — an ALIAS is exempt only when it ends at a define: an alias of a new literal origin is still red', () => {
+    const r = run(
+      tree({
+        dart: (t) =>
+          mutate(t, "  static const String _phSupabaseUrl =", "  static const String statusUrl = 'https://status.nikatru.com';\n  static const String statusAlias = statusUrl;\n\n  static const String _phSupabaseUrl ="),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /unclassified origin constant statusAlias \(https:\/\/status\.nikatru\.com\)/);
+    assert.doesNotMatch(r.out, /unclassified origin constant supabaseUrl/);
   });
 
   test('RC10 — an API_BASE_URL composed empty is red: the build would compile the placeholder fallback', () => {

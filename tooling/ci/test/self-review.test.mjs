@@ -59,12 +59,13 @@ import {
   validateLanes,
   windows,
 } from '../../review/self-review.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO_ROOT, 'tooling', 'review', 'self-review.mjs');
 const FIX = join(REPO_ROOT, 'tooling', 'review', 'fixtures', 'reruns-week');
 const DOC = join(REPO_ROOT, 'docs', 'ops', 'self-review.md');
-const REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const REPO = `${RECORDED_ORG}/Nikatru_Platform_Public`;
 const UNTIL = '2026-10-01T00:00:00Z';
 const RESPONSES = JSON.parse(readFileSync(join(FIX, 'responses.json'), 'utf8'));
 const WIN = windows(Date.parse(UNTIL) - 7 * 86_400_000, Date.parse(UNTIL));

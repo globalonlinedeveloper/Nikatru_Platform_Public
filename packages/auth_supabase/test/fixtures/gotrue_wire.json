@@ -1,0 +1,92 @@
+{
+  "_what": "The GoTrue HTTP answers runAuthRepositoryConformance replays to SupabaseAuthRepository (supabase_auth_conformance_test.dart). Each answer is the status, headers and body GoTrue sends for one request; `{{access_token}}` is replaced at replay by a JWT whose `exp` is one hour after the suite's clock, because gotrue-dart reads a session's expiry off the token.",
+  "url": "<SUPABASE_URL>/auth/v1 — self-hosted GoTrue v2.189.0 on Box C, the version auth_repository.dart's updatePassword doc measured on 2026-10-01",
+  "date": "2026-10-03",
+  "provenance": "TRANSCRIBED, not captured: the versioned error shape (x-supabase-api-version 2024-01-01, `code` + `message`) as services/edge-shield/src/limit.ts reproduces it for GoTrue's own 429, the session shape services/platform/test/native-auth.test.ts replays. Re-capturing these bytes from Box C needs a live account and is a lead step (port-auth PR body).",
+  "answers": {
+    "password-grant-ok": {
+      "request": "POST /auth/v1/token?grant_type=password",
+      "status": 200,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01" },
+      "body": {
+        "access_token": "{{access_token}}",
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "refresh_token": "conformance-refresh-1",
+        "user": {
+          "id": "00000000-0000-4000-8000-00000000c0f0",
+          "aud": "authenticated",
+          "role": "authenticated",
+          "email": "conformance@example.invalid",
+          "email_confirmed_at": "2026-10-01T00:00:00Z",
+          "app_metadata": { "provider": "email", "providers": ["email"] },
+          "user_metadata": {},
+          "identities": [],
+          "created_at": "2026-10-01T00:00:00Z"
+        }
+      }
+    },
+    "password-grant-wrong": {
+      "request": "POST /auth/v1/token?grant_type=password",
+      "status": 400,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01", "x-sb-error-code": "invalid_credentials" },
+      "body": { "code": "invalid_credentials", "message": "Invalid login credentials" }
+    },
+    "password-grant-throttled": {
+      "request": "POST /auth/v1/token?grant_type=password",
+      "status": 429,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01", "x-sb-error-code": "over_request_rate_limit" },
+      "body": { "code": "over_request_rate_limit", "message": "Request rate limit reached" }
+    },
+    "refresh-grant-ok": {
+      "request": "POST /auth/v1/token?grant_type=refresh_token",
+      "status": 200,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01" },
+      "body": {
+        "access_token": "{{access_token}}",
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "refresh_token": "conformance-refresh-2",
+        "user": {
+          "id": "00000000-0000-4000-8000-00000000c0f0",
+          "aud": "authenticated",
+          "role": "authenticated",
+          "email": "conformance@example.invalid",
+          "email_confirmed_at": "2026-10-01T00:00:00Z",
+          "app_metadata": { "provider": "email", "providers": ["email"] },
+          "user_metadata": {},
+          "identities": [],
+          "created_at": "2026-10-01T00:00:00Z"
+        }
+      }
+    },
+    "refresh-grant-revoked": {
+      "request": "POST /auth/v1/token?grant_type=refresh_token",
+      "status": 400,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01", "x-sb-error-code": "refresh_token_not_found" },
+      "body": { "code": "refresh_token_not_found", "message": "Invalid Refresh Token: Refresh Token Not Found" }
+    },
+    "logout": {
+      "request": "POST /auth/v1/logout",
+      "status": 204,
+      "headers": { "x-supabase-api-version": "2024-01-01" },
+      "body": null
+    },
+    "signup-unconfirmed": {
+      "request": "POST /auth/v1/signup",
+      "status": 200,
+      "headers": { "content-type": "application/json", "x-supabase-api-version": "2024-01-01" },
+      "body": {
+        "id": "00000000-0000-4000-8000-00000000c0f1",
+        "aud": "authenticated",
+        "role": "authenticated",
+        "email": "new-account@example.invalid",
+        "confirmation_sent_at": "2026-10-03T12:00:00Z",
+        "app_metadata": { "provider": "email", "providers": ["email"] },
+        "user_metadata": {},
+        "identities": [],
+        "created_at": "2026-10-03T12:00:00Z"
+      }
+    }
+  }
+}

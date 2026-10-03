@@ -185,6 +185,9 @@
   "brick-audience.test.mjs":
     5,
 
+  "brick-auth-config-names.test.mjs":
+    5,
+
   "brick-drivers.test.mjs":
     5,
 
@@ -303,7 +306,7 @@
     65,
 
   "connect-origins.test.mjs":
-    41,
+    42,
 
   "consent-anon-id.test.mjs":
     35,
@@ -351,7 +354,7 @@
     60,
 
   "dead-repo-names.test.mjs":
-    17,
+    26,
 
   "deletion-control.test.mjs":
     54,
@@ -764,6 +767,9 @@
   "ops-watch-readers.test.mjs":
     13,
 
+  "org-move.test.mjs":
+    7,
+
   "osv-scan-due.test.mjs":
     7,
 
@@ -822,13 +828,13 @@
     74,
 
   "port-render.test.mjs":
-    19,
+    27,
 
   "port-switch.test.mjs":
-    56,
+    62,
 
   "ports.test.mjs":
-    110,
+    119,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -1058,6 +1064,9 @@
   "site-bindings.test.mjs":
     32,
 
+  "site-identity-client.test.mjs":
+    3,
+
   "site-integrity.test.mjs":
     129,
 
@@ -1164,7 +1173,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    93,
+    96,
 
   "store-vitals.test.mjs":
     14,

@@ -227,7 +227,7 @@ void main() {
       // otherwise "it does not reach the API host" is vacuously true.
       expect(
         reached,
-        containsAll(<String>['supabaseUrl', 'supabaseAnonKey']),
+        containsAll(<String>['authEndpoint', 'authPublicKey']),
         reason:
             'COVERAGE LOST — the walk did not reach the identity constants, so '
             'it is not walking isBackendLive.',

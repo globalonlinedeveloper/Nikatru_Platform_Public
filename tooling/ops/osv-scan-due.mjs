@@ -26,6 +26,7 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 export const WORKFLOW = 'ops-watch.yml';
 export const SCAN_STEP = 'Known-vulnerable dependencies on main (canary, floor, then the tree)';
@@ -76,7 +77,7 @@ async function main() {
   const i = process.argv.indexOf('--now');
   const nowMs = i === -1 ? Date.now() : Date.parse(process.argv[i + 1] ?? '');
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
-  const repo = process.env.GITHUB_REPOSITORY || 'globalonlinedeveloper/Nikatru_Platform_Public';
+  const repo = process.env.GITHUB_REPOSITORY || PLATFORM_REPO_SLUG;
   let d;
   try {
     if (!token) throw new Error('no GH_TOKEN / GITHUB_TOKEN in the environment');

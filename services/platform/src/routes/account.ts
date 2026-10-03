@@ -11,6 +11,7 @@ import {
   recordPendingErasure,
 } from '../lib/erasure-ledger';
 import { cancelBillingBeforeDelete } from '../lib/mor/cancel-on-delete';
+import { identityFor } from '../ports';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — the shared server's erasure route.
@@ -300,7 +301,7 @@ account.delete('/account', async (c) => {
   // retry runs the purge. Any other refusal (e.g. the service-role key refused) is
   // a 502 with the identity kept — the same "not known" the identity delete itself
   // would hit with that key.
-  const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);
+  const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, identityFor(c.env), userId);
   const signups = signupPurgeToken(signupPurge);
   if (signupPurge.kind === 'purged') deleted['signups'] = signupPurge.deleted;
   if (signupPurge.kind === 'failed') {
@@ -477,7 +478,7 @@ account.delete('/account', async (c) => {
   // key is never echoed, logged, or returned.
   // ⏱ 2026-09-15: the call moved to src/lib/platform-erasure.ts `deleteIdentity`
   // (the cron deletes a pending subject's identity through the same function).
-  const identityRes = await deleteIdentity(c.env.SUPABASE_URL, serviceRoleKey, userId);
+  const identityRes = await deleteIdentity(identityFor(c.env), userId);
   if (!identityRes.ok) {
     console.error(
       `[account] rid=${rid} app=${c.env.APP_ID} identity delete failed with ${identityRes.status}`,

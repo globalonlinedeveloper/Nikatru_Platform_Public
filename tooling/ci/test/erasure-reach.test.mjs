@@ -289,8 +289,8 @@ describe('limb 5 — the signup list is reached by confirmed email, before the i
       (root) =>
         edit(root, PLATFORM_ROUTE, (t) =>
           t
-            .replace('const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);', "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;")
-            .replace("  deleted['identity'] = 1;\n", "  deleted['identity'] = 1;\n  await purgeVerifiedSignups(c.env.PLATFORM_DB, c.env.SUPABASE_URL, serviceRoleKey, userId);\n"),
+            .replace('const signupPurge = await purgeVerifiedSignups(c.env.PLATFORM_DB, identityFor(c.env), userId);', "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;")
+            .replace("  deleted['identity'] = 1;\n", "  deleted['identity'] = 1;\n  await purgeVerifiedSignups(c.env.PLATFORM_DB, identityFor(c.env), userId);\n"),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stderr);
@@ -304,7 +304,7 @@ describe('limb 5 — the signup list is reached by confirmed email, before the i
       (root) =>
         edit(root, PLATFORM_SCHEDULED, (t) =>
           t.replace(
-            'const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, serviceRoleKey, subject);',
+            'const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, identityFor(env), subject);',
             "const signupPurge = { kind: 'skipped', why: 'no_email' } as const;",
           ),
         ),
@@ -332,7 +332,8 @@ describe('LIMB 3 — the erasure route must not be reachable through the shared 
   // ⏱ 2026-10-03 (review of #1152, minor 2): each carrier's auth.ts is a re-export
   // of the kit, so a fallback added to the kit's erasureAuth exited 0 at review.
   test("FAILS when the KIT's erasureAuth verifies through verifySupabaseToken with the legacy secret (limb 3(c))", () => {
-    const from = '    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE);';
+    // ⏱ 2026-10-03 · merge of main into club/rt-ports: port-auth passes the trusted issuers.
+    const from = '    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, trustedIssuers(c.env));';
     withTree(
       (root) =>
         edit(root, 'services/_shared/src/auth-middleware.ts', (s) => {

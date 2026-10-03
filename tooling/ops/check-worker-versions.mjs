@@ -53,12 +53,13 @@ import { parseWorkflow } from '../ci/workflow-scan.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { CouldNotLook, transientLook, isTransientStatus, readWithBoundedRetry, classifyThrown } from './bounded-retry.mjs';
 import { SHIELD_HEADER, PROBES as SHIELD_PROBES, EDGE_CONFIG_REL } from './check-edge-shield.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const DEPLOY_WORKERS_REL = '.github/workflows/deploy-workers.yml';
 export const HEALTH_PATH = '/v1/health';
-export const DEFAULT_REPOSITORY = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const DEFAULT_REPOSITORY = PLATFORM_REPO_SLUG;
 /** A full commit, which is what RELEASE and the ledger both carry. */
 const FULL_SHA = /^[0-9a-f]{40}$/;
 

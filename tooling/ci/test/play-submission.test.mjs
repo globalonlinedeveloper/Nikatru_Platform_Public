@@ -64,6 +64,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createServer } from 'node:http';
 import { generateKeyPairSync, createVerify, createHash } from 'node:crypto';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-play.mjs');
@@ -326,7 +327,7 @@ const VERSION_CODE = 4207;
 
 async function api({
   tracks = ['production', 'beta', 'alpha', 'internal'],
-  protectionRules = [{ id: 1, type: 'required_reviewers', reviewers: [{ type: 'User', reviewer: { login: 'globalonlinedeveloper', id: 55662283 } }] }],
+  protectionRules = [{ id: 1, type: 'required_reviewers', reviewers: [{ type: 'User', reviewer: { login: `${RECORDED_ORG}`, id: 55662283 } }] }],
   environmentExists = true,
   // PG-5b. `undefined` is not a value the environment response carries — it means
   // the FIELD IS ABSENT, which is the shape every case here had before
@@ -522,7 +523,7 @@ async function api({
 /** Everything a passing `--submit` needs, minus whatever a case overrides. */
 const submitEnv = (origin, over = {}) => ({
   GITHUB_ACTIONS: 'true',
-  GITHUB_REPOSITORY: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+  GITHUB_REPOSITORY: `${RECORDED_ORG}/Project_Cross_Platform_Apps`,
   GITHUB_TOKEN: 'ghs-test',
   GITHUB_API_URL: origin,
   PLAY_API_BASE_URL: origin,
@@ -956,7 +957,7 @@ describe('submit-play — the publish gate refuses', () => {
   // and so the entire decision tree below could be deleted with this file green
   // — measured 2026-08-27 by deleting it from a scratch copy of the script.
   // These cases give the environment a policy so the tree is actually walked.
-  const ENV_GET = 'GET /repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish';
+  const ENV_GET = `GET /repos/${RECORDED_ORG}/Project_Cross_Platform_Apps/environments/store-publish`;
   const POL_GET = `${ENV_GET}/deployment-branch-policies`;
   const CUSTOM = { protected_branches: false, custom_branch_policies: true };
   const MAIN_ROW = [{ name: 'main', type: 'branch' }];
@@ -1276,7 +1277,7 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
       // deepEqual here rather than a set of `includes`. PG-5 must have answered
       // before one byte reaches Google — a gate consulted after the upload is a
       // receipt, not a control.
-      'GET /repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish',
+      `GET /repos/${RECORDED_ORG}/Project_Cross_Platform_Apps/environments/store-publish`,
       'POST /token',
       `POST /androidpublisher/v3/applications/${PACKAGE}/edits`,
       `GET /androidpublisher/v3/applications/${PACKAGE}/edits/${EDIT_ID}/tracks`,

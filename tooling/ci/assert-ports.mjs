@@ -47,6 +47,21 @@
 //               `generated: false`, a file the port's handTables names. A walk
 //               of the import graph of services/*/src (tests are not modules of
 //               a Worker bundle). Dart is C-5's (assert-package-boundaries.mjs).
+//               ⏱ 2026-10-03 · port-auth · ITS URL HALF: no module under
+//               services/*/src builds an identity-provider URL (`/auth/v1`,
+//               `/rest/v1`, comment-stripped, strings kept) except the auth
+//               port's ts adapters and src/generated/; every such call is a
+//               verb of IdentityAdmin. Declared exceptions
+//               (IDENTITY_URL_EXCEPTIONS) print, and one that stops matching is
+//               a stale row. The adapter is the positive control: not matched
+//               is COVERAGE LOST. Its SITE half: no file under sites/ (.js,
+//               .mjs, .html, comments stripped) names such a path except
+//               sites/nikatru/js/identity-client.js, which must.
+//               ⏱ 2026-10-03 · review of #1182, finding 6: in .ts and .js the
+//               pattern is also read against every string the module BUILDS
+//               (`foldedStrings`: literals joined by `+`, literal template
+//               interpolations inlined), so `'/auth/' + 'v1'` is a finding. A
+//               path assembled through a variable is the recorded limit.
 //   5 secrets   every `secrets` NAME is a tooling/worker-secrets.json row when
 //               that file exists, else an `interface Env` member of some
 //               services/*/src/types.ts — printed `manifest absent, read
@@ -150,6 +165,24 @@ import { listDir } from './tree-walk.mjs';
 import { renderCheck } from '../ports/render.mjs';
 import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
 
+/** HTML comments out, read left to right in ONE pass: a `<!--` with a `-->` after
+ *  it goes with everything between; one with none is dropped as a marker only, so
+ *  the text after it is still read. A plain scan, not a regex replace (CodeQL
+ *  js/incomplete-multi-character-sanitization on #1182), and never repeated until
+ *  stable: on `<!<!-- -->-- x -->` a second pass would swallow ` x `, which a
+ *  browser shows, and the limb would read less. */
+function stripHtmlComments(html) {
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf('<!--', at);
+    if (open === -1) return out + html.slice(at);
+    out += html.slice(at, open);
+    const close = html.indexOf('-->', open + 4);
+    at = close === -1 ? open + 4 : close + 3;
+  }
+}
+
 export const PORTS_DIR = 'tooling/ports';
 export const SCHEMA_REL = 'tooling/ports/port.schema.json';
 export const NON_PORT_REL = 'tooling/ports/_non-port.json';
@@ -201,6 +234,109 @@ export function workerSourceShapes(text) {
   const cf = CF_READ_RE.exec(bare) ?? CF_BRACKET_RE.exec(code);
   return { binding: binding ? binding[0] : null, cf: cf ? cf[0].trim() : null };
 }
+/** Limb 4's URL half (port-auth): a path of the identity provider's HTTP API —
+ *  GoTrue's `/auth/v1` or PostgREST's `/rest/v1` — as a module building a request
+ *  spells it (comments stripped, strings kept: the path IS a string). */
+export const IDENTITY_URL_RE = /\/(?:auth|rest)\/v1(?![\w-])/;
+
+/**
+ * ⏱ 2026-10-03 · review of #1182, finding 6: THE STRINGS A MODULE BUILDS, folded.
+ * A raw match on source text missed `'/auth/' + 'v1'`. Each run of string literals
+ * joined by `+`, with a literal interpolated into a template (`${'v1'}`) inlined,
+ * is folded into the ONE value it builds, and the URL pattern is read against
+ * those values too. A non-literal interpolation is a break (`\u0000`), never a
+ * join. The accepted limit, recorded: a path assembled through a VARIABLE
+ * (`const v = 'v1'; base + '/auth/' + v`) is not resolved — no lexical guard
+ * evaluates code.
+ */
+export function foldedStrings(code) {
+  const out = [];
+  const isQuote = (c) => c === "'" || c === '"' || c === '`';
+  const skipSpace = (j) => {
+    while (j < code.length && /\s/.test(code[j])) j++;
+    return j;
+  };
+  let run = null;
+  let i = 0;
+  while (i < code.length) {
+    if (!isQuote(code[i])) {
+      i++;
+      continue;
+    }
+    const lit = readLiteral(code, i);
+    run = run === null ? lit.value : run + lit.value;
+    i = lit.end;
+    const plus = skipSpace(i);
+    if (code[plus] === '+') {
+      const next = skipSpace(plus + 1);
+      if (isQuote(code[next])) {
+        i = next;
+        continue;
+      }
+    }
+    out.push(run);
+    run = null;
+  }
+  if (run !== null) out.push(run);
+  return out;
+}
+/** One string literal from `start` (its quote): its value and the index after it. */
+function readLiteral(code, start) {
+  const q = code[start];
+  let value = '';
+  let i = start + 1;
+  while (i < code.length) {
+    const c = code[i];
+    if (c === '\\') {
+      value += code.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c === q) return { value, end: i + 1 };
+    if (q !== '`' && c === '\n') return { value, end: i };
+    if (q === '`' && c === '$' && code[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < code.length && depth > 0) {
+        if (code[j] === '{') depth++;
+        else if (code[j] === '}') depth--;
+        j++;
+      }
+      const inner = code.slice(i + 2, j - 1).trim();
+      const quoted = inner.length >= 2 && (inner[0] === "'" || inner[0] === '"') && inner.at(-1) === inner[0] ? inner.slice(1, -1) : null;
+      value += quoted !== null && !/['"\\\n]/.test(quoted) ? quoted : '\u0000';
+      i = j;
+      continue;
+    }
+    value += c;
+    i++;
+  }
+  return { value, end: i };
+}
+/** Limb 4's URL half on comment-stripped code: the source text, then every folded value. */
+export function identityUrlIn(code) {
+  const raw = IDENTITY_URL_RE.exec(code);
+  if (raw) return raw;
+  for (const v of foldedStrings(code)) {
+    const m = IDENTITY_URL_RE.exec(v);
+    if (m) return m;
+  }
+  return null;
+}
+/** The port whose ts adapters may build it. */
+export const IDENTITY_PORT = 'auth';
+/** Modules that name the path without building a call — DECLARED, printed on every
+ *  run, and each must still match (a stale row fails). */
+export const IDENTITY_URL_EXCEPTIONS = Object.freeze([
+  {
+    file: 'services/edge-shield/src/classify.ts',
+    why: 'the shield stands IN FRONT of the identity host and classifies the paths requests ARRIVE on (which limiter, which cache); it builds no request and calls nothing',
+    until: 'nonPort',
+  },
+]);
+/** The SITE's one identity client (port-auth): every call a page makes to the identity
+ *  provider. No other file under sites/ names an identity-provider path; this one must. */
+export const SITE_IDENTITY_CLIENT = 'sites/nikatru/js/identity-client.js';
 /** Limb 13's one permitted reader. */
 export const GEO_HOME = 'services/_shared/src/geo.ts';
 /** Limb 12's permitted homes under services/_shared. */
@@ -246,6 +382,7 @@ const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number
 const KNOWN_KEYWORDS = new Set([
   '$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'pattern', 'minLength',
   'minimum', 'maximum', 'minItems', 'minProperties', 'required', 'properties', 'additionalProperties', 'items',
+  'prefixItems',
 ]);
 
 /** Validate `value` against `schema` (resolving `#/$defs/…` in `rootSchema`); returns error strings. */
@@ -278,6 +415,10 @@ export function validate(value, schema, rootSchema = schema, at = '$') {
   }
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${at}: fewer than ${schema.minItems} item(s)`);
+    // `prefixItems`: item i ALSO meets prefixItems[i]. Stricter than JSON Schema 2020-12, where `items`
+    // covers only the items after the prefix: here `items` still applies to every item, so a prefix
+    // schema only ADDS constraints (auth `issuers`: row 0 reads SUPABASE_URL, review of #1182 finding 2).
+    if (Array.isArray(schema.prefixItems)) schema.prefixItems.forEach((s, i) => { if (i < value.length) errors.push(...validate(value[i], s, rootSchema, `${at}[${i}]`)); });
     if (schema.items) value.forEach((v, i) => errors.push(...validate(v, schema.items, rootSchema, `${at}[${i}]`)));
   }
   if (isObj(value)) {
@@ -665,6 +806,55 @@ export function evaluate(root) {
       }
     }
     notes.push(`limb 4 walked ${tsFiles.length} TS module(s), ${edges} relative import(s)`);
+
+    // The URL half (port-auth): only the identity port's ts adapters build an identity-provider URL.
+    const identityDoc = ports.find(({ doc }) => doc?.port === IDENTITY_PORT)?.doc;
+    if (identityDoc?.interface?.ts) {
+      const homes = new Set((identityDoc.adapters ?? []).map((a) => a?.impl?.file).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
+      const declared = new Map(IDENTITY_URL_EXCEPTIONS.map((e) => [e.file, e]));
+      let homeMatched = 0;
+      for (const f of tsFiles) {
+        if (/\/src\/generated\//.test(f)) continue;
+        const m = identityUrlIn(stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts'));
+        if (homes.has(f)) {
+          if (m) homeMatched++;
+          continue;
+        }
+        const ex = declared.get(f);
+        if (ex) {
+          if (m) waivers.push(`identity URL: ${f} names \`${m[0]}\` — ${ex.why} — ${ex.until === 'nonPort' ? 'not a call, never ported' : `until ${ex.until}`}`);
+          else find(4, `${f} is a declared identity-URL exception and no longer names an identity-provider path. Remove its IDENTITY_URL_EXCEPTIONS row.`);
+          continue;
+        }
+        if (m) {
+          find(4, `tooling/ports/${IDENTITY_PORT}.json: \`${f}\` builds an identity-provider URL (\`${m[0]}\`). Every call a Worker makes to the identity provider is a verb of IdentityAdmin (services/_shared/src/ports/identity.ts), built by its adapter and reached through the composition root (identityFor).`);
+          limb4Clean.set(IDENTITY_PORT, false);
+        }
+      }
+      // The site half: pages call the identity provider through SITE_IDENTITY_CLIENT only.
+      const siteFiles = [];
+      walkSite(root, 'sites', siteFiles);
+      let siteClientMatched = false;
+      for (const f of siteFiles) {
+        const text = readFileSync(join(root, f), 'utf8');
+        const html = /\.html$/.test(f);
+        const code = html ? stripHtmlComments(text) : stripSourceComments(text, '.js');
+        const m = html ? IDENTITY_URL_RE.exec(code) : identityUrlIn(code);
+        if (f === SITE_IDENTITY_CLIENT) { siteClientMatched = Boolean(m); continue; }
+        if (m) {
+          find(4, `tooling/ports/${IDENTITY_PORT}.json: the site file \`${f}\` names an identity-provider path (\`${m[0]}\`). Every call a page makes to the identity provider goes through ${SITE_IDENTITY_CLIENT}.`);
+          limb4Clean.set(IDENTITY_PORT, false);
+        }
+      }
+      if (!siteClientMatched) {
+        lost(4, `${SITE_IDENTITY_CLIENT} ${siteFiles.includes(SITE_IDENTITY_CLIENT) ? 'no longer names an identity-provider path' : 'was not walked (moved or deleted)'}, so "no other site file does" is evidence of nothing.`);
+        limb4Clean.set(IDENTITY_PORT, false);
+      } else notes.push(`limb 4 (URL half, site): ${siteFiles.length} site file(s) read; identity-provider paths only in ${SITE_IDENTITY_CLIENT}`);
+      if (!homeMatched) {
+        lost(4, `no ${IDENTITY_PORT} ts adapter (${[...homes].join(', ') || 'none declared'}) matches the identity-URL pattern, so "nobody else builds one" is evidence of nothing.`);
+        limb4Clean.set(IDENTITY_PORT, false);
+      } else notes.push(`limb 4 (URL half): identity-provider URLs built only in ${homeMatched} ${IDENTITY_PORT} adapter(s) and src/generated/`);
+    }
   }
 
   // ── limbs 12 and 13 · Cloudflare binding types and `.cf`, over the same walk ──
@@ -1127,6 +1317,17 @@ export function directMonitorCalls(code) {
   const named = calls.filter((c) => MONITOR_ROUTE.test(c.split(/,\s*\{/)[0]));
   if (named.length) return named.length;
   return MONITOR_ROUTE.test(code) ? calls.filter((c) => /\/api\/0\//.test(c.split(/,\s*\{/)[0])).length : 0;
+}
+
+/** Every page script and page under sites/ (limb 4's site half). */
+function walkSite(root, relDir, out) {
+  let entries;
+  try { entries = listDir(join(root, relDir), { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const rel = posix.join(relDir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'node_modules') walkSite(root, rel, out); }
+    else if (/\.(?:m?js|html)$/.test(e.name)) out.push(rel);
+  }
 }
 
 function walkMjs(root, relDir, out) {

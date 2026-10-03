@@ -14,11 +14,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GUARD = join(HERE, '..', 'assert-no-dead-repo-names.mjs');
@@ -78,7 +79,7 @@ describe('assert-no-dead-repo-names — the mutations', () => {
     seed();
     assert.equal(run().code, 0, 'control must be green before the mutation');
     write('.github/workflows/renovate.yml',
-      'name: renovate\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: |\n            globalonlinedeveloper/Nikatru_Extensions_Public\n');
+      `name: renovate\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: |\n            ${RECORDED_ORG}/Nikatru_Extensions_Public\n`);
     const { code, out } = run();
     assert.equal(code, 1, `a workflow naming a deleted repository must FAIL, got ${code}:\n${out}`);
     assert.match(out, /renovate\.yml/);
@@ -91,7 +92,7 @@ describe('assert-no-dead-repo-names — the mutations', () => {
   test('a dead name in a machine-read register exits 1', () => {
     seed();
     assert.equal(run().code, 0, 'control must be green before the mutation');
-    write('tooling/some-register.json', '{ "rows": [{ "repo": "globalonlinedeveloper/Project_Cross_Platform_Apps" }] }\n');
+    write('tooling/some-register.json', `{ "rows": [{ "repo": "${RECORDED_ORG}/Project_Cross_Platform_Apps" }] }\n`);
     const { code, out } = run();
     assert.equal(code, 1, `a register naming a renamed-away repository must FAIL, got ${code}:\n${out}`);
     assert.match(out, /some-register\.json/);
@@ -99,7 +100,7 @@ describe('assert-no-dead-repo-names — the mutations', () => {
 
   test('a dead name in a package.json exits 1', () => {
     seed();
-    write('services/x/package.json', '{ "repository": "github:globalonlinedeveloper/Nikatru_Extensions_Public" }\n');
+    write('services/x/package.json', `{ "repository": "github:${RECORDED_ORG}/Nikatru_Extensions_Public" }\n`);
     assert.equal(run().code, 1);
   });
 
@@ -127,13 +128,13 @@ describe('assert-no-dead-repo-names — the mutations', () => {
     // line instead would have missed the defect it was written for.
     seed();
     write('.github/workflows/renovate.yml',
-      'name: renovate\n# Nikatru_Extensions_Public was removed here on 2026-09-05 - it was deleted.\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: globalonlinedeveloper/Nikatru_Platform_Public\n');
+      `name: renovate\n# Nikatru_Extensions_Public was removed here on 2026-09-05 - it was deleted.\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: ${RECORDED_ORG}/Nikatru_Platform_Public\n`);
     const clean = run();
     assert.equal(clean.code, 0, `a dead name in a YAML COMMENT is a record, not a defect:\n${clean.out}`);
 
     // Same file, same name, now in the VALUE a machine reads.
     write('.github/workflows/renovate.yml',
-      'name: renovate\n# Nikatru_Extensions_Public was removed here on 2026-09-05 - it was deleted.\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: globalonlinedeveloper/Nikatru_Extensions_Public\n');
+      `name: renovate\n# Nikatru_Extensions_Public was removed here on 2026-09-05 - it was deleted.\njobs:\n  r:\n    steps:\n      - env:\n          RENOVATE_REPOSITORIES: ${RECORDED_ORG}/Nikatru_Extensions_Public\n`);
     const dirty = run();
     assert.equal(dirty.code, 1, `the same name in a VALUE must FAIL:\n${dirty.out}`);
     // Exactly one finding: the comment on line 2 must not also be counted.
@@ -143,7 +144,7 @@ describe('assert-no-dead-repo-names — the mutations', () => {
 
   test('a quoted # does not truncate the value it sits in', () => {
     seed();
-    write('.github/workflows/x.yml', "name: x\non:\n  s: 'a # b globalonlinedeveloper/Nikatru_Extensions_Public'\n");
+    write('.github/workflows/x.yml', `name: x\non:\n  s: 'a # b ${RECORDED_ORG}/Nikatru_Extensions_Public'\n`);
     const { code, out } = run();
     assert.equal(code, 1, `a # INSIDE quotes is data, not a comment marker:\n${out}`);
   });
@@ -232,5 +233,110 @@ describe('assert-no-dead-repo-names — the REAL declaration', () => {
       assert.ok(typeof p === 'string' && p.length, 'every exclusion must be a real path');
     }
     assert.ok(real._excludedPathsWhy?.trim(), 'the exclusion list must state its reasons');
+  });
+});
+
+// ⏱ 2026-10-03 · port-codehost — the LIVE org held to its one register: the PINS limb (each
+// pubspec, podspec, CODEOWNERS owner and issue-chooser url checked against github-org.json) and
+// the LITERAL limb (the org refused everywhere else). Green control first, one mutation each.
+describe('assert-no-dead-repo-names — the code-host limbs (port-codehost)', () => {
+  const ORG = { org: RECORDED_ORG, platform: [{ repo: 'Nikatru_Platform_Public', visibility: 'PUBLIC' }] };
+  const WANT = `https://github.com/${RECORDED_ORG}/Nikatru_Platform_Public`;
+  const HOST = {
+    register: 'tooling/github-org.json',
+    globs: ['**/*.mjs', '**/*.json', '**/*.yml', '**/*.yaml', '**/*.podspec', '.github/CODEOWNERS'],
+    excludedPaths: ['tooling/github-org.json', 'tooling/dead-repos.json', 'tooling/generated/'],
+    fixtureConstant: { path: 'tooling/ci/test/fixtures/recorded-org.mjs', count: 1 },
+    mentions: [],
+    floors: { files: 3 },
+  };
+  const seedHost = (host = HOST) => {
+    seed({ ...DECL, codehost: host });
+    write('tooling/github-org.json', JSON.stringify(ORG));
+    write('tooling/generated/codehost.mjs', `export const CODEHOST = { org: '${RECORDED_ORG}' };\n`);
+    write('tooling/ci/test/fixtures/recorded-org.mjs', `export const RECORDED_ORG = '${RECORDED_ORG}';\n`);
+    write('tooling/ops/script.mjs', "import { CODEHOST } from '../generated/codehost.mjs';\n// the org used to be typed here\nexport const repo = `${CODEHOST.org}/Nikatru_Platform_Public`;\n");
+    write('packages/core/pubspec.yaml', `name: core\nrepository: ${WANT}\n`);
+    write('.github/CODEOWNERS', `# one owner\n* @${RECORDED_ORG}\n`);
+  };
+
+  test('green control: the org only in the register, the generated module, the fixture constant, a comment and checked pins', () => {
+    seedHost();
+    const { code, out } = run();
+    assert.equal(code, 0, out);
+    assert.match(out, /code-host limbs: \d+ code\/config file\(s\) scanned/);
+    assert.match(out, /2 pinned file\(s\) checked against/);
+  });
+
+  test('🔴 RED: a fixture .mjs with the literal exits 1, naming the file', () => {
+    seedHost();
+    assert.equal(run().code, 0);
+    write('tooling/ops/typed.mjs', `export const DEFAULT_REPO = '${RECORDED_ORG}/Nikatru_Platform_Public';\n`);
+    const { code, out } = run();
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/ops\/typed\.mjs:1 — names the org/);
+  });
+
+  test('🔴 RED: a fixture pubspec naming ANOTHER org exits 1 (the pin is checked, not trusted)', () => {
+    seedHost();
+    write('packages/core/pubspec.yaml', 'name: core\nrepository: https://github.com/another-org/Nikatru_Platform_Public\n');
+    const { code, out } = run();
+    assert.equal(code, 1, out);
+    assert.match(out, /packages\/core\/pubspec\.yaml:2 — pubspec `repository: https:\/\/github\.com\/another-org\/Nikatru_Platform_Public` is not/);
+  });
+
+  test('🔴 RED: a CODEOWNERS owner outside the org exits 1; a workflow typing the org exits 1', () => {
+    seedHost();
+    write('.github/CODEOWNERS', `* @${RECORDED_ORG}\n/docs/ @someone-else\n`);
+    assert.equal(run().code, 1);
+    seedHost();
+    write('.github/workflows/renovate.yml', `name: r\njobs:\n  r:\n    env:\n      RENOVATE_REPOSITORIES: ${RECORDED_ORG}/Nikatru_Platform_Public\n`);
+    assert.equal(run().code, 1);
+  });
+
+  test('a counted mention excuses exactly its count: one more is a finding, one fewer is COVERAGE LOST', () => {
+    seedHost({ ...HOST, mentions: [{ path: 'tooling/notes.json', count: 1, why: 'a dated evidence string recording a live read, history rather than config' }] });
+    write('tooling/notes.json', `{ "evidence": "read on ${RECORDED_ORG}/x" }\n`);
+    assert.equal(run().code, 0);
+    write('tooling/notes.json', `{ "evidence": "read on ${RECORDED_ORG}/x and ${RECORDED_ORG}/y" }\n`);
+    assert.equal(run().code, 1);
+    write('tooling/notes.json', '{ "evidence": "read on x" }\n');
+    assert.equal(run().code, 2);
+  });
+
+  test('`movingTo` in the register is refused the same way, once declared', () => {
+    seedHost();
+    write('tooling/github-org.json', JSON.stringify({ ...ORG, movingTo: 'nikatru-com' }));
+    write('tooling/ops/early.mjs', "export const NEXT = 'nikatru-com/Nikatru_Platform_Public';\n");
+    assert.equal(run().code, 1);
+  });
+
+  // ⏱ 2026-10-03 · CodeQL js/incomplete-sanitization on #1182: the literal limb's
+  // pattern is built from the register, so a `movingTo` that is not an org name
+  // (a backslash, a regex metacharacter) refuses to build it rather than matching wrong.
+  test('a `movingTo` that is not an org name is COVERAGE LOST, never a pattern', () => {
+    seedHost();
+    for (const bad of ['nikatru\\com', 'nik.*', 'a']) {
+      write('tooling/github-org.json', JSON.stringify({ ...ORG, movingTo: bad }));
+      const r = run();
+      assert.equal(r.code, 2, `${bad}: ${r.out ?? ''}`);
+    }
+    // green control: a well-formed movingTo builds the limb.
+    write('tooling/github-org.json', JSON.stringify({ ...ORG, movingTo: 'nikatru-com' }));
+    assert.equal(run().code, 0);
+  });
+
+  test('the fixture constant is the ONE test literal: gone is COVERAGE LOST', () => {
+    seedHost();
+    write('tooling/ci/test/fixtures/recorded-org.mjs', 'export const RECORDED_ORG = process.env.X;\n');
+    assert.equal(run().code, 2);
+  });
+
+  test('the REAL declaration carries the code-host block, its floor and its fixture constant', () => {
+    const real = JSON.parse(readFileSync(REAL_DECL, 'utf8'));
+    assert.equal(real.codehost?.register, 'tooling/github-org.json');
+    assert.ok(real.codehost.floors.files >= 2600, 'the floor must not be lowered to make a run go green');
+    assert.equal(real.codehost.fixtureConstant.path, 'tooling/ci/test/fixtures/recorded-org.mjs');
+    for (const p of ['tooling/generated/', 'services/platform/src/generated/']) assert.ok(real.codehost.excludedPaths.includes(p));
   });
 });

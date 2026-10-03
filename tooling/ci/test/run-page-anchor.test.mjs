@@ -59,9 +59,10 @@ import { stripSourceComments } from '../text-reductions.mjs';
 // The platform Worker's copy of this rule — see "THE WORKER COPY" at the end.
 // Node 24 strips its types; the file's one other import is `import type`.
 import * as workerCopy from '../../../services/platform/src/ops-watchdog.ts';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const REPO = `${RECORDED_ORG}/Nikatru_Platform_Public`;
 const workflow = (f) => readFileSync(join(REPO_ROOT, '.github', 'workflows', f), 'utf8');
 const run = (id, created, updated, extra = {}) => ({ id, created_at: created, updated_at: updated ?? created, head_branch: 'main', ...extra });
 

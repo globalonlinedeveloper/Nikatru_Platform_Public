@@ -143,6 +143,17 @@ const REQUIRED_COVERAGE = [
     // in CI run 37092405549). Measured: core 80, design_system 53, api_client 27,
     // tree 259. 100 is above any single package and below the tree less its
     // largest-but-one (259 - 53 = 206).
+    // ⏱ 2026-10-02 · club apply-platform (update_exit + web_page*): 80 -> 100.
+    // Measured by `git ls-tree` on the branch: packages/core/lib 78 -> 82 .dart, so
+    // core alone cleared 80 and vacuity-b's "thinned to core" case went red again.
+    // 100 is above any single package (core 82) and below the tree less its
+    // largest-but-one (250 - design_system 53 = 197).
+    // ⏱ 2026-10-03 · merge of main into club/rt-ports: the two raises above are
+    // the same 80 -> 100 from both sides. Re-measured on the merged tree with
+    // `find packages/*/lib -name '*.dart'`: core 90, tree 287 - design_system
+    // 53 = 234, so 100 still sits between them. Again after merging main's
+    // #1165: core 91, tree 291 - design_system 56 = 235. Unchanged. And after
+    // merging main at 04c2f22b: core 91, tree 292 - 56 = 236. Unchanged.
     // ⏱ 2026-10-03 · the merged tree (club apply-platform + main + #1176): floor
     // stays 100. Measured with `find packages/*/lib -name '*.dart'`: core 89,
     // design_system 56, tree 290; 100 still clears core alone and sits below

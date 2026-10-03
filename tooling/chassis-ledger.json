@@ -98,9 +98,9 @@
     },
     {
       "path": "lib/core/app_config.dart",
-      "lines": 246,
+      "lines": 250,
       "verdict": "STAYS",
-      "why": "Per-app configuration by definition. assert-repo-posture is correctly scoped to each app owning this file; assert-clone-contract.mjs:349 and assert-stamp-text-fidelity.mjs:344 both read its _phApiBase literal. ⏱ 2026-09-27 · ST-U1 (audit C22/D4): +5 — AppConfig.offersDailyReminder, the per-app declaration of the chassis daily reminder, passed to SettingsView. ⏱ 2026-09-28 · NP-12b (O-BRICK-SELLS-NOTHING-IN-A-STORE, re-drafted on LEAD RULING NP12B-R2): 232 -> 246, +14 — AppConfig.revenueCatApiKey (the store key, a build define; empty until the per-app secrets exist) and AppConfig.proEntitlementId (the entitlement the store bridge unlocks, held equal to app.yaml billing.mobileIap.entitlementId by assert-app-yaml limb 6 (f)), each with the comment that says where it comes from."
+      "why": "Per-app configuration by definition. assert-repo-posture is correctly scoped to each app owning this file; assert-clone-contract.mjs:349 and assert-stamp-text-fidelity.mjs:344 both read its _phApiBase literal. ⏱ 2026-09-27 · ST-U1 (audit C22/D4): +5 — AppConfig.offersDailyReminder, the per-app declaration of the chassis daily reminder, passed to SettingsView. ⏱ 2026-09-28 · NP-12b (O-BRICK-SELLS-NOTHING-IN-A-STORE, re-drafted on LEAD RULING NP12B-R2): 232 -> 246, +14 — AppConfig.revenueCatApiKey (the store key, a build define; empty until the per-app secrets exist) and AppConfig.proEntitlementId (the entitlement the store bridge unlocks, held equal to app.yaml billing.mobileIap.entitlementId by assert-app-yaml limb 6 (f)), each with the comment that says where it comes from. ⏱ 2026-10-03 · port-auth: 246 -> 250, +4 — the identity defines read as AppConfig.authEndpoint and authPublicKey, the vendor names kept one release as two @Deprecated aliases (brick lib/ lands on its 7149 ceiling, not over it)."
     },
     {
       "path": "lib/core/format/money_format.dart",

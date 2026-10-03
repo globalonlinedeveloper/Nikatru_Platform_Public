@@ -166,15 +166,19 @@ class AppConfig {
   static const int reminderHour = 20;
   static const int reminderMinute = 0;
 
-  // Shared Supabase auth (portfolio-wide).
-  static const String supabaseUrl = String.fromEnvironment(
+  // Shared identity (portfolio-wide), named for what it is (port-auth).
+  static const String authEndpoint = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: '',
   );
-  static const String supabaseAnonKey = String.fromEnvironment(
+  static const String authPublicKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   );
+  @Deprecated('Use authEndpoint; removed one release after port-auth.')
+  static const String supabaseUrl = authEndpoint;
+  @Deprecated('Use authPublicKey; removed one release after port-auth.')
+  static const String supabaseAnonKey = authPublicKey;
 
   // Whether this build has a real IDENTITY to talk to the backend with. Absent
   // in demo builds and in `flutter test`, which take no --dart-defines.
@@ -215,7 +219,7 @@ class AppConfig {
   // `test/backend_liveness_test.dart` walks this getter and fails if it ever
   // reaches `apiBaseUrl` or `_phApiBase` again.
   static bool get isBackendLive =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+      authEndpoint.isNotEmpty && authPublicKey.isNotEmpty;
 
   /// ST-U1 (audit C22/D4): does this app offer the chassis DAILY reminder?
   /// Declared per app — a habit app keeps it; an app whose reminders are its

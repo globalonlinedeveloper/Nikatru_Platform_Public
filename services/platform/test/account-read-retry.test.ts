@@ -15,6 +15,7 @@
 //   · the worst case stays at ten seconds: two attempts of five.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, vi } from 'vitest';
+import { gotrueIdentityAdmin } from '../src/adapters/identity/gotrue';
 import {
   ACCOUNT_READ_ATTEMPTS,
   ACCOUNT_READ_ATTEMPT_MS,
@@ -24,6 +25,8 @@ import {
 } from '../src/lib/platform-erasure';
 
 const URL_ = 'https://auth.test';
+/** The identity port's GoTrue adapter at URL_ (port-auth): the request it sends is the one this file always read. */
+const gotrue = (fetchImpl?: typeof fetch) => gotrueIdentityAdmin({ base: URL_, serviceKey: 'srk', publicKey: undefined, fetchImpl });
 const USER = '00000000-0000-4000-8000-000000000001';
 
 /** A fetch that plays `script` in order, one entry per call, and counts calls.
@@ -77,7 +80,7 @@ describe('the account read retries a TRANSIENT outcome once, inside the same bud
 
   it('first attempt times out, second answers → found', async () => {
     const { impl, calls } = scripted(['hang', found()]);
-    expect(await readAccount(URL_, 'srk', USER, impl, 20)).toMatchObject({ kind: 'found', email: 'person@example.org' });
+    expect(await readAccount(gotrue(impl), USER, 20)).toMatchObject({ kind: 'found', email: 'person@example.org' });
     expect(calls).toHaveLength(2);
   });
 
@@ -88,7 +91,7 @@ describe('the account read retries a TRANSIENT outcome once, inside the same bud
     vi.stubGlobal('fetch', impl);
     try {
       const { db, run } = fakeDb();
-      expect(await purgeVerifiedSignups(db, URL_, 'srk', USER)).toEqual({ kind: 'purged', deleted: 1 });
+      expect(await purgeVerifiedSignups(db, gotrue(), USER)).toEqual({ kind: 'purged', deleted: 1 });
       expect(calls).toHaveLength(2);
       expect(run).toEqual(['DELETE FROM signups WHERE email = ?']);
     } finally {
@@ -98,7 +101,7 @@ describe('the account read retries a TRANSIENT outcome once, inside the same bud
 
   it('both attempts time out → transient, so the erasure ledger path is unchanged', async () => {
     const { impl, calls } = scripted(['hang', 'hang']);
-    expect(await readAccount(URL_, 'srk', USER, impl, 20)).toEqual({
+    expect(await readAccount(gotrue(impl), USER, 20)).toEqual({
       kind: 'transient',
       why: 'the identity provider could not be reached',
     });
@@ -108,21 +111,21 @@ describe('the account read retries a TRANSIENT outcome once, inside the same bud
   it('a transport error, a 5xx or a 429 on the first attempt is retried', async () => {
     for (const first of ['throw', new Response('busy', { status: 503 }), new Response('slow down', { status: 429 })] as const) {
       const { impl, calls } = scripted([first, found()]);
-      expect((await readAccount(URL_, 'srk', USER, impl, 20)).kind).toBe('found');
+      expect((await readAccount(gotrue(impl), USER, 20)).kind).toBe('found');
       expect(calls).toHaveLength(2);
     }
   });
 
   it('a 404 is the answer: no_account after ONE request, never a second', async () => {
     const { impl, calls } = scripted([new Response('', { status: 404 }), found()]);
-    expect(await readAccount(URL_, 'srk', USER, impl, 20)).toEqual({ kind: 'no_account' });
+    expect(await readAccount(gotrue(impl), USER, 20)).toEqual({ kind: 'no_account' });
     expect(calls).toHaveLength(1);
   });
 
   it('a 401 or 403 is the answer: failed after ONE request, never a second', async () => {
     for (const status of [401, 403]) {
       const { impl, calls } = scripted([new Response('', { status }), found()]);
-      expect(await readAccount(URL_, 'srk', USER, impl, 20)).toEqual({
+      expect(await readAccount(gotrue(impl), USER, 20)).toEqual({
         kind: 'failed',
         why: `the identity provider answered ${status}`,
       });

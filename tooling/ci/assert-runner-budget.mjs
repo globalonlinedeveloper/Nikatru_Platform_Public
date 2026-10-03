@@ -115,6 +115,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWithBoundedRetry, classifyThrown, isTransientStatus, transientLook, retryAfterMs } from '../ops/bounded-retry.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 // ── THE DECLARED CEILING ─────────────────────────────────────────────────────
 // USD of NET-BILLED `product: "actions"` usage in the CURRENT billing period,
@@ -200,7 +201,7 @@ const BUDGET_READ_DEADLINE = Date.parse('2026-09-08T00:00:00Z');
 // fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 const PRODUCT = 'actions';
 
 const EXIT_OK = 0;

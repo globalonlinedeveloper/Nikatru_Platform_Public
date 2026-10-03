@@ -64,8 +64,6 @@ import aiMeter0027 from '../migrations/0027_ai_meter.sql?raw';
 import refundRequests0028 from '../migrations/0028_refund_requests.sql?raw';
 import cancelAttempts0029 from '../migrations/0029_cancel_attempts.sql?raw';
 
-type SQLValue = string | number | bigint | null | Uint8Array;
-
 /**
  * platform_db's migration set, IN APPLICATION ORDER, exactly as
  * `wrangler d1 migrations apply PLATFORM_DB` would apply it.

@@ -31,11 +31,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
 import { CONTRACT, envToken, flag, ghSpawnSpec, isMain, redact } from './cli.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 export const HB = CONTRACT.heartbeat;
 /** STALE_MIN is the queue contract's HEARTBEAT_STALE_MIN: one number, never two. */
 export const STALE_MIN = CONTRACT.thresholds.HEARTBEAT_STALE_MIN;
-export const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const DEFAULT_REPO = PLATFORM_REPO_SLUG; // ⏱ 2026-10-03 · merge of main: read from the code-host register, not typed.
 const [FRESH, STALE, HANDOVER, DRILL_STALE, UNKNOWN] = HB.states;
 const [, MODE_HANDOVER, MODE_DRILL] = HB.modes;
 export const STATE = Object.freeze({ FRESH, STALE, HANDOVER, DRILL_STALE, UNKNOWN });

@@ -15,6 +15,7 @@ import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 import 'package:nikatru_chassis_screens/shell/app_shell.dart'
     show RootedDeviceNoticeHost;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_core/testing.dart' show FakeAuthRepository;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'support/width_harness.dart';
@@ -31,28 +32,11 @@ const core.DeviceIntegrity _clean = core.DeviceIntegrity(
 );
 
 /// The one user the re-auth gate re-checks; `signInWithEmail` succeeds for
-/// [password] only.
-final class _Auth extends Fake implements core.AuthRepository {
-  _Auth({this.user});
+/// [_password] only. The auth port's fake (port-auth), not a hand double.
+const String _password = 'right';
 
-  static const String password = 'right';
-  final core.AuthUser? user;
-  final List<String> attempts = <String>[];
-
-  @override
-  core.AuthUser? get currentUser => user;
-
-  @override
-  Future<core.AuthUser> signInWithEmail({
-    required String email,
-    required String password,
-    String? captchaToken,
-  }) async {
-    attempts.add(password);
-    if (password != _Auth.password) throw core.AuthFailure('wrong password');
-    return user!;
-  }
-}
+FakeAuthRepository _auth({core.AuthUser? user}) =>
+    FakeAuthRepository(signedIn: user, password: _password);
 
 const core.AuthUser _someone = core.AuthUser(id: 'u1', email: 'a@example.test');
 
@@ -451,7 +435,7 @@ void main() {
     Future<bool> run(
       WidgetTester tester,
       core.DeviceIntegrity integrity,
-      _Auth auth, {
+      FakeAuthRepository auth, {
       String? typed,
       bool cancel = false,
     }) async {
@@ -493,38 +477,38 @@ void main() {
     }
 
     testWidgets('a clean device is never asked', (WidgetTester tester) async {
-      final _Auth auth = _Auth(user: _someone);
+      final FakeAuthRepository auth = _auth(user: _someone);
       expect(await run(tester, _clean, auth), isTrue);
-      expect(auth.attempts, isEmpty);
+      expect(auth.passwordAttempts, isEmpty);
     });
 
     testWidgets('a rooted device proceeds on the right password', (
       WidgetTester tester,
     ) async {
-      final _Auth auth = _Auth(user: _someone);
+      final FakeAuthRepository auth = _auth(user: _someone);
       expect(await run(tester, _rooted, auth, typed: 'right'), isTrue);
-      expect(auth.attempts, <String>['right']);
+      expect(auth.passwordAttempts, <String>['right']);
     });
 
     testWidgets('a rooted device is refused on a wrong password', (
       WidgetTester tester,
     ) async {
-      final _Auth auth = _Auth(user: _someone);
+      final FakeAuthRepository auth = _auth(user: _someone);
       expect(await run(tester, _rooted, auth, typed: 'wrong'), isFalse);
     });
 
     testWidgets('a rooted device is refused on cancel, with no attempt', (
       WidgetTester tester,
     ) async {
-      final _Auth auth = _Auth(user: _someone);
+      final FakeAuthRepository auth = _auth(user: _someone);
       expect(await run(tester, _rooted, auth, cancel: true), isFalse);
-      expect(auth.attempts, isEmpty);
+      expect(auth.passwordAttempts, isEmpty);
     });
 
     testWidgets('nobody signed in: nothing to re-check, the data is local', (
       WidgetTester tester,
     ) async {
-      final _Auth auth = _Auth();
+      final FakeAuthRepository auth = _auth();
       expect(await run(tester, _rooted, auth), isTrue);
     });
   });

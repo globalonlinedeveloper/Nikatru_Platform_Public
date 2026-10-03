@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validate, forbiddenValues, evaluate, portLineFor, callsRunner } from '../assert-ports.mjs';
+import { validate, forbiddenValues, evaluate, portLineFor, callsRunner, foldedStrings, identityUrlIn } from '../assert-ports.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -646,7 +646,13 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // the channels port: the contract, its submitters and the conformance file that calls the runner
       'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs',
       // the boxes port: the declarations and the module that reads them (port-boxes)
-      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
+      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs',
+      // port-auth: the Dart half's two conformance tests (the fake and the GoTrue adapter)
+      'packages/core/test/fake_auth_repository_conformance_test.dart', 'packages/auth_supabase/test/supabase_auth_conformance_test.dart',
+      // port-auth: the site's pages and its one identity client (limb 4's site half)
+      'sites/nikatru/js', 'sites/nikatru/app', 'sites/nikatru/ext',
+      // port-codehost: the register the code-host names render from, and the rendered script module
+      'tooling/github-org.json', 'tooling/generated']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
   it('green control: payments, mail and ai claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
@@ -656,6 +662,12 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
     for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
     assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
+    assert.match(r.out, /^auth\.dart\s+L3\s+L3\s+L3/m); // port-auth: the suite passes for the fake and the GoTrue adapter
+    assert.match(r.out, /^codehost\s+L2\s+L2\s+L2/m); // port-codehost: the names are config, rendered
+    assert.match(r.out, /codehost\/github: C-8 seam is services\/platform\/src\/scheduled\.ts, not this port's interface — until codehost-forge-exit/);
+    assert.match(r.out, /^auth\.ts\s+L2\s+L2\s+L3/m); // port-auth: IdentityAdmin, one built adapter and a fake
+    assert.match(r.out, /limb 4 \(URL half\): identity-provider URLs built only in 1 auth adapter/);
+    assert.match(r.out, /identity URL: services\/edge-shield\/src\/classify\.ts names `\/auth\/v1`/);
     for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L2`, 'm')); // port-storage
     assert.match(r.out, /^sql\s+L2\s+L2\s+L3/m); // port-sql
     assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit, sql; what is left \(Workers, Pages, the nikatru\.com zone\)/);
@@ -750,6 +762,86 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     mutate('tooling/ports/ai.json', (s) => { const d = JSON.parse(s); d.selection.default.live = 'stub'; return JSON.stringify(d); }, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/ai\.json selection\.default\.live is the fake `stub`/);
+    });
+  });
+  it('🔴 red: a route that builds an identity-provider URL itself reddens limb 4, and auth falls to L1 (port-auth)', () => {
+    mutate('services/platform/src/routes/sessions.ts', (s) => `${s}\nexport const probe = (base: string) => fetch(\`\${base}/auth/v1/user\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\): tooling\/ports\/auth\.json: `services\/platform\/src\/routes\/sessions\.ts` builds an identity-provider URL \(`\/auth\/v1`\)/);
+      assert.match(r.out, /^auth\.ts\s+L2\s+L1/m);
+    });
+    mutate('services/platform/src/lib/reminders.ts', (s) => `${s}\nexport const rpc = (base: string) => \`\${base}/rest/v1/rpc/x\`;\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /`services\/platform\/src\/lib\/reminders\.ts` builds an identity-provider URL \(`\/rest\/v1`\)/);
+    });
+  });
+  // ⏱ 2026-10-03 · review of #1182, finding 6 (mutation R3 exited 0): the URL half reads
+  // the strings a module BUILDS, so a path split across a `+` is still a path.
+  it("🔴 red: a route building `'/auth/' + 'v1'` reddens limb 4 — the folded value, not the source text", () => {
+    mutate('services/platform/src/routes/account.ts', (s) => `${s}\nexport const probe = (b: string) => fetch(b + '/auth/' + 'v1/user');\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /`services\/platform\/src\/routes\/account\.ts` builds an identity-provider URL \(`\/auth\/v1`\)/);
+    });
+    mutate('sites/nikatru/js/signin.js', (s) => `${s}\nexport const leak = (b) => fetch(\`\${b}/rest/\${'v1'}/rpc/x\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /the site file `sites\/nikatru\/js\/signin\.js` names an identity-provider path/);
+    });
+  });
+  // ⏱ 2026-10-03 · review of #1182, finding 2: issuerAt resolves the primary at SUPABASE_URL
+  // whatever row 0 says, so the schema requires row 0 to say it.
+  it('🔴 red: an issuers row order whose FIRST row does not read SUPABASE_URL reddens limb 1', () => {
+    mutate('tooling/ports/auth.json', (s) => {
+      const d = JSON.parse(s);
+      d.issuers.unshift({ ...d.issuers[0], id: 'next', originEnv: 'AUTH_ISSUER_NEXT_URL' });
+      return JSON.stringify(d);
+    }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/auth\.json \$\.issuers\[0\]\.originEnv: must be "SUPABASE_URL"/);
+    });
+  });
+  it('the validator applies prefixItems[i] to item i, on top of items', () => {
+    const schema = { type: 'array', prefixItems: [{ const: 1 }], items: { type: 'integer' } };
+    assert.deepEqual(validate([1, 2], schema), []);
+    assert.deepEqual(validate([2, 1], schema), ['$[0]: must be 1']);
+    assert.deepEqual(validate([1, 'x'], schema), ['$[1]: is string, expected integer']);
+  });
+  it('identityUrlIn folds `+`-joined literals and literal interpolations; a variable is a break, never a join', () => {
+    assert.equal(identityUrlIn("fetch(b + '/auth/' + 'v1/user')")?.[0], '/auth/v1');
+    assert.equal(identityUrlIn('fetch(b + "/rest" +\n  "/v1/rpc/f")')?.[0], '/rest/v1');
+    assert.equal(identityUrlIn("x = `/auth/${'v1'}/user`")?.[0], '/auth/v1');
+    assert.equal(identityUrlIn('x = `${base}/auth/v1`')?.[0], '/auth/v1');
+    // Not a path: a variable between the halves, and the app's own native route.
+    assert.equal(identityUrlIn('x = `/auth/${v}1`'), null);
+    assert.equal(identityUrlIn("x = '/v1/auth/native/' + op"), null);
+    assert.deepEqual(foldedStrings("a('x' + 'y', 'z')"), ['xy', 'z']);
+  });
+  it('🔴 red: a site page naming /auth/v1 outside the identity client reddens limb 4 (port-auth, the site half)', () => {
+    mutate('sites/nikatru/js/signin.js', (s) => `${s}\nexport const leak = () => fetch(\`\${SUPABASE_URL}/auth/v1/user\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\): tooling\/ports\/auth\.json: the site file `sites\/nikatru\/js\/signin\.js` names an identity-provider path/);
+    });
+    mutate('sites/nikatru/js/identity-client.js', (s) => s.replaceAll('/auth/v1', '/auth/vX'), (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST — sites\/nikatru\/js\/identity-client\.js no longer names an identity-provider path/);
+    });
+  });
+  // ⏱ 2026-10-03 · CodeQL js/incomplete-multi-character-sanitization on #1182: an HTML
+  // comment hides a path, but a broken comment marker never hides the text after it.
+  it('🔴 site HTML: a path inside a comment is not a call; one after a malformed `<!<!-- -->--` is', () => {
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!-- the old form posted to /auth/v1/otp -->\n`, (r) => assert.equal(r.code, 0, r.out));
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!<!-- -->-- <a href="/auth/v1/verify">x</a> -->\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /the site file `sites\/nikatru\/app\/connect\.html` names an identity-provider path/);
+    });
+    mutate('sites/nikatru/app/connect.html', (s) => `${s}\n<!-- unterminated <a href="/auth/v1/verify">x</a>\n`, (r) => assert.equal(r.code, 1, r.out));
+  });
+  it('limb 4 URL half: a URL in a COMMENT is not a call; the adapter no longer matching is COVERAGE LOST', () => {
+    mutate('services/platform/src/routes/sessions.ts', (s) => `${s}\n// the old call was \`\${base}/auth/v1/user\`\n`, (r) => assert.equal(r.code, 0, r.out));
+    mutate('services/platform/src/adapters/identity/gotrue.ts', (s) => s.replaceAll('/auth/v1', '/auth/vX').replaceAll('/rest/v1', '/rest/vX'), (r) => {
+      // As with an import walk that read nothing: the loss is printed AND the port cannot earn its claim.
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /FAIL limb 4 \(imports\) COVERAGE LOST — no auth ts adapter .* matches the identity-URL pattern/);
+      assert.match(r.out, /^auth\.ts\s+L2\s+L1/m);
     });
   });
   it('red: a route importing the Anthropic adapter reddens limb 4', () => {
@@ -933,11 +1025,25 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
-      doc.rows = doc.rows.filter((x) => x.vendor !== 'github');
+      // ⏱ 2026-10-03 · port-codehost: `github` is codehost's adapter now, so the row deleted is
+      // the captcha authority's (a platform authority, never ported).
+      doc.rows = doc.rows.filter((x) => x.vendor !== 'cloudflare-turnstile');
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
-      assert.match(r.first, /limb 8 \(cross-register\): vendor `github`/);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare-turnstile`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('🔴 red (port-codehost): github placed back in _non-port.json beside the codehost port reddens limb 8', () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.rows.push({ vendor: 'github', registers: ['capability-register'], reason: 'the workflow-dispatch call from the Worker cron', until: 'port-codehost' });
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /vendor `github` is placed 2 times \(codehost\/github, _non-port\)/);
     } finally { writeFileSync(rel, before); }
   });
   it("red: paddle's C-8 seam moved off MoRWebhookVerifier's file reddens limb 8", () => {

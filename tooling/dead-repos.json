@@ -154,6 +154,31 @@
   ],
   "_codeMentionsWhy": "THE RESIDUE AFTER COMMENTS ARE STRIPPED, DECLARED WITH A COUNT RATHER THAN WAIVED BY PATH. An entry excuses EXACTLY `count` occurrences in that file: MORE is a finding, because a new mention appeared that nobody argued for; FEWER is COVERAGE LOST, because the reason has expired and the row must retire with it. That asymmetry is the whole point — an excludedPaths entry blinds a whole file forever, and blinding tooling/scripts/install-hooks.mjs is precisely how the hole the .mjs glob just closed would have been re-opened under a politer name.",
 
+  "codehost": {
+    "_what": "⏱ 2026-10-03 · port-codehost (row O-CODEHOST-NAME-HARD-CODED-IN-33-FILES). The LIVE org, held to ONE register: `register` is the only file that types it (tooling/ports/codehost.json cites it); tooling/ports/render.mjs renders it into the generated outputs below. tooling/ci/assert-no-dead-repo-names.mjs refuses the org as a literal in every file `globs` reaches (comments stripped, strings kept) outside `excludedPaths`, the ONE `fixtureConstant` the tests import, a CHECKED pin (pubspec repository/homepage, the podspec homepage, CODEOWNERS owners, the issue-chooser urls — each compared with the register) and the `mentions` rows, counted exactly as codeMentions are. When the register declares `movingTo`, that org is refused the same way.",
+    "register": "tooling/github-org.json",
+    "globs": ["**/*.mjs", "**/*.js", "**/*.ts", "**/*.json", "**/*.yml", "**/*.yaml", "**/*.dart", "**/*.podspec", ".github/CODEOWNERS"],
+    "excludedPaths": [
+      "tooling/github-org.json",
+      "tooling/dead-repos.json",
+      "tooling/generated/",
+      "services/platform/src/generated/",
+      "tooling/ci/test/fixtures/land-rollup/",
+      "tooling/ci/test/fixtures/pages-deploy-run/",
+      "tooling/ci/test/fixtures/ops-freeze-2026-09-11.json",
+      "tooling/review/fixtures/",
+      "node_modules/"
+    ],
+    "_excludedPathsWhy": "The register itself, this declaration, the two RENDERED outputs (their source is the register), and RECORDED captures — GitHub API answers saved verbatim on a date (land-rollup, the 2026-09-11 freeze, the self-review week, the 2026-10-02 pages-deploy-run CI runs — #1166, merged with main 2026-10-03), which are history and must not be rewritten. Everything else that names the org imports it.",
+    "fixtureConstant": { "path": "tooling/ci/test/fixtures/recorded-org.mjs", "count": 1 },
+    "mentions": [
+      { "path": "tooling/ops/register.json", "count": 3, "why": "Three dated `evidence` strings recording live reads of 2026-09-09 (`gh secret list` on the platform repository, and the extensions repository the extensions workflows replaced): what was true when it was read, rewritten by nobody." },
+      { "path": "tooling/house-identity.json", "count": 1, "why": "The `why` of the owner's own public profiles names the GitHub ACCOUNT as the example to fill in: a person's profile is not the code host's org setting, and moves only if the person renames their account." },
+      { "path": "extensions/scripts/schema/tool.schema.json", "count": 1, "why": "The JSON Schema `$id` — an identifier, not a request: nothing fetches it, and changing it changes the schema's identity for every validator that cached it. tooling/ops/org-move.mjs lists it for the move commit." }
+    ],
+    "floors": { "files": 2600 },
+    "_floorsMeasured": "2026-10-03: 2890 code/config files reached by `globs` outside `excludedPaths`; the floor is ~90% of that, so a broken walk is COVERAGE LOST and an ordinary deletion is not."
+  },
   "excludedPaths": [
     "tooling/github-org.json",
     "tooling/ops/register.json",

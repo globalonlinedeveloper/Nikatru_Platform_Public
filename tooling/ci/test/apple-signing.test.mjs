@@ -68,6 +68,7 @@ import {
   appleArtifactPath,
 } from '../apple-signing.mjs';
 import { armingOf } from '../channel-arming.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = resolve(CI_DIR, '..', '..');
@@ -383,7 +384,7 @@ const FULL = () => ({
 });
 
 const ON_TAG = { GITHUB_REF: 'refs/tags/subscriptiontracker-v1.0.0' };
-const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `globalonlinedeveloper/repo/${SUBMIT_WF}@refs/heads/main` };
+const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `${RECORDED_ORG}/repo/${SUBMIT_WF}@refs/heads/main` };
 
 // ═════ the all-or-none law ═══════════════════════════════════════════════════
 describe('apple-signing — the all-or-none law', () => {

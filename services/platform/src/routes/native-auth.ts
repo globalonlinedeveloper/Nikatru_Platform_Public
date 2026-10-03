@@ -89,6 +89,8 @@ import {
   type AttestOp,
 } from '../lib/native-attest';
 import { redeemHandoffCode } from '../lib/native-attest/handoff';
+import { identityFor } from '../ports';
+import type { IdentityAnswer } from '../../../_shared/src/ports/identity';
 
 /**
  * How long one GoTrue call may take before the route gives up on it.
@@ -374,39 +376,36 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
     return logged(c, op, gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.'));
   }
 
-  const upstreamUrl = new URL(`${c.env.SUPABASE_URL}/auth/v1/${op}`);
-  if (op === 'token') upstreamUrl.searchParams.set('grant_type', 'password');
-  else if (redirects[0] !== undefined) upstreamUrl.searchParams.set('redirect_to', redirects[0]);
+  const query: Record<string, string> = {};
+  if (op === 'token') query.grant_type = 'password';
+  else if (redirects[0] !== undefined) query.redirect_to = redirects[0];
 
   // Only the allowlisted headers go on (GOTRUE_BOUND_HEADERS), each as it
   // arrived, so the user agent and Cloudflare's own stamps reach GoTrue without
-  // this Worker reading any of them; then our credentials in, exactly as
-  // sessions.ts builds them. x-request-id is the one exception: GoTrue gets the
-  // id request-id.ts accepted or minted, never the caller's raw value, so its
-  // logs carry a validated id that matches our `rid=` (review of #1152, nit 4).
+  // this Worker reading any of them; the port adds our credentials, exactly as
+  // the session calls get them. ⏱ 2026-10-03 · port-auth: the request is built
+  // by the identity port's adapter (identityFor, src/ports.ts), not here.
+  // x-request-id is the one exception: GoTrue gets the id request-id.ts
+  // accepted or minted, never the caller's raw value, so its logs carry a
+  // validated id that matches our `rid=` (review of #1152, nit 4).
   const headers = new Headers();
   for (const [name, value] of c.req.raw.headers) if (sentOn(name) && name !== 'x-request-id') headers.set(name, value);
   const rid = c.get('requestId');
   if (rid) headers.set('x-request-id', rid);
-  headers.set('Content-Type', 'application/json');
-  headers.set('apikey', serviceRoleKey);
-  headers.set('Authorization', `Bearer ${serviceRoleKey}`);
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl.toString(), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      redirect: 'manual',
-      signal: AbortSignal.timeout(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS),
-    });
-  } catch (err) {
+  const answer = await identityFor(c.env).credential(op, body, {
+    headers,
+    query,
+    signal: AbortSignal.timeout(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS),
+  });
+  if (!answer.ok) {
+    const err = answer.cause;
     console.error(
-      `[native-auth] rid=${c.get('requestId') ?? '-'} GoTrue unreachable (${err instanceof Error ? err.name : typeof err})`,
+      `[native-auth] rid=${c.get('requestId') ?? '-'} GoTrue unreachable (${err instanceof Error ? err.name : answer.detail})`,
     );
     return logged(c, op, gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.'));
   }
+  const upstream = answer.res;
 
   if (admitted.kind === 'install-key') {
     const withheld = await unattestedSessionRule(op, upstream);
@@ -423,17 +422,6 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
 
 /** The one answer every failed hand-off exchange gets — no oracle (expired, reused, mismatched, forged). */
 const handoffInvalid = () => gotrueError(400, 'invalid_grant', 'The sign-in code is invalid, expired or already used');
-
-/** A GoTrue admin-side call with the service-role bearer. Never forwards anything of the caller's. */
-function gotrueAdmin(c: Context<AppEnv>, key: string, path: string, init: { method: 'GET' | 'POST'; body?: unknown }): Promise<Response> {
-  return fetch(`${c.env.SUPABASE_URL}/auth/v1${path}`, {
-    method: init.method,
-    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    redirect: 'manual',
-    signal: AbortSignal.timeout(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS),
-  });
-}
 
 /** lowercase hex digest, as GoTrue issues a `hashed_token` (tooling/e2e/magic_link.mjs TOKEN_HASH_SHAPE). */
 const TOKEN_HASH = /^[0-9a-f]{40,128}$/;
@@ -472,20 +460,30 @@ async function handoffSession(c: Context<AppEnv>, user: string, release: () => P
     console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} SUPABASE_SERVICE_ROLE_KEY is not set`);
     return retryable();
   }
+  // ⏱ 2026-10-03 · port-auth: the three calls are the identity port's verbs
+  // (identityFor, src/ports.ts); a transport failure is thrown into the catch
+  // below, which answered it before the port existed.
+  const identity = identityFor(c.env);
+  const call = async (a: Promise<IdentityAnswer>): Promise<Response> => {
+    const r = await a;
+    if (!r.ok) throw r.cause ?? new Error(r.detail);
+    return r.res;
+  };
+  const bounded = () => ({ signal: AbortSignal.timeout(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS) });
   try {
-    const u = await gotrueAdmin(c, key, `/admin/users/${encodeURIComponent(user)}`, { method: 'GET' });
+    const u = await call(identity.readUser(user, bounded()));
     if (u.status === 404) return handoffInvalid();
     if (!u.ok) return retryable();
     const account = (await u.json()) as Record<string, unknown>;
     const banned = typeof account.banned_until === 'string' && Date.parse(account.banned_until) > Date.now();
     if (account.id !== user || banned || typeof account.email !== 'string' || account.email === '') return handoffInvalid();
 
-    const link = await gotrueAdmin(c, key, '/admin/generate_link', { method: 'POST', body: { type: 'magiclink', email: account.email } });
+    const link = await call(identity.mintSignInLink(account.email, bounded()));
     if (!link.ok) return retryable();
     const hashed = ((await link.json()) as Record<string, unknown>).hashed_token;
     if (typeof hashed !== 'string' || !TOKEN_HASH.test(hashed)) return retryable();
 
-    const verified = await gotrueAdmin(c, key, '/verify', { method: 'POST', body: { type: 'magiclink', token_hash: hashed } });
+    const verified = await call(identity.redeemSignInLink(hashed, bounded()));
     if (!verified.ok) return retryable();
     minted = true;
     const session = (await verified.json()) as Record<string, unknown>;

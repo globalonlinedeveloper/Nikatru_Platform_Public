@@ -674,3 +674,82 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
     assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
 });
+
+// ⏱ 2026-10-03 · port-auth: the AUTH dry run WRAPS tooling/ops/auth-cutover-preflight.mjs
+// (spawned in production; injected here, so these cases touch no network) and adds the
+// issuer delta, the client config per channel, the captcha provider and the Apple attestation.
+describe('port-switch auth — the cutover preflight, wrapped and generalised', async () => {
+  const { run: runSwitch, authChecks, AUTH_PREFLIGHT } = await import('../../ops/port-switch.mjs');
+  const stub = (status, first) => (root, args) => ({ status, stdout: `${first}\nPASS  C1 CSP: stub (${args.join(' ')})\n`, stderr: '' });
+  const verdicts = (o) => Object.fromEntries(o.out.filter((l) => /^(PASS|FAIL|LOST) /.test(l)).map((l) => [l.split(/\s+/)[1], l.split(/\s+/)[0]]));
+
+  it('the preflight is SPAWNED, not copied: its exit is C9, its lines are printed under it, --phase and --attest are forwarded', () => {
+    const seen = [];
+    const o = runSwitch({ port: 'auth', to: 'gotrue', env: 'live', root: REPO, phase: 'post', attest: 'apple-return-url', preflight: (root, args) => { seen.push(args); return { status: 0, stdout: 'auth-cutover-preflight --phase post: READY\n', stderr: '' }; } });
+    assert.deepEqual(seen, [['--phase', 'post', '--attest', 'apple-return-url']]);
+    assert.match(o.out.join('\n'), /PASS  C9 preflight: node tooling\/ops\/auth-cutover-preflight\.mjs --phase post --attest apple-return-url exit 0/);
+    assert.match(o.out.join('\n'), /── tooling\/ops\/auth-cutover-preflight\.mjs --phase post \(wrapped; its checks are its own\) ──\n {6}auth-cutover-preflight --phase post: READY/);
+    assert.equal(verdicts(o).C13, 'PASS');
+    assert.ok(readFileSync(join(REPO, AUTH_PREFLIGHT), 'utf8').includes('export async function runPreflight'), 'the wrapped tool is the real preflight');
+  });
+
+  it('🔴 a preflight FAIL is a C9 FAIL and exit 1; its LOST is C9 LOST', () => {
+    const red = runSwitch({ port: 'auth', to: 'gotrue', env: 'live', root: REPO, preflight: stub(1, 'auth-cutover-preflight --phase pre: REFUSED by C4 keys and issuer (FAIL)') });
+    assert.equal(red.code, 1);
+    assert.equal(verdicts(red).C9, 'FAIL');
+    const lost = runSwitch({ port: 'auth', to: 'gotrue', env: 'live', root: REPO, preflight: stub(2, 'COVERAGE LOST first at C3') });
+    assert.equal(verdicts(lost).C9, 'LOST');
+  });
+
+  it('C10 prints the issuer delta; C11 names every app channel as a release, the site a deploy, each Worker a redeploy; C12 Turnstile', () => {
+    const o = runSwitch({ port: 'auth', to: 'gotrue', env: 'live', root: REPO, preflight: stub(0, 'READY') });
+    const text = o.out.join('\n');
+    const v = verdicts(o);
+    assert.equal(v.C10, 'PASS');
+    assert.match(text, /gotrue\s+origin \$SUPABASE_URL\/auth\/v1 · keys \/auth\/v1\/\.well-known\/jwks\.json · ES256 · aud authenticated/);
+    assert.match(text, /\+ \{ id: 'gotrue', originEnv: '<a second Worker variable>'/);
+    // ⏱ 2026-10-03 · review of #1182, finding 2: the cutover keeps the OLD issuer trusted (the second
+    // row's variable holds the old origin) until the oldest supported app build has rotated.
+    assert.match(text, /the second row's variable is set to the OLD origin: the old issuer stays trusted/);
+    assert.match(text, /remove the old issuer only once the OLDEST SUPPORTED app build has rotated/);
+    assert.doesNotMatch(text, /the cutover removes the old one/);
+    assert.equal(v.C11, 'PASS');
+    for (const id of ['web', 'android-play', 'ios-appstore', 'macos-appstore', 'windows-store', 'linux-snap']) assert.match(text, new RegExp(`^ {6}${id}\\s`, 'm'));
+    assert.match(text, /android-play\s+an APP RELEASE/);
+    assert.match(text, /web\s+a web build \(main\.dart\.js\) → rebuild and redeploy/);
+    assert.match(text, /chrome-webstore\s+compiles no identity endpoint/);
+    assert.equal(v.C12, 'PASS');
+    assert.match(text, /Cloudflare Turnstile \(ADR 084/);
+  });
+
+  it('🔴 without the owner attestation C13 is LOST, so the dry run cannot exit 0', () => {
+    const o = runSwitch({ port: 'auth', to: 'gotrue', env: 'live', root: REPO, preflight: stub(0, 'READY') });
+    assert.equal(verdicts(o).C13, 'LOST');
+    assert.notEqual(o.code, 0);
+  });
+
+  it('🔴 a stale issuer render is a C10 FAIL; a registry with no issuer is a C10 FAIL', () => {
+    const root = mkdtempSync(join(tmpdir(), 'port-switch-auth-'));
+    for (const rel of ['tooling/ports', 'services/_shared/src/generated', 'services/platform/src/generated', 'packages/purchases/lib/src/generated', 'tooling/channel-register.json', 'tooling/catalog/fee-register.json']) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+    const gen = join(root, 'services/_shared/src/generated/ports.ts');
+    writeFileSync(gen, readFileSync(gen, 'utf8').replace("audience: 'authenticated'", "audience: 'anyone'"));
+    const doc = JSON.parse(readFileSync(join(REPO, 'tooling/ports/auth.json'), 'utf8'));
+    const lines = [];
+    const add = (n, name, verdict, detail) => lines.push({ n, verdict, detail });
+    authChecks(root, doc, doc.adapters.find((a) => a.id === 'gotrue'), [], add, { preflight: stub(0, 'READY') });
+    assert.equal(lines.find((c) => c.n === 10).verdict, 'FAIL');
+    lines.length = 0;
+    authChecks(root, { ...doc, issuers: [] }, doc.adapters.find((a) => a.id === 'gotrue'), [], add, { preflight: stub(0, 'READY') });
+    assert.match(lines.find((c) => c.n === 10).detail, /lists no issuer/);
+  });
+
+  it('--attest and --phase are refused for another port, and --attest takes only apple-return-url', () => {
+    assert.match(parseArgs(['payments', '--to', 'fake', '--dry-run', '--attest', 'apple-return-url']).error, /--attest is for the auth dry run/);
+    assert.match(parseArgs(['auth', '--to', 'gotrue', '--dry-run', '--attest', 'yes']).error, /--attest knows only apple-return-url/);
+    assert.match(parseArgs(['auth', '--to', 'gotrue', '--dry-run', '--phase', 'during']).error, /--phase must be pre or post/);
+    assert.equal(parseArgs(['auth', '--to', 'gotrue', '--attest', 'apple-return-url']).error.startsWith('--dry-run is required'), true);
+  });
+});

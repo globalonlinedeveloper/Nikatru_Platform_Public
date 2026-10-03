@@ -44,13 +44,16 @@
 // no URL that carries one is ever printed (see the heartbeat URL in scheduled.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Env } from './types';
+import { PLATFORM_REPO_REF } from './generated/codehost.ts';
 
 /** `page`, when set, asks scheduled.ts `opsWatchdogJob` to mail the owner
  *  directly (lib/owner-page.ts). It is never recorded. */
 export type HeartbeatRow = { target: string; ok: boolean; detail: string; page?: string };
 
-/** The repository whose runs are watched. Same owner/repo the dispatcher fires. */
-export const OPS_REPO = { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public' } as const;
+/** The repository whose runs are watched. Same owner/repo the dispatcher fires —
+ *  ⏱ 2026-10-03 · port-codehost: both read the RENDERED names
+ *  (src/generated/codehost.ts, from tooling/github-org.json). */
+export const OPS_REPO = PLATFORM_REPO_REF;
 
 /** Workflows whose latest completed run on main is reported. */
 export const OPS_MAIN_WORKFLOWS = ['ci.yml', 'ops-watch.yml'] as const;

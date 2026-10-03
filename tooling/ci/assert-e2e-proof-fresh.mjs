@@ -333,6 +333,7 @@ import { parseJsonc, queryD1 } from '../ops/check-heartbeats.mjs';
 // The run history is read through the SHARED anchored reader (trap ci-48): the
 // stale-page anchor, the cross-read, the union and the per-request ceiling.
 import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'e2e.yml';
@@ -360,7 +361,7 @@ const TIMER_ROW_ID = 'duty.workflow.e2e.yml';
 // fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 // 🔴 LOAD-BEARING, NOT COSMETIC — read 'THE RUN WINDOW IS LOAD-BEARING' in the
 // header before touching this. The query filters `status=success`, so this sizes
 // a window over SUCCESSES: every green hand-press consumes a slot and can push
