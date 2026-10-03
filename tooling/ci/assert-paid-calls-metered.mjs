@@ -30,7 +30,7 @@
 // Plain Node, no shell helper, `node:path` joins only: it runs the same on the
 // Windows laptop the hooks run on.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 
@@ -71,7 +71,14 @@ function read(relPath) {
   const norm = String(relPath).replace(/\\/g, '/').replace(/^\.\//, '');
   if (fileCache.has(norm)) return fileCache.get(norm);
   const abs = join(repoRoot, ...norm.split('/'));
-  const text = existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, 'utf8') : null;
+  // One read, no existence check first (a check-then-read is a race): a missing
+  // path or a directory throws, and either is "no such file" here.
+  let text;
+  try {
+    text = readFileSync(abs, 'utf8');
+  } catch {
+    text = null;
+  }
   fileCache.set(norm, text);
   return text;
 }

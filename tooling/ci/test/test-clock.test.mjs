@@ -174,9 +174,10 @@ describe('the test-time clock (tooling/scripts/test-clock.mjs)', () => {
     assert.match(wf, /NIKATRU_TEST_NOW: \$\{\{ matrix\.instant \}\}/, 'the workflow no longer sets NIKATRU_TEST_NOW');
     assert.match(
       wf,
-      /NODE_OPTIONS: --import=\$\{\{ github\.workspace \}\}\/tooling\/scripts\/test-clock\.mjs/,
+      /export NODE_OPTIONS="--import=\$TEST_CLOCK"\n\s+node --import "\$SPAWN_CEILING" --import "\$TEST_CLOCK"/,
       'the tooling suite no longer preloads tooling/scripts/test-clock.mjs',
     );
+    assert.match(wf, /pathToFileURL\(require\('path'\)\.resolve\(process\.env\.GITHUB_WORKSPACE, 'tooling\/scripts\/test-clock\.mjs'\)\)/, 'TEST_CLOCK is no longer the preload\'s absolute file URL');
     assert.match(wf, / --test "tooling\/ci\/test\/\*\.test\.mjs"/, 'the tooling suite is not the one ci.yml runs');
   });
 });
