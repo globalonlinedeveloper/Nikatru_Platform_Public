@@ -970,6 +970,52 @@ describe('assert-play-declarations — the inventory relation, both directions',
   });
 });
 
+// ⏱ 2026-10-03 · rv2-business 025. The provider_notifications
+// exclusion cited an owner row ("no seller account exists") for a reason that was false; its real reason
+// is a switch in the tree, and `notFromThisAppWhile` makes the guard read the switch.
+describe('assert-play-declarations — an exclusion held by a flag fails when the flag flips', () => {
+  const PAYMENTS = 'table:platform_db.provider_notifications';
+  const FLAG_FILE = 'services/platform/src/app-config-data.json';
+  const flagged = (enabled, patchDs) => makeRoot({
+    inv: (x) => { x.stores.push({ id: PAYMENTS, kind: 'd1-table', name: 'provider_notifications', personalData: true, holds: 'the verbatim provider notification', retention: { kind: 'keep', reason: 'x' }, writtenBy: [] }); },
+    ds: (x) => {
+      x.inventory.notFromThisApp[PAYMENTS] = 'nothing writes it while paid checkout is closed';
+      x.inventory.notFromThisAppWhile = { [PAYMENTS]: { file: FLAG_FILE, path: 'apps.{app}.paywall.enabled', equals: false } };
+      if (patchDs) patchDs(x);
+    },
+    files: (f) => { f[FLAG_FILE] = { apps: { subscriptiontracker: { paywall: { enabled } } } }; },
+  });
+
+  test('GREEN CONTROL: checkout closed, the exclusion holds', () => {
+    const r = run(flagged(false));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('RED CONTROL: the flag flipped to open FAILS, naming the exclusion and the switch', () => {
+    const r = run(flagged(true));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /notFromThisAppWhile\["table:platform_db\.provider_notifications"\]: the exclusion holds only while services\/platform\/src\/app-config-data\.json `apps\.subscriptiontracker\.paywall\.enabled` is false, and it is true/);
+  });
+
+  test('the switch renamed away FAILS — a reason resting on nothing', () => {
+    const r = run(flagged(false, (x) => { x.inventory.notFromThisAppWhile[PAYMENTS].path = 'apps.{app}.checkout.open'; }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /`apps\.subscriptiontracker\.checkout\.open`, which does not exist/);
+  });
+
+  test('a condition for an id the app does not exclude FAILS', () => {
+    const r = run(flagged(false, (x) => { x.inventory.notFromThisAppWhile['table:other.thing'] = { file: FLAG_FILE, path: 'apps.{app}.paywall.enabled', equals: false }; }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /notFromThisAppWhile\["table:other\.thing"\] holds an exclusion that inventory\.notFromThisApp does not make/);
+  });
+
+  test('the REAL declaration: the exclusion cites the flag, not the owner row, and is held by it', () => {
+    const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', '..', 'apps', 'subscriptiontracker', 'store', 'android-play', 'data-safety.json'), 'utf8'));
+    assert.match(real.inventory.notFromThisApp[PAYMENTS], /paid checkout is CLOSED: services\/platform\/src\/app-config-data\.json `apps\.subscriptiontracker\.paywall\.enabled` is false/);
+    assert.deepEqual(real.inventory.notFromThisAppWhile[PAYMENTS], { file: FLAG_FILE, path: 'apps.{app}.paywall.enabled', equals: false });
+  });
+});
+
 describe('assert-play-declarations — answer shape and the honest null', () => {
   test('FAILS when a Play data type has no answer row', () => {
     const r = run(makeRoot({ ds: (x) => { x.answers = x.answers.filter((a) => a.type !== 'Precise location'); } }));

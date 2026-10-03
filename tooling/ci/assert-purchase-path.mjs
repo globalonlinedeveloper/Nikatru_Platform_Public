@@ -1807,7 +1807,12 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
         if (legal !== null && rows === null) {
           coverageLost(`${LEGAL_REGISTER} carries no \`providers\` array, so no region rail could be matched to a disclosure row.`);
         } else if (rows !== null) {
-          const NOT_DISCLOSED = new Set(['not-named-not-wired', 'deferred']);
+          // The register's own `silent` statuses (⏱ 2026-10-03, rv2-business 024:
+          // `retired` joined them). Absent a vocabulary, the three this limb has always meant.
+          const statusVocab = legal?.statuses && typeof legal.statuses === 'object' ? legal.statuses : null;
+          const NOT_DISCLOSED = statusVocab
+            ? new Set(Object.keys(statusVocab).filter((k) => !k.startsWith('_') && statusVocab[k]?.silent === true))
+            : new Set(['not-named-not-wired', 'deferred', 'retired']);
           for (const rail of distinct) {
             const who = claims.filter((c) => c.rail === rail).map((c) => `${c.channel}/${c.region}`).join(', ');
             const row = rows.find((r) => r && r.id === rail);
