@@ -31,7 +31,7 @@
 // PLAY_SERVICE_ACCOUNT_JSON and APP_STORE_CONNECT_{ISSUER_ID,KEY_ID,PRIVATE_KEY}.
 // Plain Node, `node:path` only, no shell helper: it runs the same on Windows.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseYaml } from '../app-yaml/yaml.mjs';
@@ -47,10 +47,17 @@ const ICON = { green: '✅', amber: '🟨', red: '🔴', 'no-data': '⬜', unrea
 /** The thresholds register, or the reason it cannot grade. */
 export function loadRegister(root) {
   const p = path.join(root, ...REGISTER_REL.split('/'));
-  if (!existsSync(p)) return { error: `${REGISTER_REL} is missing` };
+  // Read, never exists-then-read (CodeQL js/file-system-race): ENOENT is the "missing" branch.
+  let raw;
+  try {
+    raw = readFileSync(p, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return { error: `${REGISTER_REL} is missing` };
+    return { error: `${REGISTER_REL} is unreadable (${e.message})` };
+  }
   let reg;
   try {
-    reg = JSON.parse(readFileSync(p, 'utf8'));
+    reg = JSON.parse(raw);
   } catch (e) {
     return { error: `${REGISTER_REL} is not JSON (${e.message})` };
   }
@@ -69,8 +76,14 @@ export function loadApps(root) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (!e.isDirectory() || e.name === 'probe') continue;
     const yml = path.join(dir, e.name, 'app.yaml');
-    if (!existsSync(yml)) continue;
-    const y = parseYaml(readFileSync(yml, 'utf8'));
+    let text;
+    try {
+      text = readFileSync(yml, 'utf8');
+    } catch (err) {
+      if (err.code === 'ENOENT') continue;
+      throw err;
+    }
+    const y = parseYaml(text);
     out.push({ id: y.id, androidPackage: `${ORG}.${y.id}`, ascAppId: y.stores?.['ios-appstore']?.recordId ?? null });
   }
   return out;
@@ -147,13 +160,12 @@ export async function main(argv, { root = DEFAULT_ROOT, env = process.env, fetch
   const statePath = arg('--state');
   let exit = 0;
   if (statePath) {
+    // No state file yet (ENOENT) and an unreadable one both start from no known grades.
     let prev = {};
-    if (existsSync(statePath)) {
-      try {
-        prev = JSON.parse(readFileSync(statePath, 'utf8')).grades ?? {};
-      } catch {
-        prev = {};
-      }
+    try {
+      prev = JSON.parse(readFileSync(statePath, 'utf8')).grades ?? {};
+    } catch {
+      prev = {};
     }
     const worse = worsened(prev, grades);
     for (const w of worse) log(`PAGE: ${w.key.split('|').join(' · ')} worsened ${w.from} → ${w.to}`);

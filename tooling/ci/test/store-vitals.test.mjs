@@ -158,6 +158,23 @@ describe('the grade, from the register', () => {
     assert.equal(r.calls.length, 0);
     assert.throws(() => gradeReading({ metric: 'crash', value: 0.001, status: 'ok' }, reg), /no row for the graded metric `crash`/);
   });
+  test('🔴 an ABSENT register (read, ENOENT, never exists-then-read) exits 1 as missing; an app dir with no app.yaml is skipped', async () => {
+    const root = join(TMP, 'no-register');
+    mkdirSync(join(root, 'apps', 'subscriptiontracker'), { recursive: true });
+    mkdirSync(join(root, 'apps', 'half-made'), { recursive: true });
+    mkdirSync(join(root, 'tooling', 'ops', 'vitals'), { recursive: true });
+    cpSync(join(REPO, 'apps', 'subscriptiontracker', 'app.yaml'), join(root, 'apps', 'subscriptiontracker', 'app.yaml'));
+    cpSync(join(REPO, 'tooling', 'channel-register.json'), join(root, 'tooling', 'channel-register.json'));
+    let r = await run([], { root });
+    assert.equal(r.code, 1);
+    assert.match(r.err, /thresholds\.json is missing/);
+    assert.equal(r.calls.length, 0);
+    // With the register back, the app.yaml-less dir is skipped, never a crash.
+    writeFileSync(join(root, 'tooling', 'ops', 'vitals', 'thresholds.json'), JSON.stringify(REGISTER));
+    r = await run([], { root });
+    assert.notEqual(r.code, 2, r.err);
+    assert.doesNotMatch(r.out, /half-made/);
+  });
 });
 
 describe('the regression alert', () => {
@@ -184,6 +201,15 @@ describe('the regression alert', () => {
     assert.equal(r.code, 0);
     r = await run(['--state', state]);
     assert.equal(r.code, 0);
+  });
+
+  test('🔴 an ABSENT state file (ENOENT) is no known grades: a red reading pages from `unknown`, and the file is written', async () => {
+    const state = join(TMP, 'fresh', 'state.json');
+    mkdirSync(dirname(state), { recursive: true });
+    const r = await run(['--state', state]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PAGE: subscriptiontracker · android-play · crash worsened unknown → red/);
+    assert.equal(JSON.parse(readFileSync(state, 'utf8')).grades['subscriptiontracker|android-play|crash'], 'red');
   });
 
   test('the comparison itself: only green < amber < red are compared', () => {
