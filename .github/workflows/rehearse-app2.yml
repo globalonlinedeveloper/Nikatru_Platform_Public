@@ -32,6 +32,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-flutter
       - uses: ./.github/actions/setup-node
+      # A literal pin (assert-version-consistency.mjs requires one), reached by the same Renovate custom
+      # manager as ci.yml's copy, so a mason_cli bump moves both in one PR (assert-renovate-reach.mjs).
       - name: Install mason_cli
         run: dart pub global activate mason_cli 0.1.4
       # The one native target an ubuntu runner compiles; the same packages ci.yml's stamp probe installs.
