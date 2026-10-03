@@ -1164,7 +1164,7 @@ export const ERASURE_STUCK_AFTER_DAYS = 7;
  * confirm step alone. An order whose subject then completes costs the platform_db
  * re-walk too: MEASURED at 48 statements a subject, so 50 a run was ~2,400
  * statements, past d1.queriesPerInvocation's Paid 1,000 on any firing. 15 is
- * 15 × ERASURE_STATEMENTS_PER_ORDER + 4 = 904. An unfinished erasure is retried
+ * 15 × ERASURE_STATEMENTS_PER_ORDER + 4 = 964. An unfinished erasure is retried
  * the next night, and one waiting past ERASURE_STUCK_AFTER_DAYS is RED.
  *
  * @ceiling d1.queriesPerInvocation lte
@@ -1178,10 +1178,14 @@ export const MAX_ERASURE_RETRIES_PER_RUN = 15;
  * is DERIVED from the schema (erasePlatformRows), so it grows with every
  * user-owned table; 60 leaves room for a few, and the count test is what reds
  * when the schema outgrows it.
+ * ⏱ 2026-10-03 · merge of main into #1191: 60 -> 64. It did red: main's AI meter
+ * and refund tables plus this branch's feedback tables put the whole invocation
+ * at 949 MEASURED (test/scheduled-crons.test.ts), 63 an order, past 15 × 60 + 4
+ * = 904. 15 × 64 + 4 = 964, still under d1.queriesPerInvocation's 1,000.
  *
  * @ceiling none — a measured per-order cost that JOB_STATEMENT_BUDGET multiplies, not a cap on any platform resource.
  */
-export const ERASURE_STATEMENTS_PER_ORDER = 60;
+export const ERASURE_STATEMENTS_PER_ORDER = 64;
 
 export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promise<void> {
   const nowIso = new Date(nowMs).toISOString();
