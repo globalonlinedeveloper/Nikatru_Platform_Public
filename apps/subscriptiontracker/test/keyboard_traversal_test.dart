@@ -189,7 +189,9 @@ import 'support/width_harness.dart';
 // ⏱ 2026-10-01 · ST-SETTINGS (SE-09) merged over club apply-st: 3000 -> 3080
 // for the one Reminders card with its own Preferences card and heading —
 // measured by [_everythingIsLaidOut] on the merged tree (43 px short at 3000).
-const Size kKeyboardSurface = Size(1079, 3080);
+// ⏱ 2026-10-03 · help-search: 3080 -> 3108 for the Help card's "Help centre"
+// row — measured by [_everythingIsLaidOut] (28 px short at 3080).
+const Size kKeyboardSurface = Size(1079, 3108);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -697,8 +699,10 @@ void main() {
         // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
         // ⏱ 2026-10-01 · club apply-st on IM-01/IM-03: both sets — 35 controls,
         // 32 reachable.
-        controls: 35 + core.Money.symbols.length,
-        reachable: 32 + core.Money.symbols.length,
+        // ⏱ 2026-10-03 · help-search: 35 -> 36 and 32 -> 33 — the Help card's
+        // "Help centre" _LinkRow, wired and in the orbit.
+        controls: 36 + core.Money.symbols.length,
+        reachable: 33 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,
