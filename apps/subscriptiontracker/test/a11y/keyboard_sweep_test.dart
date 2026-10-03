@@ -527,7 +527,10 @@ kExpected = <String, ({int controls, int reachable})>{
   // (IN-07, it opens Home filtered), and the still-using question gained its
   // "No" (IN-08).
   // ⏱ T20 (IN-12): 17 -> 18, the header's Share control.
-  '/insights': (controls: 18, reachable: 18),
+  // ⏱ ST-P5 (round-2 F36): 18 -> 19, the Pro card's "Export month report
+  // (PDF)" button — unlocked here, because the swept config has no paywall —
+  // and it is on the Tab orbit like every other.
+  '/insights': (controls: 19, reachable: 19),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.

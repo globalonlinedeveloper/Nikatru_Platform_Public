@@ -59,8 +59,10 @@ class StorageCapabilities {
         secureStoreIsOsBacked: false,
         note: 'Web: no OS keychain is reachable from a page. Secure storage is '
             'WebCrypto over localStorage — better than plaintext, but it cannot '
-            'survive script execution on the origin. Prefer short-lived tokens. '
-            'And ALL apps share ONE origin now that they serve from '
+            'survive script execution on the origin, and the session it holds '
+            'is not short-lived: a 1 h access token, a single-use rotated '
+            'refresh token, and no expiry by the owner\'s rule '
+            '(tooling/mail-transport.json). And ALL apps share ONE origin now that they serve from '
             'nikatru.com/<app> rather than a per-app subdomain: web storage is '
             'origin-scoped, never path-scoped, so app-owned keys must carry the '
             'app id (KeyValueStore is namespaced for exactly this) while the '

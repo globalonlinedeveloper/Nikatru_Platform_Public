@@ -275,6 +275,12 @@ day: on the first SCHEDULED run after the newest graded scan is 20 h old (see
 below). A red one fails this job, which is in `alert`'s
 `needs`, so the durable issue hears first.
 
+THIS JOB OWNS main's advisories. Since 2026-10-01 a pull request's
+`security-scan` runs the script with `--pr-range`, and fails only on an
+advisory in a lockfile that pull request changed; one in an unchanged lockfile
+is printed there (with a `::warning`) and graded here. The canary and the
+floor still run in full on every pull request.
+
 WHY STEPS HERE AND NOT A JOB OF THEIR OWN. A job must be the unit of a
 register row, and a new job with no history makes `assert-ops-register`'s
 unit scan read one job list per run back through the whole page: measured
