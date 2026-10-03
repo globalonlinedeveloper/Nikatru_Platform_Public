@@ -24,3 +24,4 @@
 Text(…)
 a labelling parameter
 a defaulted copy parameter
+a message, hint or span parameter

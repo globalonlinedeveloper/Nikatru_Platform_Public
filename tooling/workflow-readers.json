@@ -320,6 +320,16 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/kit/product-steps/crash-sink.mjs",
+      "property": "workflow-scan",
+      "reads": "deploy-workers.yml's on.workflow_call.secrets, to say whether a deploy delivers an app or service Worker's dsnSecret (new-product.mjs's crash sink step)"
+    },
+    {
+      "path": "tooling/kit/product-steps/site-deploy.mjs",
+      "property": "workflow-scan",
+      "reads": "every deploy-*.yml, for a line naming sites/<id>, to say whether a workflow deploys a site (new-product.mjs's site deploy step)"
+    },
+    {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
       "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit), each job's timeout-minutes and a site job's --project-name, to derive a direct-upload Pages project, its expected commit and its deploy-lane window"
@@ -370,6 +380,12 @@
       "path": "tooling/release/submit-snap.mjs",
       "property": "workflow-scan",
       "reads": "the submission workflow the channel register names (default submit-snap.yml), through parseWorkflow"
+    },
+    {
+      "path": "tooling/review/self-review.mjs",
+      "property": "refuses-blind",
+      "evidence": "the workflow moved or was renamed, so its metrics would be computed on nothing",
+      "reads": "no workflow file: the Actions API's run.path, matched against ci.yml and ops-watch.yml to pick the gate's and ops-watch's runs; a path with no run in a window whose run list was read is a partial report (workflow-moved), exit 2"
     },
     {
       "path": "tooling/scripts/affected-guards.mjs",

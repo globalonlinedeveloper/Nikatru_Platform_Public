@@ -36,6 +36,7 @@ import '../shared/widgets.dart';
 import 'auth_panel.dart';
 import 'legal_consent_fields.dart';
 import 'auth_error_sentence.dart';
+import 'email_code_entry.dart';
 
 // 🏗️ `_Tones` / `_tones()` LEFT THIS FILE ON 2026-09-04 ([ADR 065], chassis
 // step 2) and are now `FormTones` / `formTones()` in
@@ -55,6 +56,9 @@ class LoginScreen extends ConsumerStatefulWidget {
   /// ⏱ 2026-10-01 · EN-13 / EN-14 — the address to correct, when the user came
   /// back from "check your inbox" or "verify your e-mail" to change it.
   final String? initialEmail;
+
+  /// ⏱ 2026-10-01 · EN-21: "Email me a code" on the sign-in arm.
+  static const Key emailCodeButton = Key('loginEmailCode');
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -105,6 +109,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   /// sign-up checklist cannot know before the request. Forgotten on the next
   /// keystroke in the password box, because it was about the old password.
   bool _breached = false;
+
+  /// ⏱ 2026-10-01 · EN-21 — the address a sign-in code was sent to, which
+  /// swaps the form for the code entry; null is the password form. With it,
+  /// the wait the per-address cooldown still owes.
+  String? _codeEmail;
+  Duration _codeWait = Duration.zero;
 
   @override
   void initState() {
@@ -420,6 +430,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
   }
 
+  /// ⏱ 2026-10-01 · EN-21 — "E-mail me a code". [_forgot]'s rules exactly:
+  /// the latch, the empty-field guard in front of it, the captcha spent on the
+  /// call, and a UNIFORM answer — the code entry opens for every address,
+  /// because the send cannot tell an account from none and must not.
+  Future<void> _requestCode() async {
+    if (_loading) return;
+    _hush();
+    final String email = _email.text.trim();
+    if (core.passwordResetProblem(email: email) != null) {
+      _snack(AppLocalizations.of(context).emailRequired);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final Duration wait = await _sendCode(email);
+      if (mounted) {
+        setState(() {
+          _codeEmail = email;
+          _codeWait = wait;
+        });
+      }
+    } catch (e) {
+      _snack(e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// One send, unless the address is still cooling down — then NO mail, and
+  /// the wait that is left: a code sent under a minute ago is still on its way.
+  /// The cooldown is read from the store, so a reload does not reset it.
+  Future<Duration> _sendCode(String email) async {
+    final Duration owed = await emailCodeWait(ref, email);
+    if (owed > Duration.zero) return owed;
+    await captcha.untilReady();
+    await ref
+        .read(authRepositoryProvider)
+        .sendEmailCode(email, captchaToken: captcha.consume());
+    return recordEmailCodeSent(ref, email);
+  }
+
   /// Shows [e] through the ONE shared mapper (`auth_error_sentence.dart`),
   /// which passes a sentence this screen already wrote straight through. The
   /// mapping began here as a private `_friendlyMessage`, the only one any auth
@@ -468,6 +519,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
     // Null (not read yet) is a first visit — see [SignedInBeforeController].
     final bool returning = ref.watch(signedInBeforeProvider) ?? false;
+    // ⏱ 2026-10-01 · EN-21: a code was sent — the code entry, and the gate
+    // its resend spends a token from. Same frame, same brand and panel.
+    if (_codeEmail case final String to) {
+      return AuthFrame(
+        showBack: false,
+        brand: authBrandOf(context),
+        panel: const AuthPanel(),
+        title: l10n.emailCodeTitle,
+        children: <Widget>[
+          emailCodeEntry(
+            email: to,
+            cooldown: _codeWait,
+            onVerify: (String code) => ref
+                .read(authRepositoryProvider)
+                .verifyEmailCode(email: to, code: code),
+            onResend: () => _sendCode(to),
+            onCancel: () => setState(() => _codeEmail = null),
+          ),
+          TurnstileGate(
+            controller: captcha,
+            render: renderTurnstile,
+            onError: _snack,
+          ),
+        ],
+      );
+    }
     // ⏱ 2026-09-29 · ST-D10 (`SignIn`, `SignUp`, `DesktopSignIn`): the page is
     // the shared `AuthFrame` — top-aligned under the 420 form cap, the heading
     // a real heading, the wide split at 1200 dp. What stood here was this
@@ -612,6 +689,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               // not been rebuilt yet. Neither is redundant.
               onPressed: _loading ? null : _forgot,
               child: Text(l10n.forgotPasswordShort),
+            ),
+          ),
+        // ⏱ 2026-10-01 · EN-21: only where THIS build can reach the send
+        // (`emailCodeAvailable`) — a native build waits for the route's `otp`.
+        if (!_signUp && ref.watch(authRepositoryProvider).emailCodeAvailable)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: LoginScreen.emailCodeButton,
+              onPressed: _loading ? null : _requestCode,
+              child: Text(l10n.emailCodeRequest),
             ),
           ),
         // ⚠️ SIGN-UP ONLY. Rendering the boxes on the sign-IN arm would

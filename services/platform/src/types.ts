@@ -2,10 +2,10 @@
 // Shared types for the platform Worker. Keep Env in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The shape of a Cloudflare Rate Limiting binding, as this Worker uses it. */
-export interface RateLimiterBinding {
-  limit(opts: { key: string }): Promise<{ success: boolean }>;
-}
+/** The shape of a Cloudflare Rate Limiting binding. Declared once, beside the
+ *  limiter that reads it (services/_shared/src/rate-limit.ts). */
+import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
+export type { RateLimiterBinding };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
@@ -612,6 +612,14 @@ export interface Env {
    */
   AWS_SES_ACCESS_KEY_ID?: string;
   AWS_SES_SECRET_ACCESS_KEY?: string;
+  /**
+   * port-ai · OUR Anthropic key, for the AI port's `anthropic` adapter
+   * (src/adapters/ai/anthropic.ts; tooling/ports/ai.json). Server-only: it never
+   * reaches a client or a log. src/ports.ts `aiFor` is the one reader, and it
+   * builds no provider without T17's meter (`beforeCall`), so the key alone can
+   * make no call. Held in the vault; provisioned on the Worker by T17.
+   */
+  NIKATRU_ANTHROPIC_API_KEY?: string;
   /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has

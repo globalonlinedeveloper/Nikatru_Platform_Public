@@ -1847,8 +1847,8 @@
           },
           "event": "schedule",
           "headBranch": "main",
-          "firstDue": "2026-10-03T00:00:00Z",
-          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.name-clearance.yml's (TRAPS ci-18): the job's run history does not exist until the job is on the default branch, so this row and its record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-09-28 07:45 UTC is that Monday; 2026-10-03 gives it ~112h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-25, which is the bound the guard enforces. ⚠️ IF THIS MERGES AFTER 2026-09-28 07:45 UTC the first slot is 2026-10-05, so this date must move to 2026-10-08 in the same pull request. No owner step stands before the first slot: the job reads under its own workflow token (ruling D1, 2026-09-25). ⚠️ THE FIRST SLOT IS GREEN ONLY IF THE QUOTA FLOOR LETS IT START: a slot at which GET /rate_limit reports fewer than 700 remaining (the 400 floor plus the 300 ceiling) is exit 2 by design, which is a failed job. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "firstDue": "2026-10-08T00:00:00Z",
+          "firstDueWhy": "⏱ MOVED 2026-10-03 00:50Z (lead 7185eb) from 2026-10-03 to 2026-10-08, to the date the ⚠️ below names for the next slot: the 2026-09-28 Monday slot fired 8h14m late as run 36447758185 (15:59Z) and this job RAN and FAILED, exit 1, `UNEXPLAINED: 31` (31 failed runs with no row in tooling/ops/failed-run-causes.json). That is real ledger content, not wiring: those causes are mapped before the 2026-10-05 07:45 UTC slot (lane fix/duty-record-window), and that slot is the first that can succeed. The passed date reddened ops-watch run 37080147071 and, through the 2026-09-11 freeze replay (INV1/INV2, Guards shard 2), every pull request's CI from 00:00Z. ⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.name-clearance.yml's (TRAPS ci-18): the job's run history does not exist until the job is on the default branch, so this row and its record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-09-28 07:45 UTC is that Monday; 2026-10-03 gives it ~112h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-25, which is the bound the guard enforces. ⚠️ IF THIS MERGES AFTER 2026-09-28 07:45 UTC the first slot is 2026-10-05, so this date must move to 2026-10-08 in the same pull request. No owner step stands before the first slot: the job reads under its own workflow token (ruling D1, 2026-09-25). ⚠️ THE FIRST SLOT IS GREEN ONLY IF THE QUOTA FLOOR LETS IT START: a slot at which GET /rate_limit reports fewer than 700 remaining (the 400 floor plus the 300 ceiling) is exit 2 by design, which is a failed job. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
           "why": "🔴 `unit: { jobs: ['failure-ledger'] }` — the job, not the run: ops-watch.yml runs twelve slots a day and a run is green whenever its daily readers are, which says nothing about a job that runs on one slot a week. `event: schedule` because a workflow_dispatch run is a person pressing the button, not the cadence. duty.workflow.ops-watch.yml's own unit does NOT gain this job: a weekly job in a daily unit would be neutral six days in seven and hide nothing, and one row per duty keeps each verdict about one thing. ⚠️ THE SCAN DEPTH IS STATED, NOT ASSUMED: the unit read selects from the shared ops-watch.yml page of the newest 100 runs on main, and at twelve slots a day that page reaches back ~8.3 days, past one Monday slot. A run older than the page cannot supply a success, which is correct here — a success older than 8.3 days is already more than one weekly slot old. ⚠️ THE JOB LISTS ARE NOT READ PER RUN: the unit scan reads this job's weekdays out of its own `if:` (scheduleWeekdays in tooling/ci/assert-ops-register.mjs) and reads the job list of a schedule run only when it was created on a Monday (UTC). Without that filter every run back to the newest Monday cost one job-list read, up to ~84 per guard run, and the 2026-09-11 replay made 44 GitHub requests against its ceiling of 30; with it the replay is back inside the ceiling. The one miss is loud: a Monday slot the scheduler created on a Tuesday is not read, so no success is found and this row ages red."
         }
       },
@@ -2039,6 +2039,50 @@
       ],
       "source": "unverified",
       "unverifiedWhy": "The workflow has not run yet: a schedule and a dispatch exist only once the file is on the default branch. Its first runs are DRY, beside the laptop landers, until the lead's cut-over sets LAND_DRY_RUN to false."
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-REVIEWS-DEPEND-ON-THE-LAPTOP. The owner rule of 2026-09-29 (an auth, money, user-data or API pull request gets an independent review before it may merge) lived only on the laptop: a hold list, approve files and a daemon. This workflow labels the review-classed pull requests on GitHub, and land-next.mjs waits for an owner verdict review on the head. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.review-gate.yml",
+      "kind": "duty",
+      "what": "On every opened, synchronized, reopened or ready-for-review pull request, tooling/autopilot/review-paths.mjs reads the PR's file list over the API and adds `needs-review` when a path matches a class in tooling/autopilot/review-paths.json (auth, money, user-data, api) or the list cannot be read whole; on a new head it removes `review:approve` / `review:changes`, because a verdict is pinned to the head it read. It never removes `needs-review`. It runs from main under pull_request_target and never checks out the PR's code.",
+      "detector": "The run's own exit: review-paths.mjs exits 1 when a label write was refused. tooling/ci/test/autopilot-review-gate.test.mjs holds every class, the fail-closed list, the synchronize rule and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the classes it found and the labels it changed. A missing `needs-review` on a review-classed PR is added by hand; land-next.mjs then waits for the verdict like any other.",
+      "cadence": "trigger",
+      "trigger": "a pull request opened, synchronized, reopened or marked ready for review",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/review-gate.yml",
+        "record": "GitHub Actions run history for review-gate.yml, and the labels on each pull request",
+        "failingValue": "conclusion = failure — a label write was refused",
+        "readBy": "tooling/ci/test/autopilot-review-gate.test.mjs on every CI run (the decisions and the shell); land-next.mjs reads the labels it sets. NOT graded RED-SINCE: it has no workflow_dispatch, and its next pull request event re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a pull_request_target workflow runs from the default branch, so its first run is the first pull request event after this row reaches main."
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-WATCH-RUNS-ON-THE-LAPTOP. The cloud-lane watch, the run ledger and E2E-after-deploy ran only as laptop daemons, so all three stopped when the laptop was off. They read only GitHub facts, so they run here in both modes. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.autopilot-watch.yml",
+      "kind": "duty",
+      "what": "Every 15 minutes and on each CI, E2E live or Land completion, tooling/autopilot/watch.mjs reads the laptop heartbeat (opening, editing or closing ONE `laptop-off` issue on a transition), the open same-repo PR board (newest ci-gate run per head, STALL past 6 h), every run that ended red in the last 12 h with an owner and a cause, and the open `land-freeze` issue, and edits the body of ONE `Autopilot ledger` issue with public facts only. A second job dispatches e2e.yml on main when the head a CI run deployed to web is not E2E-proven and touches an app or shared UI path (at most once per 30 minutes; never while an `e2e-hold` issue is open).",
+      "detector": "The run's own exit: watch.mjs exits 1 when a write was refused or a body was refused as not public, 2 when it could not look. tooling/ci/test/autopilot-ledger.test.mjs holds every decision and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the laptop state, the ledger edit and the E2E decision. The ledger issue is the record; a stale ledger means this workflow stopped, which its run history shows.",
+      "cadence": "trigger",
+      "trigger": "a 15-minute schedule, completion of CI, E2E live or Land, or a manual dispatch",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/autopilot-watch.yml",
+        "record": "GitHub Actions run history for autopilot-watch.yml, the `Autopilot ledger` issue body it edits, and the `laptop-off` issues it opens and closes",
+        "failingValue": "conclusion = failure — a write or a body was refused, or the watch could not look",
+        "readBy": "tooling/ci/test/autopilot-ledger.test.mjs on every CI run (the decisions and the shell); the lead, through the ledger issue. NOT graded RED-SINCE on purpose: a transient GitHub read failure would otherwise turn every pull request's ci-gate red until the next slot (TRAPS ci-26), and its next 15-minute slot re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a schedule exists only once the file is on the default branch."
     },
     {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
@@ -2565,6 +2609,10 @@
       "detector": "A GlitchTip heartbeat monitor (id 6): the script POSTs on success, and the monitor goes red on ABSENCE. 🔴 THIS ROW CLAIMED TO BE 'the one provably complete alarm chain in the portfolio and the template every other row is measured against' AND IT WAS THE ONLY BROKEN ONE. Monitor 6 was created with project_id = NULL; GlitchTip joins alert -> project -> monitor to find recipients, so the recipient set was empty and it went Down 13 times of 41 checks telling nobody, while the dashboard drew it red. Fixed and PROVEN 2026-08-05 — assigned to project `ops`, forced a real Down and a real recovery, both emails delivered (evidence in tooling/ops/alarm-chains.json). Now enforced by tooling/ops/verify-alarm-chains.mjs, which fails if any monitor has no project, if any project hosting a monitor has no uptime recipient, or if a chain has never been observed delivering. ⏱ SECOND DETECTOR ADDED 2026-09-08 — see `remotelessHistoryLimb` on this row. The heartbeat watches SILENCE; it cannot see a run that succeeds while a repo with no git remote leaves its only off-machine history behind. That state happened, for three and a half hours, and is now a throw before the POST rather than a green run.",
       "response": "Email from the GlitchTip alert rule; run the task by hand and read its log.",
       "cadence": "8h",
+      "outage": {
+        "cloudTwin": "none: laptop-only (the vault, the Drive OAuth and the local corpus live there)",
+        "laptopOnly": "the whole backup; the Windows task has StartWhenAvailable=True, so it catches up on boot, and past DEGRADED_MAX_H of outage this row is red again"
+      },
       "remotelessHistoryLimb": {
         "_why": [
           "🔴 ADDED 2026-09-08 BECAUSE THIS DUTY'S OWN JUSTIFICATION HAD GONE FALSE FOR TWO REPOS.",
@@ -2653,6 +2701,10 @@
       "detector": "GlitchTip heartbeat monitor 29 `Laptop routine: ops check`, project `ops`, interval 50400 s. The interval is 12 h of cadence plus 2 h of slack, and the slack is not decorative: at exactly 43200 s the observed gap between the 2026-09-06T14:40:01Z and 2026-09-07T02:42:20Z check-ins was 12 h 02 m, i.e. already past the window, so the monitor was one slow run away from a spurious Down. Corrected to 50400 s on 2026-09-08 through the full-replace PUT, because PATCH on this endpoint returns 405.",
       "response": "Read the routine's own record and the ntfy digest for the last run, then run it by hand. ⚠️ MEASURED 2026-09-09T19:19Z WHILE THIS ROW WAS BEING WRITTEN, AND RECORDED RATHER THAN TIDIED AWAY: monitor 29's newest check-in was 2026-09-08T02:41:54Z, about 16.6 h earlier, so the 14:30Z run of 2026-09-08 did not beat. `isUp` still read True because GlitchTip had not yet evaluated the window. That is this detector doing its job on the day it was declared, and it is the routine's own to fix, not this row's.",
       "cadence": "12h",
+      "outage": {
+        "cloudTwin": "the platform Worker's cron (#802) and ops-watch.yml",
+        "laptopOnly": "the SSH and vault checks of Box B and Box C"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
@@ -2703,6 +2755,10 @@
       "detector": "GlitchTip heartbeat monitor 30 `Laptop routine: CI watchdog`, project `ops`, interval 7200 s — one hour of cadence plus one hour of slack. 🔴 THE ROUTINE'S SILENCE RULE GOVERNS ntfy AND THE RECORD FILE, NEVER THE HEARTBEAT. \"Nothing was stuck\" is a COMPLETED run and MUST beat; if the silence rule reached the beat, this monitor would go Down on the routine working perfectly.",
       "response": "Read the routine's record for the last run and run it by hand. The 2026-09-08 incident is the worked example and is worth reading before assuming a defect: the monitor went Down at 15:16:09Z with the routine's own `lastRunAt` at 17:31:40Z, i.e. THE ROUTINE WAS RUNNING THE WHOLE TIME. The monitor was correct and the routine was correct; the WIRE between them had been lost when the three routines were recreated that day. Check the beat one-liner in the task prompt before suspecting either end.",
       "cadence": "1h",
+      "outage": {
+        "cloudTwin": "the platform Worker's cron (#808, cancels stuck runs) and land.yml (merges)",
+        "laptopOnly": "reaping the reaper: the laptop-side checks of its own routines and agents"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
@@ -2753,6 +2809,10 @@
       "detector": "GlitchTip heartbeat monitor 33 `Laptop routine: pipeline driver`, project `ops`, Heartbeat, interval 86400 s, confirmationThreshold 2. CREATED 2026-09-09; before that this routine had NO absence alarm at all and was the only one of the three whose disappearance nothing outside this laptop would have noticed. 🔴 THE THRESHOLD IS LOAD-BEARING, NOT DECORATIVE. GlitchTip refuses any interval above 86400 s (HTTP 422, `Input should be less than or equal to 86400` — the same wall duty.restic-snapshot records hitting on 2026-09-05), and 86400 s is EXACTLY this routine's cadence, so threshold 1 would take it Down on a few minutes of ordinary drift. A monitor that cries wolf daily gets muted, which is the same end state as no monitor. Threshold 2 alarms after roughly two missed days instead.",
       "response": "Read the routine's record (`Private/docs/areas/history.md`) and the `nikatru-digest` ntfy topic for the last run, then run it by hand. ⚠️ Its beat one-liner reads the URL out of the gitignored vault at run time; if the key is lost, the routine prints a one-line gap notice on every run instead of skipping silently, and that notice reaches the record and the digest.",
       "cadence": "1d",
+      "outage": {
+        "cloudTwin": "the autopilot runner routines' pipeline-driver fallback, OFF by default (tooling/autopilot/contract.json `pipelineDriverFallback` is false)",
+        "laptopOnly": "moving the next pipeline item: it writes the remote-less Private corpus"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
@@ -3345,7 +3405,7 @@
       "detector": "assert-ops-register.mjs: the exercise date is bounded by this row's cadence, so a revert path drilled once never stays green.",
       "response": "Dispatch the workflow at the previous SHA and confirm /v1/health.",
       "cadence": "365d",
-      "lastDone": null,
+      "lastDone": "2026-10-02",
       "mechanism": {
         "substrate": "github-actions",
         "anchor": ".github/workflows/deploy-workers.yml",
@@ -3359,7 +3419,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Deliberately re-deploying an older SHA over live production is a destructive act against a live surface; it is not something an agent performs unasked.",
-      "source": "verified"
+      "source": "verified",
+      "verifiedHow": "⏱ 2026-10-02 · PB-09 drill (PR #1115): Actions ▸ Rollback, unit = platform, re-promoted the newest ledger Deployment 6801839308 through rollback.mjs → `wrangler rollback`; the re-promotion, the unit's smoke and the ledger record were all green in run 36970507126. That run is this row's `lastDone`. The Pages revert rows stay undated: their drills (runs 36970520119, 36970542712) were refused by Cloudflare 8000039 and are re-drilled once the already-live no-op lands."
     },
     {
       "id": "revert.worker.subscriptiontracker-api",
@@ -5435,14 +5496,14 @@
       "id": "duty.edge-shield-in-path",
       "kind": "duty",
       "what": "LEAD RULING SHIELD-R1 §7, row O-BOXES-UNSHIELDED-FROM-SPIKES — services/edge-shield is still in front of Box C (auth-api.nikatru.com/auth/v1/*) and Box B (glitchtip.nikatru.com/api/*). The shield marks every answer it passes `x-nikatru-shield: 1`; a zone route deleted in the dashboard, the Worker deleted, or the Worker throwing (so passThroughOnException hands the request straight to the origin) all leave the box answering exactly as before, with no edge limit in front of it. The header is the only difference, and this duty reads it. ⏱ 2026-09-27 (LEAD RULING SHIELD-R3): the shield's per-IP half is the nikatru.com zone's own rate-limiting rule on the credential paths, declared in tooling/edge-ratelimit-rule.json; a dashboard edit or deletion of that rule is just as invisible from the boxes, so the same job compares the live rule with the file.",
-      "detector": "tooling/ops/check-edge-shield.mjs, run WEEKLY (the Monday 07:45 UTC slot, and on any workflow_dispatch) by .github/workflows/ops-watch.yml as its own job `edge-shield` (the unit of this row, so it overlaps no other duty [INV3]), and with --settle as the post-deploy smoke of deploy-workers.yml's edge-shield job. It first holds its two probes (GET the GoTrue JWKS, POST a keyless envelope) against the zone routes services/edge-shield/wrangler.jsonc declares, both ways. Three-valued: 0 both answers carry the header · 1 an answer without it — shield not in path · 2 COULD NOT LOOK (the routes unreadable or not covered by the probes, or a probe never answered after the bounded retry and its second look). The job's second step, tooling/ops/edge-ratelimit-rule.mjs (no --apply), reads the zone's http_ratelimit phase and compares it with tooling/edge-ratelimit-rule.json: 0 equal · 1 differs, each field named · 2 could not look.",
+      "detector": "tooling/ops/check-edge-shield.mjs, run WEEKLY (the Monday 07:45 UTC slot, and on any workflow_dispatch) by .github/workflows/ops-watch.yml as its own job `edge-shield` (the unit of this row, so it overlaps no other duty [INV3]), and with --settle as the post-deploy smoke of deploy-workers.yml's edge-shield job. It first holds its two probes (GET the GoTrue JWKS, POST a keyless envelope) against the zone routes services/edge-shield/wrangler.jsonc declares, both ways. Three-valued: 0 both answers carry the header · 1 an answer without it — shield not in path · 2 COULD NOT LOOK (the routes unreadable or not covered by the probes, or a probe never answered after the bounded retry and its second look). The job's second step, tooling/ops/edge-ratelimit-rule.mjs (no --apply), reads the zone's http_ratelimit phase and compares it with tooling/edge-ratelimit-rule.json: 0 equal · 1 differs, each field named · 2 could not look. ⏱ 2026-10-01 (lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED): the same job also runs tooling/ops/check-edge-zone.mjs, which reads the zone against tooling/edge/zone.json (records DNS-only outside the declared list, WAF custom rules, Access apps) and asks GET / of every Access-gated host for the 302 to the Access login (PB-19).",
       "response": "Exit 1 fails the edge-shield job, which the alert job `needs`, so it reaches the durable ops-watch issue; the annotation names the two zone routes to check on the nikatru.com zone and says to read the edge-shield Worker's logs for exceptions, then redeploy it from main. Exit 2 is the separate \"nothing was judged\" state and fails too.",
       "cadence": "7d",
       "mechanism": {
         "substrate": "github-actions",
         "anchor": "tooling/ops/check-edge-shield.mjs",
         "record": "GitHub Actions run history for .github/workflows/ops-watch.yml (event = schedule) — a failing step is a failing run. The durable-issue clause is deliberately not restated here, for the reason duty.analytics-silence-judgment records (assert-alert-disposition.mjs derives its sources from it).",
-        "failingValue": "a non-zero exit from tooling/ops/check-edge-shield.mjs or tooling/ops/edge-ratelimit-rule.mjs (the latter's exit 1 is driven by tooling/ci/test/edge-ratelimit-rule.test.mjs with a stubbed zone whose rule differs from the file). REACHABLE by construction and by test: tooling/ci/test/edge-shield-probe.test.mjs drives the script with one probe answered without the header (exit 1), with every probe unanswered (exit 2), and with a route that has no probe (exit 2). NOT YET REACHED LIVE: the shield is not deployed until the row that opens it (O-BOXES-UNSHIELDED-FROM-SPIKES) merges; today, before that merge, both probes answer without the header, which is exactly exit 1.",
+        "failingValue": "a non-zero exit from tooling/ops/check-edge-shield.mjs or tooling/ops/edge-ratelimit-rule.mjs (the latter's exit 1 is driven by tooling/ci/test/edge-ratelimit-rule.test.mjs with a stubbed zone whose rule differs from the file). REACHABLE by construction and by test: tooling/ci/test/edge-shield-probe.test.mjs drives the script with one probe answered without the header (exit 1), with every probe unanswered (exit 2), and with a route that has no probe (exit 2). NOT YET REACHED LIVE: the shield is not deployed until the row that opens it (O-BOXES-UNSHIELDED-FROM-SPIKES) merges; today, before that merge, both probes answer without the header, which is exactly exit 1. Or a non-zero exit from tooling/ops/check-edge-zone.mjs, whose exit 1 is driven by tooling/ci/test/edge-zone.test.mjs with a stubbed zone holding one proxied=false A record, a stubbed account missing an Access app, and a gated host answering 200.",
         "readBy": ".github/workflows/ops-watch.yml — the edge-shield job, whose non-zero exit fails that job and files the durable issue; and .github/workflows/deploy-workers.yml's edge-shield job, which runs the same script with --settle so a deploy that did not put the shield in path is red where it happened.",
         "recordQuery": {
           "reader": "github-run-history",

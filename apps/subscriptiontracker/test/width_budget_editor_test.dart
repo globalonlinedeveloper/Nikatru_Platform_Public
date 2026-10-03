@@ -87,6 +87,15 @@ void main() {
     expect(_editorWidth(tester), lessThanOrEqualTo(AppBreakpoints.medium));
   });
 
+  // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class.
+  testWidgets('at 1024 (expanded) it is the same 600 dialog', (
+    WidgetTester tester,
+  ) async {
+    await _openAt(tester, kExpanded);
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(_editorWidth(tester), lessThanOrEqualTo(AppBreakpoints.medium));
+  });
+
   testWidgets('at 1920 the dialog is still 600 at most', (
     WidgetTester tester,
   ) async {

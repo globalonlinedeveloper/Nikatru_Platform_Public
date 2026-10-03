@@ -113,8 +113,11 @@ import {
   stepModel,
   storePublishSteps,
   publishBasenamesOf,
+  shellSegments,
+  COMPOSER_CALL,
+  RELEASE_BUILD,
 } from './workflow-scan.mjs';
-import { SUBMIT_PRECONDITIONS, submits, DECLARATION_EXEMPT } from './submit-preconditions.mjs';
+import { SUBMIT_PRECONDITIONS, submits, DECLARATION_EXEMPT, PUBLIC_REACH, isNativeRow } from './submit-preconditions.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -754,6 +757,17 @@ function ownerWordLimb(problems, summaries) {
 //     for the gate to be skipped while the job goes on;
 //   · in a job that publishes, AHEAD of the job's first store publish step. A
 //     gate after the upload grades a submission already made.
+//   · ⏱ 2026-10-01 — in a job that publishes NOTHING (the dry run), AFTER the
+//     job's last build or pack step (BUILD_OR_PACK). Row
+//     O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): every dry run ran its
+//     gates before the build, so a red name clearance ended each rehearsal
+//     before anything was built, and no rehearsal built anything from
+//     2026-09-25. A red gate after the build still fails the job and skips the
+//     submit job; it just no longer blinds the rehearsal. A REAL submit job keeps
+//     its gates first, by the rule above.
+//   · ⏱ 2026-10-01 — every submitting NATIVE row has a submit-preconditions.mjs
+//     PUBLIC_REACH entry (O-SUBMIT-LANES-IGNORE-NATIVE-AUTH): without one the
+//     nativeAuth gate cannot tell its public step from its internal one.
 //
 // ⚠️ WHAT THIS CANNOT PROVE. That the gate passes — that is the gate's own run,
 // in the lane. This limb proves the lane ASKS, which is the shape whose absence
@@ -765,9 +779,18 @@ function ownerWordLimb(problems, summaries) {
 //   · a table guard is not on disk, or a channel the table names outright is not
 //     a register row;
 //   · a row's workflow, or its `submission.job`, is not in the resolved tree;
+//   · a job that publishes nothing holds a gate and no build or pack step, so the
+//     AA-02 order has nothing to be after (a build respelled past BUILD_OR_PACK);
 //   · zero (row, gate) pairs to grade.
 // A submission row no table entry applies to is PRINTED with its surface on
 // every run (NOT GRADED), so an ungraded lane is on screen rather than silent.
+
+/** ⏱ 2026-10-01 (AA-02) — a step that BUILDS or PACKS the artifact a dry run rehearses, read per
+ *  shell segment of its `run:`: the release-build composer and a bare `flutter build` (workflow-scan.mjs's
+ *  own patterns, not a copy), `snapcraft pack`, and `msix:create`. A build respelled past these leaves a
+ *  gating job with no build to order against, which is COVERAGE LOST rather than "every gate is after it". */
+const BUILD_OR_PACK = [COMPOSER_CALL, RELEASE_BUILD, /(?:^|\s)snapcraft\s+pack(?=\s|$)/, /(?:^|\s|:)msix:create(?=\s|$)/];
+const buildsOrPacks = (run) => shellSegments(String(run ?? '')).some((seg) => BUILD_OR_PACK.some((re) => re.test(seg)));
 
 const COE_STEP = /^ {6}(?:- | {2})continue-on-error:\s*(.+?)\s*$/;
 const COE_JOB = /^ {4}continue-on-error:\s*(.+?)\s*$/;
@@ -822,6 +845,8 @@ function preconditionsLimb(problems, summaries) {
   const mine = [];
   const graded = [];
   const ungraded = [];
+  /** Jobs that publish nothing, hold a gate, and build or pack nothing BUILD_OR_PACK recognises. */
+  const unbuilt = new Set();
   for (const row of submitting) {
     // The register rides along: an entry may apply by what the register says of
     // the row's channel (⏱ 2026-09-26, the sworn-declaration gate), not only by the row.
@@ -845,6 +870,8 @@ function preconditionsLimb(problems, summaries) {
       }
       const steps = readSteps(job);
       const firstPublish = steps.findIndex((raw) => publishing.some((p) => p.job === job && p.raw.n === raw.n));
+      // AA-02: the last step that builds or packs, which a gate in a job that publishes nothing must follow.
+      const lastBuild = steps.reduce((at, raw, i) => (buildsOrPacks(stepModel(raw).run) ? i : at), -1);
       const jobCoe = job.lines.map((l) => l.text.match(COE_JOB)).find(Boolean);
       for (const e of entries) {
         const arg = e.arg(row);
@@ -872,6 +899,15 @@ function preconditionsLimb(problems, summaries) {
         if (firstPublish !== -1 && found.i > firstPublish) {
           masks.push(`it runs after the job's first store publish step (${placeOf(wf, steps[firstPublish].n)}), so it grades a submission already made`);
         }
+        if (firstPublish === -1 && lastBuild === -1) {
+          unbuilt.add(`${W} job "${name}"`);
+        } else if (firstPublish === -1 && found.i < lastBuild) {
+          masks.push(
+            `GATE BEFORE THE BUILD: this job publishes nothing, and the gate runs before its last build or pack step (${placeOf(wf, steps[lastBuild].n)}), ` +
+              'so a red gate ends the rehearsal before the artifact it rehearses was built. Move it after the job\'s store dry run, ' +
+              'before the sha256 hand-off (O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL, AA-02)',
+          );
+        }
         const label = `${placeOf(wf, found.raw.n)} job "${name}" channel ${row.id}`;
         // ⏱ O-REAL-SUBMISSION-FLAG-UNGUARDED and LEAD RULING O-A2-R1 (absent from open.json on 2026-09-27; 9b, rv-c22).
         // The ruling's refusal of an undeclared channel rests on this one flag: without it the
@@ -881,7 +917,7 @@ function preconditionsLimb(problems, summaries) {
           const carries = found.words.includes(e.realFlag);
           if (firstPublish !== -1 && !carries) {
             masks.push(
-              `REAL SUBMISSION UNMARKED: this job publishes to the store and the step does not pass ${e.realFlag}, so its declaredOn ` +
+              `REAL SUBMISSION UNMARKED: this job publishes to the store and the step does not pass ${e.realFlag}, so the ` +
                 'gate grades the real submission as a dry run and never refuses (O-REAL-SUBMISSION-FLAG-UNGUARDED)', // (absent from open.json on 2026-09-27)
             );
           } else if (firstPublish === -1 && carries) {
@@ -914,6 +950,27 @@ function preconditionsLimb(problems, summaries) {
       mine.push(`STALE EXEMPTION  ${row.id}\n    DECLARATION_EXEMPT exempts a channel that a declaration gate applies to; one of the two is wrong`);
     }
   }
+  // ⏱ 2026-10-01 (O-SUBMIT-LANES-IGNORE-NATIVE-AUTH): the nativeAuth gate refuses a native row's PUBLIC steps
+  // only, and reads which steps those are from PUBLIC_REACH. A submitting native row with no entry would
+  // exit COVERAGE LOST in its lane, found on the day of a dispatch; here it is found on the PR.
+  const nativeIds = new Set(submitting.filter((r) => isNativeRow(register, r)).map((r) => r.id));
+  for (const id of nativeIds) {
+    if (!Object.hasOwn(PUBLIC_REACH, id)) {
+      mine.push(
+        `NO PUBLIC REACH  ${id}\n    a submitting native row, and submit-preconditions.mjs PUBLIC_REACH declares no entry for it: ` +
+          'which of its submission steps reach the public is unsaid, so the nativeAuth gate can neither refuse them nor leave the rest open',
+      );
+    }
+  }
+  for (const id of Object.keys(PUBLIC_REACH)) {
+    if (!nativeIds.has(id)) mine.push(`STALE PUBLIC REACH  ${id}\n    PUBLIC_REACH declares a channel that is not a submitting native row of ${REGISTER_REL}`);
+  }
+  for (const u of unbuilt) {
+    coverage.push(
+      `${u} publishes nothing and holds precondition gates, and no step in it builds or packs (BUILD_OR_PACK: the release-build composer, flutter build, snapcraft pack, msix:create).`,
+      'A gate there is ordered against its last build, so a build respelled past those patterns would leave every gate "after" nothing.',
+    );
+  }
   for (const u of ungraded) console.log(`NOT GRADED  ${u.line} — no entry of submit-preconditions.mjs applies to this row.`);
   for (const g of graded) console.log(`PRECONDITION  ${g.label}\n              ${g.cmd}`);
   if (graded.length === 0 && mine.length === 0 && coverage.length === 0) {
@@ -932,7 +989,7 @@ function preconditionsLimb(problems, summaries) {
     const wfs = new Set(graded.map((g) => g.wf)).size;
     const channels = new Set(graded.map((g) => g.channel)).size;
     summaries.push(
-      `preconditions: ${graded.length} gate step(s) across ${jobs} job(s) in ${wfs} workflow(s), for ${channels} channel(s) — each unconditional, unmasked, and ahead of any store publish in its job.` +
+      `preconditions: ${graded.length} gate step(s) across ${jobs} job(s) in ${wfs} workflow(s), for ${channels} channel(s) — each unconditional, unmasked, ahead of any store publish in its job, and after the last build in a job that publishes nothing.` +
         (ungraded.length ? ` Not graded: ${ungraded.map((u) => u.id).join(', ')} (no table entry applies).` : ''),
     );
   }

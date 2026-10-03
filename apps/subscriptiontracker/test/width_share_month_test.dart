@@ -76,6 +76,20 @@ void main() {
     expect(_rowWidth(tester), lessThanOrEqualTo(AppBreakpoints.medium));
   });
 
+  // ⏱ 2026-10-02 · train P39 (SYN-X1 C-17): expanded and extra-large.
+  for (final (Size window, String _) in <(Size, String)>[
+    (kExpanded, 'expanded'),
+    (kWide, 'extra-large'),
+  ]) {
+    testWidgets('${window.width.toInt()} keeps the dialog at its cap', (
+      WidgetTester tester,
+    ) async {
+      await _openAt(tester, window);
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(_rowWidth(tester), lessThanOrEqualTo(AppBreakpoints.medium));
+    });
+  }
+
   testWidgets('a desktop window does not stretch it to the window', (
     WidgetTester tester,
   ) async {

@@ -58,6 +58,19 @@
 //   allow list  tooling/mail-transport.json supabaseAuth.uri_allow_list holds
 //               the bare callback and one EXACT entry per marker, and no
 //               wildcard on a custom scheme
+//   web         (⏱ 2026-10-01 · rv2-newproduct-009, O-AUTH-ALLOW-LIST-HAND-KEPT)
+//               the allow list admits every in-scope app's WEB redirects —
+//               `<publicAppUrl(id)>/**` and `https://<hosts.pagesOrigin>/**` from
+//               its app.yaml — and the whole list EQUALS `allowListFor(root)`, the
+//               one generation (tooling/kit/stamp-shared.mjs writes it). It was
+//               hand-kept: app #2's web sign-up confirmation, reset and OAuth
+//               would have come back to SITE_URL — app #1 — with this guard green,
+//               because the allow-list limb only ever read native schemes.
+//               (⏱ 2026-10-02) It also admits the PLATFORM's own redirect — the
+//               desktop system-browser hand-off page (#1133), read from its one
+//               declaration, `kHandoffConnectUrl` in HANDOFF_DECL. #1138 recorded
+//               it in the list by hand after the live config carried it; the
+//               generation now produces it, so the record and the generator agree.
 //   calls       every signUp / resend / signInWithOtp / signInWithOAuth /
 //               resetPasswordForEmail / linkIdentity / updateUser(email:) call
 //               in packages/auth_supabase/lib passes `redirects(AuthFlow.<flow>)`
@@ -85,25 +98,29 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
+import { APEX_ORIGIN, publicAppUrl } from '../sites/apex.mjs';
 
 const NAME = 'assert-auth-callbacks';
 
 export const SCHEME_PREFIX = 'com.nikatru.';
 export const CALLBACK_HOST = 'auth-callback';
 export const MARKER_KEY = 'nk_auth';
-/** Seven link-sending calls exist today (signUp, resend ×2 — the session's and,
+/** Eight link-sending calls exist today (signUp, resend ×2 — the session's and,
  *  since ST-A5 on 2026-09-27, the no-session one for "check your inbox" —
- *  signInWithOAuth, resetPasswordForEmail, linkIdentity, and since ST-SETTINGS
- *  SE-02 on 2026-10-01 updateUser(email:) for "Change e-mail"). Fewer found
- *  means the scan stopped reaching them — a rename, a move — not that the
- *  links got fixed. */
-export const MIN_LINK_CALLS = 7;
+ *  signInWithOAuth, resetPasswordForEmail, linkIdentity, since ST-SETTINGS
+ *  SE-02 on 2026-10-01 updateUser(email:) for "Change e-mail", and since EN-21
+ *  on 2026-10-02 the e-mail code's signInWithOtp; measured by this scan: 8).
+ *  Fewer found means the scan stopped reaching them — a rename, a move — not
+ *  that the links got fixed. */
+export const MIN_LINK_CALLS = 8;
 
 export const AUTH_REDIRECT = 'packages/auth_supabase/lib/src/auth_redirect.dart';
 export const AUTH_LIB = 'packages/auth_supabase/lib';
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';
 export const BRICK_PROVIDERS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
-export const REPO_INPUTS = [AUTH_LIB, MAIL_TRANSPORT, BRICK_PROVIDERS];
+/** The one declaration of the platform's hand-off page (packages/core). */
+export const HANDOFF_DECL = 'packages/core/lib/src/auth/browser_handoff.dart';
+export const REPO_INPUTS = [AUTH_LIB, MAIL_TRANSPORT, BRICK_PROVIDERS, HANDOFF_DECL];
 /** Where an app constructs its auth repository: the chassis split file first,
  *  then the single file the brick stamps. */
 const PROVIDER_FILES = ['lib/state/providers/auth.dart', 'lib/state/providers.dart'];
@@ -523,6 +540,68 @@ export function checkRegistrations(root) {
 }
 
 // ── the allow list ───────────────────────────────────────────────────────────
+/** The local dev servers GoTrue sends a link back to, kept by hand because no
+ *  declaration names them: :3000 is the web dev server (.claude/launch.json) and
+ *  :8080 the `flutter run -d web-server` default. */
+export const LOCAL_DEV_REDIRECTS = Object.freeze(['http://localhost:3000/**', 'http://localhost:8080/**']);
+
+/** An app's two web redirect entries, from its app.yaml: the public address on
+ *  the apex [ADR 075] and its Pages preview origin. `{ entries, problem }`. */
+export function webRedirectsOf(appDir) {
+  let doc = null;
+  try {
+    const text = read(join(appDir, 'app.yaml'));
+    doc = text === null ? null : parseYaml(text);
+  } catch {
+    doc = null;
+  }
+  const id = typeof doc?.id === 'string' ? doc.id : basename(resolve(appDir));
+  const pages = doc?.hosts?.pagesOrigin;
+  if (typeof pages !== 'string' || pages === '') {
+    return { entries: [`${publicAppUrl(id)}/**`], problem: 'app.yaml declares no hosts.pagesOrigin, so its Pages preview redirect cannot be derived' };
+  }
+  return { entries: [`${publicAppUrl(id)}/**`, `https://${pages}/**`], problem: null };
+}
+
+/** The platform's own web redirects — not any app's: the desktop
+ *  system-browser hand-off page (#1133), `kHandoffConnectUrl` in HANDOFF_DECL.
+ *  An unreadable declaration is a problem, never an empty list read as "none". */
+export function platformRedirectsOf(root) {
+  const text = read(join(root, HANDOFF_DECL));
+  const m = text === null ? null : text.match(/\bconst\s+String\s+kHandoffConnectUrl\s*=\s*'([^']+)'\s*;/);
+  if (!m) {
+    return { entries: [], problem: `${HANDOFF_DECL} ${text === null ? 'is missing' : 'declares no kHandoffConnectUrl'}, so the platform's hand-off redirect cannot be derived` };
+  }
+  return { entries: [m[1]], problem: null };
+}
+
+/**
+ * THE GENERATED uri_allow_list: every in-scope app's apex web redirect (by app
+ * directory, sorted), the platform's own redirects (platformRedirectsOf), the
+ * apps' Pages preview redirects in the same order, the local dev servers, then
+ * every app with a native target — its bare callback and one exact entry per
+ * `enum AuthFlow` marker, in the enum's order. That order is the live config's
+ * (#1138), which Ops watch compares as one string. tooling/kit/stamp-shared.mjs
+ * writes it into tooling/mail-transport.json; checkAllowList holds the file to it.
+ */
+export function allowListFor(root) {
+  const { markers } = readDerivation(root);
+  const { schemes } = checkRegistrations(root);
+  const apps = appsInScope(root).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const out = [];
+  const web = apps.flatMap((app) => webRedirectsOf(app.dir).entries);
+  const apex = web.filter((e) => e.startsWith(APEX_ORIGIN));
+  out.push(...apex, ...platformRedirectsOf(root).entries, ...web.filter((e) => !apex.includes(e)));
+  out.push(...LOCAL_DEV_REDIRECTS);
+  for (const app of apps) {
+    const scheme = schemes.get(app.name);
+    if (!scheme) continue;
+    const base = `${scheme}://${CALLBACK_HOST}`;
+    out.push(base, ...[...markers.values()].map((m) => `${base}?${MARKER_KEY}=${m}`));
+  }
+  return [...new Set(out)];
+}
+
 export function checkAllowList(root, schemes, markers) {
   const problems = [];
   const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);
@@ -552,6 +631,42 @@ export function checkAllowList(root, schemes, markers) {
         problems.push(`${MAIL_TRANSPORT}: supabaseAuth.uri_allow_list entry "${e}" is a wildcard on a custom scheme — list each marker exactly.`);
       }
     }
+  }
+  // ── web: every in-scope app's web redirects, and the list IS the generation ──
+  const inScope = appsInScope(root);
+  for (const app of inScope) {
+    const web = webRedirectsOf(app.dir);
+    if (web.problem) problems.push(`apps/${app.name}/${web.problem}.`);
+    for (const w of web.entries) {
+      if (!entries.includes(w)) {
+        problems.push(
+          `${MAIL_TRANSPORT}: supabaseAuth.uri_allow_list has no "${w}" (apps/${app.name}) — gotrue SILENTLY replaces an ` +
+            "unlisted redirect_to with the Site URL, so this app's web confirmation, reset and OAuth links would open app #1.",
+        );
+      }
+    }
+  }
+  const platform = platformRedirectsOf(root);
+  if (platform.problem) coverageLost(`${platform.problem}.`);
+  for (const w of platform.entries) {
+    if (!entries.includes(w)) {
+      problems.push(`${MAIL_TRANSPORT}: supabaseAuth.uri_allow_list has no "${w}" (the platform's desktop hand-off page) — a desktop sign-in through the system browser would be sent to the Site URL instead.`);
+    }
+  }
+  // Graded only over a generation that read its inputs: with no marker or no app
+  // in scope, the derivation and app limbs already say COVERAGE LOST, and a
+  // comparison against a list generated from nothing would add a false finding.
+  // An unreadable hand-off declaration is the same: its COVERAGE LOST above says so.
+  const generated = markers.size > 0 && inScope.length > 0 && !platform.problem ? allowListFor(root) : null;
+  if (generated !== null && entries.join(',') !== generated.join(',')) {
+    const extra = entries.filter((e) => !generated.includes(e));
+    const lacking = generated.filter((e) => !entries.includes(e));
+    problems.push(
+      `${MAIL_TRANSPORT}: supabaseAuth.uri_allow_list is not the generated list (allowListFor) — ` +
+        `${lacking.length} missing [${lacking.join(', ')}], ${extra.length} not generated [${extra.join(', ')}]` +
+        `${lacking.length + extra.length === 0 ? ', same entries in another order' : ''}. It is a stamp output, never a hand edit: ` +
+        'run  node tooling/kit/stamp-shared.mjs  and apply the result to the identity project (owner/ops).',
+    );
   }
   return problems;
 }

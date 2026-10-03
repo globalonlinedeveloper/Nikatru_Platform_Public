@@ -97,6 +97,12 @@ dependencies:
   # lib/state/providers/links.dart; screens reach it through the core interface.
   nikatru_external_links:
     path: ../../packages/external_links
+  # XP-03 app lock (Free) and XP-04/XP-05/IM-11 glance, shortcuts and
+  # share-in: each a package the app adopts at its composition root.
+  nikatru_app_lock:
+    path: ../../packages/app_lock
+  nikatru_widgets:
+    path: ../../packages/widgets
 
   # State management
   flutter_riverpod: ^3.0.0
@@ -429,7 +435,10 @@ msix_config:
   # DIFFERENT build from the one the upload proves.
   build_windows: false
   architecture: x64
-  languages: en-us
+  # ⏱ 2026-10-01 · one language-REGION per arb in lib/l10n/ (C-18); MSIX's
+  # Resource Language wants the region, gen-l10n does not carry one.
+  # tooling/ci/assert-bundle-locales.mjs fails when this and the arbs disagree.
+  languages: en-us, hi-in, ta-in
   capabilities: internetClient
   output_path: build/windows/msix
   output_name: subscriptiontracker

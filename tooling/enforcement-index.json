@@ -43,6 +43,27 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/review-gate.yml#label"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/review-paths.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/autopilot-watch.yml#e2e-after-deploy",
+      ".github/workflows/autopilot-watch.yml#watch"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/watch.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 044",
       "ADR 076",
@@ -465,7 +486,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 075"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],
@@ -505,6 +528,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-bundle-availability.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-bundle-locales.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -642,7 +675,14 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-channel-register.mjs",
@@ -1867,8 +1907,13 @@
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
       ".github/workflows/store-screenshots.yml#capture-linux",
+      ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
-      ".github/workflows/submit-play.yml#submit"
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-play-device-coverage.mjs",
@@ -3363,6 +3408,17 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/site-set.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/sql-seed.mjs",
@@ -3721,6 +3777,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/stamp-service.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 035",
       "C-6",
@@ -3778,6 +3844,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-edge-shield.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-edge-zone.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4363,6 +4439,7 @@
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
+      ".github/workflows/extensions-ci.yml#ops-tooling",
       ".github/workflows/extensions-ci.yml#selftest"
     ],
     "kind": "script",
@@ -4482,6 +4559,16 @@
     ],
     "kind": "script",
     "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts"
+    ],
+    "kind": "script",
+    "ref": "tooling/smoke/web-a11y-tree.mjs",
     "references": [],
     "state": "WIRED"
   },

@@ -1,0 +1,6 @@
+{
+  "lanes": [
+    { "lane": "lane-one", "branch": "lane/one", "costUsd": 4.5, "tokens": 900000, "agentMinutes": 95 },
+    { "lane": "rerun-heavy", "prs": [103, 104, 105, 106], "costUsd": 12, "agentMinutes": 240 }
+  ]
+}

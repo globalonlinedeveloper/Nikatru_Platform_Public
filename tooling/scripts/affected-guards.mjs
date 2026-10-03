@@ -105,7 +105,7 @@ import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-scan.mjs';
 import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
 import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
-import { classifyRed, detachedCheckout, removeCheckout } from './preflight.mjs';
+import { classifyRed, detachedCheckout, removeCheckout, spawnCeilingUrl } from './preflight.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** The guard-tests shard planner, as a workflow names it. */
@@ -837,6 +837,10 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
   for (const f of tree.list) {
     const m = f.match(/^services\/([^/]+)\/package\.json$/);
     if (!m) continue;
+    // services/_shared is the kit, not a Worker (worker-set.mjs excludes it by name too): it has a
+    // package.json since 2026-10-01 only to declare `jose`, and its suite runs inside every Worker's,
+    // which the line below already ties it to.
+    if (m[1] === '_shared') continue;
     const dir = `services/${m[1]}`;
     const subjects = [{ kind: 'dir', path: dir, tier: 0 }]; // its own Worker: the tightest tie
     for (const g of workersLane?.globs ?? []) if (!g.glob.startsWith('services/')) subjects.push({ kind: 'lane', path: g.glob, re: g.re });
@@ -1060,10 +1064,14 @@ function installedAsLocked(dir) {
   } catch { return false; }
 }
 
+/** A workflow word naming $SPAWN_CEILING, which setup-node exports in CI, as that
+ *  checkout's preload URL — the replay runs with no shell to expand it. */
+export const withCiEnv = (argv, root) => argv.map((a) => (/^\$(?:SPAWN_CEILING|\{SPAWN_CEILING\})$/.test(a) ? spawnCeilingUrl(root) : a));
+
 /** Commands for one check. A worker check is a sequence. */
 function commandsFor(check, root) {
   const shell = process.platform === 'win32';
-  if (check.kind === 'guard' || check.kind === 'test') return [{ cmd: check.cmd, args: check.argv, cwd: join(root, check.wd), shell: false }];
+  if (check.kind === 'guard' || check.kind === 'test') return [{ cmd: check.cmd, args: withCiEnv(check.argv, root), cwd: join(root, check.wd), shell: false }];
   if (check.kind === 'dart-analyze') return [{ cmd: MELOS, args: ['exec', `--scope=${check.pkg}`, '--', 'dart', 'analyze'], cwd: root, shell, env: 'dart' }];
   if (check.kind === 'dart-test') {
     return [

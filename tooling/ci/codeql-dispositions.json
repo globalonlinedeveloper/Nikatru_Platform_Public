@@ -618,6 +618,46 @@
       "disposition": "by-design",
       "host": "api.cloudflare.com",
       "reason": "worker-secrets.mjs:190 (cf()'s PUT body; :153 when CodeQL flagged it). The vault value is the body of PUT /accounts/<id>/workers/scripts/<w>/secrets on api.cloudflare.com, which sets a Worker secret: the purpose of the tool. apiBase() admits no other host but a 127.0.0.1 test double, and no value is ever printed. Added 2026-10-02."
+    },
+    {
+      "alert": 560,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-wildcard-dns.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "tooling/ops/check-edge-zone.mjs (#1147) passes the declared `zone` from tooling/edge/zone.json to readZoneRecords/zoneId, which GET it from the literal CF_API origin (https://api.cloudflare.com/client/v4) with the read token: comparing the declared zone with the live one is the script's purpose. The file cannot choose the host, and validateDeclaration refuses any `zone` that is not a bare lowercase DNS name (ZONE_NAME) before a request is built; the value is URL-encoded into the query. Added 2026-10-02."
+    },
+    {
+      "alert": 582,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/autopilot/heartbeat.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "readBeatApi GETs the laptop heartbeat (beat.json on the non-branch ref refs/lead/heartbeat, resolved through /git/ref to a commit sha the module holds to 40 hex) from the GitHub contents API; the ref and file name come from tooling/autopilot/contract.json, the autopilot contract, and reading that beat is the function's purpose (O-LAPTOP-OUTAGE-READS-AS-RED). The file cannot choose the host (GITHUB_API_URL or the literal api.github.com); the module refuses at load a ref or file that is not a plain git name, readBeatApi refuses a repo that is not owner/name before a request is built, and the ref is held to refs/<ns>/<name> and refused when it is a branch or a tag. Added 2026-10-02 (club-rt-autopilot)."
+    },
+    {
+      "alert": 583,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/autopilot/review-paths.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "restClient sends JSON bodies to the GitHub REST API: label names from tooling/autopilot/contract.json (review-gate.yml) and, for post-verdict.mjs, the review verdict file's text, whose whole purpose is to be posted as a COMMENT review (O-REVIEWS-DEPEND-ON-THE-LAPTOP). The file cannot choose the host; restClient refuses a repo that is not owner/name and any path outside the shape it builds, and post-verdict refuses a verdict file without the VERDICT line, over 65,000 characters, or carrying a secret-shaped string, before anything is posted. Added 2026-10-02 (club-rt-autopilot)."
+    },
+    {
+      "alert": 586,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/autopilot/heartbeat.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "readBeatApi's second request reads beat.json at the commit sha the git ref API returned for refs/lead/heartbeat; the file name comes from tooling/autopilot/contract.json, and reading the laptop heartbeat is the function's purpose (O-LAPTOP-OUTAGE-READS-AS-RED). The file cannot choose the host (GITHUB_API_URL or the literal api.github.com); the module refuses at load a ref that is not refs/<ns>/<name> or a file that is not a plain git name, readBeatApi refuses a repo that is not owner/name, and the sha must be 40 hex characters (SHA_SHAPE) before the request is built. The same flow as alert 582, re-numbered when the read moved to the ref API (review of #1171, ruling 1). Added 2026-10-02 (club-rt-autopilot)."
+    },
+    {
+      "alert": 571,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/smoke/web-a11y-tree.mjs",
+      "disposition": "by-design",
+      "host": "127.0.0.1",
+      "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
     }
   ]
 }

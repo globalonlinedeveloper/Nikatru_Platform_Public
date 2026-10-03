@@ -121,13 +121,12 @@ flutter:
   generate: true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LAUNCHER ICONS — the mechanism, stamped before there is a platform to use it
+# LAUNCHER ICONS — the mechanism, run by the stamp over the native folders
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔴 WHY THIS IS HERE WHEN THE BRICK STAMPS NO NATIVE PLATFORM.
-# The stamp claims `web` only ([3]S-3 holds that claim and CI builds it). The
-# owner adds the rest with `flutter create . --platforms=android,ios,macos,
-# windows,linux` AFTER the stamp — and that command writes FLUTTER'S DEFAULT
-# LOGO into every one of them.
+# 🔴 WHY THE STAMP RUNS IT, AND NOT ITS OWNER.
+# The stamp adds the five native platforms (tooling/kit/stamp-native.mjs, from
+# post_gen.dart) with `flutter create`, and that command writes FLUTTER'S
+# DEFAULT LOGO into every one of them.
 #
 # That is not hypothetical. Measured on apps/subscriptiontracker 2026-08-04: 29 native icon
 # files, on four platforms, ALL byte-identical to `flutter create` output, while
@@ -137,13 +136,13 @@ flutter:
 # A defect in the TEMPLATE is not one app with the wrong icon — it is every app
 # the factory will ever stamp, born wrong, and store reviewers see it first
 # (Google Play rejects the stock Flutter icon outright). So the stamp lays down
-# the CONFIG and the SOURCE ART now, and adding platforms becomes one command:
+# the CONFIG and the SOURCE ART, and tooling/kit/stamp-app.mjs runs, once the
+# workspace resolves with this app on it:
 #
 #     cd apps/{{app_id}} && dart run flutter_launcher_icons
 #
-# post_gen.dart prints that as checklist step 1a, and
-# tooling/ci/assert-launcher-icons.mjs fails the build if this block stops
-# naming art the stamp actually writes.
+# tooling/ci/assert-launcher-icons.mjs fails the build on a stock icon, and if
+# this block stops naming art the stamp actually writes.
 #
 # ── THE ART IS GENERATED, NOT COPIED ────────────────────────────────────────
 # hooks/brand_assets.dart derives both files from `app_id` + `seed_hex` — pure
@@ -159,7 +158,7 @@ flutter:
 # so turning web on would overwrite the maskable pair with non-maskable art —
 # undoing the one platform that was already right.
 flutter_launcher_icons:
-  image_path: "assets/icon/app_icon.png"
+  image_path: "assets/icon/app_icon_1024.png"
 
   android: "ic_launcher"
   # A FLAT COLOUR, not a generated PNG: the seed already lives in this file, and
@@ -179,11 +178,11 @@ flutter_launcher_icons:
 
   macos:
     generate: true
-    image_path: "assets/icon/app_icon.png"
+    image_path: "assets/icon/app_icon_1024.png"
 
   windows:
     generate: true
-    image_path: "assets/icon/app_icon.png"
+    image_path: "assets/icon/app_icon_1024.png"
     icon_size: 256
 
   web:
@@ -199,5 +198,5 @@ flutter_launcher_icons:
   # Those ARE generated in this repo, from the same `image_path` master above:
   #   node tooling/store/render-linux-icons.mjs --app <app_id>
   # and `assert-launcher-icons.mjs` limb 7 RE-DERIVES them and fails the build on
-  # any drift. So the day this app adds `--platforms=…,linux`, one more command
-  # brands it — the gap that used to be printed here is closed, not deferred.
+  # any drift. tooling/kit/stamp-native.mjs runs that derivation when it stamps
+  # linux/, so a stamped app is born with its Linux icon.

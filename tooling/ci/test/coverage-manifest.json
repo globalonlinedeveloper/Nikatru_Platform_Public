@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    83,
+    87,
 
   "analytics-liveness.test.mjs":
     28,
@@ -123,10 +123,46 @@
     30,
 
   "auth-callbacks.test.mjs":
-    50,
+    58,
 
   "auth-cutover-preflight.test.mjs":
     100,
+
+  "autopilot-contract.test.mjs":
+    5,
+
+  "autopilot-heartbeat.test.mjs":
+    22,
+
+  "autopilot-issue-queue.test.mjs":
+    18,
+
+  "autopilot-land-gate.test.mjs":
+    31,
+
+  "autopilot-ledger.test.mjs":
+    29,
+
+  "autopilot-outage.test.mjs":
+    14,
+
+  "autopilot-post-verdict.test.mjs":
+    11,
+
+  "autopilot-prompts.test.mjs":
+    2,
+
+  "autopilot-queue-doc.test.mjs":
+    2,
+
+  "autopilot-queue-migrate.test.mjs":
+    11,
+
+  "autopilot-review-gate.test.mjs":
+    18,
+
+  "autopilot-runner.test.mjs":
+    16,
 
   "availability.test.mjs":
     33,
@@ -141,7 +177,10 @@
     9,
 
   "boxes.test.mjs":
-    47,
+    50,
+
+  "brick-audience.test.mjs":
+    5,
 
   "brick-drivers.test.mjs":
     5,
@@ -160,6 +199,9 @@
 
   "bundle-contract-limbs.test.mjs":
     18,
+
+  "bundle-locales.test.mjs":
+    36,
 
   "bundle-provenance-guards.test.mjs":
     13,
@@ -210,7 +252,7 @@
     55,
 
   "channel-register.test.mjs":
-    368,
+    376,
 
   "channel-surface.test.mjs":
     7,
@@ -240,7 +282,7 @@
     10,
 
   "clone-contract.test.mjs":
-    46,
+    47,
 
   "code-scanning-age.test.mjs":
     15,
@@ -270,7 +312,7 @@
     7,
 
   "cors-allowlist.test.mjs":
-    33,
+    36,
 
   "credential-origin-guard.test.mjs":
     18,
@@ -339,7 +381,7 @@
     27,
 
   "e2e-legs.test.mjs":
-    46,
+    52,
 
   "e2e-parity.test.mjs":
     37,
@@ -357,16 +399,19 @@
     48,
 
   "edge-ratelimit-rule.test.mjs":
-    16,
+    18,
 
   "edge-shield-probe.test.mjs":
     26,
+
+  "edge-zone.test.mjs":
+    24,
 
   "elf-page-alignment.test.mjs":
     23,
 
   "enforcement-index.test.mjs":
-    33,
+    36,
 
   "ensure-monitors.test.mjs":
     24,
@@ -474,7 +519,7 @@
     18,
 
   "guards.test.mjs":
-    503,
+    505,
 
   "heartbeats.test.mjs":
     87,
@@ -513,7 +558,7 @@
     11,
 
   "input-contract.test.mjs":
-    29,
+    32,
 
   "install-hooks-worktree.test.mjs":
     8,
@@ -543,7 +588,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    26,
+    29,
 
   "licence-register.test.mjs":
     80,
@@ -618,7 +663,7 @@
     8,
 
   "new-product-plan.test.mjs":
-    41,
+    69,
 
   "new-tool-chain.test.mjs":
     12,
@@ -639,7 +684,7 @@
     5,
 
   "no-hardcoded-strings.test.mjs":
-    96,
+    108,
 
   "no-loop-cases.test.mjs":
     11,
@@ -684,7 +729,7 @@
     7,
 
   "package-boundaries.test.mjs":
-    33,
+    35,
 
   "package-earned.test.mjs":
     25,
@@ -726,7 +771,7 @@
     112,
 
   "policy-archive.test.mjs":
-    31,
+    35,
 
   "policy-claims.test.mjs":
     62,
@@ -735,10 +780,10 @@
     16,
 
   "port-switch.test.mjs":
-    37,
+    46,
 
   "ports.test.mjs":
-    73,
+    79,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -816,7 +861,7 @@
     68,
 
   "publish-steps-guarded.test.mjs":
-    21,
+    30,
 
   "purchase-path.test.mjs":
     136,
@@ -882,7 +927,7 @@
     4,
 
   "rollback.test.mjs":
-    44,
+    47,
 
   "rollup-lossless.test.mjs":
     52,
@@ -923,6 +968,9 @@
   "self-host-fallback-fonts.test.mjs":
     25,
 
+  "self-review.test.mjs":
+    37,
+
   "session-revocation.test.mjs":
     15,
 
@@ -956,6 +1004,9 @@
   "site-integrity.test.mjs":
     122,
 
+  "site-set.test.mjs":
+    6,
+
   "small-business-program.test.mjs":
     17,
 
@@ -971,6 +1022,9 @@
   "snapcraft-generable.test.mjs":
     92,
 
+  "spawn-ceiling-cwd.test.mjs":
+    4,
+
   "spawn-ceiling.test.mjs":
     11,
 
@@ -981,13 +1035,13 @@
     9,
 
   "stamp-app.test.mjs":
-    15,
+    19,
 
   "stamp-brand-assets.test.mjs":
     19,
 
   "stamp-chain-wiring.test.mjs":
-    4,
+    6,
 
   "stamp-channel.test.mjs":
     19,
@@ -995,14 +1049,17 @@
   "stamp-identity.test.mjs":
     15,
 
+  "stamp-native.test.mjs":
+    31,
+
   "stamp-platforms.test.mjs":
-    30,
+    39,
 
   "stamp-properties.test.mjs":
-    22,
+    30,
 
   "stamp-text-fidelity.test.mjs":
-    41,
+    44,
 
   "stamp-wiring.test.mjs":
     20,
@@ -1029,7 +1086,7 @@
     17,
 
   "store-identity.test.mjs":
-    77,
+    78,
 
   "store-key-secret.test.mjs":
     8,
@@ -1102,6 +1159,9 @@
 
   "walks-bounded.test.mjs":
     42,
+
+  "web-a11y-tree.test.mjs":
+    9,
 
   "web-cache-policy.test.mjs":
     109,

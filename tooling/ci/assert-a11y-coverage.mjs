@@ -725,9 +725,14 @@ const REQUIRED_COVERAGE = [
     // share-a-month sheet (`showShareMonthSheet`) arrived swept ('nothing on
     // the share-a-month sheet is naked'). Read off the per-root line:
     // `21 of 21 … across 117 case(s)`.
-    surfaces: 21,
+    // ⏱ 2026-10-02 · club-st-singles SE-04: 21 → 22 surfaces and 117 → 118
+    // cases — Settings' "Connected accounts" sheet
+    // (`showConnectedAccountsSheet`) arrived swept ('nothing on the connected
+    // accounts sheet is naked'). Read off the per-root line: `22 of 22 …
+    // across 118 case(s)`.
+    surfaces: 22,
     a11yFiles: 1,
-    cases: 117,
+    cases: 118,
     label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
@@ -863,9 +868,13 @@ const REQUIRED_COVERAGE = [
     // 73 -> 75 cases — the chassis DevicesSection, swept (`a11y: devices`,
     // light + dark kPhone). Read off the merged tree: `34 of 34 … from 5 a11y
     // test file(s) across 75 case(s)`.
-    surfaces: 34,
-    a11yFiles: 5,
-    cases: 75,
+    // ⏱ 2026-10-02 · club-st-singles EN-21, SE-04: 34 -> 36 surfaces, 5 -> 6
+    // files, 75 -> 77 cases — EmailCodeForm and ConnectedAccountsView arrived
+    // swept in a11y_account_plus_test.dart (light + dark kPhone each). Read off
+    // the merged tree: `36 of 36 … from 6 a11y test file(s) across 77 case(s)`.
+    surfaces: 36,
+    a11yFiles: 6,
+    cases: 77,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -966,12 +975,35 @@ const REQUIRED_COVERAGE = [
     // Read off the per-root line: "26 of 44 reachable surface(s) carry an a11y
     // sweep, from 14 a11y test file(s) across 28 case(s)".
     //   surfaces  43 → 44
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): the SIXTEEN printed-unswept
+    // surfaces the app or its chassis screens MOUNT arrived swept, by
+    // a11y_mounted_surfaces_test.dart (eleven case bodies) and
+    // a11y_two_pane_test.dart (one), each looped over both schemes. Two
+    // files, not one, because only the two-pane case pins a window size — see
+    // that file's header for why the others must not. `NavShell` is the one
+    // left printed: nothing under apps/subscriptiontracker/lib or
+    // packages/chassis_screens/lib mounts it. Read off the per-root line: "42
+    // of 44 reachable surface(s) carry an a11y sweep, from 16 a11y test
+    // file(s) across 40 case(s)".
+    //   surfaces  44 → 44 (SwallowSystemBack stays unswept: it paints nothing)
+    //   a11yFiles 14 → 16
+    //   cases     28 → 40
     surfaces: 44,
-    a11yFiles: 14,
-    cases: 28,
+    a11yFiles: 16,
+    cases: 40,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
+  },
+  // ⏱ 2026-10-01 · T16 XP-03: the app lock, derived as a root the day it
+  // landed. Measured, not guessed: 2 surfaces (the gate and its screen), one
+  // a11y file, 2 cases (each loops both schemes), both surfaces swept.
+  {
+    dir: 'packages/app_lock',
+    surfaces: 2,
+    a11yFiles: 1,
+    cases: 2,
+    label: 'the app lock (XP-03) — the screen a locked person cannot get past, both surfaces swept',
   },
 ];
 
@@ -1094,6 +1126,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
         // can WRITE a budget, swept in a11y_semantics_test.dart.
         'features/insights/budget_editor.dart#showBudgetEditorSheet',
+        // 2026-10-01 (SE-04): Settings' "Connected accounts" sheet, swept in
+        // a11y_semantics_test.dart.
+        'features/auth/connected_accounts_sheet.dart#showConnectedAccountsSheet',
         // 2026-10-01 (ST-T9 EN-18): the after-sign-in setup, in the same
         // change as its sweep (a11y_semantics_test.dart "setup · …").
         'features/setup/setup_screen.dart#SetupScreen',
@@ -1130,6 +1165,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'auth/check_inbox_screen.dart#CheckInboxView',
+        // 2026-10-01 (EN-21, SE-04): swept in a11y_account_plus_test.dart.
+        'auth/email_code_form.dart#EmailCodeForm',
         'auth/legal_consent_fields.dart#LegalConsentFieldsView',
         'auth/reaccept_terms_screen.dart#ReacceptTermsView',
         'auth/reset_password_screen.dart#ResetPasswordView',
@@ -1152,6 +1189,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'integrity/tampered_build_screen.dart#TamperedBuildScreen',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
+        'settings/connected_accounts_view.dart#ConnectedAccountsView',
         'settings/report_content_dialog.dart#ReportContentDialog',
         // 2026-10-01 (audit D8): the heading node, in the same change as its sweep.
         'settings/help_section.dart#SettingsHeading',
@@ -1230,7 +1268,36 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthMessage',
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthOrDivider',
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthPasswordChecklist',
+      // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): every printed-unswept surface
+      // the app or its chassis screens mount, in the same change as their
+      // sweep (a11y_mounted_surfaces_test.dart, a11y_two_pane_test.dart).
+      // `NavShell` is NOT here: it is
+      // mounted by nothing and stays on the printed list.
+      'packages/design_system/lib/src/widgets/brand_lockup.dart#BrandFooter',
+      'packages/design_system/lib/src/widgets/brand_lockup.dart#BrandWordmark',
+      'packages/design_system/lib/src/widgets/content_pane.dart#ContentPane',
+      'packages/design_system/lib/src/widgets/destructive_confirm_dialog.dart#DestructiveConfirmDialog',
+      'packages/design_system/lib/src/widgets/destructive_outcome_notice.dart#DestructiveOutcomeNotice',
+      'packages/design_system/lib/src/widgets/focusable_tap.dart#FocusableTap',
+      'packages/design_system/lib/src/widgets/force_update_gate.dart#ForceUpdateGate',
+      'packages/design_system/lib/src/widgets/paywall_gate.dart#PaywallGate',
+      'packages/design_system/lib/src/widgets/promo_card.dart#PromoCard',
+      'packages/design_system/lib/src/widgets/promo_objection_control.dart#PromoObjectionControl',
+      'packages/design_system/lib/src/widgets/promo_surface.dart#PromoSurface',
+      'packages/design_system/lib/src/widgets/system_screens.dart#AppErrorScreen',
+      'packages/design_system/lib/src/widgets/system_screens.dart#NotFoundScreen',
+      'packages/design_system/lib/src/widgets/system_screens.dart#OfflineNotice',
+      'packages/design_system/lib/src/widgets/two_pane.dart#TwoPane',
+      'packages/design_system/lib/src/widgets/two_pane.dart#TwoPanePlaceholder',
     ]),
+  ],
+  [
+    'packages/app_lock',
+    new Set(
+      ['src/app_lock_gate.dart#AppLockGate', 'src/app_lock_gate.dart#AppLockScreen'].map(
+        (k) => `packages/app_lock/lib/${k}`,
+      ),
+    ),
   ],
 ]);
 

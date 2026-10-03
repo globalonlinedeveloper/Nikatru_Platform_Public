@@ -424,6 +424,80 @@
         "alternative": "Resend (the live adapter), or any provider with an HTTP send API behind MailTransport.",
         "swapCost": "One adapter and a stream row in tooling/ports/mail.json, plus DNS, domain verification and the suppression list (port-switch.mjs mail --dry-run)."
       }
+    },
+    "anthropic": {
+      "surface": "⏱ 2026-10-02 · port-ai. NOT CALLED YET — the AI port's server adapter on OUR key (services/platform/src/adapters/ai/anthropic.ts, on @anthropic-ai/sdk; tooling/ports/ai.json row `anthropic`) and its bring-your-own-key twin on the USER's key (packages/api_client lib/ai_byok.dart, row `anthropic-byok`). No route calls the port: every feature's model is null and no meter is wired until train-st-ai-customer-pays (T17). The owner lock (2026-10-01): AI comes from the customer's pocket — their own key, or ours on a paid, metered, hard-capped plan.",
+      "stickiness": "★★ — one Messages API call per use with a JSON schema for the output; nothing stored at the vendor that we read back. The prompts and the measured quality bar per model are the switching cost, not the API.",
+      "surfaces": [
+        "NIKATRU_ANTHROPIC_API_KEY"
+      ],
+      "openProtocol": "NO — the Messages API is Anthropic's own. The port (AiProvider) is the open part: three providers' APIs already sit behind it on the client half.",
+      "seam": {
+        "file": "services/_shared/src/ports/ai.ts",
+        "symbol": "AiProvider",
+        "note": "The AI port. aiFor(feature) in services/platform/src/ports.ts (the composition root) builds the provider and returns the model configured for the feature; nothing else imports the adapter. The bring-your-own-key twin implements the Dart AiProvider in packages/core."
+      },
+      "configKeyed": {
+        "kind": "runtime-secret",
+        "reason": "A Worker SECRET (`wrangler secret put NIKATRU_ANTHROPIC_API_KEY`), held in the vault, never a committed var and never sent to a client. The model per feature is config (tooling/ports/ai.json `features`), so a model or provider change is a registry edit plus a deploy, never a client release."
+      },
+      "ownTheRecord": "YES — the adapter keeps no state at the provider; every input and output belongs to the feature that asked and is stored, if at all, in our own tables. Anthropic deletes API inputs and outputs within 30 days (read 2026-10-02).",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: no data of ours is held at the provider. The registry's exportDuty records what the provider retains and for how long."
+      },
+      "exitPlan": {
+        "alternative": "Any provider behind AiProvider: OpenAI or Gemini (both already adapters of the client half), as a second server adapter.",
+        "swapCost": "One server adapter passing runAiConformance, its model prices in tooling/ports/ai.json, and the quality bar re-measured per feature (port-switch.mjs ai --dry-run prints the new floor). No client release for the server half."
+      }
+    },
+    "openai": {
+      "surface": "⏱ 2026-10-02 · port-ai. A bring-your-own-key provider only (packages/api_client lib/ai_byok.dart, OpenAiByok; tooling/ports/ai.json row `openai-byok`): the USER's key, read from SecureStore per call, sent to the provider and nowhere else. We hold no OpenAI account and pay nothing.",
+      "stickiness": "★ — one Responses API call per use; nothing of ours is stored at the vendor (`store: false`).",
+      "surfaces": [],
+      "openProtocol": "NO — the Responses API is OpenAI's own; the AiProvider seam is what makes it replaceable.",
+      "seam": {
+        "file": "packages/core/lib/src/ai/ai_provider.dart",
+        "symbol": "AiProvider",
+        "note": "The AI port's client half. An app reaches OpenAI only through AiProvider; [pipeline C-5] refuses an app importing a provider client package around it."
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "The key is the user's, entered at runtime into SecureStore; no build define, no secret of ours."
+      },
+      "ownTheRecord": "YES — nothing of ours reaches OpenAI; what the user sends on their own key is governed by their own account.",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: the account and its data are the user's."
+      },
+      "exitPlan": {
+        "alternative": "Anthropic or Gemini, the other bring-your-own-key adapters.",
+        "swapCost": "The user enters another provider's key. A new provider is one Dart adapter passing runAiProviderConformance, in an app release."
+      }
+    },
+    "google-gemini": {
+      "surface": "⏱ 2026-10-02 · port-ai. A bring-your-own-key provider only (packages/api_client lib/ai_byok.dart, GeminiByok; tooling/ports/ai.json row `gemini-byok`): the USER's key, read from SecureStore per call, sent in a header (never the URL) to the provider and nowhere else. We hold no Google AI account and pay nothing.",
+      "stickiness": "★ — one generateContent call per use; nothing of ours is stored at the vendor.",
+      "surfaces": [],
+      "openProtocol": "NO — the Gemini API is Google's own; the AiProvider seam is what makes it replaceable.",
+      "seam": {
+        "file": "packages/core/lib/src/ai/ai_provider.dart",
+        "symbol": "AiProvider",
+        "note": "The AI port's client half. An app reaches Gemini only through AiProvider; [pipeline C-5] refuses an app importing a provider client package around it."
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "The key is the user's, entered at runtime into SecureStore; no build define, no secret of ours."
+      },
+      "ownTheRecord": "YES — nothing of ours reaches Google; what the user sends on their own key is governed by their own account.",
+      "exportPath": {
+        "path": "tooling/ports/ai.json",
+        "detail": "Nothing to export: the account and its data are the user's."
+      },
+      "exitPlan": {
+        "alternative": "Anthropic or OpenAI, the other bring-your-own-key adapters.",
+        "swapCost": "The user enters another provider's key. A new provider is one Dart adapter passing runAiProviderConformance, in an app release."
+      }
     }
   },
   "nonVendorSurfaces": {
@@ -472,7 +546,7 @@
     "MONEY_ENVIRONMENT": "OUR OWN declaration of which money world a deploy is — exactly `live` or `sandbox`, [pipeline 5]M-12. No external system is behind it: it exists because NEITHER the notification payload NOR the destination secret distinguishes sandbox from live (developer.paddle.com documents one `pdl_ntfset_` prefix for both), so the deploy has to say. POST /v1/money/:provider answers 503 when it is absent or unrecognised — a default in either direction would silently honour sandbox money as real, or silently stop honouring real money. Added 2026-08-01.",
     "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01.", "FAKE_RAIL_WEBHOOK_SECRET": "OUR OWN key for the FAKE payments rail's webhook HMAC (services/_shared/src/ports/fakes/payments.ts). No external system is behind it: the fake has no vendor and takes no money. It is SET ON NO DEPLOY: the fake is registered for `test` only (tooling/ports/payments.json), so /v1/money/fake is a 404 on every deployed environment, and the fake's verify refuses (401) when it is unset rather than fall back to the committed public test constant (#1127 money review). Typed in `interface Env` so a test harness can inject one. Added 2026-10-02; on the MONEY_CEILING_LIMITER line so no citation below moves.",
     "EXT_TOKEN_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/ext/token (the browser extension's one-time-code exchange, O-EXTENSION-ACCOUNT-CHECK-UNBUILT), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a code-guessing flood cannot exhaust the budget of analytics ingest, config resolution or the money rail. Added 2026-09-24.",
-    "SESSIONS_LIMITER": "OUR OWN Cloudflare rate-limit namespace for the four /v1/sessions routes (AUTH-REVOKE-AT-WORKERS: list your sessions, sign one out, sign out everywhere, sign out the others), keyed `sessions:<sub>` on the VERIFIED account id. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace (1011) so it bounds the revocation list's KV writes and the service-role RPC without spending any other route's budget. Added 2026-09-25.", "AUTH_CREDENTIAL_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1102) for services/edge-shield's auth-credential class (GoTrue calls that prove, mint or mail a credential on Box C), keyed `global:auth-credential` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_REFRESH_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1104) for services/edge-shield's auth-refresh class (GoTrue refresh-token grants on Box C, refused 503 per SHIELD-R2), keyed `global:auth-refresh` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_OTHER_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1106) for services/edge-shield's auth-other class (every other /auth/v1 path on Box C, the wide backstop), keyed `global:auth-other` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "INTAKE_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1108) for services/edge-shield's intake class (GlitchTip's crash intake on Box B), keyed `global:intake` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "REMINDERS_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1013; sandbox 1014) for the two PUBLIC reminder routes of ST-T4a: GET /v1/calendar/:token.ics (the private calendar feed, whose token is the capability) and the one-click unsubscribe, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a token-guessing flood or a calendar client polling hard cannot spend the budget of analytics ingest, config resolution or the money rail. Added 2026-09-28; on the SESSIONS_LIMITER line so no citation below moves.", "FX_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1015; sandbox 1016) for GET /v1/fx/latest, the public ECB rate table (ST-I3), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a cache-busting flood on the rate table cannot spend the budget config resolution depends on. Added 2026-09-28; on the SESSIONS_LIMITER line so no citation below moves.",
+    "SESSIONS_LIMITER": "OUR OWN Cloudflare rate-limit namespace for the four /v1/sessions routes (AUTH-REVOKE-AT-WORKERS: list your sessions, sign one out, sign out everywhere, sign out the others), keyed `sessions:<sub>` on the VERIFIED account id. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace (1011) so it bounds the revocation list's KV writes and the service-role RPC without spending any other route's budget. Added 2026-09-25.", "AUTH_PASSWORD_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1110) for services/edge-shield's auth-password class (GoTrue /token grants other than refresh_token on Box C), keyed `global:auth-password` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-10-01 (SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP): one of the three credential classes the single AUTH_CREDENTIAL_GLOBAL_LIMITER (namespace 1102, retired) was split into; on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1112) for services/edge-shield's auth-signup-recover class (GoTrue sign-up, otp, recover, resend, verify and magiclink on Box C), keyed `global:auth-signup-recover` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-10-01 (SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP): one of the three credential classes the single AUTH_CREDENTIAL_GLOBAL_LIMITER (namespace 1102, retired) was split into; on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_FACTOR_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1114) for services/edge-shield's auth-factor class (GoTrue MFA verify/challenge and reauthenticate on Box C), keyed `global:auth-factor` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-10-01 (SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP): one of the three credential classes the single AUTH_CREDENTIAL_GLOBAL_LIMITER (namespace 1102, retired) was split into; on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_REFRESH_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1104) for services/edge-shield's auth-refresh class (GoTrue refresh-token grants on Box C, refused 503 per SHIELD-R2), keyed `global:auth-refresh` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "AUTH_OTHER_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1106) for services/edge-shield's auth-other class (every other /auth/v1 path on Box C, the wide backstop), keyed `global:auth-other` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "INTAKE_GLOBAL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1108) for services/edge-shield's intake class (GlitchTip's crash intake on Box B), keyed `global:intake` — never an IP (LEAD RULING SHIELD-R3: the shield reads no client address; the per-IP limit on the credential paths is the zone's own rule, tooling/edge-ratelimit-rule.json). Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a spike in one class of Box B/Box C traffic cannot spend another's. Added 2026-09-27 (O-BOXES-UNSHIELDED-FROM-SPIKES); on the SESSIONS_LIMITER line so no citation below moves.", "REMINDERS_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1013; sandbox 1014) for the two PUBLIC reminder routes of ST-T4a: GET /v1/calendar/:token.ics (the private calendar feed, whose token is the capability) and the one-click unsubscribe, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a token-guessing flood or a calendar client polling hard cannot spend the budget of analytics ingest, config resolution or the money rail. Added 2026-09-28; on the SESSIONS_LIMITER line so no citation below moves.", "FX_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1015; sandbox 1016) for GET /v1/fx/latest, the public ECB rate table (ST-I3), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a cache-busting flood on the rate table cannot spend the budget config resolution depends on. Added 2026-09-28; on the SESSIONS_LIMITER line so no citation below moves.",
     "NATIVE_AUTH_ACCOUNT_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/auth/native/:app/* (ST-N1: a native app's captcha-free password sign-in, sign-up, recovery and resend), keyed `acct:<app>:<sha256(lowercased email)>` — never the address. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace (1017; sandbox 1019) and, unlike every limiter before it, FAILING CLOSED: those routes call GoTrue with the service-role bearer, which skips the captcha, so this bound stands where the captcha stood. Added 2026-09-28.",
     "NATIVE_AUTH_EDGE_LIMITER": "OUR OWN Cloudflare rate-limit namespace for the same four /v1/auth/native routes, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, its own namespace (1018; sandbox 1020), FAILING CLOSED like NATIVE_AUTH_ACCOUNT_LIMITER: it bounds a flood that rotates accounts, which the per-account bucket cannot see. Added 2026-09-28.",
     "NATIVE_AUTH_UNATTESTED_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1021; sandbox 1023) for the native sign-in ops that carry the UNATTESTED install-key kind (Windows, Linux, macOS outside the Mac App Store), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, FAILING CLOSED; far tighter than NATIVE_AUTH_EDGE_LIMITER because that channel proves nothing about the binary. Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
@@ -590,6 +664,20 @@
         "dependency": "url_launcher"
       },
       "detail": "2026-09-24 · O-LINK-LAUNCHER-SEAM-UNOWNED. Opening an external link is a per-platform native call with real gaps (ExternalLinkCapabilities), and until this package existed the brick and apps/subscriptiontracker each imported url_launcher directly -- the two dated `|url_launcher` bypasses assert-package-boundaries.mjs printed on every run. It is a package rather than a second capability on packages/purchases because that seam, CheckoutLauncher, opens checkout pages https-only and refuses mailto: by design; hosting legal pages and the support address there would make a money seam own the privacy policy. It is not in platform_storage because the adapter must enforce core's LinkPolicy on every link, and a separate package keeps the one url_launcher import for non-checkout links in a place assert-package-boundaries limb C can name."
+    },
+    "packages/app_lock": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "local_auth"
+      },
+      "detail": "2026-10-01 · T16 XP-03. The device biometric is a per-platform native bridge (BiometricPrompt, LocalAuthentication, Windows Hello) with real gaps — no Linux, no web — which AppLockCapabilities declares. It is not a second capability on platform_storage because the lock is a policy (PIN hash, delay, attempt cap, sign-out recovery) with a screen of its own, and every stamped app inherits it whole; it is not in auth_supabase because a lock is not an identity and must work signed out."
+    },
+    "packages/widgets": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "home_widget"
+      },
+      "detail": "2026-10-01 · T16 XP-04/XP-05/IM-11. home_widget ships the AppWidget and WidgetKit bridges (a store the widget process reads) and quick_actions the launcher-shortcut bridges; both differ per target, which GlanceCapabilities declares. One package for every surface an app shows OUTSIDE its window — the glance, the shortcuts and the share-in route — rather than three, per [pipeline C-4]."
     },
     "packages/chassis_screens": {
       "reason": "chassis",
@@ -751,12 +839,36 @@
           "methods": [
             "open"
           ]
+        },
+        {
+          "file": "packages/core/lib/src/ai/ai_provider.dart",
+          "symbol": "AiProvider"
         }
       ],
       "consumers": [
         "apps/subscriptiontracker",
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ]
+    },
+    {
+      "id": "ai_byok",
+      "capability": "Bring-your-own-key AI: the client half of the AI port (tooling/ports/ai.json). One adapter per provider — Anthropic, OpenAI, Gemini — over plain HTTP to the provider's documented endpoint, with the USER's key read from SecureStore on every call. No request touches a Nikatru host and nothing is logged.",
+      "owner": "packages/api_client",
+      "package": "nikatru_api_client",
+      "seams": [],
+      "implementsSeams": [
+        "AiProvider"
+      ],
+      "consumers": [],
+      "unconsumedReason": "⏱ 2026-10-02 · port-ai. Built ahead of its feature on purpose: the port lands at L3 before anything calls it, and train-st-ai-customer-pays (T17) is the first consumer — it wires an app's AI feature to AiProvider and offers the user a key field. Until then no app imports lib/ai_byok.dart.",
+      "note": "Lives in packages/api_client as a SEPARATE library (lib/ai_byok.dart; test support in lib/testing.dart), not a new package: [pipeline C-4] (assert-package-earned.mjs) admits a new package only on a native binary, a licence exposure, a codegen step or a measured chassis move, and plain HTTP over dio — which this package already carries — earns none of them.",
+      "capabilityMatrix": {
+        "file": "packages/api_client/lib/src/ai_byok/ai_byok_capabilities.dart",
+        "symbol": "AiByokCapabilities",
+        "test": "packages/api_client/test/ai_byok_capabilities_test.dart",
+        "pinnedTo": "dio 5.x; each provider's API as read 2026-10-02 (tooling/ports/ai.json readAt) — re-read on any provider API version change",
+        "degradesOn": "Web: a browser enforces CORS, so a provider is offered from a page only where it DOCUMENTS browser access — Anthropic does (the anthropic-dangerous-direct-browser-access opt-in header), OpenAI and Gemini do not, and on web those two return `unavailable` without sending a request. The five native targets call all three directly. Fuchsia is not a target."
+      }
     },
     {
       "id": "api_client",
@@ -1088,6 +1200,52 @@
         "test": "packages/external_links/test/external_link_capabilities_test.dart",
         "pinnedTo": "url_launcher 6.x — re-review on any major bump",
         "degradesOn": "https: and mailto: can be HANDED OVER on all six targets and web, and whether anything answers is the platform's call: a device or desktop with no handler registered for the scheme (no mail client, a headless Linux session) answers false or throws, and a web popup blocker can refuse a link not started by a tap. The adapter reports all of these as LinkOutcome.notOpened, never as success. Fuchsia has no implementation (MissingPluginException, also notOpened)."
+      }
+    },
+    {
+      "id": "app_lock",
+      "capability": "App lock (XP-03, Free under ADR 101): a PIN on every target, the device biometric where local_auth has one, lock on resume after a chosen delay, five wrong PINs sign out and signing back in is the recovery.",
+      "owner": "packages/app_lock",
+      "package": "nikatru_app_lock",
+      "seams": [
+        {
+          "file": "packages/app_lock/lib/src/app_lock_controller.dart",
+          "symbol": "BiometricUnlocker"
+        }
+      ],
+      "consumers": [
+        "apps/subscriptiontracker"
+      ],
+      "note": "2026-10-01 · T16. The app builds ONE AppLockController at its composition root (lib/state/providers/device_surfaces.dart) and mounts ONE AppLockGate in MaterialApp.router's builder. The brick does not adopt it yet; the PR names that as the follow-up.",
+      "capabilityMatrix": {
+        "file": "packages/app_lock/lib/src/app_lock_capabilities.dart",
+        "symbol": "AppLockCapabilities",
+        "test": "packages/app_lock/test/app_lock_capabilities_test.dart",
+        "pinnedTo": "local_auth 3.x — re-review on any major bump",
+        "degradesOn": "The PIN works on all six targets and web. The biometric exists on Android (BiometricPrompt, FragmentActivity host), iOS and macOS (LocalAuthentication) and Windows (Hello); Linux, web and Fuchsia have no local_auth implementation and keep the PIN. A device with nothing enrolled answers unavailable, never throws."
+      }
+    },
+    {
+      "id": "widgets",
+      "capability": "The surfaces an app shows outside its window: the two-fact glance (XP-04, Pro under ADR 101) on the home-screen widget, tray item or PWA badge; the launcher shortcuts (XP-05); and the share-in route to the import hub (IM-11).",
+      "owner": "packages/widgets",
+      "package": "nikatru_widgets",
+      "seams": [
+        {
+          "file": "packages/widgets/lib/src/glance_publisher.dart",
+          "symbol": "GlancePublisher"
+        }
+      ],
+      "consumers": [
+        "apps/subscriptiontracker"
+      ],
+      "note": "2026-10-01 · T16. The app computes its own facts (sublyGlance) and the package owns the Pro gate, the wire format the native widgets read, the publishers, the shortcut routing and the share channel. Built: Android widget, web badge, Android/iOS shortcuts, the share channel. Waiting, each named in GlanceCapabilities.why: iOS/macOS WidgetKit and Share extensions (Xcode targets), the Windows/Linux tray, the jump list and dock menu.",
+      "capabilityMatrix": {
+        "file": "packages/widgets/lib/src/glance_capabilities.dart",
+        "symbol": "GlanceCapabilities",
+        "test": "packages/widgets/test/glance_test.dart",
+        "pinnedTo": "home_widget 0.10.x and quick_actions 1.x — re-review on any bump",
+        "degradesOn": "home_widget has Android and iOS implementations only, so macOS, Windows and Linux name a tray/menu-bar equivalent that waits for runner code; quick_actions has Android and iOS only, so desktop names the jump list and dock menu; web shows the Badging API count where the browser has it (Firefox does not). A target with no receiver for a share installs quietly (MissingPluginException)."
       }
     },
     {

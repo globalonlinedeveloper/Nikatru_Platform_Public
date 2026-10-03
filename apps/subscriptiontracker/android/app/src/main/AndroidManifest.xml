@@ -54,10 +54,18 @@
          key never survives a restore anyway, so a restored encrypted session
          could not be read. The guard reads the MERGED manifest in the built .apk,
          so a plugin cannot quietly set it back. -->
+    <!-- ⏱ 2026-10-01 · android:localeConfig (C-18): the Android 13+ per-app
+         language picker lists exactly res/xml/locales_config.xml, which carries
+         one <locale> per arb in lib/l10n/ — tooling/ci/assert-bundle-locales.mjs
+         fails when they disagree. android:label stays the BRAND (app.yaml
+         shortName, rendered by tooling/app-yaml/render.mjs): every arb keeps
+         appTitle untranslated, and that guard's limb C makes the label copy the
+         day one does not. -->
     <application
         android:label="Subscriptions"
         android:name="${applicationName}"
         android:allowBackup="false"
+        android:localeConfig="@xml/locales_config"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -189,6 +197,21 @@
              protect it by other means. tooling/ci/test/android-vapt-manifest.test.mjs
              C1 goes red the day such a rail sits beside this line. -->
         <receiver android:name="com.amazon.device.iap.ResponseReceiver" tools:node="remove" />
+
+        <!-- ⏱ 2026-10-01 · XP-04 · the home-screen glance (GlanceWidgetProvider.kt).
+             NOT EXPORTED: AppWidgetManager delivers APPWIDGET_UPDATE from the
+             system, which reaches a non-exported receiver, so no other app can
+             poke it (assert-android-vapt-manifest.mjs V5). -->
+        <receiver
+            android:name=".GlanceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_widget_info" />
+        </receiver>
 
         <!-- ⏱ 2026-10-01 · THE NDK CRASH HANDLER IS OFF, full review AA-08.
              The native crash layer is off on every target by decision, and

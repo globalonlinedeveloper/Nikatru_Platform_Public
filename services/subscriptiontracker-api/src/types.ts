@@ -77,7 +77,8 @@ export interface Env {
  * has to survive the middleware rather than being collapsed into "authenticated".
  * `src/routes/account.ts` refuses anything that is not `'asymmetric'`.
  */
-export type TokenAssurance = 'asymmetric' | 'symmetric';
+import type { TokenAssurance } from '../../_shared/src/auth-middleware';
+export type { TokenAssurance }; // declared once, beside the boundary that sets it
 
 /**
  * Hono context Variables set by middleware (c.get / c.set).

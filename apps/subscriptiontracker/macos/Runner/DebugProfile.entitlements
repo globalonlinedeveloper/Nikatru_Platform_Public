@@ -15,5 +15,13 @@
 	     Release.entitlements fix — both files were stock `flutter create` output. -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- ⏱ 2026-10-01 · EN-19. The NATIVE Sign in with Apple sheet
+	     (packages/auth_supabase AppleSignInSheet) will not present without it.
+	     Derived from APPLE_ID_AUTH in tooling/apple-provisioning.json; the App ID
+	     already carries the capability, so the profile already grants it. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

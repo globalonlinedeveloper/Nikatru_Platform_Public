@@ -36,6 +36,16 @@
       "firstSeen": "2026-09-06",
       "evidence": []
     },
+    "tooling/autopilot/review-paths.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
+    "tooling/autopilot/watch.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/catalog/render-rail-prices.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",
@@ -499,6 +509,11 @@
           "signature": "guard-refused:capability register"
         }
       ]
+    },
+    "tooling/ci/assert-bundle-locales.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
     },
     "tooling/ci/assert-bundle-provenance.mjs": {
       "catches": 0,
@@ -3481,6 +3496,11 @@
       "firstSeen": "2026-09-11",
       "evidence": []
     },
+    "tooling/ci/site-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/sql-seed.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
@@ -3651,6 +3671,11 @@
       "firstSeen": "2026-09-26",
       "evidence": []
     },
+    "tooling/kit/stamp-service.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-analytics-liveness.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
@@ -3674,6 +3699,11 @@
     "tooling/ops/check-edge-shield.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-27",
+      "evidence": []
+    },
+    "tooling/ops/check-edge-zone.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/ops/check-heartbeats.mjs": {
@@ -4017,6 +4047,11 @@
     "tooling/smoke/smoke-web-artifact.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/smoke/web-a11y-tree.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/store/capture-backend.mjs": {
