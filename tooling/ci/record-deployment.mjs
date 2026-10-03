@@ -117,7 +117,7 @@
 //          missing, so the record would bind to no run. Red on purpose. ⏱ 2026-09-26: or
 //          the channel is one a lane submits through and no --mode names the run.
 // ─────────────────────────────────────────────────────────────────────────────
-import { appendFileSync, readFileSync, existsSync, statSync, openSync, fstatSync, closeSync } from 'node:fs';
+import { appendFileSync, readFileSync, existsSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
