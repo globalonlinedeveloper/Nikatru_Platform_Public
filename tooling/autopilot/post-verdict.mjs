@@ -27,6 +27,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { envToken, flag, ghSpawnSpec, isMain, redact } from './cli.mjs';
 import { LABELS, restClient } from './review-paths.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 /** The verdict lines this posts, and what each is posted as. The repo's review format
  *  also writes `APPROVE WITH NITS` and `CHANGES REQUIRED`: NITS is an APPROVE (a nit
@@ -38,7 +39,7 @@ export const VERDICT_MAP = Object.freeze({ APPROVE: 'APPROVE', 'APPROVE WITH NIT
 /** GitHub's review body limit; a longer verdict is refused, never cut. */
 export const VERDICT_MAX = 65_000;
 const SECRET = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG; // ⏱ 2026-10-03 · merge of main: read from the code-host register, not typed.
 
 /**
  * PURE. The PR as read now, the head the review read, the verdict file's text →
