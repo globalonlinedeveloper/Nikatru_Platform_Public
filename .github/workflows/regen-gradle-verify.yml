@@ -1,6 +1,6 @@
 name: Regenerate Gradle verification
 
-run-name: "Regenerate Gradle verification for ${{ inputs.app }} on ${{ inputs.ref }}"
+run-name: "Regenerate Gradle verification for ${{ inputs.app }} on ${{ github.ref_name }}"
 
 # The dispatch command and what to do with the artifact are in docs/ci/README.md
 # ("Regenerate Gradle verification"). Only `# why:` lines live here.
@@ -10,12 +10,13 @@ on:
   # be regenerated after every Android dependency change (a Flutter, AGP, Kotlin,
   # Gradle or plugin bump), and that needs Gradle and the Android SDK on Linux,
   # which neither the laptop nor the cloud sandbox has. Never on a clock or a push.
+  # why NO `ref` input: a dispatch saves caches under the ref it is dispatched ON,
+  # not the one it checks out, so a `ref` input dispatched from main would run
+  # unreviewed branch code in main's cache scope, which the keystore jobs restore.
+  # The job runs on the ref it is dispatched on (`gh workflow run --ref <branch>`).
+  # tooling/ci/test/regen-gradle-verify-workflow.test.mjs fails if one comes back.
   workflow_dispatch:
     inputs:
-      ref:
-        description: The branch to regenerate on. Its tree is built; nothing is pushed to it.
-        required: true
-        type: string
       app:
         description: The app under apps/ whose android/ project is regenerated.
         required: true
@@ -23,52 +24,84 @@ on:
         type: string
 
 concurrency:
-  group: regen-gradle-verify-${{ inputs.app }}-${{ inputs.ref }}
+  group: regen-gradle-verify-${{ inputs.app }}-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  # why: the app id is checked here and handed on as this job's output, the way
+  # every per-app lane takes its app (submit-play.yml's gate), so the release
+  # composer below is read once per workspace app by the release guards.
+  gate:
+    name: Refuse main, and an app that is not one of the workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      app: ${{ steps.app.outputs.app }}
+    steps:
+      # why: main is refused, so a run's cache scope is never one that every branch
+      # and the keystore jobs restore; and only a branch is a scope of its own.
+      - name: Refuse main, and a ref that is not a branch
+        timeout-minutes: 1
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$REF" = refs/heads/main ]; then
+            echo "::error title=Refused::regenerate on the branch that changed the dependencies, never on main: gh workflow run regen-gradle-verify.yml --ref <branch> -f app=<app>."
+            exit 1
+          fi
+          case "$REF" in
+            refs/heads/*) ;;
+            *)
+              echo "::error title=Refused::'$REF' is not a branch: dispatch with --ref <branch>."
+              exit 1
+              ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+      - name: The app input names one app of the workspace
+        id: app
+        timeout-minutes: 2
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+
   regenerate:
     name: Regenerate verification-metadata.xml on Linux
+    needs: gate
     runs-on: ubuntu-24.04
-    # why 60: ci.yml android-artifacts' three release builds take 11.5–11.7 min warm
-    # and its first assembleRelease 404.8 s cold; this job runs cold (no Gradle cache)
-    # and builds debug through Flutter and Gradle, then release through Gradle.
+    # why 60: the #1154 regeneration (run 37102112215) ran the same debug and
+    # release generation plus ci.yml android-artifacts' three release builds twice
+    # (lenient, then strict), more than this job does, and took 23.5 min end to end,
+    # cold, on this runner image.
     timeout-minutes: 60
     # why: read-only and NO secrets. It builds the branch's code and writes nothing
     # back; the regenerated file leaves only as an artifact a human commits.
     permissions:
       contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
-      - name: Refuse a ref that is not a plain branch name, and an app id that is not one
-        timeout-minutes: 1
-        env:
-          REF: ${{ inputs.ref }}
-          APP: ${{ inputs.app }}
-        run: |
-          set -euo pipefail
-          if ! printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$' || ! git check-ref-format --branch "$REF" > /dev/null; then
-            echo "::error title=Refused::ref '$REF' is not a plain branch name."
-            exit 1
-          fi
-          if ! printf '%s' "$APP" | grep -Eq '^[a-z][a-z0-9_]*$'; then
-            echo "::error title=Refused::app '$APP' is not an app id (apps/<id>)."
-            exit 1
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.ref }}
           persist-credentials: false
 
       - name: The app has an Android Gradle project
         id: plan
         timeout-minutes: 1
-        env:
-          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
           if [ ! -f "apps/$APP/android/settings.gradle.kts" ] && [ ! -f "apps/$APP/android/settings.gradle" ]; then
@@ -80,15 +113,21 @@ jobs:
 
       # why: the SAME JDK, Flutter (tooling/versions.json, through the same composite
       # action) and runner image as ci.yml android-artifacts, so Gradle resolves the
-      # artefacts that job resolves. NO Gradle cache is restored: every digest below
-      # is computed over bytes this run fetched, never over a restored cache.
+      # artefacts that job resolves. NO CACHE IS READ OR WRITTEN, by any step: every
+      # digest below is computed over bytes this run fetched, and nothing this run
+      # builds is saved for a later job to restore. setup-java's `cache` is empty
+      # (its "none"; it takes no 'false'), setup-flutter's is 'false', and there is
+      # no actions/cache step.
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         timeout-minutes: 5
         with:
           distribution: temurin
           java-version: '17'
+          cache: ''
       - uses: ./.github/actions/setup-flutter
         timeout-minutes: 10
+        with:
+          cache: 'false'
       - name: Resolve the workspace
         timeout-minutes: 5
         run: flutter pub get --enforce-lockfile
@@ -110,7 +149,7 @@ jobs:
       # the .aab), debug a developer's own build.
       - name: Generate the debug half (bundleDebug, assembleDebug)
         timeout-minutes: 20
-        working-directory: apps/${{ inputs.app }}
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: |
           set -euo pipefail
           flutter build appbundle --debug
@@ -127,8 +166,6 @@ jobs:
       # debug registrant by that same flag, and the step fails if any is left.
       - name: Write the release plugin registrant (dev_dependency plugins removed)
         timeout-minutes: 1
-        env:
-          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
@@ -152,13 +189,11 @@ jobs:
 
       - name: Generate the release half (bundleRelease, assembleRelease)
         timeout-minutes: 25
-        working-directory: apps/${{ inputs.app }}/android
+        working-directory: apps/${{ needs.gate.outputs.app }}/android
         run: ./gradlew --no-daemon --write-verification-metadata sha256 bundleRelease assembleRelease
 
       - name: The file exists and is not empty
         timeout-minutes: 1
-        env:
-          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
           f="apps/$APP/android/gradle/verification-metadata.xml"
@@ -167,12 +202,47 @@ jobs:
             exit 1
           fi
           echo "$f: $(grep -c '<component ' "$f") components, sha256 $(sha256sum < "$f" | cut -c1-64)"
+          echo "trust rules: $(grep -c '<trust ' "$f" || true)"
+          grep -q '<verify-metadata>true</verify-metadata>' "$f"
           git diff --stat -- "$f"
+
+      # ── PROOF, BEFORE THE UPLOAD: verification back to STRICT, the builds re-run
+      # against the new file, and the signing-inputs guard over the tree, as the
+      # #1154 regeneration did (run 37102112215). A file a build refuses never
+      # becomes an artifact. ──
+      - name: Verification back to strict (lenient line removed, daemons stopped)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          sed -i '/^org\.gradle\.dependency\.verification=/d' ~/.gradle/gradle.properties
+          if grep -n 'dependency.verification' ~/.gradle/gradle.properties; then
+            echo "::error::verification is still relaxed in ~/.gradle/gradle.properties"
+            exit 1
+          fi
+          (cd "apps/$APP/android" && ./gradlew --stop)
+      # why Gradle and not ci.yml's three `flutter-release-build.mjs --lane pr` calls:
+      # a release composer call outside ci-gate's closure is refused by
+      # assert-release-provenance (no gate) and assert-app-versioning (no run-number
+      # floor), and this job must run before the gate is green. The android-play and
+      # apps-gov-in builds differ only in dart-defines and obfuscation flags, not in
+      # anything Gradle resolves, so these four tasks, strict, over the release
+      # registrant written above, cover every configuration those builds resolve;
+      # ci.yml android-artifacts stays the flag-for-flag proof on the pull request.
+      - name: STRICT re-run of the four tasks against the new file
+        timeout-minutes: 25
+        working-directory: apps/${{ needs.gate.outputs.app }}/android
+        run: ./gradlew --no-daemon bundleDebug assembleDebug bundleRelease assembleRelease
+      - name: The signing inputs are pinned, the new file included
+        timeout-minutes: 2
+        run: node tooling/ci/assert-signing-inputs-pinned.mjs
+      - name: The file the strict builds read is the one uploaded
+        timeout-minutes: 1
+        run: sha256sum "apps/$APP/android/gradle/verification-metadata.xml"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         timeout-minutes: 5
         with:
-          name: verification-metadata-${{ inputs.app }}-${{ steps.plan.outputs.sha8 }}
-          path: apps/${{ inputs.app }}/android/gradle/verification-metadata.xml
+          name: verification-metadata-${{ needs.gate.outputs.app }}-${{ steps.plan.outputs.sha8 }}
+          path: apps/${{ needs.gate.outputs.app }}/android/gradle/verification-metadata.xml
           if-no-files-found: error
           retention-days: 14
