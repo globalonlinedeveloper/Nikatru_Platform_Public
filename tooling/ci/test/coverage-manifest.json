@@ -636,7 +636,7 @@
     12,
 
   "locale-register.test.mjs":
-    41,
+    43,
 
   "lockfile-discipline.test.mjs":
     9,
@@ -1197,7 +1197,7 @@
     46,
 
   "translation-qa.test.mjs":
-    10,
+    12,
 
   "triage-failed-runs.test.mjs":
     115,

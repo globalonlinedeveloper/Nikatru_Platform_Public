@@ -229,6 +229,38 @@ describe('L3 the auth-mail templates speak the register', () => {
     assert.ok(!r.branches.includes('hi'));
   });
 
+  // Review #1161 minor 2: auth-mail.mjs pasted a translated body verbatim, so a
+  // dropped {{ .Email }} or a {{ .Data }} in its place rendered and shipped.
+  test('a translation whose Go actions are not English\'s is refused before rendering', () => {
+    const m = structuredClone(msgs);
+    m.authMail.ta['confirm-signup'].body = m.authMail.ta['confirm-signup'].body.replace('{{ .Email }}', '');
+    m.authMail.hi['confirm-signup'].body = m.authMail.hi['confirm-signup'].body.replace('{{ .Email }}', '{{ .Data }}');
+    assert.throws(
+      () => renderTemplate(TEMPLATES[0], m, ['ta', 'hi']),
+      (e) => /refusing to render confirm-signup\.html/.test(e.message)
+        && /authMail\.ta\.confirm-signup\.body drops \{\{ \.Email \}\}/.test(e.message)
+        && /authMail\.hi\.confirm-signup\.body drops \{\{ \.Email \}\} and adds \{\{ \.Data \}\}/.test(e.message),
+    );
+    // green control: the real copy renders, and the other templates are untouched by this edit
+    assert.ok(renderTemplate(TEMPLATES[0], msgs, ['ta', 'hi']).includes('{{ .Email }}'));
+    assert.ok(renderTemplate(TEMPLATES[1], m, ['ta', 'hi']));
+  });
+
+  test('a misspelt action in a branch is an L3 finding, and auth-mail.mjs exits 1 writing nothing', () => {
+    edit(MESSAGES, (s) => {
+      const j = JSON.parse(s);
+      j.authMail.ta['magic-link'].body = j.authMail.ta['magic-link'].body.replace('{{ .Email }}', '{{ .Emial }}');
+      return JSON.stringify(j, null, 2);
+    });
+    const before = readFileSync(join(root, SOURCE_DIR, 'magic-link.html'), 'utf8');
+    const r = verdict();
+    assert.ok(has(r, /^L3 the auth-mail templates could not be rendered .*authMail\.ta\.magic-link\.body drops \{\{ \.Email \}\} and adds \{\{ \.Emial \}\}/s), r.findings.join('\n'));
+    const cli = spawnSync(process.execPath, [join(REPO, 'tooling/i18n/auth-mail.mjs'), '--root', root], { encoding: 'utf8' });
+    assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+    assert.match(cli.stderr, /refusing to render magic-link\.html/);
+    assert.equal(readFileSync(join(root, SOURCE_DIR, 'magic-link.html'), 'utf8'), before);
+  });
+
   test('a hand edit to a DR template is an L3 finding naming the fix', () => {
     edit(`${SOURCE_DIR}/reset-password.html`, (s) => s.replace('eq $l "hi"', 'eq $l "xx"'));
     const r = verdict();

@@ -109,6 +109,39 @@ describe('on a copy of the real ARBs', () => {
     assert.deepEqual(f.map((x) => [x.kind, x.key, x.why]), [['placeholder', 'paywallTermMonthlyWithTrial', 'drops {count}']]);
   });
 
+  // Review #1161 minor 2, A2: before the fix both mutations were "clean".
+  test('an authMail body that drops {{ .Email }} (ta) or writes {{ .Data }} for it (hi) is an ACTION finding', () => {
+    editJson(EMAIL, (j) => {
+      assert.ok(j.authMail.ta['confirm-signup'].body.includes('{{ .Email }}'));
+      assert.ok(j.authMail.hi['magic-link'].body.includes('{{ .Email }}'));
+      j.authMail.ta['confirm-signup'].body = j.authMail.ta['confirm-signup'].body.replace('{{ .Email }}', '');
+      j.authMail.hi['magic-link'].body = j.authMail.hi['magic-link'].body.replace('{{ .Email }}', '{{ .Data }}');
+    });
+    const ta = qa(root, 'ta').findings.filter((x) => x.kind !== 'changed');
+    assert.deepEqual(ta.map((x) => [x.kind, x.surface, x.key, x.why]), [['action', `${EMAIL}#authMail`, 'confirm-signup.body', 'drops (or misspells) the Go action {{ .Email }}']]);
+    const hi = qa(root, 'hi').findings.filter((x) => x.kind !== 'changed');
+    assert.deepEqual(hi.map((x) => [x.kind, x.key, x.why]), [
+      ['action', 'magic-link.body', 'drops (or misspells) the Go action {{ .Email }}'],
+      ['action', 'magic-link.body', 'adds the Go action {{ .Data }}, which English does not have'],
+    ]);
+    const cli = spawnSync(process.execPath, [SCRIPT, '--all', '--root', root], { encoding: 'utf8' });
+    assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+    assert.match(cli.stdout, /action\s+tooling\/i18n\/messages\/email\.json#authMail confirm-signup\.body/);
+  });
+
+  test('a misspelt action ({{.Email}}, {{ .email }}) and a duplicated one are named; the same actions reordered are not', () => {
+    for (const [tr, re] of [
+      ['<strong>{{.Email}}</strong>', /drops .*\{\{ \.Email \}\}/],
+      ['<strong>{{ .email }}</strong>', /drops .*\{\{ \.Email \}\}/],
+      ['{{ .Email }} {{ .Email }}', /adds the Go action \{\{ \.Email \}\}/],
+    ]) {
+      assert.match(compareMessage('confirm <strong>{{ .Email }}</strong>', tr).map((x) => x[1]).join('\n'), re, tr);
+    }
+    assert.deepEqual(compareMessage('{{ .Email }} at {{ .SiteURL }}', '{{ .SiteURL }} இல் {{ .Email }}'), []);
+    // an ICU arm also opens with two braces, and is not a Go action
+    assert.deepEqual(compareMessage('{n, plural, =1{{n} day} other{{n} days}}', '{n, plural, =1{{n} நாள்} other{{n} நாட்கள்}}'), []);
+  });
+
   test('--accept fingerprints the English; an English edit afterwards is CHANGED', () => {
     accept(root, 'ta');
     assert.deepEqual(qa(root, 'ta').findings, []);
