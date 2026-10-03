@@ -465,12 +465,12 @@
     },
     {
       // ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-NETWORK ceiling on
-      // Play Integrity verifications, spent BEFORE a decode is asked of Google,
-      // keyed `edge:<colo>:<asn>`. It bounds one network's BURST only — 10/min
-      // is 14,400 a day, more than the daily ceiling. The DAY is bounded by two D1
-      // counters (src/lib/native-attest/index.ts): PLAY_INTEGRITY_DAILY_PER_NETWORK
-      // (400, 5% of the ceiling, per network) and PLAY_INTEGRITY_DAILY_CEILING
-      // (8,000, all networks, below Google's 10,000). FAILS CLOSED.
+      // Play Integrity verifications, spent BEFORE a token is decrypted and
+      // verified, keyed `edge:<colo>:<asn>`. It bounds one network's BURST of
+      // local crypto. ⏱ 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY): tokens are
+      // decoded in this Worker, so no Google quota and no daily D1 counter
+      // stands behind it (src/lib/native-attest/index.ts): a token that fails
+      // to decrypt or verify is refused and spends nothing shared. FAILS CLOSED.
       "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
       "namespace_id": "1025",
       "simple": { "limit": 10, "period": 60 }

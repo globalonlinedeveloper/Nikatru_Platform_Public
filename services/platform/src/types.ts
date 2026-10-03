@@ -222,10 +222,10 @@ export interface Env {
 
   /**
    * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-network BURST ceiling
-   * on Play Integrity verifications (10/min), spent before a decode is asked of
-   * Google. It does not bound a day (10/min is 14,400 a day); the daily bounds
-   * are PLAY_INTEGRITY_DAILY_PER_NETWORK and PLAY_INTEGRITY_DAILY_CEILING
-   * (lib/native-attest/index.ts). Keyed `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
+   * on Play Integrity verifications (10/min), spent before a proof is decrypted
+   * and verified. ⏱ 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY): verification is
+   * local, so there is no Google quota to ration and no daily D1 counter; this
+   * bounds one network's CPU spend only. Keyed `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
    */
   NATIVE_AUTH_PLAY_VERIFY_LIMITER?: RateLimiterBinding;
 
@@ -253,12 +253,31 @@ export interface Env {
   NATIVE_AUTH_ATTEST_KINDS?: string;
 
   /**
-   * ⏱ 2026-09-29 · ADR no.NNN. OWNER-PROVISIONED: the Google Cloud service-account
-   * key JSON (client_email, private_key) with the Play Integrity API enabled and
-   * the app linked in Play Console — `wrangler secret put`. Absent, the
-   * `play-integrity` kind answers 503.
+   * ⏱ 2026-09-29 · ADR no.NNN. RETIRED 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY):
+   * the Google Cloud service-account key JSON the Worker once used to decode
+   * verdicts at Google. NOTHING READS IT NOW — Play verdicts are decrypted and
+   * verified locally with the two keys below. Declared until the live secret is
+   * deleted (a lead step), then this member and its worker-secrets.json row go.
    */
   PLAY_INTEGRITY_SERVICE_ACCOUNT?: string;
+
+  /**
+   * ⏱ 2026-10-03 · O-PLAY-INTEGRITY-LOCAL-VERIFY. OWNER-PROVISIONED: Play Console's
+   * self-managed RESPONSE DECRYPTION key — standard base64 of 32 raw AES bytes,
+   * the A256KW key-encryption key of every classic integrity token
+   * (lib/native-attest/play-integrity.ts). `wrangler secret put`. Absent or not
+   * 32 bytes, the `play-integrity` kind answers 503.
+   */
+  PLAY_INTEGRITY_DECRYPTION_KEY?: string;
+
+  /**
+   * ⏱ 2026-10-03 · O-PLAY-INTEGRITY-LOCAL-VERIFY. OWNER-PROVISIONED: Play Console's
+   * self-managed RESPONSE VERIFICATION key — standard base64 of an EC P-256
+   * X.509 SubjectPublicKeyInfo (DER), Google's ES256 verdict-signing key.
+   * `wrangler secret put`. Absent or not a P-256 SPKI, the `play-integrity` kind
+   * answers 503.
+   */
+  PLAY_INTEGRITY_VERIFICATION_KEY?: string;
 
   /**
    * ⏱ 2026-09-29 · ADR no.NNN. The signing-certificate SHA-256 digests a Play
