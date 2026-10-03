@@ -8,9 +8,9 @@
 // 🔴 AN ABSENT `apps.<id>` ROW IS NEXT, NEVER "FREE" (rv2-newproduct-002). The
 // served document overlays `defaults` for an app with no row, and `defaults`
 // serves no offering, so an absent row and a declared free app look the same
-// on the wire. They are not the same fact: nothing writes `apps.<id>.paywall`
-// (the stamp does not), so the undeclared paywall is every fresh stamp and every
-// id that exists nowhere, and reading it as DONE printed "no price-book entry is owed" for a
+// on the wire. They are not the same fact: nothing writes `apps.<id>` (the stamp
+// does not), so the absent row is every fresh stamp and every id that exists
+// nowhere, and reading it as DONE printed "no price-book entry is owed" for a
 // product whose price nobody has decided. Free is a declaration —
 // `apps.<id>.paywall.offerings: []` — and only a declaration is DONE.
 // ⏱ 2026-10-02 · the stamp now DOES write `apps.<id>`, with its `update_url`
@@ -39,21 +39,8 @@ export function read(root, id) {
       guard,
     };
   }
-  // ⏱ 2026-10-02 · A ROW IS NOT A PAYWALL DECISION. The stamp now writes `apps.<id>`
-  // itself — only `update_url.linux-snap`, the Snap Store page [10]D-8 requires
-  // (tooling/kit/stamp-shared.mjs planSnapUpdateUrls) — so a row that declares no
-  // `paywall.offerings` is still the undecided price above, never "free".
-  if (!Array.isArray(row?.paywall?.offerings)) {
-    if (row?.paywall?.offerings !== undefined) return { lost: `${REGISTER_REL} apps.${id}.paywall.offerings is not an array` };
-    return {
-      state: 'NEXT',
-      detail: `${REGISTER_REL} apps.${id} declares no paywall.offerings: whether it is free or sold is undecided`,
-      command: `write apps.${id}.paywall in ${REGISTER_REL} — \`"paywall": {"enabled": false, "offerings": []}\` declares it free; ` +
-        `each offering it sells also needs prices.apps.${id}.<product_id>, then: node tooling/catalog/render-rail-prices.mjs`,
-      guard,
-    };
-  }
-  const offerings = row.paywall.offerings;
+  const offerings = row?.paywall?.offerings ?? [];
+  if (!Array.isArray(offerings)) return { lost: `${REGISTER_REL} apps.${id}.paywall.offerings is not an array` };
   if (offerings.length === 0) {
     return { state: 'DONE', detail: `declares no offering (${REGISTER_REL} apps.${id}), so no price-book entry is owed`, guard };
   }
