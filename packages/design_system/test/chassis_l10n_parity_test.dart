@@ -240,8 +240,8 @@ void main() {
   // whole app and offers one control, so its keys may never be on the list.
   group('every Tamil value is a translation, not the English pasted across', () {
     // Measured at 60b63fb9: four were identical; the three language names have
-    // since left the ARBs for the locale register's nativeName, leaving one;
-    // SE-04 and EN-23 have since added the three below it.
+    // since left the ARBs for the locale register's nativeName, leaving one.
+    // Since then: the two provider brand names and the bulleted note line.
     const Map<String, String> sameInBothLocales = <String, String>{
       'legalese': 'the copyright mark and the company name',
       'connectedAccountsApple':

@@ -1524,7 +1524,7 @@
     },
     "tooling/ci/assert-locale-register.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/ci/assert-lockfile-discipline.mjs": {
@@ -2620,7 +2620,7 @@
     },
     "tooling/ci/assert-rtl-directional.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/ci/assert-runner-budget.mjs": {
@@ -3713,12 +3713,12 @@
     },
     "tooling/i18n/locales.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/i18n/translation-qa.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/kit/new-product.mjs": {

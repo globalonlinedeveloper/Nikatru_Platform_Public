@@ -15,8 +15,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import emailJson from '../../../../tooling/i18n/messages/email.json';
 import registerJson from '../../../../tooling/i18n/locales.json';
-import { firstRow } from './d1';
 import type { SqlDb } from '../../../_shared/src/ports/sql';
+import { firstRow } from './d1';
 
 export interface DigestCopy {
   subjectOne: string;
