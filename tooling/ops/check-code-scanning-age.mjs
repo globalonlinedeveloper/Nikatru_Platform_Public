@@ -51,11 +51,12 @@
 
 import { readFileSync } from 'node:fs';
 import { CouldNotLook, fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 export { CouldNotLook } from './bounded-retry.mjs';
 
 export const GITHUB_API = 'https://api.github.com';
-export const DEFAULT_REPOSITORY = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const DEFAULT_REPOSITORY = PLATFORM_REPO_SLUG;
 /** The triage window for a paged-level alert. Judgement, not a measurement:
  *  one week covers a weekly ops-watch slot plus a working week to look. */
 export const MAX_AGE_DAYS = 7;

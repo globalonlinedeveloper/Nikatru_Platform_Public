@@ -80,6 +80,7 @@
 
 import { readFileSync } from 'node:fs';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
+import { CODEHOST } from '../generated/codehost.mjs';
 
 export { CouldNotLook } from './bounded-retry.mjs';
 
@@ -421,7 +422,7 @@ export async function readDashboard({ owner, name, number, token, sleep, note, d
 
 async function main(argv) {
   const json = argv.includes('--json');
-  const owner = 'globalonlinedeveloper';
+  const owner = CODEHOST.org;
   const name = 'Nikatru_Platform_Public';
   console.log(`check-renovate-backlog - the Dependency Dashboard of ${owner}/${name}   (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS)`);
   let floorRaw;

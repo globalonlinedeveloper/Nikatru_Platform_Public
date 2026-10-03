@@ -100,10 +100,11 @@ import { compareProviders, declared } from './verify-auth-providers.mjs';
 import { AUTH_MAIL_TEMPLATES } from '../sites/gen-auth-mail.mjs';
 import { listDir } from '../ci/tree-walk.mjs';
 import { stripComments } from '../ci/assert-platform-register.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 // Declared once in selfhosted-auth.mjs, which verify-supabase-templates.mjs shares.
 export { BOXC_DEFAULT_TARGET };
-export const REPO_SLUG = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const REPO_SLUG = PLATFORM_REPO_SLUG;
 export const REQUIRED_REPO_SECRETS = Object.freeze(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']);
 const HOSTED_ORIGIN = /^https:\/\/[a-z0-9]+\.supabase\.co$/;
 const HOSTED_IN_TEXT = /https:\/\/[a-z0-9]+\.supabase\.co/;

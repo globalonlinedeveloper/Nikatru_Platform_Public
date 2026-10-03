@@ -38,6 +38,7 @@ import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/p
 import { reminderMailStatementBudget, runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
 import { identityFor, notifierFor } from './ports';
+import { PLATFORM_REPO_REF } from './generated/codehost';
 import {
   MAX_TOKEN_BACKFILL_PER_RUN,
   backfillProviderTokens,
@@ -2372,7 +2373,7 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // Asia/Kolkata, so extra firings evaluate the tree and exit in about a minute
   // — real Actions minutes for nothing. The dispatcher runs every 6h; this
   // target takes one of those four.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main', everyHours: 20 },
+  { ...PLATFORM_REPO_REF, workflow: 'renovate.yml', ref: 'main', everyHours: 20 },
   // ── PHASE 2, FIRST WORKFLOW, ADDED 2026-09-03 ────────────────────────────
   // 🔴 THE ONE WHOSE LATENESS FROZE THIS REPOSITORY TWICE. Three duty rows read
   // ops-watch.yml's newest successful run inside a fixed window, so a schedule
@@ -2409,7 +2410,7 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // comment calling every workflow_dispatch failure "attended" - false since this
   // Worker began dispatching ops-watch. A land-script or hand dispatch sends no
   // input, so it stays attended.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main', inputs: { unattended: 'true' } },
+  { ...PLATFORM_REPO_REF, workflow: 'ops-watch.yml', ref: 'main', inputs: { unattended: 'true' } },
   // ── PHASE 2, SECOND WORKFLOW, ADDED 2026-09-04 ───────────────────────────
   // 🔴 AND THIS ONE MOVES ITS EVIDENCE TOO, WHICH ops-watch.yml ABOVE DOES NOT.
   // `duty.workflow.e2e.yml` now reads a TWO-LIMB record: the cadence claim comes
@@ -2448,7 +2449,7 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // `everyHours: 26` is the safety net, not the cadence: on a grid firing it
   // fires only when the 03:17 dispatch has not succeeded for 26h, so one
   // refused dispatch is retried within 6h rather than a day later.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 26, atCron: E2E_DISPATCH_CRON },
+  { ...PLATFORM_REPO_REF, workflow: 'e2e.yml', ref: 'main', everyHours: 26, atCron: E2E_DISPATCH_CRON },
   // ── PHASE 2, THIRD WORKFLOW, ADDED 2026-09-04 ────────────────────────────
   // ⚠️ AND THIS ONE IS DEFENCE IN DEPTH, NOT A FIX FOR A LIVE PROBLEM. Say so
   // plainly, because the two above were urgent and this reads like the third of
@@ -2468,7 +2469,7 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // PUBLIC repository standard runners are free, so this is queue time rather
   // than money — but it is a real doubling (2 scheduled + 2 dispatched per week)
   // and it buys reliability, not evidence. Drop to 120 if that trade sours.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'build-platforms.yml', ref: 'main', everyHours: 84 },
+  { ...PLATFORM_REPO_REF, workflow: 'build-platforms.yml', ref: 'main', everyHours: 84 },
 ];
 
 /** Every cron a target is pinned to, derived from the targets, never listed. */

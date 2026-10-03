@@ -40,10 +40,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describeVerdict, parseRows } from '../ci/assert-pr-rows.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const REPO_SHAPE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_SHAPE = /^[0-9a-f]{40}$/;
-export const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+export const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 /** What the one `gh pr view` read asks for. */
 export const VIEW_FIELDS = 'number,title,body,headRefOid,state';
 

@@ -68,6 +68,7 @@ import {
   selfRunIdFrom,
   anchoredNewest,
 } from '../../ops/triage-failed-runs.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -1034,7 +1035,7 @@ describe('transport hardening', () => {
   });
 
   test('a repository that is not an owner/name slug is COVERAGE LOST (exit 2) before any transport is built', () => {
-    assert.equal(isValidRepoSlug('globalonlinedeveloper/Nikatru_Platform_Public'), true);
+    assert.equal(isValidRepoSlug(`${RECORDED_ORG}/Nikatru_Platform_Public`), true);
     for (const bad of ['../../user', 'owner/..', 'owner/.x', 'a/b/c', 'owner', '', 'own er/x']) assert.equal(isValidRepoSlug(bad), false, bad);
     const r = run(SCRIPT, ['--repo', '../../user'], { GH_TOKEN: 'ghp_' + 'a'.repeat(36), GITHUB_TOKEN: '' });
     assert.equal(r.code, 2, r.out + r.err);
@@ -1043,7 +1044,7 @@ describe('transport hardening', () => {
   });
 
   test('only the seven request paths this reader builds may reach fetch — numeric ids only', () => {
-    const R = 'globalonlinedeveloper/Nikatru_Platform_Public';
+    const R = `${RECORDED_ORG}/Nikatru_Platform_Public`;
     const allowed = [
       `/repos/${R}/actions/runs?status=failure&per_page=100&created=${encodeURIComponent('2026-09-05..2026-09-10')}&page=1`,
       `/repos/${R}/actions/runs/34546423386/jobs?per_page=100&filter=all`,
@@ -1051,7 +1052,7 @@ describe('transport hardening', () => {
       `/repos/${R}/actions/workflows/123/runs?branch=${encodeURIComponent('feat/x')}&per_page=1`,
       `/repos/${R}/actions/workflows/123/runs?branch=main&status=completed&per_page=2`,
       `/repos/${R}/branches?per_page=100&page=2`,
-      `/repos/${R}/pulls?head=${encodeURIComponent('globalonlinedeveloper:feat/x')}&state=all&per_page=5`,
+      `/repos/${R}/pulls?head=${encodeURIComponent('${RECORDED_ORG}:feat/x')}&state=all&per_page=5`,
       '/rate_limit',
     ];
     const refused = [

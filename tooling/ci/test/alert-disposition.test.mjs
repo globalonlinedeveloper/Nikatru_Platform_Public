@@ -302,6 +302,9 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
     // ⏱ 2026-09-30: limb C reads the alerts through the ops reader.
     cpSync(join(CI_DIR, '..', 'ops', 'check-code-scanning-age.mjs'), join(root, 'tooling/ops', 'check-code-scanning-age.mjs'));
     cpSync(join(CI_DIR, '..', 'ops', 'credential-origin.mjs'), join(root, 'tooling/ops', 'credential-origin.mjs'));
+    // ⏱ 2026-10-03 · port-codehost: the default repository is the rendered code-host module's.
+    mkdirSync(join(root, 'tooling/generated'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'generated', 'codehost.mjs'), join(root, 'tooling/generated', 'codehost.mjs'));
     rmSync(join(root, '.github/workflows'), { recursive: true });
     const r = spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs')], { cwd: root, encoding: 'utf8' });
     assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows does not exist/);
@@ -529,6 +532,8 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
     cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
     for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs', 'credential-origin.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
+    mkdirSync(join(root, 'tooling/generated'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'generated', 'codehost.mjs'), join(root, 'tooling/generated', 'codehost.mjs'));
     write(root, CODEQL_DISPOSITIONS_REL, JSON.stringify({ dispositions: entries }));
     const file = join(TMP, `probe${seq++}.json`);
     writeFileSync(file, JSON.stringify(probe));
@@ -681,6 +686,8 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
     cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
     for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs', 'credential-origin.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
+    mkdirSync(join(root, 'tooling/generated'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'generated', 'codehost.mjs'), join(root, 'tooling/generated', 'codehost.mjs'));
     write(root, CODEQL_DISPOSITIONS_REL, JSON.stringify({ dispositions: [{ alert: 7, rule: 'js/x', path: 'a.mjs', disposition: 'fixed-in-tree', reason: 'fixed by this change' }] }));
     const file = join(TMP, `probe${seq++}.json`);
     const spawnIn = (claims) => {

@@ -30,6 +30,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSy
 import { join, dirname, resolve, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-artifact-signed.mjs');
@@ -450,7 +451,7 @@ const FULL = () => ({
 
 /** The two signals that make a lane a release lane, as GitHub sets them. */
 const ON_TAG = { GITHUB_REF: 'refs/tags/subscriptiontracker-v1.0.0' };
-const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `globalonlinedeveloper/repo/${SUBMIT_WF}@refs/heads/main` };
+const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `${RECORDED_ORG}/repo/${SUBMIT_WF}@refs/heads/main` };
 
 describe('android-signing — a release lane is DERIVED, not declared in YAML', () => {
   test('a TAG push requires signing, and says which signal decided it', () => {
@@ -469,7 +470,7 @@ describe('android-signing — a release lane is DERIVED, not declared in YAML', 
   test('ANOTHER workflow on a branch does NOT — the build proof stays legal', () => {
     const { r } = runPrepare(makeRoot({}), {
       GITHUB_REF: 'refs/heads/feat/whatever',
-      GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/feat/whatever',
+      GITHUB_WORKFLOW_REF: `${RECORDED_ORG}/repo/.github/workflows/build-platforms.yml@refs/heads/feat/whatever`,
     });
     assert.equal(r.status, 0, out(r));
     assert.match(out(r), /no release signal/);

@@ -1,0 +1,47 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "codehost",
+  "level": { "claimed": 2, "target": 2 },
+  "interface": {
+    "js": { "file": "tooling/generated/codehost.mjs", "symbols": ["CODEHOST", "repoSlug", "repoUrl", "PLATFORM_REPO_SLUG"] }
+  },
+  "adapters": [
+    {
+      "id": "github",
+      "vendor": "github",
+      "status": "external",
+      "impl": { "configAt": "tooling/github-org.json", "verify": "node tooling/ci/assert-github-matrix.mjs — the org read back with a read-only `gh repo list`; a move is rehearsed by node tooling/ops/org-move.mjs --to <org> --dry-run" },
+      "capabilities": ["host-repositories", "dispatch-workflow", "issues", "pull-requests", "branch-protection", "actions-secrets", "environments", "pages-binding", "app-installations"],
+      "secrets": ["GITHUB_DISPATCH_TOKEN"],
+      "identity": [],
+      "environments": ["live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the repositories (every branch and tag, `git push --mirror`), their issues and pull requests (the GitHub migration export, or `gh` per repo), the Actions secrets BY NAME — the rows of tooling/channel-register.json `ciSecretRegister`, re-provisioned from the vault, never exported — the environments and their protection rules, branch protection, and the integrations: the Cloudflare Pages Git bindings (tooling/github-org.json `renamePins`), Renovate and every GitHub App installation. Cannot move: the run history and its logs, the GITHUB_DISPATCH_TOKEN (scoped to the old org: the new org needs a new token, an owner step), and the free macOS minutes, which are a property of the PUBLIC repo on the GitHub Free plan.",
+      "readAt": null,
+      "c8Seam": {
+        "file": "services/platform/src/scheduled.ts",
+        "why": "C-8's seam for github is the dispatch CALL (dispatchGithubWorkflows). This port's interface is the NAMES that call addresses — rendered from tooling/github-org.json into services/platform/src/generated/codehost.ts and tooling/generated/codehost.mjs. The call itself stays GitHub's REST shape (capability-register github.exitPlan: a forge move rewrites one fetch).",
+        "until": "codehost-forge-exit"
+      }
+    }
+  ],
+  "selection": {
+    "by": "single",
+    "source": "tooling/github-org.json#org",
+    "default": { "live": null, "sandbox": null, "test": null },
+    "canary": null
+  },
+  "generated": true,
+  "handTables": [],
+  "conformance": { "suite": null, "pending": [] },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#codehost",
+    "dryRun": "node tooling/ops/port-switch.mjs codehost --to <adapter> --dry-run"
+  },
+  "_why": [
+    "L2 (port-codehost, 2026-10-03; row O-CODEHOST-NAME-HARD-CODED-IN-33-FILES). The code host is CONFIG: tooling/github-org.json holds the org, every repository and the `renamePins` (the things outside this tree that pin a name), and is the only file that types them. tooling/ports/render.mjs renders the names into services/platform/src/generated/codehost.ts (the platform Worker's dispatch table and OPS_REPO) and tooling/generated/codehost.mjs (every script's default repository); the workflows read `${{ github.repository_owner }}` and `${{ github.repository }}`. tooling/ci/assert-no-dead-repo-names.mjs refuses the org as a literal anywhere else and checks the pubspec, podspec, CODEOWNERS and issue-chooser pins against this register.",
+    "The move is rehearsed, not ported further: tooling/ops/org-move.mjs --to <org> --dry-run lists every pin the move must change, read-only. Not L3: there is one host and no suite, and the target is L2 — the forge exit (Forgejo, GitLab) is a runbook (Private/runbooks/switch-vendor.md#codehost), not a second adapter.",
+    "CI stays GitHub Actions (tooling/ports/README.md §7: the CI runtime is deliberately not ported — the free minutes are why the repository is public). The vendor `github` is placed HERE; its C-8 seam is the dispatch call, declared above as `c8Seam`."
+  ]
+}

@@ -55,6 +55,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CONTRACT, MIGRATION_STUB_MARKER, MIGRATION_STUB_PROMPT, createClient, depMet, isOwner, renderIssue, splitPrompt, tokenFromEnv,
 } from './issue-queue.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const VALUE_FLAGS = ['queue', 'prompts-dir', 'state', 'routines-dir', 'aliases', 'markers-dir', 'repo', 'vault', 'map-out', 'only', 'public-repo'];
 const MIN_VAULT_VALUE = 8;
@@ -369,7 +370,7 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     let mergedBranches = state?.mergedBranches ?? null;
     if (!Array.isArray(mergedBranches)) {
       if (!token) throw new CoverageLost('no merged-PR facts: pass --state {"mergedBranches":[...]} or set a token so the Public repo can be read');
-      mergedBranches = await mergedBranchesFrom(createClient({ repo: o['public-repo'] ?? 'globalonlinedeveloper/Nikatru_Platform_Public', token, fetchImpl }));
+      mergedBranches = await mergedBranchesFrom(createClient({ repo: o['public-repo'] ?? PLATFORM_REPO_SLUG, token, fetchImpl }));
     }
     const launchedSet = new Set(state?.launched ?? []);
     if (o.apply && !client) throw new CoverageLost('--apply needs a token in AUTOPILOT_GITHUB_TOKEN, GITHUB_TOKEN or GH_TOKEN');

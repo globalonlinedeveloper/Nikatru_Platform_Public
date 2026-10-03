@@ -10,7 +10,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, renderIssuersTs, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS } from '../../ports/render.mjs';
+import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, renderIssuersTs, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, CODEHOST_REGISTER, CODEHOST_PORT, RENDERED_CODEHOST_TS, RENDERED_CODEHOST_MJS } from '../../ports/render.mjs';
+
+/** port-codehost: the code host's register, its port and the two modules rendered from them. */
+const CODEHOST_SOURCES = [CODEHOST_REGISTER, CODEHOST_PORT];
+const CODEHOST_RENDERED = [RENDERED_CODEHOST_TS, RENDERED_CODEHOST_MJS];
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ports', 'render.mjs');
@@ -23,7 +27,7 @@ describe('render.mjs — the payments table', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, ...CODEHOST_SOURCES, ...CODEHOST_RENDERED]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -80,7 +84,7 @@ describe('render.mjs — the payments table', () => {
   it('COVERAGE LOST: a generated path that exists but cannot be read is exit 2 in both modes, never a crash', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-dir-'));
     try {
-      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, ...CODEHOST_SOURCES, ...CODEHOST_RENDERED]) {
         mkdirSync(dirname(join(scratch, rel)), { recursive: true });
         cpSync(join(REPO, rel), join(scratch, rel));
       }
@@ -95,7 +99,7 @@ describe('render.mjs — the payments table', () => {
   it('green control: an ABSENT generated file is written (ENOENT is absence, not an error)', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-new-'));
     try {
-      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, AUTH_REGISTRY]) {
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, AUTH_REGISTRY, ...CODEHOST_SOURCES]) {
         mkdirSync(dirname(join(scratch, rel)), { recursive: true });
         cpSync(join(REPO, rel), join(scratch, rel));
       }
@@ -104,6 +108,7 @@ describe('render.mjs — the payments table', () => {
       assert.match(r.out, /^ok {3}render — wrote services\/platform\/src\/generated\/ports\.ts/);
       assert.match(r.out, /^ok {3}render — wrote packages\/purchases\/lib\/src\/generated\/rails\.dart/m);
       assert.match(r.out, /^ok {3}render — wrote services\/_shared\/src\/generated\/ports\.ts/m);
+      assert.match(r.out, /^ok {3}render — wrote tooling\/generated\/codehost\.mjs/m);
       assert.equal(run(['--check', '--root', scratch]).code, 0);
     } finally { rmSync(scratch, { recursive: true, force: true }); }
   });
@@ -118,7 +123,7 @@ describe('render.mjs — the Dart rail map', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-dart-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, ...CODEHOST_SOURCES, ...CODEHOST_RENDERED]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -205,7 +210,7 @@ describe('render.mjs — the trusted issuers', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-issuers-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, ...CODEHOST_SOURCES, ...CODEHOST_RENDERED]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -246,6 +251,60 @@ describe('render.mjs — the trusted issuers', () => {
       const r = run(['--check', '--root', root]);
       assert.equal(r.code, 2, r.out);
       assert.match(r.out, /lists no issuer/);
+    } finally { writeFileSync(rel, before); }
+  });
+});
+
+// ⏱ 2026-10-03 · port-codehost: the CODE HOST'S NAMES, rendered from tooling/github-org.json into
+// services/platform/src/generated/codehost.ts (the dispatch table, OPS_REPO) and
+// tooling/generated/codehost.mjs (every script's default repository).
+describe('render.mjs — the code host', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-render-codehost-'));
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS, ...CODEHOST_SOURCES, ...CODEHOST_RENDERED]) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      cpSync(join(REPO, rel), join(root, rel));
+    }
+  });
+  it('green control: both modules are the render of the register', () => {
+    const r = run(['--check', '--root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /services\/platform\/src\/generated\/codehost\.ts matches tooling\/github-org\.json; tooling\/generated\/codehost\.mjs matches tooling\/github-org\.json/);
+  });
+  it('🔴 red: render.mjs --check after a hand edit of the Worker module exits 1', () => {
+    const rel = join(root, RENDERED_CODEHOST_TS);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace(/export const CODEHOST_ORG = '[^']*';/, "export const CODEHOST_ORG = 'hand-typed';"));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /services\/platform\/src\/generated\/codehost\.ts differs from its render/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('🔴 red: the org moved in the register and not re-rendered exits 1; re-rendered, both modules name the new org', () => {
+    const rel = join(root, CODEHOST_REGISTER);
+    const before = readFileSync(rel, 'utf8');
+    const saved = CODEHOST_RENDERED.map((r) => [r, readFileSync(join(root, r), 'utf8')]);
+    try {
+      writeFileSync(rel, JSON.stringify({ ...JSON.parse(before), org: 'nikatru-com' }));
+      assert.equal(run(['--check', '--root', root]).code, 1);
+      assert.equal(run(['--root', root]).code, 0);
+      assert.match(readFileSync(join(root, RENDERED_CODEHOST_TS), 'utf8'), /export const CODEHOST_ORG = 'nikatru-com';/);
+      assert.match(readFileSync(join(root, RENDERED_CODEHOST_MJS), 'utf8'), /org: 'nikatru-com',/);
+    } finally {
+      writeFileSync(rel, before);
+      for (const [r, b] of saved) writeFileSync(join(root, r), b);
+    }
+  });
+  it('COVERAGE LOST: a register with no PUBLIC platform repository (no dispatch target) is exit 2', () => {
+    const rel = join(root, CODEHOST_REGISTER);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, JSON.stringify({ ...JSON.parse(before), platform: [] }));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /names 0 PUBLIC platform repositories/);
     } finally { writeFileSync(rel, before); }
   });
 });

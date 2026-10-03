@@ -650,7 +650,9 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // port-auth: the Dart half's two conformance tests (the fake and the GoTrue adapter)
       'packages/core/test/fake_auth_repository_conformance_test.dart', 'packages/auth_supabase/test/supabase_auth_conformance_test.dart',
       // port-auth: the site's pages and its one identity client (limb 4's site half)
-      'sites/nikatru/js', 'sites/nikatru/app', 'sites/nikatru/ext']) copy(rel);
+      'sites/nikatru/js', 'sites/nikatru/app', 'sites/nikatru/ext',
+      // port-codehost: the register the code-host names render from, and the rendered script module
+      'tooling/github-org.json', 'tooling/generated']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
   it('green control: payments, mail and ai claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
@@ -661,6 +663,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
     assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
     assert.match(r.out, /^auth\.dart\s+L3\s+L3\s+L3/m); // port-auth: the suite passes for the fake and the GoTrue adapter
+    assert.match(r.out, /^codehost\s+L2\s+L2\s+L2/m); // port-codehost: the names are config, rendered
+    assert.match(r.out, /codehost\/github: C-8 seam is services\/platform\/src\/scheduled\.ts, not this port's interface — until codehost-forge-exit/);
     assert.match(r.out, /^auth\.ts\s+L2\s+L2\s+L3/m); // port-auth: IdentityAdmin, one built adapter and a fake
     assert.match(r.out, /limb 4 \(URL half\): identity-provider URLs built only in 1 auth adapter/);
     assert.match(r.out, /identity URL: services\/edge-shield\/src\/classify\.ts names `\/auth\/v1`/);
@@ -971,11 +975,25 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
-      doc.rows = doc.rows.filter((x) => x.vendor !== 'github');
+      // ⏱ 2026-10-03 · port-codehost: `github` is codehost's adapter now, so the row deleted is
+      // the captcha authority's (a platform authority, never ported).
+      doc.rows = doc.rows.filter((x) => x.vendor !== 'cloudflare-turnstile');
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
-      assert.match(r.first, /limb 8 \(cross-register\): vendor `github`/);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare-turnstile`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('🔴 red (port-codehost): github placed back in _non-port.json beside the codehost port reddens limb 8', () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.rows.push({ vendor: 'github', registers: ['capability-register'], reason: 'the workflow-dispatch call from the Worker cron', until: 'port-codehost' });
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /vendor `github` is placed 2 times \(codehost\/github, _non-port\)/);
     } finally { writeFileSync(rel, before); }
   });
   it("red: paddle's C-8 seam moved off MoRWebhookVerifier's file reddens limb 8", () => {

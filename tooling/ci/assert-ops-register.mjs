@@ -245,6 +245,7 @@ import { appWorkerMatrix } from './worker-set.mjs';
 // alone, and V8 parses `2026-02-31` as 3 March, so an impossible date passed
 // (the PR 913 review, L2, 2026-09-24).
 import { isIsoDate } from '../app-yaml/schema-validate.mjs';
+import { CODEHOST, PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
@@ -2141,7 +2142,7 @@ const GH_API = 'https://api.github.com';
 // fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 const PROBE_TIMEOUT_MS = 15_000;
 // 🔴 SEPARATE, AND MUCH LARGER, THAN THE NETWORK ONE — measured, not guessed. A
 // COLD `powershell` start plus the ScheduledTasks module autoload exceeded 15 s
@@ -5380,7 +5381,15 @@ export function dispatchTargetsFromSource(src) {
   }
   const block = clean.match(/GITHUB_DISPATCH_TARGETS[^=]*=\s*\[([\s\S]*?)\n\];/);
   if (!block) return { error: 'GITHUB_DISPATCH_TARGETS array not found in the dispatcher source' };
-  const targets = [...block[1].matchAll(/repo:\s*'([^']+)'[\s\S]*?workflow:\s*'([^']+)'/g)].map((m) => `${m[1]}/${m[2]}`);
+  // ⏱ 2026-10-03 · port-codehost: a target may SPREAD the rendered owner and repo
+  // (`...PLATFORM_REPO_REF`, src/generated/codehost.ts, from tooling/github-org.json).
+  // Its repo is then the register's, read from the scripts' twin of that render —
+  // and only when the source really imports it from there.
+  const spreads = /\.\.\.PLATFORM_REPO_REF\b/.test(block[1]);
+  if (spreads && !/import\s*\{[^}]*\bPLATFORM_REPO_REF\b[^}]*\}\s*from\s*'\.\/generated\/codehost(?:\.ts)?'/.test(clean)) {
+    return { error: 'GITHUB_DISPATCH_TARGETS spreads PLATFORM_REPO_REF, but the dispatcher does not import it from ./generated/codehost — its repo cannot be read' };
+  }
+  const targets = [...block[1].matchAll(/(?:repo:\s*'([^']+)'|\.\.\.PLATFORM_REPO_REF\b)[\s\S]*?workflow:\s*'([^']+)'/g)].map((m) => `${m[1] ?? CODEHOST.platformRepo}/${m[2]}`);
   if (targets.length === 0) return { error: 'GITHUB_DISPATCH_TARGETS parsed to ZERO entries, so every comparison below would be vacuous' };
   return { targets };
 }

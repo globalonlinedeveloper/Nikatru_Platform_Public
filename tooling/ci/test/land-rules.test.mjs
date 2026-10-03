@@ -30,13 +30,14 @@ import {
   percentile,
   serialTiming,
 } from '../../ops/land-rules.mjs';
+import { RECORDED_ORG } from './fixtures/recorded-org.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..', '..');
 const FIX = join(HERE, 'fixtures', 'land-rollup');
 const CLI = join(ROOT, 'tooling', 'ops', 'land-gate.mjs');
 const load = (n) => JSON.parse(readFileSync(join(FIX, `pr-${n}.json`), 'utf8'));
-const REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const REPO = `${RECORDED_ORG}/Nikatru_Platform_Public`;
 const runUrl = (run, job = 1) => `https://github.com/${REPO}/actions/runs/${run}/job/${job}`;
 const gateOf = (rs, run) => rs.find((c) => c.name === GATE_CHECK && runIdOf(c.detailsUrl) === run);
 
@@ -128,7 +129,7 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
   const run = (over = {}) => ({
     id: 500,
     // what GitHub actually sends: ci.yml's run-name, not the workflow name
-    name: 'CI on main by @globalonlinedeveloper',
+    name: `CI on main by @${RECORDED_ORG}`,
     path: MAIN_WORKFLOW_PATH,
     event: 'push',
     head_branch: 'main',

@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { gateVerdict, redChecks, mainHealth, readFreeze, statusForRun, serialTiming, GATE_CHECK, isMainWorkflowRun } from './land-rules.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 import { POST_GATE_EVENTS } from './post-gate.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const API = 'https://api.github.com';
 const REPO_SHAPE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -127,7 +128,7 @@ async function main(argv) {
     return f.frozen ? EXIT.FROZEN : EXIT.OPEN;
   }
   if (cmd === 'main') {
-    const repo = arg(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? 'globalonlinedeveloper/Nikatru_Platform_Public';
+    const repo = arg(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? PLATFORM_REPO_SLUG;
     if (!REPO_SHAPE.test(repo)) {
       say([`NONE ${JSON.stringify(repo).slice(0, 80)} is not an owner/name slug`]);
       return 2;
@@ -150,7 +151,7 @@ async function main(argv) {
     }
   }
   if (cmd === 'timing') {
-    const repo = arg(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? 'globalonlinedeveloper/Nikatru_Platform_Public';
+    const repo = arg(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? PLATFORM_REPO_SLUG;
     const last = Number(arg(argv, '--last') ?? 30);
     if (!REPO_SHAPE.test(repo) || !Number.isInteger(last) || last < 1 || last > 100) {
       say(['NONE timing needs an owner/name --repo and a whole --last from 1 to 100']);

@@ -178,6 +178,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -189,7 +190,7 @@ const GH_API = 'https://api.github.com';
 // fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 const PROBE_TIMEOUT_MS = 15_000;
 const ISSUE_PAGE_SIZE = 100;
 const ISSUE_PAGE_CAP = 5;

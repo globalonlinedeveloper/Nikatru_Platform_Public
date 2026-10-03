@@ -36,7 +36,9 @@ jobs:
           # One repository, explicitly (NOT autodiscover). Nikatru_Extensions_Public was
           # merged into this repo as extensions/ on 2026-09-05 (ADR 067 d.1) and deleted on
           # GitHub; naming it made every run exit non-zero (initRepo platform-unknown-error).
-          RENOVATE_REPOSITORIES: globalonlinedeveloper/Nikatru_Platform_Public
+          # ⏱ 2026-10-03 · port-codehost: THIS repository, by the run's own context — an
+          # org move (tooling/ops/org-move.mjs) changes it with no edit here.
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ONBOARDING: 'false'
           # why: 'required', not 'optional'. A repository whose config Renovate rejects must
           # stop being processed loudly rather than be onboarded with defaults.

@@ -145,6 +145,7 @@ import { parseWorkflow, flutterBuilds, composerCallArgs, shellSegments, WORKFLOW
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
+import { PLATFORM_REPO_SLUG } from '../generated/codehost.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -159,7 +160,7 @@ const MAX_AGE_DAYS = 14;
 // fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+const DEFAULT_REPO = PLATFORM_REPO_SLUG;
 
 /** A full commit id. Abbreviations are refused rather than resolved: the API
  *  always returns 40 hex, so a short one means the field was written by
