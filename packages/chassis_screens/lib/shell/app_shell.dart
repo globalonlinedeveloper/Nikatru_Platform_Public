@@ -508,7 +508,7 @@ class _RootedDeviceNoticeHostState extends State<RootedDeviceNoticeHost> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
               child: Row(
                 children: <Widget>[
                   Icon(

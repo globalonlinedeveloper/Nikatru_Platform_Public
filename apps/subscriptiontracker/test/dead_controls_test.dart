@@ -32,7 +32,7 @@ import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 
 import 'support/width_harness.dart';
 

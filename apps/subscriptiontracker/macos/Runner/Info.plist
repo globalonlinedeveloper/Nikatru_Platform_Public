@@ -4,6 +4,16 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- ⏱ 2026-10-01 · THE LOCALES THIS APP SHIPS (C-18). One entry per arb in
+	     lib/l10n/ — tooling/ci/assert-bundle-locales.mjs derives the set from
+	     l10n.yaml and fails when this list and the arbs disagree. Without it the
+	     OS lists the app under its development region alone. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ta</string>
+		<string>hi</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIconFile</key>
@@ -14,16 +24,6 @@
 	<string>6.0</string>
 	<key>CFBundleDisplayName</key>
 	<string>Subscriptions</string>
-	<!-- ⏱ 2026-10-01 · THE LOCALES THIS APP SHIPS (C-18). One entry per arb in
-	     lib/l10n/ — tooling/ci/assert-bundle-locales.mjs derives the set from
-	     l10n.yaml and fails when this list and the arbs disagree. Without it the
-	     OS lists the app under its development region alone. -->
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>en</string>
-		<string>hi</string>
-		<string>ta</string>
-	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>

@@ -1,0 +1,91 @@
+{
+  "$comment": [
+    "THE LOCALE REGISTER — the one place a language is declared. [lane i18n-pipeline, O-LOCALES-HAND-TYPED-IN-12-PLACES]",
+    "",
+    "Before this file the set 'en, ta, hi' was typed by hand in a dozen places across code, tests, CI,",
+    "store tooling and native manifests, and two of them were already out of step: the brick shipped",
+    "en+ta while the chassis Settings picker offered Hindi (a dead control in every new app), and the",
+    "privacy-notice guard derived its locale duty from the brick, so Hindi was invisible to K-14.",
+    "",
+    "Everything else READS this file:",
+    "  - tooling/i18n/locales.mjs renders the Dart table (packages/design_system/lib/src/l10n/",
+    "    locale_register.g.dart) both Settings pickers and the locale-looping tests read, and every",
+    "    app's native declarations (iOS/macOS CFBundleLocalizations, Android locales_config.xml +",
+    "    android:localeConfig, MSIX `languages:`). `--write` regenerates, `--check` fails on drift.",
+    "  - tooling/ci/assert-locale-register.mjs fails CI on a supported locale with no ARB in an app, the",
+    "    chassis or the brick; on a stale generated file or native declaration; and on ANY hand-typed",
+    "    list of two or more register codes in a tracked source file that does not carry a",
+    "    `locale-list:` note saying why it is not the set.",
+    "  - assert-policy-archive (K-14), assert-stamp-text-fidelity, the content-pack recipe, the ci.yml",
+    "    chassis regen step and the platform Worker's e-mail copy.",
+    "",
+    "FIELDS. code: the BCP-47 tag, and the ARB suffix (`app_<code>.arb`, `-` as `_`). englishName /",
+    "nativeName: the picker shows nativeName, so a reader finds their language without first reading the",
+    "current one. script: ISO 15924. direction: ltr | rtl. plural: the CLDR cardinal categories the",
+    "language uses, which a translation's ICU `plural` arms are checked against. status: supported (ships",
+    "everywhere, every surface must carry it) | pending (declared, ships nowhere yet). apple / android /",
+    "msix: the tag each OS manifest spells it with.",
+    "",
+    "PSEUDO LOCALES are test-only and never ship: en-XA (accented, ~40% longer) catches truncation and",
+    "overflow; ar-XB (mirrored, right-to-left) catches every hard-wired left/right. Tests build them from",
+    "the English ARB at run time (packages/design_system/lib/testing/pseudo_locale.dart).",
+    "",
+    "ADDING A LANGUAGE: add a row as `pending`, run `node tooling/i18n/locales.mjs --write`, translate",
+    "(tooling/i18n/translation-qa.mjs lists what is missing and writes the review sheet), then flip it to",
+    "`supported` — the guard names every ARB, manifest and template still missing it. Legal copy in a new",
+    "language needs the owner's native review before it is published (C-OWNER-APPROVAL-BOUNDARY)."
+  ],
+  "sourceLocale": "en",
+  "locales": [
+    {
+      "code": "en",
+      "englishName": "English",
+      "nativeName": "English",
+      "script": "Latn",
+      "direction": "ltr",
+      "plural": ["one", "other"],
+      "status": "supported",
+      "apple": "en",
+      "android": "en",
+      "msix": "en-us"
+    },
+    {
+      "code": "ta",
+      "englishName": "Tamil",
+      "nativeName": "தமிழ்",
+      "script": "Taml",
+      "direction": "ltr",
+      "plural": ["one", "other"],
+      "status": "supported",
+      "apple": "ta",
+      "android": "ta",
+      "msix": "ta-in"
+    },
+    {
+      "code": "hi",
+      "englishName": "Hindi",
+      "nativeName": "हिन्दी",
+      "script": "Deva",
+      "direction": "ltr",
+      "plural": ["one", "other"],
+      "status": "supported",
+      "apple": "hi",
+      "android": "hi",
+      "msix": "hi-in"
+    }
+  ],
+  "pseudo": [
+    {
+      "code": "en-XA",
+      "purpose": "accented and expanded text: truncation, overflow and concatenation",
+      "direction": "ltr",
+      "expansion": 0.4
+    },
+    {
+      "code": "ar-XB",
+      "purpose": "mirrored layout: every hard-wired left/right shows up under right-to-left",
+      "direction": "rtl",
+      "expansion": 0.4
+    }
+  ]
+}
