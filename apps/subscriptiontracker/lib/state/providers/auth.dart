@@ -130,6 +130,17 @@ final Provider<AuthRepository> authRepositoryProvider =
           ? SupabaseAuthRepository(
               requestServerDeletion: () =>
                   requestAccountDeletion(ref.read(platformRestClientProvider)),
+              // ⏱ 2026-10-02 · AB-A4-01 — "Log out of all devices" and a
+              // password reset tell the Workers too: GoTrue ends refresh
+              // tokens only, so without this another device keeps calling
+              // both Workers for up to an hour. Limb 3 of
+              // tooling/ci/assert-session-revocation.mjs refuses an app
+              // without it.
+              revokeAtWorkers: (String accessToken) =>
+                  requestWorkerSessionRevocation(
+                    ref.read(platformRestClientProvider),
+                    accessToken: accessToken,
+                  ),
               // 🔴 UNSET, EVERY AUTH LINK RESOLVES TO THE PROJECT'S SITE URL —
               // one URL shared by every app the portfolio's single Supabase
               // project authenticates. gotrue does not error on an absent

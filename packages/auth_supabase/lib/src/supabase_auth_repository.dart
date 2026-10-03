@@ -25,6 +25,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     sb.GoTrueClient? client,
     sb.GoTrueClient? nativeCredentials,
     Future<void> Function()? requestServerDeletion,
+    Future<void> Function(String accessToken)? revokeAtWorkers,
     DateTime Function()? clock,
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
@@ -38,6 +39,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
         _deepLink = deepLink ?? (kIsWeb ? null : _latestAppLink),
         _native = nativeCredentials,
         _requestServerDeletion = requestServerDeletion,
+        _revokeAtWorkers = revokeAtWorkers,
         _now = clock ?? (() => DateTime.now().toUtc());
 
   final sb.GoTrueClient? _injected;
@@ -93,6 +95,23 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// [deleteAccount]. The brick wires it; leaving it null keeps the honest
   /// refusal for a caller that has no such route.
   final Future<void> Function()? _requestServerDeletion;
+
+  /// ⏱ 2026-10-02 · AB-A4-01 — calls the platform Worker's
+  /// `POST /v1/sessions/revoke-all`, so every Worker refuses the access tokens
+  /// already issued to this account. Injected for the reason
+  /// [_requestServerDeletion] is: the route lives behind the app's own REST
+  /// client. GoTrue's global sign-out ends refresh tokens only, so without this
+  /// another device keeps calling both Workers for up to an hour after "Log out
+  /// of all devices" or a password reset. Null (a test, an app with no platform
+  /// Worker) keeps the GoTrue-only behaviour; tooling/ci/assert-session-
+  /// revocation.mjs limb 3 refuses an app that builds this adapter without it.
+  ///
+  /// ⏱ 2026-10-02 · review 1 of #1140 — it is handed the BEARER to send, rather
+  /// than reading this adapter's current token, because "Log out of all
+  /// devices" calls it AFTER GoTrue's global sign-out (see [signOut]), when this
+  /// device holds no session any more. The token it is handed is the one this
+  /// device held a moment before, still inside its `exp`.
+  final Future<void> Function(String accessToken)? _revokeAtWorkers;
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
 
@@ -648,11 +667,63 @@ class SupabaseAuthRepository implements core.AuthRepository {
             );
       final core.AuthUser? u = _map(res.user);
       if (u == null) throw core.AuthFailure('Could not set your new password');
+      await _revokeAfterReset();
       return u;
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
   }
+
+  /// ⏱ 2026-10-02 · AB-A4-01 — after a NEW PASSWORD, every Worker refuses the
+  /// access tokens issued before it. GoTrue has ended the other sessions'
+  /// refresh tokens; their access tokens kept working at the Workers for up to
+  /// an hour. revoke-all refuses this device's current token too, so the
+  /// session is refreshed straight after: the new token is issued after the
+  /// watermark and passes. A refresh that fails here is not the reset's
+  /// failure: the next Worker 401 refreshes or signs out, as any 401 does.
+  ///
+  /// The order is already the one that leaves no window: GoTrue ended the
+  /// other sessions' refresh tokens when it set the password, so no device
+  /// can mint a token between that and the revoke.
+  ///
+  /// 🔴 A WORKER FAILURE IS SURFACED: the password IS set and the other devices
+  /// are NOT signed out, so the refusal carries its own code
+  /// ([sessionsNotRevokedCode]) and the screen says exactly that.
+  ///
+  /// ⏱ 2026-10-02 · review 1 of #1140, finding 1 — and the session is refreshed
+  /// EVEN THEN. A failed revoke may still have written the Workers' record (a
+  /// `d1Pending` answer, a lost response), which refuses this device's token
+  /// too; refreshing before the refusal is raised leaves this device with a
+  /// token issued after any such record, so "Log out of all devices", the
+  /// advice the refusal gives, can still be sent.
+  Future<void> _revokeAfterReset() async {
+    final Future<void> Function(String accessToken)? revoke = _revokeAtWorkers;
+    final String? token = _auth.currentSession?.accessToken;
+    if (revoke == null || token == null) return;
+    bool revoked = true;
+    try {
+      await revoke(token);
+    } catch (_) {
+      revoked = false;
+    }
+    try {
+      await _auth.refreshSession();
+    } catch (_) {
+      // The 401 path owns a refresh that fails; see above.
+    }
+    if (!revoked) {
+      throw core.AuthFailure(
+        'Your new password is set, but your other devices could not be '
+        'signed out.',
+        code: sessionsNotRevokedCode,
+      );
+    }
+  }
+
+  /// The code of the refusal [_revokeAfterReset] raises: the new password is
+  /// set and the other devices are not signed out. The chassis maps it to
+  /// `authSessionsNotRevoked`.
+  static const String sessionsNotRevokedCode = 'sessions_not_revoked';
 
   /// SE-02 (2026-10-01). The confirmation mail is the one the project
   /// already templates for an e-mail change; its link carries
@@ -706,6 +777,36 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// the session stored on this device — is rethrown as [core.AuthFailure],
   /// never as the SDK's own type, and says only that it did not finish.
   ///
+  /// ⏱ 2026-10-02 · AB-A4-01 — and the Workers are told ([_revokeAtWorkers]):
+  /// GoTrue ends refresh tokens, never an access token already issued, and
+  /// only the Workers' revocation list does that.
+  ///
+  /// 🔴 GOTRUE FIRST, THEN THE WORKERS (review 1 of #1140, finding 2). The
+  /// other order left a window: between revoke-all (which refuses tokens issued
+  /// BEFORE it) and GoTrue's call, another device that refreshed was issued a
+  /// token AFTER the watermark, which every Worker then admitted for up to an
+  /// hour. With GoTrue first the refresh tokens are dead before the watermark
+  /// is written, so no device can be issued a token after it. The Worker call
+  /// is made with the access token this device held a moment earlier (read,
+  /// and refreshed if under five minutes remain, before GoTrue's call):
+  /// GoTrue's sign-out ends sessions, not the signature, so the Worker still
+  /// accepts it until the revoke it carries.
+  ///
+  /// A GoTrue failure is surfaced and the Workers are NOT told (nothing proves
+  /// the refresh tokens are dead, so a watermark would only re-open the
+  /// window). A Worker failure AFTER GoTrue is surfaced too, and says what is
+  /// true: every device is signed out of GoTrue, and the sign-ins already open
+  /// elsewhere may not be refused yet.
+  ///
+  /// 🔴 THE HELD TOKEN MUST OUTLIVE THE WHOLE FLOW (review 2 of #1140,
+  /// finding 2). It is refreshed whenever less than [globalSignOutTokenLife]
+  /// remains, not merely inside [refreshSkew]: GoTrue's `/logout` may be
+  /// retried by the edge-shield inside 30 s, and each Worker attempt may take
+  /// 15 s to connect plus 20 s to answer, twice. A token with 30-100 s left
+  /// could expire in between, and the Worker answers an expired token and a
+  /// revoked one with the same 401, which the retry reads as done: other
+  /// devices' access tokens would stay valid while the user was told nothing.
+  ///
   /// [core.SignOutScope.local] is exactly the call it always was.
   @override
   Future<void> signOut({
@@ -717,7 +818,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
     if (scope == core.SignOutScope.local) {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
-    if (_auth.currentSession != null && await currentAccessToken() == null) {
+    final bool hadSession = _auth.currentSession != null;
+    final String? token =
+        hadSession ? await _tokenOutliving(globalSignOutTokenLife) : null;
+    if (hadSession && token == null) {
       throw core.AuthFailure(
         _auth.currentSession != null
             ? 'Could not reach the server. You are still signed in on every '
@@ -730,6 +834,18 @@ class SupabaseAuthRepository implements core.AuthRepository {
       await _auth.signOut(scope: sdkSignOutScopeOf(scope));
     } catch (_) {
       throw core.AuthFailure('Signing out of every device did not finish.');
+    }
+    final Future<void> Function(String accessToken)? revoke = _revokeAtWorkers;
+    if (revoke == null || token == null) return;
+    try {
+      await revoke(token);
+    } catch (_) {
+      throw core.AuthFailure(
+        'You are signed out on every device, but the sign-ins already open '
+        'on other devices could not all be ended. Sign in and use Log out '
+        'of all devices again to finish.',
+        code: core.AuthFailure.othersNotRevoked,
+      );
     }
   }
 
@@ -896,19 +1012,40 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return _refreshInFlight ??= _refreshOnce();
   }
 
+  /// How long the token held for "Log out of all devices" must still be valid
+  /// when the flow starts: GoTrue's `/logout` (the edge-shield retries it
+  /// inside 30 s) plus two Worker attempts of up to 35 s each is 100 s, and
+  /// five minutes covers that three times over. See [signOut].
+  @visibleForTesting
+  static const Duration globalSignOutTokenLife = Duration(minutes: 5);
+
+  /// The current access token, refreshed first (through the same single-flight
+  /// refresh as [currentAccessToken]) if less than [life] remains; null when
+  /// there is no session or the refresh failed.
+  Future<String?> _tokenOutliving(Duration life) async {
+    final sb.Session? s = _auth.currentSession;
+    if (s == null) return null;
+    if (!_expiresWithin(s, life)) return s.accessToken;
+    return _refreshInFlight ??= _refreshOnce();
+  }
+
   /// Whether [s] is expired, or close enough that it will be by the time a
   /// request carrying it arrives. Unknown expiry (`expiresAt == null`, which is
   /// what a token whose `exp` claim cannot be read reports) is treated as NOT
   /// expiring: refreshing on every single call would be worse than trusting a
   /// token the SDK's own ticker is already managing.
-  bool _isExpiring(sb.Session s) {
+  bool _isExpiring(sb.Session s) => _expiresWithin(s, refreshSkew);
+
+  /// Whether [s] expires within [margin] of now (see [_isExpiring] for an
+  /// unknown expiry).
+  bool _expiresWithin(sb.Session s, Duration margin) {
     final int? exp = s.expiresAt;
     if (exp == null) return false;
     final DateTime expiry = DateTime.fromMillisecondsSinceEpoch(
       exp * 1000,
       isUtc: true,
     );
-    return !expiry.isAfter(_now().toUtc().add(refreshSkew));
+    return !expiry.isAfter(_now().toUtc().add(margin));
   }
 
   Future<String?> _refreshOnce() async {

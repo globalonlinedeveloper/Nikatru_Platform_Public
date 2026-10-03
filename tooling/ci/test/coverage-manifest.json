@@ -66,7 +66,7 @@
     104,
 
   "app-yaml.test.mjs":
-    180,
+    193,
 
   "appimage-signing.test.mjs":
     77,
@@ -521,6 +521,12 @@
   "iap-review-screenshots.test.mjs":
     16,
 
+  "identity-address-sql.test.mjs":
+    5,
+
+  "identity-log-retention.test.mjs":
+    6,
+
   "identity-one-deleter.test.mjs":
     8,
 
@@ -945,7 +951,7 @@
     37,
 
   "session-revocation.test.mjs":
-    15,
+    22,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1071,7 +1077,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    93,
+    96,
 
   "store-vocabulary.test.mjs":
     28,
