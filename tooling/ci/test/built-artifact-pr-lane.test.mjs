@@ -246,7 +246,7 @@ const mainArtifactGuards = (twin) =>
 /** T8: the main job's built-artifact guards the PR twin runs in neither the lane
  *  nor MAIN_ONLY. Compared by SCRIPT NAME: the arguments differ on purpose
  *  (--posture debug here, the minted posture on main; each lane's artifact-shape
- *  key; the smoke's --connect origins, which only a deployed build is served under). */
+ *  key). The smoke's --connect list is held by T16w, not here. */
 function assertEveryMainGuardRuns(twin, key) {
   const pr = new Set(guardInvocations(jobOf(ciWorkflow, PR_WORKFLOW, twin.prJob)).map((g) => g.script));
   const excused = MAIN_ONLY[key] ?? {};
@@ -407,6 +407,16 @@ test('the PR lane references only the secret the register maps for its store-rai
 });
 
 // ── T6 ───────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 (lane ci-pr-web-smoke): web-artifacts installs the pinned
+// glitchtip-cli and runs its LOCAL `sourcemaps inject`, so it boots the bytes
+// deploy-web boots (T16w). Exactly those two forms are let through, by their
+// whole step, never by a word: any other glitchtip or sourcemap line is red.
+const LOCAL_GLITCHTIP = [
+  /^- name: Install glitchtip-cli \(pinned by version AND by digest\)$/,
+  /^run: node tooling\/ci\/install-pinned-tool\.mjs glitchtip-cli --out "\$RUNNER_TEMP"$/,
+  /^- name: Inject debug ids into the web bundle, as deploy-web does before its smoke$/,
+  /^"\$\{RUNNER_TEMP\}\/glitchtip-cli" sourcemaps inject apps\/\$\{\{ matrix\.app \}\}\/build\/web$/,
+];
 test('the PR lane uploads nothing', () => {
   const UPLOADS = [
     [/\buses:\s*actions\/upload-artifact@/, 'actions/upload-artifact'],
@@ -419,6 +429,7 @@ test('the PR lane uploads nothing', () => {
   const findings = [];
   for (const name of PR_LANE_JOBS) {
     for (const l of jobOf(ciWorkflow, PR_WORKFLOW, name).lines) {
+      if (name === WEB_PR_JOB && LOCAL_GLITCHTIP.some((re) => re.test(l.text.trim()))) continue;
       for (const [re, what] of UPLOADS) if (re.test(l.text)) findings.push(`${PR_WORKFLOW}:${l.n} (${name}) ${what}: ${l.text.trim()}`);
     }
   }
@@ -555,4 +566,69 @@ test('T15: only ci.yml android-artifacts touches the Gradle cache (~/.gradle/cac
     if (touches(code)) found.push(`.github/actions/${d}/action.yml`);
   }
   assert.deepEqual(found, [`${PR_WORKFLOW}#${PR_JOB}`], 'the Gradle cache must be touched by ci.yml android-artifacts and nothing else');
+});
+
+// ── T16w (lane ci-pr-web-smoke) ──────────────────────────────────────────────
+// #1145 was green on its PR and turned main red: deploy-web boots the bundle
+// AFTER `sourcemaps inject` and probes every connect-src origin from the page,
+// and web-artifacts did neither, so the probe leg #1145's service worker broke
+// ran on main alone. T8w compares scripts by NAME, so a smoke with no --connect
+// satisfied it. This holds the PR smoke to deploy-web's argument for argument,
+// its --connect list to connect-origins.mjs (the compare on main, `_headers`
+// itself here: the compare passes only when the two are equal), and the inject
+// to deploy-web's own CLI, subcommand and bundle, between the build and the smoke.
+test('T16w: web-artifacts injects debug ids and probes connect-src as deploy-web does, before the smoke', () => {
+  const mainJob = jobOf(webWorkflow, WEB_MAIN_WORKFLOW, WEB_MAIN_JOB);
+  const prJob = jobOf(ciWorkflow, PR_WORKFLOW, WEB_PR_JOB);
+  const smokeOf = (job, rel, name) => {
+    const s = guardInvocations(job).filter((g) => g.script === 'smoke-web-artifact.mjs');
+    assert.equal(s.length, 1, `${rel} "${name}" must run smoke-web-artifact.mjs exactly once; found ${s.length}`);
+    return s[0];
+  };
+  const mainSmoke = smokeOf(mainJob, WEB_MAIN_WORKFLOW, WEB_MAIN_JOB);
+  const prSmoke = smokeOf(prJob, PR_WORKFLOW, WEB_PR_JOB);
+  const CONNECT = '${{ steps.connect.outputs.connect }}';
+  assert.ok(mainSmoke.args.includes(CONNECT), `${WEB_MAIN_WORKFLOW}:${mainSmoke.n} no longer feeds the smoke ${CONNECT}; this case models that list`);
+  assert.equal(
+    prSmoke.args.trim().replace(/\s+/g, ' '),
+    mainSmoke.args.trim().replace(/\s+/g, ' '),
+    `${PR_WORKFLOW}:${prSmoke.n} must launch the bundle with ${WEB_MAIN_WORKFLOW}:${mainSmoke.n}'s arguments, its --connect list included`,
+  );
+
+  // Each list comes from connect-origins.mjs in a step whose id is `connect`.
+  const listStep = (job, rel, mode) => {
+    const steps = workflowSteps(job).filter((st) => st.id === 'connect');
+    assert.equal(steps.length, 1, `${rel} has ${steps.length} step(s) with id connect; the smoke reads exactly one`);
+    const want = `node tooling/web/connect-origins.mjs --app \${{ matrix.app }} ${mode} >> "$GITHUB_OUTPUT"`;
+    assert.equal(steps[0].run?.text.trim(), want, `${rel}:${steps[0].first} must run: ${want}`);
+    return steps[0];
+  };
+  listStep(mainJob, WEB_MAIN_WORKFLOW, '--check --emit-connect');
+  const prList = listStep(prJob, PR_WORKFLOW, '--emit-listed');
+  assert.equal(prList.env.size, 0, `${PR_WORKFLOW}:${prList.first} reads no environment: --emit-listed reads _headers alone`);
+
+  // The inject: the same pinned install and the same subcommand over the same bundle.
+  const lines = (job) => job.logical.map((l) => ({ n: l.n, segs: shellSegments(l.text).map((x) => x.trim().replace(/^(?:-\s+)?run:\s*/, '')) }));
+  const find = (job, re) => lines(job).flatMap((l) => l.segs.filter((x) => re.test(x)).map((x) => ({ n: l.n, seg: x })));
+  const INSTALL = /^node tooling\/ci\/install-pinned-tool\.mjs glitchtip-cli\b/;
+  const INJECT = /glitchtip-cli"? sourcemaps inject\b/;
+  const mainInstall = find(mainJob, INSTALL);
+  const prInstall = find(prJob, INSTALL);
+  assert.equal(mainInstall.length, 1, `${WEB_MAIN_WORKFLOW} installs glitchtip-cli ${mainInstall.length} time(s); this case models one`);
+  assert.deepEqual(prInstall.map((x) => x.seg), [mainInstall[0].seg], `${PR_WORKFLOW} "${WEB_PR_JOB}" must install glitchtip-cli as ${WEB_MAIN_WORKFLOW}:${mainInstall[0].n} does`);
+  const mainInject = find(mainJob, INJECT);
+  const prInject = find(prJob, INJECT);
+  assert.equal(mainInject.length, 1, `${WEB_MAIN_WORKFLOW} runs \`sourcemaps inject\` ${mainInject.length} time(s); this case models one`);
+  // deploy-web runs it from apps/<app> (the job's working-directory); the PR job from the root.
+  assert.equal(mainInject[0].seg, '"${RUNNER_TEMP}/glitchtip-cli" sourcemaps inject build/web', `${WEB_MAIN_WORKFLOW}:${mainInject[0].n} changed its inject; re-model this case`);
+  assert.deepEqual(
+    prInject.map((x) => x.seg),
+    ['"${RUNNER_TEMP}/glitchtip-cli" sourcemaps inject apps/${{ matrix.app }}/build/web'],
+    `${PR_WORKFLOW} "${WEB_PR_JOB}" must inject debug ids into the bundle it boots, as ${WEB_MAIN_WORKFLOW}:${mainInject[0].n} does`,
+  );
+  const build = prBuilds(TWINS.web);
+  assert.equal(build.length, 1, `${PR_WORKFLOW} "${WEB_PR_JOB}" builds web ${build.length} time(s)`);
+  assert.ok(prList.first < prSmoke.n, `${PR_WORKFLOW}:${prList.first} emits the connect list after the smoke that reads it`);
+  assert.ok(prInstall[0].n < prInject[0].n, `${PR_WORKFLOW}:${prInject[0].n} injects before the CLI is installed`);
+  assert.ok(build[0].runLine < prInject[0].n && prInject[0].n < prSmoke.n, `${PR_WORKFLOW}:${prInject[0].n} must inject AFTER the build and BEFORE the smoke, as deploy-web does`);
 });
