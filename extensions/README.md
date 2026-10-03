@@ -65,6 +65,8 @@ core/                 the shared runtime, copied into a tool as vendor/core/ (MP
 scripts/              the repo-level gates and the scaffolder — lint, policy-check,
                         check-version, discover, new-tool, gen-catalog, sync-core
 docs/                 architecture, core policy, releasing, the store playbook
+THIRD_PARTY.json      every third-party file a package ships: origin, version, licence, hash
+                        (policy-check gate 9 reads it)
 .github/              (emptied 2026-09-08 — see below)
                       (the pre-commit credential gate moved out on 2026-09-08 — see below)
 ```

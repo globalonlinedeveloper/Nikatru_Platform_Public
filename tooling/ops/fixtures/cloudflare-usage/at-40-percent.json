@@ -1,0 +1,6 @@
+{
+  "_why": "GREEN CONTROL for tooling/ops/check-cloudflare-usage.mjs --usage-file: every graded metric at 40% of its tooling/ceilings.json value (workers.requestsPerDay 100000, d1.rowsWrittenPerDay 100000, kv.readsPerDay 100000, kv.writesPerDay 1000). Exit 0.",
+  "workers": { "platform": 30000, "subscriptiontracker-api": 10000 },
+  "d1": { "rowsRead": 250000, "rowsWritten": 40000 },
+  "kv": { "read": 40000, "write": 400, "delete": 3 }
+}

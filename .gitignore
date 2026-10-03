@@ -178,6 +178,11 @@ apps/probe/
 services/probe-api/
 apps/probeapi/
 services/probeapi-api/
+# The scratch service ci.yml's app_brick job stamps (stamp-service.mjs probesvc) and
+# removes again; ignored so a step that dies before its removal leaves nothing
+# `git add -A` takes (2026-10-03, fix-brick-stamp-outside-repo). Kept equal to
+# tooling/kit/stamp-sandbox.mjs STAMP_PATHS.
+services/probesvc-api/
 
 # Mason local brick cache
 .mason/

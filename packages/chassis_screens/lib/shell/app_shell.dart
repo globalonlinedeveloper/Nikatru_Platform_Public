@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -60,6 +62,7 @@ class NikatruApp extends StatelessWidget {
     required this.routerConfig,
     required this.mustUpdate,
     required this.onUpdate,
+    required this.onConfigRefresh,
     required this.shell,
     super.key,
   });
@@ -106,6 +109,11 @@ class NikatruApp extends StatelessWidget {
   /// see the class doc.
   final VoidCallback onUpdate;
 
+  /// Re-reads the runtime config, on a resume and on a timer — see
+  /// [listenForConfigRefresh]. Required, because a floor read once at launch
+  /// never walls a running app.
+  final VoidCallback onConfigRefresh;
+
   /// The app's own gate chain, wrapped around the routed screen.
   ///
   /// A builder rather than a `Widget`, because the routed screen only exists
@@ -117,58 +125,61 @@ class NikatruApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: title,
-      // The store screenshot capture runs through `flutter drive`, which builds
-      // in DEBUG — so every captured frame would otherwise carry Flutter's red
-      // DEBUG ribbon and the listing would advertise an unfinished build. It is
-      // one identifier and nothing else is holding it.
-      //
-      // 🔴 AND NOTHING GUARDS THIS LINE TODAY. CORRECTED 2026-09-07 ([ADR 067]
-      // phase 2b, unit app-shell-residues). This comment claimed that
-      // `tooling/ci/assert-listing-assets.mjs` "follows the delegation from each
-      // app's lib/app.dart to find it here" — WITHDRAWN. That limb iterates
-      // `catalog/apps.json` (`assert-listing-assets.mjs:156`) and reads
-      // `apps/<slug>/lib/app.dart` plus what THAT file delegates to; the brick
-      // template, where the delegation lives, is not in its domain. The
-      // catalogue holds one app, `apps/subscriptiontracker`, and it does not delegate — it
-      // sets the flag inline at `apps/subscriptiontracker/lib/app.dart:44` ([ADR 065]: Subly
-      // does not adopt the packages this phase). Measured, not read: deleting
-      // this line from THIS file (land-check `grep -c` 1 → 0) left
-      // `assert-listing-assets` at EXIT 0. Registered as an `open.json` row
-      // rather than described, because widening that limb's domain to the brick
-      // template edits a guard this unit does not own.
-      debugShowCheckedModeBanner: false,
-      localizationsDelegates: localizationsDelegates,
-      supportedLocales: supportedLocales,
-      locale: locale,
-      theme: theme,
-      darkTheme: darkTheme,
-      themeMode: themeMode,
-      routerConfig: routerConfig,
-      builder: (BuildContext context, Widget? child) =>
-          MediaQuery.withClampedTextScaling(
-            minScaleFactor: minTextScale,
-            maxScaleFactor: maxTextScale,
-            // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT — in EVERY
-            // app this template had ever stamped. `ForceUpdateGate` carried
-            // English parameter defaults and the call site supplied none, so the
-            // one screen that REPLACES THE WHOLE APP and cannot be dismissed
-            // shipped English to every locale. No key for it had ever existed in
-            // any arb, in either tree.
-            //
-            // ⚠️ `context.chassisL10n` IS AVAILABLE HERE: this is
-            // `MaterialApp.router`'s `builder`, which runs BELOW the
-            // `Localizations` widget the MaterialApp installs.
-            child: ForceUpdateGate(
-              mustUpdate: mustUpdate,
-              onUpdate: onUpdate,
-              title: context.chassisL10n.updateRequiredTitle,
-              message: context.chassisL10n.updateRequiredMessage,
-              buttonLabel: context.chassisL10n.updateRequiredAction,
-              child: shell(child ?? const SizedBox.shrink()),
+    return _ConfigRefresher(
+      onRefresh: onConfigRefresh,
+      child: MaterialApp.router(
+        title: title,
+        // The store screenshot capture runs through `flutter drive`, which builds
+        // in DEBUG — so every captured frame would otherwise carry Flutter's red
+        // DEBUG ribbon and the listing would advertise an unfinished build. It is
+        // one identifier and nothing else is holding it.
+        //
+        // 🔴 AND NOTHING GUARDS THIS LINE TODAY. CORRECTED 2026-09-07 ([ADR 067]
+        // phase 2b, unit app-shell-residues). This comment claimed that
+        // `tooling/ci/assert-listing-assets.mjs` "follows the delegation from each
+        // app's lib/app.dart to find it here" — WITHDRAWN. That limb iterates
+        // `catalog/apps.json` (`assert-listing-assets.mjs:156`) and reads
+        // `apps/<slug>/lib/app.dart` plus what THAT file delegates to; the brick
+        // template, where the delegation lives, is not in its domain. The
+        // catalogue holds one app, `apps/subscriptiontracker`, and it does not delegate — it
+        // sets the flag inline at `apps/subscriptiontracker/lib/app.dart:44` ([ADR 065]: Subly
+        // does not adopt the packages this phase). Measured, not read: deleting
+        // this line from THIS file (land-check `grep -c` 1 → 0) left
+        // `assert-listing-assets` at EXIT 0. Registered as an `open.json` row
+        // rather than described, because widening that limb's domain to the brick
+        // template edits a guard this unit does not own.
+        debugShowCheckedModeBanner: false,
+        localizationsDelegates: localizationsDelegates,
+        supportedLocales: supportedLocales,
+        locale: locale,
+        theme: theme,
+        darkTheme: darkTheme,
+        themeMode: themeMode,
+        routerConfig: routerConfig,
+        builder: (BuildContext context, Widget? child) =>
+            MediaQuery.withClampedTextScaling(
+              minScaleFactor: minTextScale,
+              maxScaleFactor: maxTextScale,
+              // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT — in EVERY
+              // app this template had ever stamped. `ForceUpdateGate` carried
+              // English parameter defaults and the call site supplied none, so the
+              // one screen that REPLACES THE WHOLE APP and cannot be dismissed
+              // shipped English to every locale. No key for it had ever existed in
+              // any arb, in either tree.
+              //
+              // ⚠️ `context.chassisL10n` IS AVAILABLE HERE: this is
+              // `MaterialApp.router`'s `builder`, which runs BELOW the
+              // `Localizations` widget the MaterialApp installs.
+              child: ForceUpdateGate(
+                mustUpdate: mustUpdate,
+                onUpdate: onUpdate,
+                title: context.chassisL10n.updateRequiredTitle,
+                message: context.chassisL10n.updateRequiredMessage,
+                buttonLabel: context.chassisL10n.updateRequiredAction,
+                child: shell(child ?? const SizedBox.shrink()),
+              ),
             ),
-          ),
+      ),
     );
   }
 }
@@ -690,6 +701,82 @@ class _RefreshOnResumeState extends State<RefreshOnResume> {
   @override
   void dispose() {
     _listener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// [pipeline 10]D-8 — the runtime config is RE-READ while the app runs, so a
+/// floor raised after launch walls the running app (O-WEB-KILL-SWITCH-LAUNCH-ONLY,
+/// folded into O-FORCE-UPDATE-VERSION-READ-UNPROVEN).
+///
+/// 🔴 THE DEFECT. `appConfigProvider` resolved ONCE, at launch. On web — the one
+/// served channel — a tab is opened once and kept for days, so a raised floor
+/// never reached the tab that most needed walling: the kill-switch was a
+/// launch-time check on a surface that almost never relaunches.
+///
+/// [onRefresh] runs on two edges, and the caller makes it re-run the config
+/// resolution (`ref.invalidate(appConfigProvider)`, the call the offline
+/// banner's retry already makes):
+///   · a RESUME. On web Flutter derives the lifecycle from the page's
+///     `visibilitychange` and focus, so a tab brought back to the front is a
+///     resume and no `dart:js_interop` listener is needed;
+///   · a TIMER, every [interval], for a tab that stays in front.
+/// Nothing at launch: the first read is the provider's own. Returns the
+/// disposer. ONE implementation: [NikatruApp] mounts it above the wall (so a
+/// lowered floor lifts the wall too), and an app root that predates the shell
+/// mounts it the same way through [refreshConfigWhileMounted].
+VoidCallback listenForConfigRefresh(
+  VoidCallback onRefresh, {
+  Duration interval = kConfigRefreshInterval,
+}) {
+  final AppLifecycleListener lifecycle = AppLifecycleListener(
+    onResume: onRefresh,
+  );
+  final Timer timer = Timer.periodic(interval, (_) => onRefresh());
+  return () {
+    timer.cancel();
+    lifecycle.dispose();
+  };
+}
+
+/// Fifteen minutes: one small GET per open tab per quarter hour.
+const Duration kConfigRefreshInterval = Duration(minutes: 15);
+
+/// [listenForConfigRefresh] for exactly as long as [child] is mounted — for an
+/// app root that predates [NikatruApp], which mounts it itself. A function and
+/// not a public widget, because it renders only [child]: it is not a surface.
+Widget refreshConfigWhileMounted({
+  required VoidCallback onRefresh,
+  required Widget child,
+}) => _ConfigRefresher(onRefresh: onRefresh, child: child);
+
+/// [NikatruApp]'s mount of [listenForConfigRefresh]. Private: it renders only
+/// its child, so it is not a surface of its own.
+class _ConfigRefresher extends StatefulWidget {
+  const _ConfigRefresher({required this.onRefresh, required this.child});
+
+  final VoidCallback onRefresh;
+  final Widget child;
+
+  @override
+  State<_ConfigRefresher> createState() => _ConfigRefresherState();
+}
+
+class _ConfigRefresherState extends State<_ConfigRefresher> {
+  late final VoidCallback _stop;
+
+  @override
+  void initState() {
+    super.initState();
+    _stop = listenForConfigRefresh(() => widget.onRefresh());
+  }
+
+  @override
+  void dispose() {
+    _stop();
     super.dispose();
   }
 

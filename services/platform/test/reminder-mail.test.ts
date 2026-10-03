@@ -20,6 +20,8 @@ import INVENTORY_RAW from '../../../tooling/legal/data-inventory.json?raw';
 import { REMINDER_MAIL_JOB, reminderMail } from '../src/scheduled';
 import {
   MAX_ADDRESS_READS_PER_RUN,
+  MAX_PRUNE_PASSES_PER_RUN,
+  MAX_PRUNE_PER_RUN,
   MAX_REMINDER_MAILS_PER_DAY,
   REMINDER_FROM,
   REMINDER_SENT_RETENTION_DAYS,
@@ -297,7 +299,7 @@ describe('R1 — every outcome writes a heartbeat row', () => {
     const app = appDb();
     await reminderMail(envOf(platform, app), NOW, network([]).fetchImpl);
     expect(heartbeats(platform)).toEqual([
-      expect.objectContaining({ job: 'reminder_mail', target: APP, ok: 1, detail: 'nothing due: opted_in=0 due=0 pruned=0' }),
+      expect.objectContaining({ job: 'reminder_mail', target: APP, ok: 1, detail: 'nothing due: opted_in=0 due=0 pruned=0 prune_capped=0' }),
     ]);
   });
 
@@ -308,7 +310,7 @@ describe('R1 — every outcome writes a heartbeat row', () => {
     seedPerson(platform, people[0]);
     seedSub(app, 'u-in', 's-in', 'Netflix', '2026-11-20');
     const [row] = await runReminderMail(envOf(platform, app), target(app), NOW, network(people).fetchImpl);
-    expect(row).toEqual({ target: APP, ok: true, detail: 'nothing due: opted_in=1 due=0 pruned=0' });
+    expect(row).toEqual({ target: APP, ok: true, detail: 'nothing due: opted_in=1 due=0 pruned=0 prune_capped=0' });
   });
 
   it('🔴 a missing RESEND_API_KEY is ok=0 naming the key — and nothing is read or sent', async () => {
@@ -389,6 +391,35 @@ describe('R1 — the sent ledger is pruned, and the period has one value everywh
     const [row] = await runReminderMail(envOf(platform, appDb()), target(appDb()), NOW, network([]).fetchImpl);
     expect(platform.rows('SELECT subscription_id FROM reminder_sent')).toEqual([{ subscription_id: 's-kept' }]);
     expect(row.detail).toContain('pruned=1');
+  });
+
+  // ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED. The prune removed at
+  // most MAX_PRUNE_PER_RUN rows a NIGHT; past that the ledger kept rows beyond its
+  // period with nothing red. It now repeats a full pass, MAX_PRUNE_PASSES_PER_RUN
+  // times at most, and says when it ran out.
+  const seedExpiredLedger = (platform: RealDb, n: number) =>
+    platform.db.exec(
+      `INSERT INTO reminder_sent (user_id, app_id, subscription_id, due_on, kind, sent_at, unsubscribe_hash)
+       SELECT 'u', '${APP}', 's-' || n, '${addDays(TODAY, -(REMINDER_SENT_RETENTION_DAYS + 1))}', 'renewal', '2025-01-01T00:00:00Z', 'h-' || n
+       FROM (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${n}) SELECT n FROM c)`,
+    );
+
+  it('🔴 2,500 expired ledger rows are pruned in ONE run — it was 1,000 a night', async () => {
+    const platform = realPlatformDb();
+    seedExpiredLedger(platform, 2500);
+    expect(MAX_PRUNE_PER_RUN).toBe(1000);
+    const [row] = await runReminderMail(envOf(platform, appDb()), target(appDb()), NOW, network([]).fetchImpl);
+    expect(platform.count('reminder_sent')).toBe(0);
+    expect(row.detail).toContain('pruned=2500 prune_capped=0');
+  });
+
+  it('a ledger still full when the passes run out says prune_capped=1', async () => {
+    const platform = realPlatformDb();
+    const n = MAX_PRUNE_PASSES_PER_RUN * MAX_PRUNE_PER_RUN + 1;
+    seedExpiredLedger(platform, n);
+    const [row] = await runReminderMail(envOf(platform, appDb()), target(appDb()), NOW, network([]).fetchImpl);
+    expect(platform.count('reminder_sent')).toBe(1);
+    expect(row.detail).toContain(`pruned=${n - 1} prune_capped=1`);
   });
 
   it('the register and the inventory carry the code’s period, and name this job as the deleter', () => {

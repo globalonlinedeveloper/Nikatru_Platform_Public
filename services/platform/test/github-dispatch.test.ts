@@ -4,6 +4,8 @@ import {
   DISPATCHER_TARGET,
   GITHUB_DISPATCH_JOB,
   GITHUB_DISPATCH_TARGETS,
+  E2E_DISPATCH_CRON,
+  PINNED_CRONS,
 } from '../src/scheduled';
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
@@ -121,6 +123,61 @@ describe('the declared targets are safe by construction', () => {
           'Move the evidence first, or keep the schedule.',
       ).toBe(true);
     }
+  });
+});
+
+describe('⏱ 2026-10-01 · PB-02 — the Worker\'s ops-watch dispatch is UNATTENDED, and says so', () => {
+  /** The workflow's `on.workflow_dispatch.inputs` names, read from the real file
+   *  by indentation: the trigger block's own keys sit two spaces under `inputs:`. */
+  const dispatchInputs = (yml: string): Map<string, string> => {
+    const lines = yml.split('\n');
+    const at = lines.findIndex((l) => /^ {4}inputs:\s*$/.test(l));
+    const out = new Map<string, string>();
+    if (at === -1) return out;
+    let current = '';
+    for (const l of lines.slice(at + 1)) {
+      if (/^\S/.test(l) || /^ {2}\S/.test(l) || /^ {4}\S/.test(l)) break; // left the inputs block
+      const name = /^ {6}([A-Za-z0-9_-]+):\s*$/.exec(l);
+      if (name) { current = name[1]; out.set(current, ''); continue; }
+      const type = /^ {8}type:\s*(\S+)/.exec(l);
+      if (type && current) out.set(current, type[1]);
+    }
+    return out;
+  };
+  const OPS_WATCH = WORKFLOWS['../../../.github/workflows/ops-watch.yml'];
+
+  it('🔴 the ops-watch target sends `unattended: true`, and no other target sends an input', () => {
+    const ops = GITHUB_DISPATCH_TARGETS.find((t) => t.workflow === 'ops-watch.yml');
+    expect(ops?.inputs).toEqual({ unattended: 'true' });
+    for (const t of GITHUB_DISPATCH_TARGETS) if (t !== ops) expect(t.inputs, `${t.workflow} sends an input`).toBeUndefined();
+  });
+
+  it('🔴 every input a target sends is DECLARED by its workflow — GitHub answers 422 to one that is not', () => {
+    expect(dispatchInputs(OPS_WATCH).size, 'no workflow_dispatch inputs read from ops-watch.yml — this check would be vacuous').toBeGreaterThan(0);
+    for (const t of GITHUB_DISPATCH_TARGETS) {
+      const declared = dispatchInputs(WORKFLOWS[`../../../.github/workflows/${t.workflow}`] ?? '');
+      for (const name of Object.keys(t.inputs ?? {})) {
+        expect(declared.has(name), `${t.workflow} declares no workflow_dispatch input \`${name}\``).toBe(true);
+      }
+    }
+    expect(dispatchInputs(OPS_WATCH).get('unattended')).toBe('boolean');
+  });
+
+  it('🔴 ops-watch.yml\'s alert job runs on a schedule OR on a dispatch carrying `unattended`', () => {
+    const alert = OPS_WATCH.slice(OPS_WATCH.indexOf('\n  alert:\n'));
+    const cond = /^ {4}if:\s*(.+)$/m.exec(alert)?.[1] ?? '';
+    expect(cond).toContain("github.event_name == 'schedule'");
+    expect(cond).toContain("github.event_name == 'workflow_dispatch' && inputs.unattended");
+  });
+
+  it('the request body carries the inputs beside the ref', async () => {
+    const db = realPlatformDb();
+    const seen = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, 'tok'));
+    const ops = seen.find((s) => s.url.endsWith('/actions/workflows/ops-watch.yml/dispatches'));
+    expect(JSON.parse(String(ops?.init.body))).toEqual({ ref: 'main', inputs: { unattended: 'true' } });
+    const renovate = seen.find((s) => s.url.endsWith('/actions/workflows/renovate.yml/dispatches'));
+    expect(JSON.parse(String(renovate?.init.body))).toEqual({ ref: 'main' });
   });
 });
 
@@ -299,5 +356,55 @@ describe('every way it can fail still leaves a row', () => {
     await dispatchGithubWorkflows(envWith(db, 'tok'));
     expect(String(workflowRows(db)[0].detail).length).toBeLessThanOrEqual(200);
     expect(workflowRows(db)[0].ok).toBe(0);
+  });
+});
+
+// ── ⏱ 2026-10-01 · PB-18 — the nightly e2e fires at 03:17Z, from Cloudflare ──
+// Row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY (folding
+// O-NIGHTLY-E2E-STARTS-SIX-HOURS-LATE). GitHub started e2e.yml's `17 3 * * *`
+// slot 5-6.6 h late, and `everyHours: 20` on the 6h grid wandered round the clock.
+describe('🔴 e2e.yml is pinned to its own 03:17Z firing', () => {
+  const E2E = 'Nikatru_Platform_Public/e2e.yml';
+
+  it('the targets list holds e2e.yml, pinned to E2E_DISPATCH_CRON, on main', () => {
+    const e2e = GITHUB_DISPATCH_TARGETS.find((t) => t.workflow === 'e2e.yml');
+    expect(e2e, 'e2e.yml is no longer a dispatch target').toBeTruthy();
+    expect(e2e!.atCron).toBe(E2E_DISPATCH_CRON);
+    expect(E2E_DISPATCH_CRON).toBe('17 3 * * *');
+    expect(e2e!.ref).toBe('main');
+    expect(PINNED_CRONS.has(E2E_DISPATCH_CRON)).toBe(true);
+  });
+
+  it('the pinned minute is the one e2e.yml\'s own `schedule:` keeps — the freshness claim reads that slot', () => {
+    const file = WORKFLOWS['../../../.github/workflows/e2e.yml'] as string;
+    expect(file).toBeTruthy();
+    // Compared whole, never spliced into a pattern (CodeQL js/incomplete-sanitization).
+    expect([...file.matchAll(/cron:\s*'([^']*)'/g)].map((m) => m[1])).toContain(E2E_DISPATCH_CRON);
+  });
+
+  it('the 03:17 firing fires the pinned target, and nothing else', async () => {
+    const db = realPlatformDb();
+    const seen = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, 'tok'), E2E_DISPATCH_CRON);
+    expect(seen.map((s) => s.url)).toEqual([
+      'https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows/e2e.yml/dispatches',
+    ]);
+    expect(workflowRows(db).map((r) => r.target)).toEqual([E2E]);
+    expect(String(dispatcherRow(db)?.detail)).toMatch(/fired=1 skipped=\d+/);
+  });
+
+  it('a grid firing does NOT re-fire e2e.yml after a 03:17 success — and DOES fire it when the 03:17 dispatch has not succeeded for 26h', async () => {
+    const db = realPlatformDb();
+    stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, 'tok'), E2E_DISPATCH_CRON);
+    const seen = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, 'tok'), '0 6 * * *');
+    expect(seen.some((s) => s.url.includes('/e2e.yml/')), 'a fresh 03:17 success must not be duplicated on the grid').toBe(false);
+    expect(seen.some((s) => s.url.includes('/ops-watch.yml/'))).toBe(true);
+
+    const stale = realPlatformDb();
+    const retried = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(stale, 'tok'), '0 6 * * *');
+    expect(retried.some((s) => s.url.includes('/e2e.yml/')), 'no 03:17 success on record: the grid is the safety net').toBe(true);
   });
 });

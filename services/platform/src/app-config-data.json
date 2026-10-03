@@ -101,6 +101,13 @@
     "`default`. The release record's minSupported is the highest floor served to the channels that release",
     "stages (release-manifest.mjs `releaseFloor`).",
     "",
+    "⏱ 2026-10-01 · O-FORCE-UPDATE-VERSION-READ-UNPROVEN: a null `update_url` is not \"nowhere\". The client resolves the",
+    "wall's exit in packages/core/lib/src/config/update_exit.dart: `web` reloads, a served URL wins everywhere else, a",
+    "store-listing channel (android-play, ios-appstore, macos-appstore, windows-store) with nothing served opens its own",
+    "listing, and anything else opens the compiled-in homepage. So `linux-snap` is served its snapcraft.io page (no adapter",
+    "opens the Snap Store), and `apps-gov-in` is served the listing URL its register row records once the portal assigns",
+    "one. assert-stamp-properties.mjs [10]D-8 grades every live OR ARMED row this way (tooling/ci/update-exit.mjs).",
+    "",
     "⏱ 2026-09-29 · train ST-D9: `paywall.pro_features`, `paywall.free_features` and `paywall.trial_copy` are what",
     "the in-app paywall PITCHES, served so a pitch change is a config edit and not a release. The two lists are",
     "feature CODES, never copy: the app resolves each through its own catalogue and draws nothing for a code it has",
@@ -150,6 +157,7 @@
     },
     "subscriptiontracker": {
       "features": { "renewals": true, "budgets": true, "exports": true },
+      "update_url": { "linux-snap": "https://snapcraft.io/nikatru-subscription-tracker" },
       "paywall": {
         "enabled": false,
         "pro_features": ["forecast", "caps"],

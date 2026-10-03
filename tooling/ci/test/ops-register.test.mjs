@@ -169,6 +169,9 @@ import {
   unitNeedsGuard,
   unitNeedsHosts,
   routeLiveVerdicts,
+  servedUnitsOf,
+  workflowEnvValue,
+  SERVED_UNITS_ENV,
   unitOf,
   describeUnit,
   apiJobMatcher,
@@ -177,6 +180,7 @@ import {
   zeroEntryNeutral,
   calleeOf,
   runPredatesUnitCalls,
+  scanUnitRuns,
   decideUnitFreshness,
   decideUnitRedSince,
   scheduleWeekdays,
@@ -2337,15 +2341,21 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  2026-09-24: 28 → 30, the same documented raise for the tenth scheduled
    *  workflow, duty.workflow.name-clearance.yml. The replay measured 29 after
    *  the row (its history is answered by replayWorld's derived run).
-   *  2026-10-02: 30 → 31, ONE read: the laptop heartbeat (`beat.json` on ref
+   *  2026-10-01: 30 → 32, the same documented raise for the next scheduled
+   *  workflow, duty.freshness.time-travel (.github/workflows/time-travel.yml).
+   *  The replay measured 32 after the row: one new page plus one cross-check,
+   *  answered by replayWorld's derived run.
+   *  2026-10-02: +1, ONE read: the laptop heartbeat (`beat.json` on ref
    *  lead/heartbeat, the contents API), made only when a duty.laptop.* row is
    *  failing, so the outage rule can grade it DEGRADED during a proven outage
-   *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read; a
-   *  healthy run makes none.
-   *  2026-10-03: 31 → 33, the same documented "a scheduled workflow costs 2"
-   *  raise, for duty.workflow.rehearse-app2.yml (app2-dryrun). The replay
-   *  measured 33 after the row (its history is answered by replayWorld's derived run). */
-  const OPS_GITHUB_REQUEST_CEILING = 33;
+   *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read on
+   *  main, before the time-travel row; a healthy run makes none.
+   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree.
+   *  2026-10-03: 33 → 35, the same documented "a scheduled workflow costs 2"
+   *  raise, for duty.workflow.rehearse-app2.yml (app2-dryrun), merged with
+   *  main's time-travel row. The replay measured 35 on that merged tree (its
+   *  history is answered by replayWorld's derived run). */
+  const OPS_GITHUB_REQUEST_CEILING = 35;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
@@ -5067,6 +5077,67 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     }
   });
 
+  // ⏱ 2026-10-01 · PB-04, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY — DEPLOY-RECOVERED.
+  // CI 36409128416 (2026-09-28): a red duty.workflow.e2e.yml failed ci-gate on main's
+  // push, which skipped deploy-web and deploy-workers — the deploy of its own fix.
+  const E2E = 'duty.workflow.e2e.yml';
+  const realRow = (id) => JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8')).rows.find((r) => r.id === id);
+  const RED_E2E = () => [{ id: E2E, line: `${E2E} — RED SINCE 2026-09-28T03:20:00Z: e2e.yml on main run 444 FAILED`, code: 1 }];
+  const withE2eEnv = (byFile, value) => {
+    const wf = byFile.get('e2e.yml');
+    const lines = wf.lines.map((l) => (/^ {2}NIKATRU_GRADES_SERVED_UNITS:/.test(l.text) ? { ...l, text: `  ${SERVED_UNITS_ENV}: ${value}` } : l));
+    return new Map([...byFile, ['e2e.yml', { ...wf, lines }]]);
+  };
+
+  test('DEPLOY-RECOVERED RED CONTROL - a red e2e duty on main\'s ci.yml push PRINTS, so ci-gate passes and the fix deploy is not skipped', () => {
+    const row = realRow(E2E);
+    assert.ok(row, `${E2E} must be a row of the real register`);
+    const push = routeLiveVerdicts(RED_E2E(), policyIn('ci.yml', 'push'), OWN_TOPO(), regOf(row), parsedRepo().byFile);
+    assert.deepEqual(push.blocking, [], 'a red e2e duty must not skip deploy-web/deploy-workers, which ship its own fix');
+    assert.equal(push.printed.length, 1, 'and it is PRINTED, never dropped');
+    assert.match(push.printed[0].why, /DEPLOY-RECOVERED/);
+    assert.match(push.printed[0].why, /deploy-web · deploy-workers/);
+  });
+
+  test('DEPLOY-RECOVERED keeps INV2 - the SAME red e2e verdict still BLOCKS in ops-watch (the page) and off Actions', () => {
+    const reg = regOf(realRow(E2E));
+    const page = routeLiveVerdicts(RED_E2E(), policyIn('ops-watch.yml', 'schedule'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.equal(page.blocking.length, 1, 'the page still goes red');
+    const off = routeLiveVerdicts(RED_E2E(), hostPolicy({}, OWN_TOPO(), new Map()), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.equal(off.blocking.length, 1, 'off Actions no host resolves, so nothing is exempt');
+  });
+
+  test('DEPLOY-RECOVERED GREEN CONTROL - a red duty on an unrelated unit still BLOCKS main\'s ci.yml push', () => {
+    const other = wfDuty('duty.workflow.codeql.yml');
+    other.mechanism.recordQuery.workflow = 'codeql.yml';
+    const r = routeLiveVerdicts([{ id: other.id, line: `${other.id} — red`, code: 1 }], policyIn('ci.yml', 'push'), OWN_TOPO(), regOf(other), parsedRepo().byFile);
+    assert.equal(r.blocking.length, 1);
+    assert.deepEqual(unitNeedsHosts(other, OWN_TOPO(), parsedRepo().byFile), []);
+  });
+
+  test('DEPLOY-RECOVERED MUTATION - a declaration naming a job that is not post-gate is REFUSED, and the red e2e duty blocks again', () => {
+    const byFile = withE2eEnv(parsedRepo().byFile, 'deploy-web guards-platform');
+    const s = servedUnitsOf('e2e.yml', OWN_TOPO(), byFile);
+    assert.deepEqual(s.units, []);
+    assert.match(s.refused.join(' '), /guards-platform is not a post-gate job of ci\.yml/);
+    const push = routeLiveVerdicts(RED_E2E(), policyIn('ci.yml', 'push'), OWN_TOPO(), regOf(realRow(E2E)), byFile);
+    assert.equal(push.blocking.length, 1);
+  });
+
+  test('DEPLOY-RECOVERED - no edge without a gate topology, and none for a guard host or a self-gated lane', () => {
+    const byFile = parsedRepo().byFile;
+    assert.deepEqual(servedUnitsOf('e2e.yml', null, byFile).units, []);
+    assert.match(servedUnitsOf('e2e.yml', { ...OWN_TOPO(), guardHosts: new Set(['ci.yml', 'ops-watch.yml', 'e2e.yml']) }, byFile).refused.join(' '), /runs tooling\/ci\/assert-ops-register\.mjs/);
+    assert.match(servedUnitsOf('e2e.yml', { ...OWN_TOPO(), selfGated: new Set(['e2e.yml']) }, byFile).refused.join(' '), /SELF-GATED/);
+  });
+
+  test('workflowEnvValue reads the WORKFLOW-level env only, never a job\'s', () => {
+    const wf = { jobsAt: 3, lines: ['on: push', 'env:', '  A: "x y"', 'jobs:', '  j:', '    env:', '      B: z'].map((text, i) => ({ n: i + 1, text })) };
+    assert.equal(workflowEnvValue(wf, 'A'), 'x y');
+    assert.equal(workflowEnvValue(wf, 'B'), null);
+    assert.equal(workflowEnvValue(parsedRepo().byFile.get('e2e.yml'), SERVED_UNITS_ENV), 'deploy-web deploy-workers');
+  });
+
   // ⏱ 2026-09-18 (later) — PIN MOVED DELIBERATELY from [DRIVER] to the three laptop
   // routines. #802 moved the PORTABLE half of nikatru-ops-check and nikatru-watchdog
   // onto the platform Worker cron (duty.platform-ops-watchdog-beat, GlitchTip monitor
@@ -5089,8 +5160,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   const TECH_CURRENCY = 'duty.freshness.tech-currency';
   const LAPTOP_802 = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog'];
   const CODE_SCANNING_AGE = 'duty.freshness.code-scanning-age';
-  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, CODE_SCANNING_AGE, TECH_CURRENCY, BACKUP, ...LAPTOP_802, DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, the Renovate backlog, the code-scanning age and tech currency, and it holds', () => {
+  // ⏱ 2026-10-01 · the weekly time-travel run joins the freshness class: a fuse
+  // it finds drains only by merging its pin, and main's run turns green only
+  // after that merge. Register order puts it beside mutation-proofs, first.
+  const TIME_TRAVEL = 'duty.freshness.time-travel';
+  const PAGE_ONLY_ROWS = [TIME_TRAVEL, RENOVATE_BACKLOG, CODE_SCANNING_AGE, TECH_CURRENCY, BACKUP, ...LAPTOP_802, DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, time travel, the Renovate backlog, the code-scanning age and tech currency, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
     assert.deepEqual(scoped, PAGE_ONLY_ROWS);
@@ -5809,7 +5884,10 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
       const notAHost = hostPolicy({ ...envFor('e2e.yml', 'pull_request'), GITHUB_WORKFLOW: 'E2E' }, TOPO(), events);
       assert.equal(notAHost.mode, 'enforcing', 'a workflow that does not run this guard is not its proposal gate');
       assert.deepEqual(unitNeedsHosts(wfRow(BP, 'build-platforms.yml', '7d'), TOPO(), parsed().byFile).map((n) => n.host), ['ci.yml']);
-      assert.deepEqual(unitNeedsHosts(wfRow('duty.workflow.e2e.yml', 'e2e.yml', '1d'), TOPO(), parsed().byFile), [], 'a lane neither self-gated nor hosting the guard needs no host');
+      assert.deepEqual(unitNeedsHosts(wfRow('duty.workflow.codeql.yml', 'codeql.yml', '1d'), TOPO(), parsed().byFile), [], 'a lane neither self-gated, hosting the guard nor grading a post-gate deploy needs no host');
+      // ⏱ 2026-10-01 (PB-04) — e2e.yml declares the post-gate units it grades, and
+      // the edge is DERIVED from that declaration checked against ci.yml.
+      assert.deepEqual(unitNeedsHosts(wfRow('duty.workflow.e2e.yml', 'e2e.yml', '1d'), TOPO(), parsed().byFile).map((n) => n.why.split(' — ')[0]), ['DEPLOY-RECOVERED']);
     });
 
     test('INV1 — the HOST POLICY is ADVISORY only on a proposal event, in a host that runs this guard and declares that event', () => {
@@ -6227,8 +6305,9 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
     const { world, derivedRuns } = replayWorld(f, register);
     // ⏱ 2026-09-29 (A-2): mutation-proofs.yml is the second scheduled workflow added after the freeze.
-    // ⏱ 2026-10-03 (app2-dryrun): rehearse-app2.yml is the third.
-    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml'], 'only the scheduled workflows added after the freeze are derived');
+    // ⏱ 2026-10-01: time-travel.yml is the third.
+    // ⏱ 2026-10-03 (app2-dryrun): rehearse-app2.yml is the fourth.
+    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml', 'time-travel.yml'], 'only the scheduled workflows added after the freeze are derived');
     assert.equal(world.runs['mutation-proofs.yml'].length, 1);
     assert.equal(world.runs['mutation-proofs.yml'][0][1], 'schedule');
     assert.equal(world.runs['name-clearance.yml'].length, 1);
@@ -6241,7 +6320,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
     const pure = replayWorld({ ...f, runs: rest }, register);
     assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
-    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml']);
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml', 'time-travel.yml']);
   });
 
   test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {
@@ -6279,10 +6358,22 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.match(r.out, /\[LIVE\] 4 live verdict\(s\) about the state of the world on this run: 0 BLOCKING in this host · 4 FAILING and PRINTED/);
   });
 
-  test('INV2 · the SAME state on push to main — the ci-gate every deploy lane polls — still REFUSES, and says why', () => {
+  // ⏱ 2026-10-01 · PB-04, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY. This test said
+  // "still REFUSES" and asserted e2e.yml's two verdicts BLOCKED the push. That is the
+  // deadlock CI 36409128416 measured on 2026-09-28: ci-gate red on a red e2e duty
+  // skips deploy-web and deploy-workers, the jobs that ship e2e's own fix. They now
+  // PRINT here with the DEPLOY-RECOVERED path, and the page (next test) still fails
+  // on them. INV2 still holds for every other unit: the router's DEPLOY-RECOVERED
+  // GREEN CONTROL above blocks the push on an unrelated red duty.
+  test('INV2 · the SAME state on push to main — the e2e verdicts PRINT (DEPLOY-RECOVERED), the driver PRINTS (PAGE-ONLY), the self-gated lane PRINTS, and each says why', () => {
     const r = replay(HOST.PUSH);
-    assert.equal(r.code, 1, r.out.slice(-3000));
-    for (const re of [E2E_STALE, E2E_RED]) assert.ok(has(r.problems, re), `${re} must BLOCK the commit deploys poll:\n${r.problems.join('\n')}`);
+    assert.equal(r.code, 0, `${r.problems.join('\n')}\n${r.out.slice(-3000)}`);
+    for (const re of [E2E_STALE, E2E_RED]) {
+      assert.equal(has(r.problems, re), false, `${re} must not skip the deploy of its own fix:\n${r.problems.join('\n')}`);
+      const p = r.printed.find((x) => re.test(x.line));
+      assert.ok(p, `${re} must PRINT, not vanish`);
+      assert.match(p.why, /DEPLOY-RECOVERED/);
+    }
     // ⏱ 2026-09-18 — the pipeline driver is PAGE-ONLY by owner decision
     // (O-LAPTOP-ROUTINES-DIE-OVERNIGHT, checkLiveVerdictScopes): a closed laptop
     // lid pages in ops-watch (next test) but no longer holds the deploy gate. It
@@ -6365,14 +6456,19 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     }
   });
 
-  test('a TRUE failure still fails — e2e.yml genuinely red on main, no repair in flight, blocks the push gate and the page and names its exit', () => {
-    for (const host of [HOST.PUSH, HOST.OPS]) {
-      const r = replay(host);
-      const red = r.problems.find((l) => E2E_RED.test(l));
-      assert.ok(red, r.problems.join('\n'));
-      assert.match(red, /24\.0h EARLIER/);
-      assert.match(red, /dispatch the workflow once the cause is fixed/);
-    }
+  test('a TRUE failure still fails — e2e.yml genuinely red on main, no repair in flight, fails the page and names its exit; on the push it PRINTS the same line', () => {
+    const page = replay(HOST.OPS);
+    const red = page.problems.find((l) => E2E_RED.test(l));
+    assert.ok(red, page.problems.join('\n'));
+    assert.match(red, /24\.0h EARLIER/);
+    assert.match(red, /dispatch the workflow once the cause is fixed/);
+    // ⏱ 2026-10-01 (PB-04) — on main's push the same verdict PRINTS, unchanged, so
+    // the deploy of its fix is not skipped.
+    const push = replay(HOST.PUSH);
+    const printed = push.printed.find((p) => E2E_RED.test(p.line));
+    assert.ok(printed, push.out.slice(-3000));
+    assert.match(printed.line, /24\.0h EARLIER/);
+    assert.match(printed.why, /DEPLOY-RECOVERED/);
   });
 });
 
@@ -6780,6 +6876,26 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     assert.equal(empty.verdict, 'green', empty.line);
     const neutral = window.map((run) => ({ run, c: unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI()) }));
     assert.equal(classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), neutral, false)).verdict, 'unread');
+  });
+
+  // ⏱ 2026-10-02 · review of #1115, finding 2: RC-a4 re-implemented the scan's filter in
+  // the test, so deleting the skip inside the scan stayed green. This case goes through the
+  // scan's own loop and COUNTS the job-list reads. Red control: delete the
+  // `runPredatesUnitCalls(...)) continue;` line in scanUnitRuns and `reads` is two run ids.
+  test('RC-a5 — the unit scan reads NO job list for a run that predates every call of the unit', async () => {
+    const reads = [];
+    const jobsFor = async (runId) => {
+      reads.push(runId);
+      return RUN_3848_JOBS;
+    };
+    const window = [RUN_3848, { ...RUN_3848, id: 36106900355 }];
+    assert.deepEqual(await scanUnitRuns(q(['deploy-web']), window, window, CI(), jobsFor), []);
+    assert.deepEqual(reads, [], 'a predating run costs no job-list read');
+    // Green control: a run that references the call IS read, through the same loop.
+    const both = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    const entries = await scanUnitRuns(q(['deploy-web']), [both], [both], CI(), jobsFor);
+    assert.deepEqual(reads, [both.id]);
+    assert.equal(entries.length, 1);
   });
 
   test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {
