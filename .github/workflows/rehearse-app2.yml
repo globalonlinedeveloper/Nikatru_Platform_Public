@@ -1,0 +1,72 @@
+# why: lane app2-dryrun, row O-TIME-TO-SHIP-UNMEASURED. The business is a portfolio of apps and the
+# second app's cost is the margin lever, so once a week this stamps a THROWAWAY app #2 from the brick in a
+# temporary work tree, runs every lane in its dry-run mode, times each step, names each manual one with the
+# register row that owns it, and uploads the result as one JSON. tooling/kit/rehearsal-trend.mjs compares
+# two of them. Nothing is deployed, published, created or committed: the job reads NO secret and holds no
+# write permission (tooling/ci/test/rehearse-app2.test.mjs fails this file if it declares either).
+name: App #2 rehearsal
+
+run-name: "App #2 rehearsal (${{ github.event_name }})"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '40 4 * * 1' # 04:40 UTC Mondays
+
+permissions: {}
+
+concurrency:
+  group: rehearse-app2
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: Stamp a throwaway app #2, run every lane dry, measure time-to-ship
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - uses: ./.github/actions/setup-node
+      - name: Install mason_cli
+        run: dart pub global activate mason_cli 0.1.4
+      # The one native target an ubuntu runner compiles; the same packages ci.yml's stamp probe installs.
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      # The rehearsal's own exit (1: a step failed or a manual step has no row; 2: a step was skipped) is
+      # kept and re-raised AFTER the upload, so a red run still leaves its JSON for the trend.
+      - name: Rehearse app #2
+        id: rehearse
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          set +e
+          node tooling/kit/rehearse-app2.mjs --out "$RUNNER_TEMP/app2-rehearsal.json"
+          code=$?
+          set -e
+          echo "exit=${code}" >> "$GITHUB_OUTPUT"
+          echo "rehearse-app2 exit: ${code}"
+      - name: Keep the rehearsal for the trend
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app2-rehearsal
+          path: ${{ runner.temp }}/app2-rehearsal.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: The totals
+        if: ${{ !cancelled() }}
+        run: node -e "const r=require(process.argv[1]);console.log(JSON.stringify(r.totals,null,2))" "$RUNNER_TEMP/app2-rehearsal.json"
+      - name: The rehearsal's verdict
+        env:
+          REHEARSE_EXIT: ${{ steps.rehearse.outputs.exit }}
+        run: |
+          echo "rehearse-app2 exited ${REHEARSE_EXIT}"
+          test "${REHEARSE_EXIT}" = "0"
