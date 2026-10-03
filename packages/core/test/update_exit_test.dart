@@ -119,8 +119,8 @@ void main() {
         channel: channel,
         listing: () async => calls.add('listing'),
         open: (String url) async => calls.add('open $url'),
-        // Never the real reload: under `dart test -p chrome` it reloads the
-        // runner's own page and the run never finishes.
+        // Never the real reloadPage: under `--platform chrome` it reloads the
+        // test runner's own page and the suite hangs until the job times out.
         reload: () => calls.add('reload'),
       );
       return calls;
@@ -149,6 +149,7 @@ void main() {
         channel: 'windows-store',
         listing: () async => throw StateError('no store'),
         open: (String _) async => null,
+        reload: () {},
       );
     });
   });

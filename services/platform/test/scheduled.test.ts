@@ -511,6 +511,7 @@ describe('[port-telemetry] a Box B outage PAGES the owner, and survives Box B ta
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 530 })));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await expect(boxbReachability(e)).resolves.toBeUndefined();
+    // the owner page reads the previous row first (lib/owner-page.ts), so the row is the 5-value INSERT
     expect(insertsOf(bound)[0][2]).toBe(0);
     expect(log.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/box B alert: NOT SENT \(invalid\)/);
   });
