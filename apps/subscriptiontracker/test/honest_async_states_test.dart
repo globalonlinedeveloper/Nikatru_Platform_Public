@@ -31,7 +31,7 @@ import 'package:subscriptiontracker/data/models/payment_record.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 

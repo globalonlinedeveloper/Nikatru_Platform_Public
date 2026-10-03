@@ -66,7 +66,7 @@
     104,
 
   "app-yaml.test.mjs":
-    180,
+    193,
 
   "appimage-signing.test.mjs":
     77,
@@ -557,6 +557,12 @@
   "iap-review-screenshots.test.mjs":
     16,
 
+  "identity-address-sql.test.mjs":
+    5,
+
+  "identity-log-retention.test.mjs":
+    6,
+
   "identity-one-deleter.test.mjs":
     8,
 
@@ -619,6 +625,9 @@
 
   "local-chromedriver.test.mjs":
     12,
+
+  "locale-register.test.mjs":
+    35,
 
   "lockfile-discipline.test.mjs":
     9,
@@ -950,6 +959,9 @@
   "rollup-lossless.test.mjs":
     52,
 
+  "rtl-directional.test.mjs":
+    7,
+
   "run-page-anchor.test.mjs":
     67,
 
@@ -993,7 +1005,7 @@
     37,
 
   "session-revocation.test.mjs":
-    18,
+    25,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1153,6 +1165,9 @@
 
   "text-reductions.test.mjs":
     46,
+
+  "translation-qa.test.mjs":
+    10,
 
   "triage-failed-runs.test.mjs":
     115,

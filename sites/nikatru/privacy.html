@@ -127,7 +127,7 @@
 
 <main id="main">
   <h1>Privacy Policy</h1>
-  <p class="updated" data-policy-version="2026-09-26">Last updated: 26 September 2026 (version 2026-09-26)</p>
+  <p class="updated" data-policy-version="2026-10-02">Last updated: 2 October 2026 (version 2026-10-02)</p>
 
   <p>This Privacy Policy explains how <b>Nikatru</b> ("Nikatru", "we", "us", or "our"), a <!-- FACT:entity-of -->proprietorship of Rajasekar Selvam<!-- /FACT:entity-of --> based in <!-- FACT:office-place -->Chennai, Tamil Nadu, India<!-- /FACT:office-place -->, handles information in connection with our
   website <a href="https://nikatru.com">nikatru.com</a> and our applications and games published across
@@ -157,6 +157,21 @@
     we also keep a short-lived counter keyed to a <b>salted, one-way fingerprint</b> of the network address
     the request came from. The fingerprint is not reversible to an IP address, it is never stored alongside
     your email, and it is discarded automatically within an hour.</li>
+    <li><b>Network addresses</b> &mdash; apart from a pending sign-in verification (below), we do not keep the
+    network address a request comes from with your account or with any record about you. Two things see it, and neither keeps it with your data:
+    <b>Cloudflare</b>, at our network edge, uses it to deliver the request, to stop abuse and to work out an
+    approximate location, and then discards it, apart from Cloudflare's own security logs; and the request
+    log of our own sign-in service records it for security and fault diagnosis and deletes it after
+    <b>7 days</b>. Our sign-in service records the address on each sign-in, and since 2 October 2026 the
+    database it writes to empties that field on every write, with one exception: a pending sign-in
+    verification briefly holds the network address it was requested from. If you use a second sign-in step,
+    its one-time code is accepted only from the address that asked for it, so that address is kept until the
+    code is used; it is erased when the verification succeeds, or, if it is never completed, within a day of
+    the code expiring, 5 minutes after it was requested. Copies made before that date remain until they
+    age out: a sign-in session opened before 2 October 2026 keeps the address it was opened from until it
+    next refreshes, which happens whenever the app is used; the encrypted backups of the sign-in records
+    taken before that date contain those addresses; and so does the fallback copy Supabase holds (section
+    4).</li>
     <li><b>Purchase information</b> &mdash; if you buy something, the transaction is processed by the relevant
     app store or by our payment processor. We receive confirmation of the purchase but <b>do not collect
     or store your full card or bank details.</b></li>
@@ -218,9 +233,15 @@
     on our behalf.</li>
   </ul>
   <p>We also rely on <b>Cloudflare</b> (hosting, and the network edge our website and endpoints run on);
-  <b>Supabase</b>, which stores account credentials and sign-in sessions for apps that offer accounts; and
-  <b>Resend</b>, which delivers the email we send you (sign-in and account-verification messages, for
-  example) and therefore processes your email address on our behalf. Where an app offers them,
+  <b>Hostinger</b>, which rents us the servers our own sign-in service runs on, so it holds the account
+  credentials and sign-in sessions for apps that offer accounts; <b>Supabase</b>, which ran that sign-in
+  service until 27 September 2026 and still holds a fallback copy of the account and sign-in records from
+  before that date until it is retired; <b>Resend</b>, which delivers the email we send you (sign-in and
+  account-verification messages, and the renewal reminders you choose to receive, which list the
+  subscriptions about to renew) and therefore processes your email address on our behalf; and
+  Google, whose <b>Google Workspace</b> hosts our support mailbox, so it holds what you write to
+  us, and whose <b>Google Drive</b> stores our backups, which contain a copy of the account and app records
+  described here. Where an app offers them,
   <b>Sign in with Apple</b> and <b>Sign in with Google</b> are optional ways to sign in: if you choose
   one, Apple or Google shares with us the email address and name on that account, as you allow, and you
   can change the name in the app's Settings. We do not sell anything directly from this website today; the

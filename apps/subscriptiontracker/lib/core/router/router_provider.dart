@@ -12,7 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core show NotificationTap;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/notification_tap_observer.dart'
     show NotificationTapRouter, ReminderActionHandler;
 import '../../state/providers.dart';

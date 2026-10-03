@@ -136,3 +136,49 @@ export async function assertionFor(leafKey: CryptoKey, clientData: string, count
   const signature = await ecSign('sha256', nonce, leafKey);
   return cbor({ signature, authenticatorData });
 }
+
+// ── Play Integrity: a classic token as Play's SELF-MANAGED response encryption mints it ──
+// (⏱ 2026-10-03, O-PLAY-INTEGRITY-LOCAL-VERIFY). A compact JWE (A256KW + A256GCM,
+// RFC 7516) around a compact JWS (ES256, RFC 7515) around the verdict JSON — built
+// with WebCrypto from keys generated HERE, at test time. No real key is committed.
+const b64u = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const utf8 = (s: string) => new TextEncoder().encode(s);
+
+export interface PlayFixtureKeys {
+  /** The AES-256 key-encryption key, raw. */
+  aes: Uint8Array;
+  /** The ES256 signing key (Google's half; the Worker holds only its SPKI). */
+  signKey: CryptoKey;
+  /** The two Worker secrets, exactly as Play Console shows them: standard base64. */
+  decryptionB64: string;
+  verificationB64: string;
+}
+
+export async function playFixtureKeys(): Promise<PlayFixtureKeys> {
+  const aes = crypto.getRandomValues(new Uint8Array(32));
+  const pair = (await ecPair('P-256')) as CryptoKeyPair;
+  return { aes, signKey: pair.privateKey, decryptionB64: b64std(aes), verificationB64: b64std(await spkiOf(pair.publicKey)) };
+}
+
+/** Signs `payload` as a compact ES256 JWS (raw r ‖ s, as WebCrypto emits it). */
+export async function playJws(payload: unknown, signKey: CryptoKey, header: Record<string, unknown> = { alg: 'ES256' }): Promise<string> {
+  const input = `${b64u(utf8(JSON.stringify(header)))}.${b64u(utf8(JSON.stringify(payload)))}`;
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, signKey, utf8(input)));
+  return `${input}.${b64u(sig)}`;
+}
+
+/** Encrypts `plaintext` as a compact JWE: a fresh CEK wrapped by `aes` (A256KW), AES-256-GCM with the protected header as AAD. */
+export async function playJwe(plaintext: string, aes: Uint8Array, header: Record<string, unknown> = { alg: 'A256KW', enc: 'A256GCM' }): Promise<string> {
+  const h = b64u(utf8(JSON.stringify(header)));
+  const kek = await crypto.subtle.importKey('raw', aes, { name: 'AES-KW' }, false, ['wrapKey']);
+  const cek = (await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt'])) as CryptoKey;
+  const wrapped = new Uint8Array(await crypto.subtle.wrapKey('raw', cek, kek, { name: 'AES-KW' }));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: utf8(h), tagLength: 128 }, cek, utf8(plaintext)));
+  return [h, b64u(wrapped), b64u(iv), b64u(sealed.subarray(0, sealed.length - 16)), b64u(sealed.subarray(sealed.length - 16))].join('.');
+}
+
+/** A classic integrity token for `payload`: signed with `keys.signKey`, encrypted under `keys.aes`. */
+export async function playToken(payload: unknown, keys: Pick<PlayFixtureKeys, 'aes' | 'signKey'>): Promise<string> {
+  return playJwe(await playJws(payload, keys.signKey), keys.aes);
+}

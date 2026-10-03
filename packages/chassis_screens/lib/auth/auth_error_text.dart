@@ -187,6 +187,11 @@ String? _codeSentence(ChassisLocalizations l10n, core.AuthFailure e) =>
       // ⏱ 2026-10-01 · EN-05 — a terms acceptance the consent endpoint did not
       // receive: nothing was recorded, so the gate that asked stays shut.
       core.AuthFailure.notRecorded => l10n.reacceptTermsNotRecorded,
+      // ⏱ 2026-10-02 · AB-A4-01 — the new password IS set and the other
+      // devices are NOT signed out (the platform Worker could not be told).
+      // Raised by SupabaseAuthRepository.updatePassword; said as it is, with
+      // the control that finishes the job.
+      'sessions_not_revoked' => l10n.authSessionsNotRevoked,
       // ⏱ 2026-10-01 · SE-04 / EN-21 — the last sign-in method, and a wrong
       // or expired one-time code.
       core.AuthFailure.lastSignInMethod => l10n.authLastSignInMethod,

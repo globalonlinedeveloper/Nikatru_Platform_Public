@@ -57,6 +57,7 @@ void main() {
   // ⏱ 2026-10-01 · EN-09 — the page label must never change WHICH locale the
   // app resolves: the callback replaces Flutter's default, so it has to be it.
   test('resolveAndLabelPage resolves exactly as Flutter does', () {
+    // locale-list: a fixture for Flutter's resolution rule, not the app's set.
     const List<Locale> supported = <Locale>[Locale('en'), Locale('ta')];
     for (final List<Locale>? preferred in <List<Locale>?>[
       null,
