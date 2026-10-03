@@ -5380,6 +5380,12 @@ group('property: update-url-resolved-from-config', () {
   testWidgets('fallback', (t) async {});
   test('empty', () {});
 });
+// O-FORCE-UPDATE-VERSION-READ-UNPROVEN — a floor raised after launch walls the app.
+group('property: floor-rereads-after-launch', () {
+  testWidgets('resume', (t) async {});
+  testWidgets('timer', (t) async {});
+  testWidgets('lowered', (t) async {});
+});
 group('property: password-recovery-routes', () {
   testWidgets('a recovery arrival routes to the reset screen', (t) async {});
   testWidgets('a dead link lands on the explanation', (t) async {});
@@ -5426,6 +5432,8 @@ return MaterialApp.router(
     maxScaleFactor: 2.0,
     child: ForceUpdateGate(
       onUpdate: () => _openUpdate(updateUrl),
+      // O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the config is re-read on resume and a timer.
+      onConfigRefresh: () => ref.invalidate(appConfigProvider),
       child: AnalyticsGate(
         // [13]T-9 The MOUNT. \`class _NotificationTapGate\` would match with the
         // gate deleted from the tree it is supposed to be in — the
@@ -6426,6 +6434,12 @@ export interface AppConfig {
   // that lets a check pass over a question it never asked. The default row set
   // mirrors the real register's convention: the served `web` row carries no
   // deferral, every non-web row carries one.
+  // O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the client's half of how each channel's wall exits.
+  // [10]D-8 reads `kStoreListingChannels` out of it; a null served there opens the listing.
+  const UPDATE_EXIT_DART = 'packages/core/lib/src/config/update_exit.dart';
+  const updateExitDart = (...ids) =>
+    `const Set<String> kStoreListingChannels = <String>{\n${ids.map((id) => `  '${id}',\n`).join('')}};\n`;
+  const goodUpdateExitDart = updateExitDart('windows-store');
   const CHANNEL_REGISTER = 'tooling/channel-register.json';
   const channelRegister = (appimage = { kind: 'direct', served: false, deferral: { reason: '[ADR 015] §2' } }) =>
     JSON.stringify({
@@ -6451,11 +6465,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, buildTheme = goodBuildTheme, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, buildTheme = goodBuildTheme, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, updateExitDart = goodUpdateExitDart, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, [UPDATE_EXIT_DART]: updateExitDart, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at
@@ -6857,22 +6871,37 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.doesNotMatch(out, /an update_url of null while/);
   });
 
-  // WIDER THAN "AppImage", ON PURPOSE. A served STORE row with a null destination
-  // fails too — the force-update wall is compiled into that build as well, and
-  // with null served it opens the company home page instead of the listing.
-  test('limb (2a) fires on a served STORE row too, not only a direct one', () => {
-    const { code, out } = run('assert-stamp-properties.mjs', {
-      cwd: build('sp-d8-live-store', {
-        channelRegister: JSON.stringify({
-          channels: [
-            { id: 'web', kind: 'web', served: true, lane: null },
-            { id: 'android-play', kind: 'store', served: true, deferral: null, lane: null },
-          ],
-        }),
+  // WIDER THAN "AppImage", ON PURPOSE — and since 2026-10-01 (O-FORCE-UPDATE-VERSION-READ-UNPROVEN)
+  // graded by HOW the wall exits. Until then a served STORE row with a null destination failed,
+  // because with null served its wall opened the company home page. Its wall now calls
+  // `openStoreListing()` (core update_exit.dart `kStoreListingChannels`), so for a store-LISTING
+  // channel null is the right answer, and what fails is a store row served a HOMEPAGE.
+  const liveStore = (updateUrl, id = 'android-play') =>
+    build(`sp-d8-live-store-${id}-${updateUrl ? 'url' : 'null'}`, {
+      platformConfigData: platformConfigData(updateUrl),
+      updateExitDart: updateExitDart('android-play'),
+      channelRegister: JSON.stringify({
+        channels: [
+          { id: 'web', kind: 'web', served: true, lane: null },
+          { id, kind: 'store', served: true, deferral: null, lane: null },
+          ...(id === 'android-play' ? [] : [{ id: 'android-play', kind: 'store', served: false, deferral: { reason: 'x' }, lane: null }]),
+        ],
       }),
     });
-    assert.equal(code, 1);
-    assert.match(out, /android-play \(kind=store, served=true, deferral=none\)/);
+  test('limb (2a) passes a served STORE-LISTING row served null — its wall opens the listing', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: liveStore(null) });
+    assert.equal(code, 0, out);
+    assert.match(out, /1 live non-web channel\(s\)/);
+  });
+  test('limb (2a) FAILS a served store row served a HOMEPAGE', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: liveStore('https://example.org/') });
+    assert.equal(code, 1, out);
+    assert.match(out, /'android-play', which is a HOMEPAGE/);
+  });
+  test('limb (2a) still fires on a served store row that has NO listing adapter', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: liveStore(null, 'ios-appstore') });
+    assert.equal(code, 1, out);
+    assert.match(out, /ios-appstore \(kind=store, served=true, deferral=none\)/);
   });
 
   // ── O-UPDATE-FLOOR-HAS-NO-CHANNEL · `update_url` AND THE FLOOR ARE PER CHANNEL ─
@@ -6928,7 +6957,10 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       }),
     });
     assert.equal(code, 1, out);
-    assert.match(out, /an update_url of null while .* 1 live non-web channel\(s\) — linux-appimage/);
+    // ⏱ 2026-10-01 · the finding is per ROW now (tooling/ci/update-exit.mjs), naming the row and the
+    // fields it was graded on; the windows-store row served its own URL is not named.
+    assert.match(out, /an update_url of null while linux-appimage \(kind=direct, served=true, deferral=none\)/);
+    assert.doesNotMatch(out, /null while windows-store/);
   });
 
   test('RC3 — a map key that is not a channel id FAILS, naming the key', () => {

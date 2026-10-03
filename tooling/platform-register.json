@@ -1233,7 +1233,7 @@
         "answers 429 with Retry-After over a cap, or 503 for the refresh grant (LEAD RULING SHIELD-R2); it reads no",
         "client address (SHIELD-R3), and the per-IP limit on the credential paths is the zone's own rate-limiting",
         "rule, tooling/edge-ratelimit-rule.json. It serves the GoTrue JWKS from the edge cache for 300 s, and passes",
-        "everything else to the tunnel origin unchanged with one added response header, `x-nikatru-shield: 1`,",
+        "everything else to the tunnel origin unchanged with one added response header, `x-nikatru-shield: <RELEASE>` (the deployed commit SHA; `1` for a version deployed without one — ⏱ 2026-10-02, a refusal carries it too),",
         "which tooling/ops/check-edge-shield.mjs reads from ops-watch to prove it is still in path."
       ],
       "name": "edge-shield",

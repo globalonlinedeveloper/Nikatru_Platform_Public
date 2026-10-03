@@ -479,7 +479,9 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
     assert.match(c, /return anchoredPage\(repo, q\.workflow, qs, runs, wide\.workflow_runs\.length >= UNIT_PAGE, what\);/, 'unitRunsPage\'s fallback');
     assert.match(c, /if \(hit \|\| !pageFull\) return hit; if \(gapBelow\) throw new StaleGap\(gapBelow\);/, 'ghNewestRun on the shared page');
     assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), all: runs, pageFull, gapBelow \};/, 'unitRunsPage passes the gap on, and the UNFILTERED page for the superseded read');
-    assert.match(c, /const c = unitConclusion\(q, run, await jobsOfRun\(repo, run\.id, cache\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
+    // ⏱ 2026-10-02 — the loop moved into scanUnitRuns, its job-list read injected (#1115 review, finding 2); both halves are held.
+    assert.match(c, /const c = unitConclusion\(q, run, await jobsFor\(run\.id\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
+    assert.match(c, /const entries = await scanUnitRuns\(q, runs, all, wf, \(runId\) => jobsOfRun\(repo, runId, cache\)\);/, 'scanUnit hands scanUnitRuns the unfiltered page and the live job-list read');
     assert.match(c, /return gapCheckedScan\(entries, pageFull, gapBelow\);/, 'scanUnit');
     assert.match(c, /return withQuotaCause\(await redSincePair\(newest\), repo, cache\);/, 'probeGithubRedSince');
     assert.match(c, /out\.push\(repoWideWindow\(await io\.repoRunsPage\(repo, null\), /, 'the unfiltered repository list is one of the windows');

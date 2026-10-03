@@ -56,6 +56,8 @@ const {
   headersFor,
   headerValue,
   probeOrigin,
+  VERSION_READ,
+  versionReadProblem,
   OFFLINE_SHELL,
 } = await import(`file://${SMOKE.replaceAll('\\', '/')}`);
 
@@ -99,7 +101,7 @@ describe('smoke-web-artifact.mjs — it refuses before it ever opens a browser',
     // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2),
     // and a worker (2026-10-01: a bundle with no sw.js is refused before the launch).
     const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', 'sw.js': '// x', _headers: MINIMAL_HEADERS });
-    const r = run([dir, '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
+    const r = run([dir, '--build-name', '1.2.34', '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no headless Chrome could be started/);
     assert.doesNotMatch(r.out, /^::/m, r.out);
@@ -464,8 +466,11 @@ const runAsync = (args, smoke = SMOKE) =>
  * by a wrapper script (`--chrome` replaces the binary), so on Windows, where a
  * shell wrapper cannot be spawned, `seen` is null and the proof cases skip.
  */
-async function smokeInChrome(dir, extra = [], smoke = SMOKE) {
-  const args = [dir, '--timeout-ms', '30000', ...extra];
+/** The version tooling/ci/test/fixtures/smoke-web-csp/version.json carries. */
+const FIXTURE_BUILD_NAME = '1.2.34';
+
+async function smokeInChrome(dir, extra = [], buildName = FIXTURE_BUILD_NAME, smoke = SMOKE) {
+  const args = [dir, '--timeout-ms', '30000', ...(buildName === null ? [] : ['--build-name', buildName]), ...extra];
   if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME], smoke)), seen: null };
   const seen = [];
   const proxy = createServer((req, res) => {
@@ -548,6 +553,53 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
   });
 });
 
+// ── O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the installed-version read must resolve, to --build-name.
+describe('smoke-web-artifact.mjs — the installed-version read is proven before publication', () => {
+  test("the global it reads is core's kVersionReadGlobal, by value", () => {
+    const dart = readFileSync(join(ROOT, 'packages', 'core', 'lib', 'src', 'config', 'web_page.dart'), 'utf8');
+    assert.equal(dart.match(/kVersionReadGlobal\s*=\s*'([^']+)'/)?.[1], VERSION_READ.global);
+    assert.match(VERSION_READ.expression, new RegExp(`window\\.${VERSION_READ.global}`));
+  });
+
+  test('versionReadProblem: only a published string equal to --build-name passes', () => {
+    assert.equal(versionReadProblem({ published: true, value: '1.2.34' }, '1.2.34'), null);
+    assert.match(versionReadProblem({ published: true, value: null }, '1.2.34'), /resolved NULL/);
+    assert.match(versionReadProblem({ published: false, value: null }, '1.2.34'), /never published/);
+    assert.match(versionReadProblem(null, '1.2.34'), /never published/);
+    assert.match(versionReadProblem({ published: true, value: '1.2.3' }, '1.2.34'), /not the --build-name "1\.2\.34"/);
+    assert.match(versionReadProblem({ published: true, value: 1234 }, '1.2.34'), /not the --build-name/);
+  });
+
+  test('no --build-name is COVERAGE LOST (exit 2), before any browser is launched', () => {
+    const r = run([cspBundle(APP_HEADERS), '--chrome', join(TMP, 'no-such-chrome')]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — smoke-web-artifact: no --build-name was given/);
+  });
+
+  test('GREEN CONTROL — the fixture reads its own version.json as the --build-name', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(cspBundle(APP_HEADERS));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}the installed-version read resolved to "1\.2\.34", the --build-name/);
+  });
+
+  test('RC5 — a stubbed NULL version read fails the smoke (exit 1): the floor would fail open', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    writeFileSync(join(dir, 'version.json'), '{"app_name":"subscriptiontracker"}\n');
+    const r = await smokeInChrome(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the installed-version read resolved NULL/);
+  });
+
+  test('RC6 — a read that is not the --build-name fails the smoke (exit 1)', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(cspBundle(APP_HEADERS), [], '9.9.9');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is "1\.2\.34", not the --build-name "9\.9\.9"/);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-10-01 · THE OFFLINE LEG — [ADR 023] as amended 2026-09-30, rule 5 (row
 // O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR). Its green control is RC4 above: the
@@ -580,7 +632,7 @@ describe('smoke-web-artifact.mjs — the artifact starts again with the network 
     const tag = '<script src="sw-register.js"></script>';
     assert.ok(index.includes(tag), 'the seam moved: the fixture index.html no longer loads sw-register.js');
     writeFileSync(join(dir, 'index.html'), index.replace(tag, ''));
-    const r = await runAsync([dir, '--timeout-ms', '30000', '--chrome', CHROME]);
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--build-name', FIXTURE_BUILD_NAME, '--chrome', CHROME]);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /with the network off, http:\/\/127\.0\.0\.1:\d+\/subscriptiontracker\/ is the browser's error page \(net::ERR_/);
     assert.match(r.out, /the worker NEVER reported its cache warm/);
@@ -594,7 +646,7 @@ describe('smoke-web-artifact.mjs — the artifact starts again with the network 
     const seam = '    if (cached) return cached;\n';
     assert.ok(sw.includes(seam), 'the seam moved: web/sw.js no longer returns its cached copy on that line');
     writeFileSync(join(dir, 'sw.js'), sw.replace(seam, ''));
-    const r = await runAsync([dir, '--timeout-ms', '30000', '--chrome', CHROME]);
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--build-name', FIXTURE_BUILD_NAME, '--chrome', CHROME]);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /is the browser's error page/);
     assert.match(r.out, /the worker reported its cache warm/, 'registration still worked: what failed is the offline answer');
@@ -660,7 +712,7 @@ describe('smoke-web-artifact.mjs — the probe in a page its service worker cont
     const copy = join(TMP, `smoke-${seq++}`, 'tooling', 'smoke', 'smoke-web-artifact.mjs');
     mkdirSync(dirname(copy), { recursive: true });
     writeFileSync(copy, src.replace(seam, '    const bypass = {};\n'));
-    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API], copy);
+    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API], FIXTURE_BUILD_NAME, copy);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 probe request\(s\) were NOT paused by the interception/);
     // The unpaused URL is named on a line of its own, compared whole (CodeQL #576).
@@ -684,5 +736,17 @@ describe("deploy-web.yml — the pre-publication smoke probes the build's derive
     assert.match(smoke.run.text, /\$\{\{ steps\.connect\.outputs\.connect \}\}/);
     assert.doesNotMatch(smoke.run.text, /--connect\b/);
     assert.equal(smoke.env.size, 0, `the smoke step needs no secret now: ${[...smoke.env.keys()].join(', ')}`);
+  });
+
+  test('both web smoke steps pass the build name flutter-release-build.mjs composes (<release line>.<run number>)', () => {
+    for (const file of ['.github/workflows/deploy-web.yml', '.github/workflows/ci.yml']) {
+      const wf = parseWorkflow(ROOT, file);
+      assert.ok(wf, `${file} was not found`);
+      const smokes = [...wf.jobs.values()].flatMap((j) => workflowSteps(j)).filter((s) => s.run?.text.includes('node tooling/smoke/smoke-web-artifact.mjs'));
+      assert.ok(smokes.length > 0, `${file} no longer runs the launch smoke`);
+      for (const smoke of smokes) {
+        assert.match(smoke.run.text, /--build-name \$\{\{ steps\.ver\.outputs\.release_line \}\}\.\$\{\{ github\.run_number \}\}/, file);
+      }
+    }
   });
 });

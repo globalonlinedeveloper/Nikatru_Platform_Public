@@ -147,11 +147,46 @@ export const MAX_DIGEST_ITEMS = 14;
 export const REMINDER_SENT_RETENTION_DAYS = 400;
 
 /**
- * Ledger rows pruned per run, at most — the retention sweep's own per-run bound.
+ * Ledger rows one prune PASS removes, at most — the retention sweep's own per-pass
+ * bound. ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED: it was the
+ * per-RUN bound, so a ledger growing past ~1,000 expired rows a night fell behind
+ * for good with nothing red. The prune now repeats while a pass is full, at most
+ * MAX_PRUNE_PASSES_PER_RUN times.
  *
  * @ceiling d1.rowsWrittenPerDay lte
  */
 export const MAX_PRUNE_PER_RUN = 1000;
+
+/**
+ * Prune passes per run. A ledger still full when they run out prints
+ * `prune_capped=1` in every reminder_mail row, and tooling/ops/check-heartbeats.mjs
+ * turns RED after `cappedNightsRed.nights` such runs in a row (tooling/ops/
+ * register.json, duty.platform-cron). Counted in reminderMailStatementBudget below.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_PRUNE_PASSES_PER_RUN = 20;
+
+/**
+ * D1 statements one app's pass may spend on reads: the preferences read, the
+ * ledger read, and one subscriptions read per USER_CHUNK opted-in accounts. 50
+ * holds 48 chunks, 2,400 opted-in accounts an app; past that the reads grow with
+ * the data, like the renewals batch (tooling/ceilings.json `batchCallSites`), and
+ * this is the allowance to raise.
+ *
+ * @ceiling none — a declared per-app allowance that reminderMailStatementBudget sums, not a cap the code enforces.
+ */
+export const REMINDER_STATEMENTS_PER_APP = 50;
+
+/**
+ * The most D1 statements one reminder_mail run can send for `appCount` apps: the
+ * prune passes, the sent-today count, each app's reads and its heartbeat row, and
+ * a claim plus a release for every identity read. Summed per firing against
+ * d1.queriesPerInvocation by test/scheduled-crons.test.ts.
+ */
+export function reminderMailStatementBudget(appCount: number): number {
+  return MAX_PRUNE_PASSES_PER_RUN + 1 + appCount * (REMINDER_STATEMENTS_PER_APP + 1) + MAX_ADDRESS_READS_PER_RUN * 2;
+}
 
 /**
  * Accounts per subscriptions read. The ids travel as ONE JSON parameter, so this
@@ -443,6 +478,8 @@ interface RunState {
   sentToday: number;
   readsLeft: number;
   pruned: number;
+  /** The prune's last pass was still full — expired rows may remain. */
+  pruneCapped: boolean;
 }
 
 /** A pending digest: one person, one app, the items not yet mailed. */
@@ -455,17 +492,26 @@ interface Pending {
 
 /**
  * The ledger prune: `reminder_sent` rows whose `due_on` is more than
- * REMINDER_SENT_RETENTION_DAYS behind today, at most MAX_PRUNE_PER_RUN per run.
+ * REMINDER_SENT_RETENTION_DAYS behind today, MAX_PRUNE_PER_RUN a pass, again while
+ * a pass is full, at most MAX_PRUNE_PASSES_PER_RUN passes. `capped` = the last
+ * pass was still full, so expired rows may remain.
  */
-async function pruneLedger(db: SqlDb, today: string): Promise<number> {
+async function pruneLedger(db: SqlDb, today: string): Promise<{ pruned: number; capped: boolean }> {
   const cutoff = addDays(today, -REMINDER_SENT_RETENTION_DAYS);
-  const res = await db
-    .prepare(
-      'DELETE FROM reminder_sent WHERE rowid IN (SELECT rowid FROM reminder_sent WHERE due_on < ? ORDER BY due_on LIMIT ?)',
-    )
-    .bind(cutoff, MAX_PRUNE_PER_RUN)
-    .run();
-  return Number(res.meta?.changes ?? 0);
+  let pruned = 0;
+  let full = true;
+  for (let pass = 0; full && pass < MAX_PRUNE_PASSES_PER_RUN; pass++) {
+    const res = await db
+      .prepare(
+        'DELETE FROM reminder_sent WHERE rowid IN (SELECT rowid FROM reminder_sent WHERE due_on < ? ORDER BY due_on LIMIT ?)',
+      )
+      .bind(cutoff, MAX_PRUNE_PER_RUN)
+      .run();
+    const n = Number(res.meta?.changes ?? 0);
+    pruned += n;
+    full = n >= MAX_PRUNE_PER_RUN;
+  }
+  return { pruned, capped: full };
 }
 
 /** Digests already sent today, portfolio-wide — one unsubscribe hash per digest. */
@@ -605,7 +651,7 @@ async function remindApp(
   if (!target.db) return { target: target.appId, ok: false, detail: 'no database binding for this app' };
   try {
     const { optedIn, pending } = await pendingFor(env, target, target.db, state.today);
-    const tail = `pruned=${state.pruned}`;
+    const tail = `pruned=${state.pruned} prune_capped=${state.pruneCapped ? 1 : 0}`;
     if (pending.length === 0) {
       return { target: target.appId, ok: true, detail: `nothing due: opted_in=${optedIn} due=0 ${tail}` };
     }
@@ -726,9 +772,12 @@ export async function runReminderMail(
     sentToday: 0,
     readsLeft: MAX_ADDRESS_READS_PER_RUN,
     pruned: 0,
+    pruneCapped: false,
   };
   try {
-    state.pruned = await pruneLedger(env.PLATFORM_DB, today);
+    const prune = await pruneLedger(env.PLATFORM_DB, today);
+    state.pruned = prune.pruned;
+    state.pruneCapped = prune.capped;
     state.sentToday = await digestsSentSince(env.PLATFORM_DB, `${today}T00:00:00.000Z`);
   } catch (err) {
     return targets.map((t) => ({ target: t.appId, ok: false, detail: `reminder ledger unreadable: ${String(err)}` }));

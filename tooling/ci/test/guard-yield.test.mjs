@@ -56,6 +56,7 @@ import {
   MAX_AGE_DAYS,
 } from '../../ops/guard-yield.mjs';
 import { isNonDefect, prOfRun, mergedPrsFromSubjects, yieldRecords, liveApi, parseArgs, CoverageLost } from '../../ops/triage-failed-runs.mjs';
+import { clockEnv } from '../../scripts/test-clock.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -79,13 +80,15 @@ after(() => {
 });
 
 /** An environment built FROM SCRATCH, so no credential on this machine can
- *  reach the script: the fixture transport is the only path. */
+ *  reach the script: the fixture transport is the only path. `...clockEnv()`
+ *  carries a time-travel run's clock and nothing else, so `--sync`'s
+ *  `firstSeen` is the parent's day (tooling/scripts/test-clock.mjs). */
 function run(script, args) {
   const r = spawnSync(process.execPath, [script, ...args], {
     cwd: REPO,
     encoding: 'utf8',
     timeout: 60_000,
-    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP, NIKATRU_VAULT: join(temp(), 'absent.env') },
+    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP, NIKATRU_VAULT: join(temp(), 'absent.env'), ...clockEnv() },
   });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }

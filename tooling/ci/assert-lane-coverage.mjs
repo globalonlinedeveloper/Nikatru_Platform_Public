@@ -141,10 +141,22 @@ function claimableText(raw) {
   return out.join('\n');
 }
 
+// ⏱ 2026-10-01 — A WORKFLOW THAT RE-RUNS EVERY SUITE IS NOT A LANE FOR ANY OF
+// THEM. .github/workflows/time-travel.yml runs every unit's tests weekly with
+// the clock moved forward; it gates no merge and runs nothing a lane does not
+// already run. Counted here, it would claim every unit it names, so deleting a
+// unit's REAL lane would stay green — measured on the day it landed:
+// content-pipeline.test.mjs INC-0 ("FAILS naming tooling/content_pipeline when
+// the content-gate job is deleted") read "the guard exited 0 on known-bad
+// input". So it is read for nothing here. Excluding a file can only REMOVE
+// claims, never add one.
+// LANE-BOUND: time-travel.yml — named only to EXCLUDE it: it re-runs suites other lanes own, so counting it would let a deleted real lane stay covered; this guard grades every other workflow.
+const NOT_A_LANE = new Set(['time-travel.yml']);
+
 const wfDir = join(repoRoot, '.github', 'workflows');
 const workflowTexts = existsSync(wfDir)
   ? listDir(wfDir)
-      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      .filter((f) => (f.endsWith('.yml') || f.endsWith('.yaml')) && !NOT_A_LANE.has(f))
       .map((f) => claimableText(readFileSync(join(wfDir, f), 'utf8')))
   : [];
 // ⏱ 2026-09-15 — NO WORKFLOW READ IS COVERAGE LOST, NOT A LIST OF UNCLAIMED UNITS.

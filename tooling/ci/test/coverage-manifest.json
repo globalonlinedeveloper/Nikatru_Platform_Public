@@ -260,6 +260,9 @@
   "clone-contract.test.mjs":
     47,
 
+  "cloudflare-usage.test.mjs":
+    23,
+
   "code-scanning-age.test.mjs":
     15,
 
@@ -498,10 +501,10 @@
     18,
 
   "guards.test.mjs":
-    505,
+    507,
 
   "heartbeats.test.mjs":
-    87,
+    97,
 
   "heavy-lock.test.mjs":
     46,
@@ -550,6 +553,9 @@
 
   "install-pinned-tool.test.mjs":
     27,
+
+  "land-merge.test.mjs":
+    16,
 
   "land-next.test.mjs":
     59,
@@ -605,6 +611,9 @@
   "mail-transport-claims.test.mjs":
     81,
 
+  "main-rows.test.mjs":
+    21,
+
   "measure-frame-ink.test.mjs":
     22,
 
@@ -627,7 +636,7 @@
     16,
 
   "monitor-coverage.test.mjs":
-    30,
+    37,
 
   "mor-adapters.test.mjs":
     44,
@@ -651,7 +660,7 @@
     8,
 
   "new-product-plan.test.mjs":
-    69,
+    70,
 
   "new-tool-chain.test.mjs":
     12,
@@ -702,13 +711,13 @@
     116,
 
   "ops-register.test.mjs":
-    441,
+    448,
 
   "ops-status.test.mjs":
     53,
 
   "ops-verifiers.test.mjs":
-    22,
+    29,
 
   "ops-watch-readers.test.mjs":
     13,
@@ -777,7 +786,7 @@
     157,
 
   "pr-rows.test.mjs":
-    50,
+    57,
 
   "precommit-pii.test.mjs":
     5,
@@ -1005,10 +1014,13 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    36,
+    43,
 
   "snap-submission.test.mjs":
     48,
+
+  "snap-update-row.test.mjs":
+    6,
 
   "snapcraft-generable.test.mjs":
     92,
@@ -1121,6 +1133,9 @@
   "test-clock-mix.test.mjs":
     25,
 
+  "test-clock.test.mjs":
+    8,
+
   "text-reductions.test.mjs":
     46,
 
@@ -1135,6 +1150,9 @@
 
   "update-coverage.test.mjs":
     35,
+
+  "update-exit.test.mjs":
+    12,
 
   "vacuity-a.test.mjs":
     4,
@@ -1192,6 +1210,9 @@
 
   "worker-shared-modules.test.mjs":
     17,
+
+  "worker-versions.test.mjs":
+    18,
 
   "workflow-hardening.test.mjs":
     11,

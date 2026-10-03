@@ -63,7 +63,7 @@ class _FixedRepository extends SubscriptionRepository {
 }
 
 DateTime _today() {
-  final DateTime now = DateTime.now();
+  final DateTime now = wallClock();
   return DateTime(now.year, now.month, now.day);
 }
 

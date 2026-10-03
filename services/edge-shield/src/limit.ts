@@ -75,7 +75,15 @@ async function ask(binding: RateLimiterBinding | undefined, cls: ShieldClass): P
  * PASSED-THROUGH answer keeps the origin's own CORS headers untouched
  * (tooling/ci/assert-cors-allowlist.mjs, the edge pass-through policy).
  */
-export function refusal(cls: ShieldClass): Response {
+/**
+ * ⏱ 2026-10-02 · `mark` is the shield header's value (src/index.ts shieldMark):
+ * the deployed RELEASE, so a refusal names its commit exactly as a pass-through
+ * does. It was a literal `1` here, and the SHA-joined deploy and rollback smoke
+ * (check-edge-shield.mjs --expect-release) read a refused probe during a crash
+ * storm as an OLD shield in path (review of #1115, finding 1). Required, never
+ * defaulted: a caller that forgets it does not compile.
+ */
+export function refusal(cls: ShieldClass, mark: string): Response {
   const { period, refusal: status } = CLASSES[cls];
   const headers = new Headers({
     'Retry-After': String(period),
@@ -83,7 +91,7 @@ export function refusal(cls: ShieldClass): Response {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Expose-Headers': 'Retry-After, X-Sentry-Rate-Limits, x-sb-error-code, x-supabase-api-version',
-    [SHIELD_HEADER]: '1',
+    [SHIELD_HEADER]: mark,
   });
   let body: string;
   if (cls === 'intake') {
@@ -99,7 +107,7 @@ export function refusal(cls: ShieldClass): Response {
 }
 
 /** `null` = admitted; a Response = the refusal to return. */
-export async function admit(cls: ShieldClass, env: Env): Promise<Response | null> {
-  if (!(await ask(CLASSES[cls].global(env), cls))) return refusal(cls);
+export async function admit(cls: ShieldClass, env: Env, mark: string): Promise<Response | null> {
+  if (!(await ask(CLASSES[cls].global(env), cls))) return refusal(cls, mark);
   return null;
 }

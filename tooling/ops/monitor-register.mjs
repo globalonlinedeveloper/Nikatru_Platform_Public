@@ -23,6 +23,9 @@
 // that one row changed, or nothing is written and the caller is told why.
 //
 // Nothing here reads the network, sets an exit code or decides a verdict.
+// ⏱ 2026-10-01 (PB-16): verify-alarm-chains.mjs limb C also takes its AGE rule
+// from here — `observationAgeProblems()` at the end — so a fixture can reach it;
+// that script exits before its first line of logic when no token is set.
 // ─────────────────────────────────────────────────────────────────────────────
 import { isDeepStrictEqual } from 'node:util';
 
@@ -201,4 +204,53 @@ export function replaceHostRow(text, index, row) {
   if (!at) throw new Error(`${REGISTER_REL} has no hosts[${index}]`);
   const hosts = JSON.parse(text).hosts.map((h, i) => (i === index ? row : h));
   return proven(text, `${text.slice(0, at.start)}${rowText(row, indentAt(text, at.start))}${text.slice(at.end)}`, hosts);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · PB-16 — "WATCHED DELIVERING" HAS AN AGE CEILING.
+//
+// Limb C of verify-alarm-chains.mjs asks for a dated delivery record per project
+// in tooling/ops/alarm-chains.json `chainsObserved`. It never asked HOW OLD: a
+// chain watched once in August stayed "observed" forever, through a box move, a
+// recipient replaced by a PUT and an alert rule edited since. The record is
+// evidence the chain worked ON THAT DATE; past the ceiling it is history, and
+// limb C fails it (exit 1) until somebody forces a real state change again and
+// records the new delivery id.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @ceiling none — an EVIDENCE-AGE THRESHOLD, not a platform resource. 30 days is
+ *   the ceiling the review named (PB-16): about one change of everything a chain
+ *   is made of (alert rules, recipients, the relay, the box), and short enough
+ *   that a drill is a monthly habit rather than an archaeology.
+ */
+export const OBSERVATION_MAX_AGE_DAYS = 30;
+
+const DAY_MS = 86_400_000;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * PURE. One message per `slug` whose `chainsObserved[slug].date` is not a
+ * YYYY-MM-DD or is more than OBSERVATION_MAX_AGE_DAYS before `today`
+ * (YYYY-MM-DD). A slug with NO record is limb C's NEVER OBSERVED, not this.
+ */
+export function observationAgeProblems(chainsObserved, slugs, today) {
+  const problems = [];
+  const now = Date.parse(`${today}T00:00:00Z`);
+  for (const slug of [...slugs].sort()) {
+    const obs = chainsObserved?.[slug];
+    if (!obs?.date || !obs?.evidence) continue;
+    if (!ISO_DAY.test(String(obs.date)) || Number.isNaN(Date.parse(`${obs.date}T00:00:00Z`))) {
+      problems.push(`UNDATABLE OBSERVATION: project ${slug}'s chainsObserved date ${JSON.stringify(obs.date)} is not a YYYY-MM-DD, so its age cannot be judged.`);
+      continue;
+    }
+    const days = Math.floor((now - Date.parse(`${obs.date}T00:00:00Z`)) / DAY_MS);
+    if (days > OBSERVATION_MAX_AGE_DAYS) {
+      problems.push(
+        `STALE OBSERVATION: project ${slug}'s chain was last watched delivering on ${obs.date}, ${days} days ago — past the ` +
+          `${OBSERVATION_MAX_AGE_DAYS}-day ceiling. Force a real state change and record the new delivery id in alarm-chains.json.`,
+      );
+    }
+  }
+  return problems;
 }

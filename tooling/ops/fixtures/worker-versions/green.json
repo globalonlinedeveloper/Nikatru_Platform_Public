@@ -1,0 +1,14 @@
+{
+  "_why": "GREEN CONTROL for tooling/ops/check-worker-versions.mjs --fixture: every Worker deploy-workers.yml records serves its ledger's newest record. The shield header carries no commit, so the shield is graded by its active Cloudflare version against the record's worker_version_id.",
+  "ledger": {
+    "platform": { "id": 101, "sha": "1111111111111111111111111111111111111111", "payload": { "worker_version_id": "00000000-0000-4000-8000-000000000001" } },
+    "subscriptiontracker-api": { "id": 102, "sha": "2222222222222222222222222222222222222222", "payload": { "worker_version_id": null } },
+    "edge-shield": { "id": 103, "sha": "3333333333333333333333333333333333333333", "payload": { "worker_version_id": "00000000-0000-4000-8000-000000000003" } }
+  },
+  "health": {
+    "platform": "1111111111111111111111111111111111111111",
+    "subscriptiontracker-api": "2222222222222222222222222222222222222222"
+  },
+  "shieldHeader": "1",
+  "cloudflare": { "edge-shield": "00000000-0000-4000-8000-000000000003" }
+}
