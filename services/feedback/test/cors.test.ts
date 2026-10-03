@@ -23,11 +23,7 @@ import {
 // `app.route(prefix, sub)` merged in — and each route is preflighted on its own
 // path through the real middleware stack. See services/_shared/test/preflight.ts.
 //
-// ⚬ AT LEAST, NOT EXACTLY. src/middleware/cors.ts offers GET, POST, PUT, PATCH and
-// DELETE while the template itself mounts only GET and DELETE: the list is broad
-// on purpose, so the first routes an app adds are not refused. An app that wants
-// the list trimmed to what it mounts can add the exact check the shared platform
-// Worker's suite carries (`unansweredMethods`).
+// src/middleware/cors.ts offers exactly what this Worker mounts: GET and POST.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ORIGIN = 'https://app.example.test';
@@ -36,11 +32,11 @@ const env = { ALLOWED_ORIGINS: ORIGIN } as AppEnv['Bindings'];
 const through: RequestThroughApp = (path, init) => app.request(path, init, env);
 
 describe('preflight allows every method a MOUNTED route answers', () => {
-  it('reads a real route table, including the sub-app mounted at /v1/account', () => {
+  it('reads a real route table, including the sub-app mounted at /v1/feedback', () => {
     // Not a tautology: an empty or middleware-only table would make the next
     // test pass vacuously.
     expect(endpoints).toContainEqual({ method: 'GET', path: '/v1/health' });
-    expect(endpoints).toContainEqual({ method: 'DELETE', path: '/v1/account' });
+    expect(endpoints).toContainEqual({ method: 'POST', path: '/v1/feedback' });
   });
 
   it('every mounted route is preflight-approved for its own method, from a listed origin', async () => {
@@ -48,9 +44,9 @@ describe('preflight allows every method a MOUNTED route answers', () => {
   });
 
   it('an origin that is not listed gets no approval', async () => {
-    const res = await through('/v1/account', {
+    const res = await through('/v1/feedback', {
       method: 'OPTIONS',
-      headers: { Origin: 'https://evil.test', 'Access-Control-Request-Method': 'DELETE' },
+      headers: { Origin: 'https://evil.test', 'Access-Control-Request-Method': 'POST' },
     });
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });

@@ -53,7 +53,7 @@ describe('an unhandled error reaches the sink, naming this Worker', () => {
     const res = await app.fetch(new Request('https://api.example.test/v1/health?email=a@b.test'), env as never, CTX as never);
     expect(res.status).toBe(500);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toContain('"server_name":"feedback-api"');
+    expect(sent[0]).toContain('"server_name":"feedback"');
     expect(sent[0]).toContain('"release":"sha123"');
     expect(sent[0]).not.toContain('email=');
   });
@@ -61,22 +61,23 @@ describe('an unhandled error reaches the sink, naming this Worker', () => {
 
 describe('/v1/health looks at THIS Worker’s dependencies', () => {
   const okDb = () => ({ prepare: () => ({ first: async () => ({ ok: 1 }) }) });
+  const okBucket = () => ({ head: async () => null });
   // The route's probe cache lives for the isolate, so each case reads at its own
   // instant, an hour apart: no case can be answered from another's reading.
   const at = (ms: number) => vi.spyOn(Date, 'now').mockReturnValue(ms);
 
-  it('answers ok:true with app_db, platform_db and supabase_jwks all ok', async () => {
+  it('answers ok:true with platform_db, screenshots and supabase_jwks all ok', async () => {
     at(1_000_000_000_000);
     vi.stubGlobal('fetch', async () => Response.json({ keys: [{ kid: 'k' }] }));
-    const env = { APP_DB: okDb(), PLATFORM_DB: okDb(), SUPABASE_URL: 'https://id.example.test', APP_ID: 'feedback', API_VERSION: 'v1' };
+    const env = { PLATFORM_DB: okDb(), SCREENSHOTS: okBucket(), SUPABASE_URL: 'https://id.example.test', APP_ID: 'feedback', API_VERSION: 'v1' };
     const res = await app.fetch(new Request('https://api.example.test/v1/health'), env as never, CTX as never);
     const body = (await res.json()) as { ok: boolean; checks: Array<{ name: string; status: string }> };
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.checks.map((c) => c.name).sort()).toEqual(['app_db', 'platform_db', 'supabase_jwks']);
+    expect(body.checks.map((c) => c.name).sort()).toEqual(['platform_db', 'screenshots', 'supabase_jwks']);
   });
 
-  it('🔴 an absent APP_DB says ok:false, still with HTTP 200', async () => {
+  it('🔴 an absent SCREENSHOTS bucket says ok:false, still with HTTP 200', async () => {
     at(1_000_003_600_000);
     vi.stubGlobal('fetch', async () => Response.json({ keys: [{ kid: 'k' }] }));
     const env = { PLATFORM_DB: okDb(), SUPABASE_URL: 'https://id2.example.test', APP_ID: 'feedback', API_VERSION: 'v1' };
@@ -84,6 +85,6 @@ describe('/v1/health looks at THIS Worker’s dependencies', () => {
     const body = (await res.json()) as { ok: boolean; checks: Array<{ name: string; status: string; reason: string | null }> };
     expect(res.status).toBe(200);
     expect(body.ok).toBe(false);
-    expect(body.checks.find((c) => c.name === 'app_db')).toMatchObject({ status: 'unknown', reason: 'binding_absent' });
+    expect(body.checks.find((c) => c.name === 'screenshots')).toMatchObject({ status: 'unknown', reason: 'binding_absent' });
   });
 });

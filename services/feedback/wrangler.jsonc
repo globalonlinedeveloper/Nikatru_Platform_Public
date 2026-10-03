@@ -35,7 +35,7 @@
     // Every app's web build is served from the apex ([ADR 075]); the site's own
     // form posts same-origin to its Pages Function and reaches this Worker over a
     // Service Binding, with no Origin.
-    "ALLOWED_ORIGINS": "https://nikatru.com",
+    "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev",
     "INTAKE_OPEN": "false"
   },
   "d1_databases": [
@@ -54,6 +54,19 @@
   ],
   "r2_buckets": [
     { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback" }
+  ],
+  // The per-network BURST bound in front of everything else (src/routes/feedback.ts
+  // `strictEdgeCeiling`, FAIL CLOSED): 30 a minute per (colo, ASN), far above a
+  // person and far below a script. The hourly per-key and daily global bounds
+  // are D1 windows (src/lib/window-limiter.ts), because this binding counts 10 s
+  // or 60 s only. namespace_ids 1201/1202 are this Worker's own (platform holds
+  // 1001-1030, subscriptiontracker-api 1031-1032, edge-shield 1104-1114).
+  "ratelimits": [
+    {
+      "name": "FEEDBACK_EDGE_LIMITER",
+      "namespace_id": "1201",
+      "simple": { "limit": 30, "period": 60 }
+    }
   ],
   // One label deep (ADR 080). `custom_domain: true` provisions the record and the
   // certificate on the first deploy.
@@ -79,7 +92,7 @@
         "APP_ID": "feedback",
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         "API_VERSION": "v1",
-        "ALLOWED_ORIGINS": "https://nikatru.com",
+        "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev",
         "INTAKE_OPEN": "false"
       },
       "d1_databases": [
@@ -97,6 +110,13 @@
       ],
       "r2_buckets": [
         { "binding": "SCREENSHOTS", "bucket_name": "nikatru-feedback-sandbox" }
+      ],
+      "ratelimits": [
+        {
+          "name": "FEEDBACK_EDGE_LIMITER",
+          "namespace_id": "1202",
+          "simple": { "limit": 30, "period": 60 }
+        }
       ]
     }
   }

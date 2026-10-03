@@ -38,6 +38,7 @@ export 'src/content/service_catalogue.dart';
 export 'src/cancellation_transport.dart';
 export 'src/checkout_session_transport.dart';
 export 'src/content_report_transport.dart';
+export 'src/feedback_transport.dart';
 export 'src/dates/recurrence_schedule.dart';
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_transport.dart';

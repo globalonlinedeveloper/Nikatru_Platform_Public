@@ -9,6 +9,7 @@
 import type { AuthRecency } from '../../_shared/src/auth';
 import type { KvStore } from '../../_shared/src/ports/kv';
 import type { ObjectStore } from '../../_shared/src/ports/objects';
+import type { RateLimiter } from '../../_shared/src/ports/ratelimit';
 import type { SqlDb } from '../../_shared/src/ports/sql';
 import type { TokenAssurance } from '../../_shared/src/auth-middleware';
 import type { Context } from 'hono';
@@ -23,6 +24,8 @@ export interface Env {
    *  `FeedbackInternal` entrypoint (src/internal.ts), reachable only over a
    *  Service Binding inside the account. */
   SCREENSHOTS: ObjectStore;
+  /** The per-network burst bound, FAIL CLOSED (wrangler.jsonc `ratelimits`). */
+  FEEDBACK_EDGE_LIMITER?: RateLimiter;
   JWKS_CACHE: KvStore;
   /** The shared revocation list, READ ONLY (services/platform writes it). */
   SESSION_REVOKED?: KvStore;

@@ -23,7 +23,11 @@
 import type { RateLimiter } from '../../../_shared/src/ports/ratelimit';
 import type { SqlDb } from '../../../_shared/src/ports/sql';
 
+// @ceiling none — the stored hash length, not a platform resource
 const HASH_HEX = 16;
+/** Statements in the one prune batch: the windows, then their salts. */
+// @ceiling none — a fixed statement count (two DELETEs), far under any per-invocation ceiling
+export const WINDOW_PRUNE_STATEMENTS = 2;
 
 export interface WindowLimiterOptions {
   /** The window, in milliseconds. */

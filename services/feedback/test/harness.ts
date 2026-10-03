@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
 import { memoryObjects, type MemoryObjects } from '../../_shared/src/ports/fakes/objects';
+import { memoryRateLimiter } from '../../_shared/src/ports/fakes/ratelimit';
 import cronHeartbeat0003 from '../../platform/migrations/0003_cron_heartbeat.sql?raw';
 import feedback0025 from '../../platform/migrations/0025_feedback.sql?raw';
 import type { Env } from '../src/types';
@@ -26,6 +27,7 @@ export function harness(over: Partial<Env> = {}): Harness {
   const env = {
     PLATFORM_DB: db,
     SCREENSHOTS: bucket,
+    FEEDBACK_EDGE_LIMITER: memoryRateLimiter({ budget: 1000 }),
     JWKS_CACHE: { get: async () => null, put: async () => {}, delete: async () => {}, list: async () => ({ keys: [], list_complete: true }) },
     APP_ID: 'feedback',
     SUPABASE_URL: 'https://id.example.test',

@@ -33,6 +33,7 @@
         "services/subscriptiontracker-api/**",
         "services/platform/**",
         "services/edge-shield/**",
+        "services/feedback/**",
         "services/_shared/**",
         "catalog/apps.json",
         "catalog/bundles.json",
@@ -258,6 +259,12 @@
       "tooling/ops/check-edge-shield.mjs",
       "tooling/ops/bounded-retry.mjs",
       "tooling/ci/text-reductions.mjs",
+      ".github/workflows/deploy-workers.yml"
+    ],
+    "feedback": [
+      "services/feedback/**",
+      "services/_shared/**",
+      "services/platform/src/lib/mor/contract.ts",
       ".github/workflows/deploy-workers.yml"
     ]
   }

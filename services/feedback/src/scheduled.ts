@@ -24,6 +24,9 @@ import { pruneWindows } from './lib/window-limiter';
 import type { Env } from './types';
 
 export const FEEDBACK_CRON_JOB = 'feedback_purge';
+/** Statements in one purge pass's batch: the anonymised count, then the delete. */
+// @ceiling none — a fixed statement count per pass; PURGE_MAX_PASSES bounds the passes
+export const PURGE_PASS_STATEMENTS = 2;
 
 interface PurgeRow {
   id: string;

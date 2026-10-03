@@ -336,6 +336,58 @@
           }
         }
       ]
+    },
+    {
+      "_why": [
+        "services/feedback — the private \"Report a problem\" intake every app, site and extension posts to (lane",
+        "feedback-intake, O-FEEDBACK-INTAKE-UNBUILT). Stamped from the brick Worker by tooling/kit/stamp-service.mjs and",
+        "cut down to an intake: the reports are a platform_db table (services/platform/migrations/0025_feedback.sql, the",
+        "platform the sole applier), the screenshots a PRIVATE R2 bucket no route serves. Its only mounted routes are the",
+        "health check and POST /v1/feedback; the read path is the FeedbackInternal Service Binding entrypoint."
+      ],
+      "name": "feedback",
+      "entrypoint": "services/feedback/src/index.ts",
+      "config": "services/feedback/wrangler.jsonc",
+      "hosts": [
+        "feedback.nikatru.com"
+      ],
+      "dsnSecret": "GLITCHTIP_DSN",
+      "_dsnSecretWhy": "The platform's own crash-sink DSN, as the serving Worker deploys with: the intake is a portfolio service, not an app, so its crashes are filed beside the platform's, where the person triaging platform crashes looks. deploy-workers.yml already delivers GLITCHTIP_DSN, so the first deploy needs no new secret.",
+      "cors": "every-app",
+      "_corsWhy": "Every app's web build is served from the apex since [ADR 075], so the exact list is `https://nikatru.com` and nothing else, no localhost. The nikatru.com support form posts same-origin to its Pages Function, which reaches this Worker over a Service Binding with no Origin.",
+      "clientBasePath": "/v1",
+      "_clientBasePathWhy": [
+        "Both mounted routes sit under /v1, and the Dart client builds `$_base/v1/feedback` (packages/api_client/lib/src/dio_feedback_transport.dart), which carries the residual `/feedback`; the health route's machine client matches `/health$` as on every other Worker."
+      ],
+      "routes": [
+        {
+          "id": "feedback-health",
+          "method": "GET",
+          "path": "/v1/health",
+          "auth": "public",
+          "owningFile": "services/feedback/src/index.ts",
+          "purpose": "Deploy verification AND dependency health for the feedback intake. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM feedback_reports LIMIT 1`, so a platform_db not yet migrated to 0025 is unhealthy), the SCREENSHOTS bucket (a HEAD of a key that never exists) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). `build` is the deployed commit the deploy smoke joins on.",
+          "client": {
+            "file": "tooling/ci/worker-set.mjs",
+            "expression": "/\\/health$/.test(String(x?.path ?? ''))",
+            "note": "The post-deploy smoke's URL is built here: worker-set.mjs --for-deploy reads this row's first host plus its GET …/health route into `smokeUrl`, and deploy-workers.yml's app-worker matrix smokes it. A MACHINE consumer."
+          },
+          "noLimiterReason": "It DOES I/O — one D1 read (PLATFORM_DB), one R2 HEAD (SCREENSHOTS) and one JWKS subrequest — and what bounds it is the per-isolate MEMO, not a limiter: each probe is a reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS for D1 and R2, JWKS_READING_TTL_MS for the JWKS fetch), so a flood buys at most one fan-out per TTL per isolate, and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. The same reasoning as the other Workers' health routes."
+        },
+        {
+          "id": "feedback-submit",
+          "method": "POST",
+          "path": "/v1/feedback",
+          "auth": "public",
+          "owningFile": "services/feedback/src/routes/feedback.ts",
+          "purpose": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT, O-FEEDBACK-HAS-NO-DIAGNOSTICS). One \"Report a problem\" report: JSON, or multipart with a `report` part and at most one PNG/WebP `screenshot` (≤ 2 MB, metadata chunks stripped before storage). AUTHED with the app's session token (JWKS, the KV-cached set on a fetch failure, the revocation list; a present token that does not verify is a 401) or ANONYMOUS — so `auth: public`. Bounded three ways, every one FAIL CLOSED: FEEDBACK_EDGE_LIMITER per network (strictEdgeCeiling, 30/min), an hourly window per account (10) or per salted hash of the client address (3), and a daily global cap (2000), the two windows in D1 through strictRateLimit (services/feedback/src/lib/window-limiter.ts). Plus a honeypot (accepted-and-dropped), a minimum time-to-submit, size caps (4,000 characters each for description and steps, 2 MB image, 64 KB report JSON) and a link cap. The free text is PII-masked before storage; a key named `url` anywhere is refused; an unknown key is refused. Closed (503 intake_closed) until INTAKE_OPEN is \"true\".",
+          "client": {
+            "file": "packages/api_client/lib/src/dio_feedback_transport.dart",
+            "expression": "'$_base/v1/feedback'",
+            "note": "The real `_dio.post` inside DioFeedbackTransport.submit: every app and the brick send through it (packages/feedback's sheet and outbox). nikatru.com's support form reaches the same route through its Pages Function (sites/nikatru/functions/api/report.js) over a Service Binding, and the extensions' Report a problem page posts to the same URL."
+          }
+        }
+      ]
     }
   ],
   "bindingSources": {
@@ -352,6 +404,7 @@
     "configs": [
       "services/platform/wrangler.jsonc",
       "services/subscriptiontracker-api/wrangler.jsonc", "services/edge-shield/wrangler.jsonc",
+      "services/feedback/wrangler.jsonc",
       "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc"
     ]
   },
@@ -485,6 +538,13 @@
         "section": "kv_namespaces",
         "binding": "SESSION_REVOKED",
         "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      },
+      {
+        "config": "services/feedback/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SESSION_REVOKED",
+        "why": "WAITS ON THE VAULT (2026-10-03, lane feedback-intake), exactly as services/subscriptiontracker-api's row above: the shared sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` creates it and writes its id into every config that twins it; delete this row in the same commit."
       }
     ],
     "exempt": [
@@ -1212,6 +1272,26 @@
       "readers": [
         "services/platform/src/routes/calendar.ts",
         "services/platform/src/routes/reminders.ts"
+      ]
+    },
+    {
+      "binding": "SCREENSHOTS",
+      "kind": "r2_buckets",
+      "scope": "per-app",
+      "purpose": "⏱ 2026-10-03 · lane feedback-intake. The PRIVATE screenshot bucket `nikatru-feedback` (sandbox `nikatru-feedback-sandbox`): one stripped PNG/WebP per report that attached one, keyed shots/<report id>. ⚠️ A SECOND BUCKET ON PURPOSE, not a prefix of `nikatru-backups`: that bucket is the backup chain's, written only by the 02:30 cron with a 30-day sweep, and user screenshots in it would be copied off-vendor and outlive their 90-day purge. No public access, no custom domain, no r2.dev URL, and no route of this Worker's fetch reads it: the read path is the FeedbackInternal Service Binding entrypoint. It must exist before the first deploy (a lead step).",
+      "readers": [
+        "services/feedback/src/routes/feedback.ts",
+        "services/feedback/src/scheduled.ts",
+        "services/feedback/src/internal.ts"
+      ]
+    },
+    {
+      "binding": "FEEDBACK_EDGE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "per-app",
+      "purpose": "⏱ 2026-10-03 · lane feedback-intake. The feedback intake's per-NETWORK burst bound, keyed by edgeCeilingKey (Cloudflare colo and ASN, never an address), `simple: { limit: 30, period: 60 }`, checked first on POST /v1/feedback through strictEdgeCeiling: FAILS CLOSED (503) when absent or throwing, because it stands where a captcha would on an anonymous intake. Over it is a 429 with Retry-After: 60. Its OWN namespace (1201; the sandbox's is 1202).",
+      "readers": [
+        "services/feedback/src/routes/feedback.ts"
       ]
     }
   ],

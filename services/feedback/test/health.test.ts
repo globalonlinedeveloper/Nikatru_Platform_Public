@@ -21,8 +21,8 @@ const okDb = () => ({ prepare: () => ({ first: async () => ({ ok: 1 }) }) });
 
 function env(over: Record<string, unknown> = {}) {
   return {
-    APP_DB: okDb(),
     PLATFORM_DB: okDb(),
+    SCREENSHOTS: { head: async () => null },
     SUPABASE_URL: 'https://id.example.test',
     APP_ID: 'feedback',
     API_VERSION: 'v1',

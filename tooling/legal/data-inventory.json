@@ -967,7 +967,7 @@
         "blockedBy": "An object has no `user_id` for the erasure walk to read; it is named by its report row. DELETE /v1/account deletes the row (`table:platform_db.feedback_reports`, purge), and services/feedback's nightly orphan sweep (sweepOrphans) deletes every object no row names, so an erased person's screenshots are gone within a day without an operator step."
       },
       "writtenBy": [
-        "services/feedback/src/routes/feedback.ts"
+        "services/feedback/wrangler.jsonc"
       ],
       "disclosure": {
         "page": "privacy.html",

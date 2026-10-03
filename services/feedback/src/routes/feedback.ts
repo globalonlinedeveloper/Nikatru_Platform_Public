@@ -26,6 +26,7 @@ import { Hono } from 'hono';
 import { bearer } from '../../../_shared/src/auth';
 import { sessionRevoked, verifySupabaseToken } from '../../../_shared/src/auth-middleware';
 import { readBoundedBody } from '../lib/body';
+import { strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../lib/rate-limit';
 import { firstRow, nowIso, run } from '../lib/d1';
 import { stripImage } from '../lib/image';
 import {
@@ -115,21 +116,18 @@ async function partsOf(
   return { ok: false, status: 400, error: 'unsupported_media_type' };
 }
 
-/** Each limiter the caller must pass, in order. A store error FAILS CLOSED. */
-async function overLimit(env: Env, who: Who, address: string | null): Promise<'within' | 'over' | 'unavailable'> {
+/** Each window the caller must pass, in order: their own hour, then the
+ *  intake's day. Through `strictRateLimit`, so a store error FAILS CLOSED. */
+async function overLimit(env: Env, who: Who, address: string | null): Promise<StrictVerdict> {
   const hourly =
     who.kind === 'user'
       ? { key: `user:${who.userId}`, limit: AUTHED_PER_HOUR }
       : { key: `addr:${address ?? 'none'}`, limit: ANON_PER_HOUR };
-  try {
-    const one = await windowLimiter(env.PLATFORM_DB, { windowMs: HOUR_MS, limit: hourly.limit, scope: 0 }).limit({ key: hourly.key });
-    if (!one.success) return 'over';
-    const all = await windowLimiter(env.PLATFORM_DB, { windowMs: DAY_MS, limit: GLOBAL_PER_DAY, scope: 1 }).limit({ key: 'global' });
-    return all.success ? 'within' : 'over';
-  } catch (err) {
-    console.log(`[feedback] limiter unavailable: ${err instanceof Error ? err.name : typeof err}`);
-    return 'unavailable';
-  }
+  const mine = windowLimiter(env.PLATFORM_DB, { windowMs: HOUR_MS, limit: hourly.limit, scope: 0 });
+  const one = await strictRateLimit(mine, hourly.key, 'feedback_rate_windows:hour');
+  if (one !== 'within') return one;
+  const all = windowLimiter(env.PLATFORM_DB, { windowMs: DAY_MS, limit: GLOBAL_PER_DAY, scope: 1 });
+  return strictRateLimit(all, 'global', 'feedback_rate_windows:day');
 }
 
 export function purgeAtOf(createdAtMs: number): string {
@@ -146,6 +144,11 @@ function contactOf(report: Report, who: Who): string | null {
 feedback.post('/', async (c) => {
   if (c.env.INTAKE_OPEN !== 'true') return c.json({ error: 'intake_closed' }, 503);
   const rid = c.get('requestId') ?? '-';
+
+  // The burst bound first, before the body is read: a flood costs one counter.
+  const edge = await strictEdgeCeiling(c.env.FEEDBACK_EDGE_LIMITER, c, 'FEEDBACK_EDGE_LIMITER');
+  if (edge === 'over') return c.json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' });
+  if (edge === 'unavailable') return c.json({ error: 'temporarily_unavailable' }, 503);
 
   const body = await readBoundedBody(c.req.raw, MAX_BODY_BYTES);
   if (!body.ok) return c.json({ error: body.error }, body.status);

@@ -3,16 +3,10 @@ import { describe, it, expect } from 'vitest';
 import raw from '../wrangler.jsonc?raw';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// wrangler-config.test.ts — A STAMPED WORKER IS BORN WITH ITS SANDBOX.
-//
-// ⏱ 2026-10-01 · O-BRICK-WORKER-HAS-NO-SANDBOX-ENV (rv2-services-011). The
-// template declared no `env.sandbox`, and deploy-sandbox dropped such a Worker
-// without a word, so app #2 would have had no sandbox at all. This file holds the
-// block the template now stamps, on PARSED STRUCTURE (the config is mostly
-// comments, several of which name the strings looked for), in the stamped
-// Worker's own lane. services/subscriptiontracker-api/test/wrangler-config.test.ts
-// holds app #1's; tooling/ci/assert-platform-register.mjs limb 8 holds every
-// config's twins across the repository.
+// wrangler-config.test.ts — THE DEPLOYED CONFIG, on parsed structure: the
+// bindings the intake's privacy and abuse claims rest on, and the sandbox twin
+// the brick stamps (tooling/ci/assert-platform-register.mjs limb 8 holds every
+// config's twins across the repository).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** JSONC → JSON. Comments stripped (string literals respected, so a `//` inside
@@ -67,6 +61,15 @@ interface KvEntry {
   binding?: string;
   id?: string;
 }
+interface R2Entry {
+  binding?: string;
+  bucket_name?: string;
+}
+interface RlEntry {
+  name?: string;
+  namespace_id?: string;
+  simple?: { limit?: number; period?: number };
+}
 interface Block {
   name?: string;
   routes?: unknown[];
@@ -75,7 +78,8 @@ interface Block {
   vars?: Record<string, unknown>;
   d1_databases?: D1Entry[];
   kv_namespaces?: KvEntry[];
-  r2_buckets?: unknown[];
+  r2_buckets?: R2Entry[];
+  ratelimits?: RlEntry[];
   services?: unknown[];
   env?: Record<string, Block>;
 }
@@ -87,23 +91,48 @@ const kv = (b: Block | undefined, binding: string) => (b?.kv_namespaces ?? []).f
 const bindingNames = (b: Block | undefined) => [
   ...(b?.d1_databases ?? []).map((d) => `d1:${d.binding}`),
   ...(b?.kv_namespaces ?? []).map((k) => `kv:${k.binding}`),
+  ...(b?.r2_buckets ?? []).map((r) => `r2:${r.binding}`),
+  ...(b?.ratelimits ?? []).map((r) => `rl:${r.name}`),
   ...Object.keys(b?.vars ?? {}).map((v) => `var:${v}`),
 ];
 
 describe('the parse itself reached the config', () => {
-  it('self-check — the top level binds APP_DB, PLATFORM_DB, JWKS_CACHE and SESSION_REVOKED', () => {
-    expect(cfg.name).toBe('feedback-api');
+  it('self-check — the top level binds PLATFORM_DB, SCREENSHOTS, JWKS_CACHE and SESSION_REVOKED', () => {
+    expect(cfg.name).toBe('feedback');
     expect(bindingNames(cfg).sort()).toEqual(
-      expect.arrayContaining(['d1:APP_DB', 'd1:PLATFORM_DB', 'kv:JWKS_CACHE', 'kv:SESSION_REVOKED']),
+      expect.arrayContaining(['d1:PLATFORM_DB', 'r2:SCREENSHOTS', 'kv:JWKS_CACHE', 'kv:SESSION_REVOKED', 'rl:FEEDBACK_EDGE_LIMITER']),
     );
   });
 });
 
-describe('env.sandbox — declared, and off production', () => {
-  it('🔴 the template declares an `env.sandbox` block', () => {
-    expect(sandbox).toBeTypeOf('object');
+describe('the intake binds what its claims rest on', () => {
+  it('🔴 PLATFORM_DB is platform_db (APAC) and is NEVER migrated from here', () => {
+    expect(d1(cfg, 'PLATFORM_DB')).toMatchObject({ database_name: 'platform_db' });
+    expect(d1(cfg, 'PLATFORM_DB')?.migrations_dir).toBeUndefined();
+    expect(cfg.d1_databases).toHaveLength(1);
   });
 
+  it('🔴 the screenshots go to their OWN private bucket, never the backup bucket', () => {
+    expect(cfg.r2_buckets).toEqual([{ binding: 'SCREENSHOTS', bucket_name: 'nikatru-feedback' }]);
+  });
+
+  it('🔴 the go-live flag ships CLOSED', () => {
+    expect(cfg.vars?.INTAKE_OPEN).toBe('false');
+    expect(sandbox?.vars?.INTAKE_OPEN).toBe('false');
+  });
+
+  it('🔴 the burst limiter is bound in both environments, on namespaces of its own', () => {
+    expect(cfg.ratelimits?.find((r) => r.name === 'FEEDBACK_EDGE_LIMITER')?.namespace_id).toBe('1201');
+    expect(sandbox?.ratelimits?.find((r) => r.name === 'FEEDBACK_EDGE_LIMITER')?.namespace_id).toBe('1202');
+  });
+
+  it('one label deep (ADR 080), and the nightly purge is scheduled', () => {
+    expect(cfg.routes).toEqual([{ pattern: 'feedback.nikatru.com', custom_domain: true }]);
+    expect((cfg.triggers?.crons ?? []).length).toBe(1);
+  });
+});
+
+describe('env.sandbox — declared, and off production', () => {
   it('🔴 it declares routes: [], workers_dev: true and no crons — wrangler would INHERIT each', () => {
     expect(sandbox?.routes).toEqual([]);
     expect(sandbox?.workers_dev).toBe(true);
@@ -116,17 +145,11 @@ describe('env.sandbox — declared, and off production', () => {
     expect(missing).toEqual([]);
   });
 
-  it('🔴 APP_DB is the sandbox database, migrated from the same directory', () => {
-    expect(d1(sandbox, 'APP_DB')).toMatchObject({
-      database_name: 'feedback_db_sandbox',
-      migrations_dir: d1(cfg, 'APP_DB')?.migrations_dir,
-    });
-  });
-
   it('🔴 PLATFORM_DB is the SHARED sandbox database, which this Worker never migrates', () => {
     const p = d1(sandbox, 'PLATFORM_DB');
     expect(p?.database_name).toBe('platform_db_sandbox');
     expect(p?.migrations_dir).toBeUndefined();
+    expect(sandbox?.r2_buckets).toEqual([{ binding: 'SCREENSHOTS', bucket_name: 'nikatru-feedback-sandbox' }]);
   });
 
   it('🔴 no sandbox id is a production id — a sandbox binding on a production store writes production', () => {
@@ -141,14 +164,7 @@ describe('env.sandbox — declared, and off production', () => {
     expect(kv(sandbox, 'SESSION_REVOKED')).toBeDefined();
   });
 
-  it('the identity project, the app id and the API version are production’s — the sandbox moves the stores, not the contract', () => {
-    for (const k of ['APP_ID', 'SUPABASE_URL', 'API_VERSION']) expect(sandbox?.vars?.[k]).toBe(cfg.vars?.[k]);
-  });
-
-  it('no R2 bucket and no service binding, at either level — the clone contract stamps neither', () => {
-    expect(cfg.r2_buckets).toBeUndefined();
-    expect(sandbox?.r2_buckets).toBeUndefined();
-    expect(cfg.services).toBeUndefined();
-    expect(sandbox?.services).toBeUndefined();
+  it('the identity project, the app id and the API version are production’s', () => {
+    for (const k of ['APP_ID', 'SUPABASE_URL', 'API_VERSION', 'ALLOWED_ORIGINS']) expect(sandbox?.vars?.[k]).toBe(cfg.vars?.[k]);
   });
 });
