@@ -23,6 +23,10 @@ import { join, dirname, win32, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STAMP_PATHS, STAMP_WRITES, snapshotTree, restoreTree, validateSnapshot, inWriteSet, fsPath, REPO, StampLeftover, SnapshotRefused } from '../../kit/stamp-sandbox.mjs';
 import { stampLeg } from '../../scripts/preflight.mjs';
+// The catalogue paths from their owners, as STAMP_WRITES takes them.
+import { CATALOGUE } from '../../app-yaml/render.mjs';
+import { PAYLOAD } from '../../sites/generate-landing-payload.mjs';
+import { BUNDLES_REGISTER } from '../../catalog/read.mjs';
 
 const SANDBOX = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'kit', 'stamp-sandbox.mjs');
 
@@ -48,8 +52,8 @@ function freshRepo() {
   git(root, 'init', '-q', '-b', 'main');
   put(root, '.gitignore', STAMP_PATHS.map((p) => `${p}/`).join('\n') + '\n');
   put(root, 'pubspec.yaml', 'workspace:\n  - apps/subscriptiontracker\n');
-  put(root, 'catalog/apps.json', '{"apps":["subscriptiontracker"]}\n');
-  put(root, 'catalog/bundles.json', '{"bundles":[]}\n');
+  put(root, CATALOGUE, '{"apps":["subscriptiontracker"]}\n');
+  put(root, BUNDLES_REGISTER, '{"bundles":[]}\n');
   put(root, 'tooling/channel-register.json', '{"rows":[]}\n');
   put(root, 'tooling/mail-transport.json', '{"allow":[]}\n');
   put(root, 'apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\n');
@@ -58,7 +62,7 @@ function freshRepo() {
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'base');
   put(root, 'pubspec.yaml', 'workspace:\n  - apps/subscriptiontracker\n  - apps/my_wip\n');
-  rmSync(join(root, 'catalog/bundles.json'));
+  rmSync(join(root, BUNDLES_REGISTER));
   put(root, 'notes/person.md', 'committed\nthe person is still typing\n');
   put(root, 'notes/draft.md', 'an untracked draft\n');
   return root;
@@ -70,8 +74,8 @@ function fakeStamp(root) {
   put(root, 'apps/probe/lib/main.dart', 'void main() {}\n');
   put(root, 'apps/probe/app.yaml', 'id: probe\n');
   appendFileSync(join(root, 'pubspec.yaml'), '  - apps/probe\n');
-  put(root, 'catalog/apps.json', '{"apps":["subscriptiontracker","probe"]}\n');
-  put(root, 'catalog/bundles.json', '{"bundles":[],"excluded":["probe"]}\n');
+  put(root, CATALOGUE, '{"apps":["subscriptiontracker","probe"]}\n');
+  put(root, BUNDLES_REGISTER, '{"bundles":[],"excluded":["probe"]}\n');
   put(root, 'tooling/channel-register.json', '{"rows":["probe"]}\n');
   put(root, 'sites/nikatru/probe/privacy.html', '<p>probe</p>\n');
   rmSync(join(root, 'tooling/mail-transport.json'));
@@ -127,7 +131,7 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.equal(status(root), before);
     assert.equal(readFileSync(join(root, 'pubspec.yaml'), 'utf8'), 'workspace:\n  - apps/subscriptiontracker\n  - apps/my_wip\n', "a person's uncommitted edit to a set path is kept as they left it, not reset to HEAD");
     assert.equal(readFileSync(join(root, 'notes/draft.md'), 'utf8'), 'an untracked draft\n');
-    assert.equal(existsSync(join(root, 'catalog/bundles.json')), false, "a person's uncommitted deletion stays deleted");
+    assert.equal(existsSync(join(root, BUNDLES_REGISTER)), false, "a person's uncommitted deletion stays deleted");
     assert.equal(existsSync(join(root, 'sites/nikatru')), false, 'an emptied directory the stamp created is pruned');
     assert.doesNotMatch(r.out, /not by it/, 'a clean run names no foreign path');
     assert.match(r.out, /stamp-sandbox: restored \d+ file\(s\), removed \d+ stamp path\(s\)/);
@@ -254,7 +258,7 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
   test('snapshot + restore directly: a rename and a deleted tracked file inside the set both come back', () => {
     const before = status(root);
     const snap = snapshotTree(root);
-    git(root, 'mv', 'catalog/apps.json', 'catalog/apps-landing.json');
+    git(root, 'mv', CATALOGUE, PAYLOAD);
     rmSync(join(root, 'tooling/channel-register.json'));
     const r = restoreTree(snap);
     assert.deepEqual(r.left, []);

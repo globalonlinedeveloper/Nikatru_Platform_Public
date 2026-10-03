@@ -84,9 +84,6 @@ export const STAMP_WRITES = Object.freeze([
   ...STAMP_PATHS.map((p) => `${p}/`),
   'pubspec.yaml',
   'pubspec.lock',
-  'catalog/apps.json',
-  'catalog/apps-landing.json',
-  'catalog/bundles.json',
   'sites/_shared/_data/apps.json',
   'sites/nikatru/probe/',
   'sites/nikatru/probeapi/',
@@ -101,18 +98,24 @@ export const STAMP_WRITES = Object.freeze([
   'tooling/channel-register.json',
   'tooling/mail-transport.json',
   'tooling/e2e-leg-register.json',
-  // The release lanes tag-owner.mjs --write rewrites, asked of tag-owner itself
-  // rather than typed here. When it cannot derive them (d.lost), none are in the
-  // set, and a rewrite there is left on disk and named: loud, never reverted blind.
-  ...(await tagLanes(REPO)),
+  // The catalogue files (render, landing-payload, stamp-shared's bundle
+  // exclusions) and the release lanes tag-owner.mjs --write rewrites, asked of
+  // the modules that own them rather than typed here: the catalogue is read
+  // through tooling/catalog/read.mjs (assert-bundle-availability limb G) and
+  // workflows through their owners (assert-workflow-readers). One that cannot
+  // be asked adds nothing, and a write there is left on disk and named: loud,
+  // never reverted blind.
+  ...(await fromOwner('../app-yaml/render.mjs', (m) => [m.CATALOGUE])),
+  ...(await fromOwner('../sites/generate-landing-payload.mjs', (m) => [m.PAYLOAD])),
+  ...(await fromOwner('../catalog/read.mjs', (m) => [m.BUNDLES_REGISTER])),
+  ...(await fromOwner('../ci/tag-owner.mjs', (m) => [...m.derive(REPO).lanes.keys()])),
 ]);
 
-/** Imported lazily: preflight's fixture suites copy this file without
- *  tag-owner.mjs, and there the set simply holds no lane (see above). */
-async function tagLanes(root) {
+/** Imported lazily: preflight's fixture suites copy this file without its
+ *  owners, and there the set simply holds none of their paths (see above). */
+async function fromOwner(spec, pick) {
   try {
-    const { derive } = await import('../ci/tag-owner.mjs');
-    return [...derive(root).lanes.keys()];
+    return pick(await import(spec)).filter((p) => typeof p === 'string' && p);
   } catch {
     return [];
   }
