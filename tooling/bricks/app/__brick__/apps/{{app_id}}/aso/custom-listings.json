@@ -1,0 +1,8 @@
+{
+  "_readme": [
+    "Play custom store listings and Apple custom product pages, AS DATA (emitted by the app brick; empty until the app's ASO research names an audience).",
+    "`node tooling/store/custom-listings.mjs --app {{app_id}}` prints the payload each entry would be created with and refuses a `publish: true` entry without --publish.",
+    "Graded by tooling/ci/assert-store-listings.mjs limbs A, M and C."
+  ],
+  "listings": []
+}

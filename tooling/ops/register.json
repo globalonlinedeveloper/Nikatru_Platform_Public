@@ -2455,6 +2455,44 @@
       "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run has been observed, and the draft that wrote it could not run Flutter. Verified before the push, by mutation of the real tree: with the workflow absent, assert-ops-register.mjs's checkNamedLanes limb names tooling/ci/assert-mutation-proofs.mjs; with the workflow and without this row, its both-directions limb names the file. NOT VERIFIED: the executed half's wall time on a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-03 for O-TIME-TO-SHIP-UNMEASURED (lane app2-dryrun), in the same commit as .github/workflows/rehearse-app2.yml, because assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions: the file without this row exits 1, and so does this row without the file.",
+      "id": "duty.workflow.rehearse-app2.yml",
+      "kind": "duty",
+      "what": "The weekly app #2 rehearsal: node tooling/kit/rehearse-app2.mjs stamps a throwaway app (rehearsal<yyyymmdd>) from the brick in a temporary git worktree, runs every lane in its dry-run mode from tooling/kit/rehearsal-steps.json, times each step, names each manual step with the register row (or the gate) that owns it, and uploads the result as the app2-rehearsal artifact with the time-to-ship fact. Nothing is deployed, published or committed; the job holds `contents: read` and reads no secret. Mondays 04:40 UTC.",
+      "detector": "The run history for rehearse-app2.yml filtered to event = schedule, and the run's own red exit: 1 when a step FAILED (the step is named in the log and in the artifact) or a manual step names no row or gate; 2 when COVERAGE LOST (a step was skipped because its tool was not on PATH, or the temporary work tree could not be made).",
+      "response": "EXIT 1, A FAILED STEP: the artifact's `steps[].why` carries the refusal's own first line; that lane or the brick regressed for a new app, and the fix is in that lane, never in the step register. EXIT 1, AN UNMAPPED MANUAL STEP: a new OWNER/NEXT step appeared in the kit's readout; give it a register row (readoutRows) or name the lane that does it (readoutLanes) in tooling/kit/rehearsal-steps.json. EXIT 2: the runner image lost a tool; the log names it. The trend between two runs is `node tooling/kit/rehearsal-trend.mjs <previous.json> <newest.json>` on two downloaded artifacts.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/rehearse-app2.yml",
+        "record": "GitHub Actions run history for rehearse-app2.yml, filtered to event = schedule, plus each run's app2-rehearsal artifact (90 days)",
+        "failingValue": "no scheduled success inside the window. A run that exits 1 (a failed step, an unmapped manual step) or 2 (COVERAGE LOST) is not a success, so a lane that stays broken for a new app ages this row exactly as a stopped timer does.",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "rehearse-app2.yml",
+          "unit": "run",
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-09T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.name-clearance.yml's and duty.workflow.mutation-proofs.yml's (TRAPS ci-18): a run history does not exist until the file is on the default branch, so the row and its record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-10-05 04:40 UTC is that Monday; 2026-10-09 gives it ~91h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window. ⚠️ THIS PULL REQUEST IS HELD FOR REVIEW: IF IT MERGES AFTER 2026-10-05 04:40 UTC the first slot is 2026-10-12, so this date must move to 2026-10-16 in the same pull request (or before it lands). No owner step stands before the first slot: the job needs only `contents: read` under its own token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is a person asking for a rehearsal, not the cadence. `headBranch: main` is stated rather than left implied. `unit: run` because the workflow has one job and no other row reads it."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ THE WATCHER IS ON THE PROVIDER IT WATCHES — the same circularity as every other workflow row here. It DOES catch a schedule GitHub disables in an inactive public repository, because the [14]O-3 limb reads this record on every CI run. It does NOT catch GitHub Actions ceasing to run this repository's jobs at all. Closing it needs a heartbeat on a second provider: OWNER_QUEUE S-8."
+      },
+      "freshnessGap": "🔴 NO DEDICATED IN-TREE FRESHNESS READER for the 7d cadence, the same choice as duty.workflow.mutation-proofs.yml. What holds the rehearsal's machinery correct on every push is tooling/ci/test/rehearse-app2.test.mjs in the guard tests (a broken step is that step's failure, a hand edit is manual, an unmapped manual step exits 1, the workflow reads no secret and writes nothing). WEEKLY because one run stamps, analyses, tests and builds a whole app; the cost is stated: ONE missed or red Monday puts this row past its 252h window. Declared 2026-10-03.",
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has never run: it lands with this row. Verified before the push, on the owner's Windows laptop: the rehearsal's dry-run lanes ran against a real stamp in a temporary worktree (21 manual steps, each with a row or a gate, after the two readout steps were mapped); the stamp's `flutter pub get` needs Windows Developer Mode there, so the analyze, test and build steps were not run locally. NOT VERIFIED: the full run's wall time on a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-10-01 in the same commit as .github/workflows/time-travel.yml, because assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions. At 2026-10-01 00:00Z services/platform/test/fx.test.ts, which read the wall clock against a fixed `asOf`, went red on EVERY pull request for hours (#1101), and the sweep that pinned it found two more fuses of the same shape (money.test.ts at 2027-01-01, receipts.test.ts at 2027-09-01) by READING. The lead's decision: run every suite with the clock moved forward, weekly, so the next fuse fires in this run and not on a Tuesday. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope), for the reason that class exists: a fuse this run finds drains only by MERGING its fix, and main's run can go green only after that merge, so a verdict that froze ci-gate would freeze the one merge that clears it — the ci-18 deadlock shape. The brief that ordered this workflow says a red run PAGES and that it is not a PR check.",
       "id": "duty.freshness.time-travel",
       "kind": "duty",
@@ -4305,7 +4343,7 @@
       ],
       "ownerGated": false,
       "source": "verified",
-      "expiryKnownAt": "App Store Connect `GET v1/profiles/JWVU72A2N6` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/5PM2N74969` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
     },
     {
       "id": "expiring.profile.apple-appstore-macos",
@@ -4328,7 +4366,7 @@
       ],
       "ownerGated": false,
       "source": "verified",
-      "expiryKnownAt": "App Store Connect `GET v1/profiles/26RV2N2Y4L` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
+      "expiryKnownAt": "App Store Connect `GET v1/profiles/B5VRU86G9J` -> `attributes.expirationDate` 2027-09-09T03:12:16.000+00:00, profileState ACTIVE; read by tooling/ops/check-apple-signing-expiry.mjs --write in apple-expiry-write.yml run 36067948334 at 2026-09-24T22:32:03.951Z. Written by the checker from the App Store Connect read; the next dispatch of apple-expiry-write.yml rewrites it."
     },
     {
       "id": "expiring.store-enrolment.microsoft",

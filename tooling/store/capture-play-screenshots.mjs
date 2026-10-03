@@ -157,6 +157,7 @@ import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.m
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS, FOLD_TOLERANCE } from './capture-row-edge.mjs';
 import { scanCaptureSuite, selfTestAccountAddressDetector, storeViewDefineArgs, SUITE_FILE, DRIVER_FILE } from './capture-suite-scan.mjs';
+import { registerLocales } from './listing-locales.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import { appVersionDefine, StampRefused } from '../e2e/app-version-stamp.mjs';
@@ -198,6 +199,21 @@ const app = arg('--app', 'subscriptiontracker');
  *  per-channel — the directory, the sizes, the counts, the viewport geometry —
  *  is read from the register row below, not written here. */
 const CHANNEL = arg('--channel', 'android-play');
+
+/** The LISTING LANGUAGE this set is captured in (⏱ 2026-10-03, lane aso-listings), a code of
+ *  tooling/i18n/locales.json. Absent, the register's sourceLocale: the flat channel directory,
+ *  exactly as before. Any other code writes into store/<channel>/<code>/ — the listing tree's
+ *  locale axis (R1) — passes STORE_CAPTURE_LOCALE, which the suite applies through the app's own
+ *  locale control and REFUSES to photograph unless the app then renders in it, and records the
+ *  code in every CAPTURE.json. tooling/store/listing-locales.mjs counts a locale's screenshots only
+ *  from a CAPTURE.json that names it, so the English set can never stand in for another language. */
+const LOCALE_REGISTER = registerLocales(ROOT);
+const LOCALE = arg('--locale', LOCALE_REGISTER.sourceLocale);
+if (!LOCALE_REGISTER.codes.includes(LOCALE)) {
+  console.error(`capture-play-screenshots: REFUSING — --locale ${JSON.stringify(LOCALE)} is not a locale of tooling/i18n/locales.json (${LOCALE_REGISTER.codes.join(', ')}).`);
+  process.exit(1);
+}
+const LOCALE_DIR = LOCALE === LOCALE_REGISTER.sourceLocale ? [] : [LOCALE];
 const REGISTER = join('tooling', 'channel-register.json');
 
 /** Play's screenshot rules that apply to EVERY device type. Sourced, or absent. */
@@ -361,7 +377,7 @@ const fail = (lines) => {
 // `listingBase` is the CHANNEL directory, and the per-type directories are its
 // children. The proof refusal is on the whole subtree rather than on one
 // directory: a demo frame is no less a demo frame for landing in the tablet set.
-const listingBase = join(ROOT, 'apps', app, 'store', CHANNEL);
+const listingBase = join(ROOT, 'apps', app, 'store', CHANNEL, ...LOCALE_DIR);
 // A --proof run with no --out writes into a directory mkdtempSync creates —
 // private and unguessable — never a random name joined onto tmpdir, which
 // another local user could plant first (CodeQL js/insecure-temporary-file).
@@ -926,6 +942,7 @@ else if (!PROOF && !NATIVE) {
   ]);
 }
 if (PROOF) defines.push('--dart-define', 'STORE_CAPTURE_ALLOW_DEMO=true');
+if (LOCALE_DIR.length) defines.push('--dart-define', `STORE_CAPTURE_LOCALE=${LOCALE}`);
 
 // 🔴 THE APP MUST NOT ANNOUNCE ITSELF OFFLINE ON A STORE PAGE. Every frame
 // captured before 2026-09-20 carries a full-width "Could not reach the network"
@@ -1473,6 +1490,8 @@ if (!PROOF) {
           ...provenance,
           posture: 'live',
           deviceType: m.cap.type,
+          // The listing language this set shows (lane aso-listings): a register code.
+          locale: LOCALE,
           viewport: `${m.cap.cssWidth}x${m.cap.cssHeight}@${m.cap.dpr}`,
           // MEASURED off the frames, not computed from the viewport. The two
           // agree today; if `--browser-dimension` ever stops honouring the dpr,

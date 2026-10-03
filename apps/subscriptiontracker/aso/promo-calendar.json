@@ -1,0 +1,32 @@
+{
+  "_readme": [
+    "The promotional-text cadence: Apple's Promotional Text can change without a new app version, so it is the one listing field",
+    "that can follow the calendar. Each entry: the dates it is live, the channels, and the text per register locale. No price and",
+    "no offer (ADR 078; a price moves and a listing nobody re-reads keeps the old one). The hi/ta text waits on their review sheets.",
+    "Graded by tooling/ci/assert-store-listings.mjs limbs A, M (promotional-text.txt's sourced 170) and C. Changing the live text",
+    "is a lead step at each `from` date."
+  ],
+  "entries": [
+    {
+      "id": "launch",
+      "from": "2026-10-10",
+      "to": "2026-10-31",
+      "channels": ["ios-appstore", "macos-appstore"],
+      "text": { "en": "Know what renews before it charges you. Add each subscription once and the app does the arithmetic and the remembering." }
+    },
+    {
+      "id": "festive-season",
+      "from": "2026-11-01",
+      "to": "2026-11-30",
+      "channels": ["ios-appstore", "macos-appstore"],
+      "text": { "en": "Festive-season sign-ups renew later. Put each one on the list today and get a reminder before it renews." }
+    },
+    {
+      "id": "year-end-review",
+      "from": "2026-12-01",
+      "to": "2026-12-31",
+      "channels": ["ios-appstore", "macos-appstore"],
+      "text": { "en": "See this year's subscriptions in one list, with the yearly total, before the new year's renewals start." }
+    }
+  ]
+}

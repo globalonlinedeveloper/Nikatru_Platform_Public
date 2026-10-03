@@ -1,0 +1,7 @@
+{
+  "_readme": [
+    "The promotional-text cadence (emitted by the app brick; empty until the first entry). Each entry: id, from, to (YYYY-MM-DD), channels, text per register locale.",
+    "No price and no offer. Graded by tooling/ci/assert-store-listings.mjs limbs A, M and C."
+  ],
+  "entries": []
+}

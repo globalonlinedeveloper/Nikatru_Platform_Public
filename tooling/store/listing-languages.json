@@ -1,0 +1,79 @@
+{
+  "_readme": [
+    "THE STORE LISTING LANGUAGE TABLE: which code each store spells a register locale with. [lane aso-listings, O-STORE-LISTINGS-ENGLISH-ONLY]",
+    "",
+    "A language has ONE name in this repository: its code in tooling/i18n/locales.json (`en`, `hi`, `ta`). The listing tree uses that",
+    "name (the flat store/<channel>/ folder is the register's sourceLocale; every other locale is store/<channel>/<code>/), and so do",
+    "store/listing-locales.json, the review sheets and assert-bundle-locales limb B. A STORE spells the same language its own way",
+    "(Play `hi-IN`, Microsoft `hi-in`), so the mapping happens at the edge, here, and only the submit tools read it",
+    "(tooling/store/listing-locales.mjs `storeLanguage()`; tooling/release/submit-play.mjs has no language literal).",
+    "",
+    "One block per app-surface store channel in tooling/channel-register.json. Per register locale, exactly one of:",
+    "  codes.<code>  the store's code for it, read from `source.url` on `source.readAt`;",
+    "  skip.<code>   why this channel has no listing in that language (a store that localises nothing, or does not offer it).",
+    "tooling/ci/assert-store-listings.mjs limb L fails a register locale (supported OR pending) with neither, a code with no source,",
+    "and a channel the register declares that has no block here. Adding a language to the register therefore reds this file first."
+  ],
+  "channels": {
+    "android-play": {
+      "source": {
+        "url": "https://support.google.com/googleplay/android-developer/answer/9844778",
+        "readAt": "2026-10-03",
+        "quote": "Hindi – hi-IN · Tamil – ta-IN (the page's 'View list of available languages')"
+      },
+      "codes": { "en": "en-US", "hi": "hi-IN", "ta": "ta-IN" },
+      "skip": {}
+    },
+    "ios-appstore": {
+      "source": {
+        "url": "https://developer.apple.com/help/app-store-connect/reference/app-store-localizations",
+        "readAt": "2026-10-03",
+        "quote": "The page lists English (U.S.), Hindi and Tamil among the App Store localizations, by NAME only. The codes are App Store Connect's locale spellings for those names; the page itself prints none, so the first --sync of a non-English locale reads the code back from App Store Connect before it writes."
+      },
+      "codes": { "en": "en-US", "hi": "hi", "ta": "ta" },
+      "skip": {}
+    },
+    "macos-appstore": {
+      "source": {
+        "url": "https://developer.apple.com/help/app-store-connect/reference/app-store-localizations",
+        "readAt": "2026-10-03",
+        "quote": "The same App Store localization list serves the Mac App Store (one App Store Connect record per platform version, the same languages)."
+      },
+      "codes": { "en": "en-US", "hi": "hi", "ta": "ta" },
+      "skip": {}
+    },
+    "windows-store": {
+      "source": {
+        "url": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements#supported-languages",
+        "readAt": "2026-10-03",
+        "quote": "English: en, … en-us … · Hindi: hi, hi-in · Tamil: ta, ta-in"
+      },
+      "codes": { "en": "en-us", "hi": "hi-in", "ta": "ta-in" },
+      "skip": {}
+    },
+    "linux-snap": {
+      "source": {
+        "url": "tooling/release/generate-snapcraft.mjs",
+        "readAt": "2026-10-03",
+        "quote": "The snap's store metadata is ONE `summary` and ONE `description`, generated into snapcraft.yaml from the flat listing. No per-language variant exists in what this pipeline submits; the Snap Store's own limits and languages are UNVERIFIED (linux-snap/README.md 'Field limits')."
+      },
+      "codes": { "en": "en" },
+      "skip": {
+        "hi": "The Snap Store listing carries one summary and one description; this pipeline has no per-language field to send a Hindi listing to (see source).",
+        "ta": "The Snap Store listing carries one summary and one description; this pipeline has no per-language field to send a Tamil listing to (see source)."
+      }
+    },
+    "apps-gov-in": {
+      "source": {
+        "url": "Private runbooks/store-submission-apps-gov-in.md 'Step 1 — Basic Information' (the upload form's validators, read 2026-09-22)",
+        "readAt": "2026-10-03",
+        "quote": "Step 1 has one App Name and one Description field and no language selector."
+      },
+      "codes": { "en": "en" },
+      "skip": {
+        "hi": "The apps.gov.in upload form takes one App Name and one Description, with no language selector (see source).",
+        "ta": "The apps.gov.in upload form takes one App Name and one Description, with no language selector (see source)."
+      }
+    }
+  }
+}

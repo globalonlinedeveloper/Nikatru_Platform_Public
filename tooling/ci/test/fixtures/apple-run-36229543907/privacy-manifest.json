@@ -21,7 +21,7 @@
     "PAIRED TRIPWIRE attached (Private/requirements/not-built.json, stage 10, [10]D-4): the Apple",
     "privacy manifest is consistent with the cut ONLY while Apple enrolment is deferred, and",
     "'registering the account without moving G-49 is how that pairing breaks silently'. Apple",
-    "enrolment completed 2026-08-31 (Enrollment ID 8UKWUW72VK). The tripwire fired. Enforcement is",
+    "enrolment completed 2026-08-31 (the Enrollment ID is in nikatru/vendors/apple.md, never here). The tripwire fired. Enforcement is",
     "dated and is at UPLOAD, not review: 'Starting May 1, 2024, apps that don't describe their use of",
     "required reason API in their privacy manifest file aren't accepted by App Store Connect.'",
     "",

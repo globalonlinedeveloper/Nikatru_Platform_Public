@@ -413,6 +413,16 @@
             "source": "Microsoft Store Policies v7.19 §10.1.3, verbatim: \"Not exceed seven unique terms or phrases.\""
           }
         },
+        "maxChars": {
+          "long-description.txt": {
+            "max": 10000,
+            "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/add-and-edit-store-listing-info (read 2026-10-03) — Description, verbatim: \"This field is required, and will accept up to 10,000 characters of plain text.\""
+          },
+          "short-description.txt": {
+            "max": 1000,
+            "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/add-and-edit-store-listing-info (read 2026-10-03) — Short description, verbatim: \"The field has a 1000 character limit\""
+          }
+        },
         "graphicAssets": {
           "_why": [
             "SCREENSHOTS ONLY, and the absent `assets` key is the claim: this channel owes no",
@@ -538,7 +548,11 @@
             "D-5's limits table records the rest as COULD-NOT-ESTABLISH against the same fetch — the",
             "keywords field, description and promotional text are NOT on the page that carries Name",
             "and Subtitle, and the corpus's '100 chars' for keywords is not on it either. They are",
-            "therefore absent here and marked UNVERIFIED in the tree's README, not guessed at."
+            "therefore absent here and marked UNVERIFIED in the tree's README, not guessed at.",
+            "⏱ 2026-10-03 (lane aso-listings): description and promotional text are now SOURCED, from the page that",
+            "does carry them (platform-version-information, read 2026-10-03). Keywords is a BYTE limit on that page,",
+            "so it is in `maxBytes` below, graded by tooling/ci/assert-store-listings.mjs limb M (a Hindi or Tamil",
+            "keyword is three UTF-8 bytes a character, so a character count would pass a field Apple refuses)."
           ],
           "title.txt": {
             "max": 30,
@@ -548,6 +562,20 @@
           "subtitle.txt": {
             "max": 30,
             "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
+          },
+          "long-description.txt": {
+            "max": 4000,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Description, verbatim: \"Limited to 4000 characters.\""
+          },
+          "promotional-text.txt": {
+            "max": 170,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Promotional Text, verbatim: \"This property can't be longer than 170 characters.\""
+          }
+        },
+        "maxBytes": {
+          "keywords.txt": {
+            "max": 100,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Keywords, verbatim: \"You can provide up to 100 bytes of content.\""
           }
         },
         "graphicAssets": {
@@ -726,6 +754,20 @@
           "subtitle.txt": {
             "max": 30,
             "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
+          },
+          "long-description.txt": {
+            "max": 4000,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Description, verbatim: \"Limited to 4000 characters.\""
+          },
+          "promotional-text.txt": {
+            "max": 170,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Promotional Text, verbatim: \"This property can't be longer than 170 characters.\""
+          }
+        },
+        "maxBytes": {
+          "keywords.txt": {
+            "max": 100,
+            "source": "https://developer.apple.com/help/app-store-connect/reference/platform-version-information (read 2026-10-03) — Keywords, verbatim: \"You can provide up to 100 bytes of content.\""
           }
         },
         "graphicAssets": {
@@ -2952,7 +2994,7 @@
         "status": "verified",
         "asOf": "2026-09-22",
         "openedBy": "A-2",
-        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md. ⏱ 2026-09-22 — `applied` → `verified`: Partner Center Account settings → Legal info read ~09:36Z in the owner's signed-in session: Company, Active, Authorized. The same session read the three Product identity values that `packageIdentity` below now carries. The seller ID is deliberately NOT written here (tooling/release/submit-windows-store.mjs keeps seller-ID values out of the public tree)."
+        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md. ⏱ 2026-09-22 — `applied` → `verified`: Partner Center Account settings → Legal info read ~09:36Z in the owner's signed-in session: Company, Active, Authorized. The same session read the three Product identity values that `packageIdentity` below now carries. The seller ID is deliberately NOT written here (tooling/release/submit-windows-store.mjs keeps seller-ID values out of the public tree). ⏱ 2026-10-03 — DATED CORRECTION (rv2-business 018): 'business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug' at the head of this note is the 2026-08-05 reading, and it stopped being true on 2026-08-28, when the account went Company, LIVE and AUTHORIZED (nikatru/vendors/microsoft.md § APPENDED 2026-08-28). 2026-09-22 is when this row re-read it, not when it changed."
       },
       "identity": {
         "_why": [
@@ -3042,7 +3084,7 @@
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
-        "alsoBlockedBy": "RESOLVED 2026-08-05 — a COMPANY account was created and submitted. ⚠️ THIS FIELD SAID 'OWNER_QUEUE A-2 points at Individual' AND WAS FALSE FROM 2026-07-29, when A-2 was itself corrected to Company after Microsoft's own category definitions were read. It survived here in the PUBLIC repo, unguarded, describing the channel as blocked by a choice nobody had made — the one-way door it warned about was real, but the claim that we were walking through it was not. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid — so the warning is retained as the REASON the Company choice was deliberate. Business verification under review; see nikatru/vendors/microsoft.md."
+        "alsoBlockedBy": "RESOLVED 2026-08-05 — a COMPANY account was created and submitted. ⚠️ THIS FIELD SAID 'OWNER_QUEUE A-2 points at Individual' AND WAS FALSE FROM 2026-07-29, when A-2 was itself corrected to Company after Microsoft's own category definitions were read. It survived here in the PUBLIC repo, unguarded, describing the channel as blocked by a choice nobody had made — the one-way door it warned about was real, but the claim that we were walking through it was not. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid — so the warning is retained as the REASON the Company choice was deliberate. ⏱ CORRECTED 2026-10-03 (rv2-business 018): this field ended 'Business verification under review; see nikatru/vendors/microsoft.md.', which stopped being true on 2026-08-28. Business verification is DONE and nothing here blocks — the account is Company, LIVE and AUTHORIZED since 2026-08-28 (nikatru/vendors/microsoft.md § APPENDED 2026-08-28; the `edge-addons` row records the same account and date). What remains deferred is the SUBMISSION work per `reason` above."
       },
       "notes": [
         "🔴 MSIX PACKAGE IDENTITY IS THIS ROW'S FIELD, not [9]R-7's (stage 3's tripwire bundle routes it",
@@ -4089,7 +4131,7 @@
         "accountType": { "store": "microsoftStore", "value": "Company" },
         "status": "live",
         "asOf": "2026-08-28",
-        "note": "The Microsoft partner account that publishes Edge Add-ons is the SAME company account the Microsoft Store row uses — Company, LIVE and AUTHORIZED 2026-08-28, seller 95860710 (platform-state/manifest.json stores[].id microsoft, whose `channel` reads 'windows + edge add-ons'). ⚠️ THE OTHER SELLER ID, 95661860, IS THE OLD ONE and differs by three digits; do not touch it. Registration for the Edge program carries no fee, so there is no OWNER_QUEUE row to name here — the account question is already answered, with a date. `windows-store` keeps its own A-2 id because that row's queue item is the STORE listing work, not the account."
+        "note": "The Microsoft partner account that publishes Edge Add-ons is the SAME company account the Microsoft Store row uses — Company, LIVE and AUTHORIZED 2026-08-28 (platform-state/manifest.json stores[].id microsoft, whose `channel` reads 'windows + edge add-ons'). ⚠️ THE ACCOUNT HAS CARRIED TWO SELLER IDS that differ by three digits, and the old one authenticates nothing; which is live is recorded in nikatru/vendors/microsoft.md § APPENDED 2026-08-28, and neither value is written in this public tree (⏱ 2026-10-03, rv2-business 009: both were, here, until today; tooling/scripts/assert-no-account-ids.mjs now fails a commit that puts one back). Registration for the Edge program carries no fee, so there is no OWNER_QUEUE row to name here — the account question is already answered, with a date. `windows-store` keeps its own A-2 id because that row's queue item is the STORE listing work, not the account."
       },
       "deferral": {
         "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",

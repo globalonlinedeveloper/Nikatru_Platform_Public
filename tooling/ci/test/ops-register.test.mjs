@@ -2351,8 +2351,12 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  failing, so the outage rule can grade it DEGRADED during a proven outage
    *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read on
    *  main, before the time-travel row; a healthy run makes none.
-   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree. */
-  const OPS_GITHUB_REQUEST_CEILING = 33;
+   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree.
+   *  2026-10-03: 33 → 35, the same documented "a scheduled workflow costs 2"
+   *  raise, for duty.workflow.rehearse-app2.yml (app2-dryrun), merged with
+   *  main's time-travel row. The replay measured 35 on that merged tree (its
+   *  history is answered by replayWorld's derived run). */
+  const OPS_GITHUB_REQUEST_CEILING = 35;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
@@ -6303,7 +6307,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { world, derivedRuns } = replayWorld(f, register);
     // ⏱ 2026-09-29 (A-2): mutation-proofs.yml is the second scheduled workflow added after the freeze.
     // ⏱ 2026-10-01: time-travel.yml is the third.
-    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'time-travel.yml'], 'only the scheduled workflows added after the freeze are derived');
+    // ⏱ 2026-10-03 (app2-dryrun): rehearse-app2.yml is the fourth.
+    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml', 'time-travel.yml'], 'only the scheduled workflows added after the freeze are derived');
     assert.equal(world.runs['mutation-proofs.yml'].length, 1);
     assert.equal(world.runs['mutation-proofs.yml'][0][1], 'schedule');
     assert.equal(world.runs['name-clearance.yml'].length, 1);
@@ -6316,7 +6321,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
     const pure = replayWorld({ ...f, runs: rest }, register);
     assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
-    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'time-travel.yml']);
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml', 'time-travel.yml']);
   });
 
   test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {
@@ -6447,7 +6452,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
       // 11 → 12 on 2026-09-29: so is duty.workflow.mutation-proofs.yml (A-2), a workflow on a clock.
       // 12 → 13 on 2026-10-01: so is duty.workflow.migrate-platform-db.yml (PB-03), a post-gate lane.
-      assert.match(r.out, /every one of the 13 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 13 → 14 on 2026-10-03: so is duty.workflow.rehearse-app2.yml (app2-dryrun), a workflow on a clock.
+      assert.match(r.out, /every one of the 14 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 

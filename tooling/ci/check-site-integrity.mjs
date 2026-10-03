@@ -57,7 +57,7 @@ import { createHash } from 'node:crypto';
 // `stripSourceComments` is the same module's reading of "what this file's CODE
 // says", and it is here for the same reason: the Pages-Function limb below had
 // been letting a comment stand in for the code it was checking.
-import { stripInert, visibleText, stripSourceComments } from './text-reductions.mjs';
+import { stripInert, visibleText, stripSourceComments, normaliseForMatch } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 // ONE reading of "when did this page last change", shared with the generator
 // that WRITES sites/nikatru/sitemap.xml. See tooling/sites/lastmod.mjs for why
@@ -526,6 +526,65 @@ for (const [rel] of PLACEHOLDER_EXCUSED) {
     problems.push(`${rel} is excused from the template-slot limb and has LOST its noindex, so a search result can now land a stranger on its placeholders.`);
   } else {
     prints.push(`SERVED TEMPLATE: ${rel} is reachable on its host with unfilled slots — ${PLACEHOLDER_EXCUSED.get(rel)}`);
+  }
+}
+
+// ── a duty the matrix says a PAGE discharges is still on that page ──────────
+// ⏱ 2026-10-03 · rv2-business 015. The published
+// Grievance Officer promise ("We acknowledge within 48 hours and resolve within 30 days") and the
+// E-Commerce Rules 4(2) display had no row in tooling/legal/duty-matrix.json, so the card could be
+// reworded or deleted and every guard stayed green. A row now says WHICH page discharges it and
+// WHAT that page must still read (`siteText: {page, mustRead[]}`), and this limb reads every such
+// row: each line must appear in the page's visible text, compared through the one normalisation
+// the claims guards use (entities decoded, dashes and quotes folded, whitespace collapsed).
+// A matrix that is present and unreadable is a finding; ABSENT is only legitimate in a synthetic
+// fixture, and the coverage self-check below refuses a real tree whose rows check nothing.
+const DUTY_MATRIX_REL = 'tooling/legal/duty-matrix.json';
+let dutyTextChecks = 0;
+{
+  // One look per path (read, and read the error), never exists-then-read: the
+  // check-then-use pair is what CodeQL js/file-system-race flags.
+  const readOrNull = (abs) => {
+    try {
+      return readFileSync(abs, 'utf8');
+    } catch (err) {
+      if (err.code === 'ENOENT') return null;
+      throw err;
+    }
+  };
+  let matrix = null;
+  const matrixSrc = readOrNull(join(repoRoot, ...DUTY_MATRIX_REL.split('/')));
+  if (matrixSrc !== null) {
+    try {
+      matrix = JSON.parse(matrixSrc);
+    } catch (err) {
+      problems.push(`${DUTY_MATRIX_REL} is not valid JSON (${err.message}), so no duty's published text was checked.`);
+    }
+  }
+  for (const d of Array.isArray(matrix?.duties) ? matrix.duties : []) {
+    if (!d || d.siteText === undefined) continue;
+    const st = d.siteText;
+    const lines = Array.isArray(st?.mustRead) ? st.mustRead : [];
+    if (typeof st?.page !== 'string' || lines.length === 0 || lines.some((l) => typeof l !== 'string' || !l.trim())) {
+      problems.push(`${DUTY_MATRIX_REL} duty ${JSON.stringify(d.id)} carries a \`siteText\` that is not {page, mustRead: [non-empty strings]}. A text check that cannot be read checks nothing.`);
+      continue;
+    }
+    const pageSrc = readOrNull(join(repoRoot, ...st.page.split('/')));
+    if (pageSrc === null) {
+      problems.push(`${DUTY_MATRIX_REL} duty ${JSON.stringify(d.id)} is discharged by ${st.page}, which does not exist. The duty did not go away; the page did.`);
+      continue;
+    }
+    const text = normaliseForMatch(visibleText(pageSrc));
+    for (const line of lines) {
+      dutyTextChecks++;
+      if (!text.includes(normaliseForMatch(line))) {
+        problems.push(
+          `${st.page} no longer reads ${JSON.stringify(line)}, and ${DUTY_MATRIX_REL} duty ${JSON.stringify(d.id)} (${d.status}) ` +
+            'says this page is what discharges it. Either the page was reworded and the duty quietly lapsed, or the ' +
+            'wording moved: restore it, or change the row\'s `siteText` in the same commit so the change is reviewed as a duty change.',
+        );
+      }
+    }
   }
 }
 
@@ -1525,6 +1584,12 @@ if (SCANNING_OWN_REPO) {
         '2026-08-06.',
     );
   }
+  if (dutyTextChecks === 0) {
+    lost.push(
+      `NO line of published text was checked for ${DUTY_MATRIX_REL}: no duty row carries a \`siteText\`, or the matrix is gone. ` +
+        'The Grievance Officer promise and the rule 4(2) display are held by those rows; with none read, both could vanish from contact.html silently.',
+    );
+  }
   if (promiseMarkers === 0) {
     lost.push('NO Pages Function carries a `SITE PROMISE: "…"` marker, so no code-held promise was checked against the copy the site actually serves.');
   }
@@ -1866,6 +1931,9 @@ console.log(
 );
 console.log(
   `    ${shotsChecked} served product screenshot(s) match the bytes ${SHOTS_RECORD} records, each derived from a live store capture frame that is still on disk`,
+);
+console.log(
+  `    ${dutyTextChecks} line(s) of published text a ${DUTY_MATRIX_REL} row says a page discharges are still on that page`,
 );
 console.log(
   `    ${routerDocsChecked} app-path document(s) served as their own bytes by the apex router, not the app shell, across ${routerRoots} router root(s)`,

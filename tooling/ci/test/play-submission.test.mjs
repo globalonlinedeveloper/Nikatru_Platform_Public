@@ -1144,10 +1144,12 @@ describe('submit-play — the publish gate refuses', () => {
   test('the post-discovery production check refuses on its OWN — PG-6 switched off in a copy', async () => {
     const ci = pathToFileURL(join(REPO, 'tooling', 'ci')).href + '/';
     const rel = pathToFileURL(join(REPO, 'tooling', 'release')).href + '/';
+    const store = pathToFileURL(join(REPO, 'tooling', 'store')).href + '/';
     const swaps = [
       ["from '../ci/read-identity.mjs'", `from '${ci}read-identity.mjs'`],
       ["from '../ci/workflow-scan.mjs'", `from '${ci}workflow-scan.mjs'`],
       ["from './submit-common.mjs'", `from '${rel}submit-common.mjs'`],
+      ["from '../store/listing-locales.mjs'", `from '${store}listing-locales.mjs'`],
       ["join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-submission-safety.mjs')", JSON.stringify(join(REPO, 'tooling', 'ci', 'assert-submission-safety.mjs'))],
       ["if (isProductionTrack(requestedTrack) && releaseStatus !== 'draft') {", 'if (false) {'],
     ];
