@@ -24,7 +24,12 @@
 //     the prepared case tooling/ops/refund.mjs builds from; refund.html's "we
 //     decide within 3 business days" is the human half.
 //   · one refund per payment: a second request for the same charge answers the
-//     first one's record (UNIQUE (provider, purchase_ref)), never a second refund.
+//     first one's record (UNIQUE (provider, purchase_ref)), never a second refund;
+//   · 🔴 A NEW MANUAL REQUEST RAISES AN ALERT (review 2026-10-03): the owner is
+//     told through the platform's alert path (`notifierFor('warning')`, ntfy then
+//     the off-box webhook, src/ports.ts) once per recorded row — ids, the rail and
+//     the reason only, never an address or an amount. A replay answers the record
+//     and alerts nothing; a channel that is down is logged, never a 500.
 // A rail without `refund` is the manual route — never a 500.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
@@ -36,9 +41,15 @@ import { readBoundedBody } from '../lib/body';
 import { cancelPathFor } from '../lib/mor/registry';
 import { chargedAtOf, storeRefundPage, withinRefundWindow } from '../lib/mor/refund';
 import { railCan } from '../../../_shared/src/ports/payments';
-import { railFor } from '../ports';
+import { notifierFor, railFor } from '../ports';
+import type { Notifier } from '../../../_shared/src/ports/telemetry';
 
 const refund = new Hono<AppEnv>();
+
+/** The seam a test replaces: the owner-alert channel for a manual refund request. */
+export const refundRouteDeps: { notifier: (env: AppEnv['Bindings']) => Notifier } = {
+  notifier: (env) => notifierFor('warning', env),
+};
 
 /**
  * An app id and nothing else.
@@ -188,6 +199,15 @@ refund.post('/plan/refund', async (c) => {
     if (!won) throw err;
     const w = answer(won);
     return c.json(w.body, w.status);
+  }
+  if (reason !== null) {
+    const outcome = await refundRouteDeps.notifier(c.env).notify({
+      severity: 'warning',
+      title: `Manual refund request: ${provider} (${reason})`,
+      body: `request ${requestId} · app ${appId} · ${environment} · ${reason}. Decide it within 3 business days (refund.html); tooling/ops/refund.mjs prepares the request.`,
+      dedupeKey: `refund:${requestId}`,
+    });
+    if (!outcome.ok) console.error(`[refund] rid=${rid} manual request ${requestId} recorded; alert NOT SENT (${outcome.kind}): ${outcome.detail}`);
   }
   const a = answer({ request_id: requestId, executed_at: reason === null ? now : null, refund_ref: refundRef, not_executed_reason: reason });
   return c.json(a.body, a.status);

@@ -18,7 +18,13 @@
 //   · a row with no provider or no subscription reference is a human's (it is
 //     never selected), and a STORE row is never recorded (the route answers 409);
 //   · tolerant: before migration 0029 has run, the SELECT names columns that do
-//     not exist; that is caught, logged, and nothing is done.
+//     not exist; that is caught, logged, and nothing is done;
+//   · 🔴 NOT THE OLD BACKLOG (review 2026-10-03): a row that existed when
+//     migration 0029 ran reads `backlog = 1` (the column's default) — recorded
+//     before this executor existed, so a person, not the first night's run,
+//     decides it. routes/cancellation.ts writes 0. A backlog row is never
+//     selected; the run COUNTS it (`backlog` in the report, and a log line), so
+//     it is skipped and reported, not silently dropped.
 // The account-deletion half needs nothing here: DELETE /v1/account cancels
 // first or does not delete (lib/mor/cancel-on-delete.ts).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,7 +35,7 @@ import { railFor } from '../../ports';
 import type { Env } from '../../types';
 
 /**
- * Queued cancels retried per nightly run: one SELECT plus one UPDATE each, inside
+ * Queued cancels retried per nightly run: one SELECT, one backlog COUNT, plus one UPDATE each, inside
  * the census job's LIGHT_LIMB_STATEMENT_BUDGET with the census's own statements.
  *
  * @ceiling d1.queriesPerInvocation lte
@@ -64,6 +70,8 @@ export interface ExecutorReport {
   executed: number;
   failed: number;
   alerted: number;
+  /** Unexecuted rows recorded before the executor (0029 `backlog = 1`): skipped, a person's. */
+  backlog?: number;
   skipped?: string;
 }
 
@@ -86,6 +94,7 @@ export async function executeQueuedCancels(
                FROM cancellation_requests
               WHERE executed_at IS NULL AND environment = ?
                 AND provider IS NOT NULL AND provider_subscription_id IS NOT NULL
+                AND backlog = 0
                 AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
               ORDER BY requested_at
               LIMIT ?`,
@@ -96,6 +105,17 @@ export async function executeQueuedCancels(
   } catch (err) {
     console.error(`[cancel-executor] queue unreadable (migration 0029 not applied?): ${err instanceof Error ? err.message : 'error'}`);
     return { ...report, skipped: 'queue_unreadable' };
+  }
+
+  try {
+    const b = await db
+      .prepare('SELECT COUNT(*) AS n FROM cancellation_requests WHERE executed_at IS NULL AND environment = ? AND backlog <> 0')
+      .bind(environment)
+      .first<{ n: number }>();
+    report.backlog = Number(b?.n ?? 0);
+    if (report.backlog > 0) console.log(`[cancel-executor] ${report.backlog} unexecuted request(s) predate the executor (backlog = 1): skipped, a person's to cancel at the rail`);
+  } catch {
+    // The count is a report, not a gate: unreadable, it is left out.
   }
 
   const stuck: string[] = [];

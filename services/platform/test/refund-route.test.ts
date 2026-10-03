@@ -33,7 +33,7 @@ vi.mock('../src/ports', async (importOriginal) => {
     railFor: (provider: string | null, env: AppEnv['Bindings']) => (provider === 'fake' ? fakeRail : real.railFor(provider, env)),
   };
 });
-const { default: refund } = await import('../src/routes/refund');
+const { default: refund, refundRouteDeps } = await import('../src/routes/refund');
 const { REFUND_WINDOW_DAYS, withinRefundWindow } = await import('../src/lib/mor/refund');
 
 const APP = 'subscriptiontracker';
@@ -42,8 +42,12 @@ const DAY = 86_400_000;
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 
 let netCalls: string[] = [];
+let alerts: { severity: string; title: string; body: string; dedupeKey: string }[] = [];
+const realNotifier = refundRouteDeps.notifier;
 beforeEach(() => {
   netCalls = [];
+  alerts = [];
+  refundRouteDeps.notifier = () => ({ id: 'test', notify: async (a) => (alerts.push(a), { ok: true, via: 'test' }) });
   refundCalls = 0;
   const base = makeFakeRail(() => true);
   fakeRail = {
@@ -58,7 +62,10 @@ beforeEach(() => {
     throw new Error(`unexpected fetch in test: ${String(input)}`);
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  refundRouteDeps.notifier = realNotifier;
+});
 
 function seed(db: RealDb, o: { provider: string; txn: string; chargedMsAgo: number | null; store?: string | null; env?: string }) {
   db.db
@@ -153,6 +160,33 @@ describe('POST /v1/plan/refund', () => {
     expect(r).toMatchObject({ status: 202, json: { recorded: true, executed: false, route: 'manual', reason: 'rail_has_no_refund' } });
     expect(netCalls).toEqual([]);
     expect(db.rows('SELECT not_executed_reason, charged_at FROM refund_requests')[0]?.not_executed_reason).toBe('rail_has_no_refund');
+  });
+
+  it('🔴 a NEW manual request alerts the owner ONCE (ids, rail, reason — no amount, no address); a replay and an executed refund alert nothing', async () => {
+    const db = realPlatformDb();
+    seed(db, { provider: 'paddle', txn: 'txn_01halert', chargedMsAgo: 3 * DAY });
+    const r = await post(db, 'key-alert-0001');
+    expect(r.status).toBe(202);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ severity: 'warning', dedupeKey: `refund:${String(r.json.request_id)}` });
+    expect(alerts[0].title).toContain('rail_has_no_refund');
+    expect(alerts[0].body).not.toContain(USER);
+    await post(db, 'key-alert-0001');
+    await post(db, 'key-alert-0002');
+    expect(alerts).toHaveLength(1);
+
+    const db2 = realPlatformDb();
+    seed(db2, { provider: 'fake', txn: 'fake_txn_8', chargedMsAgo: DAY });
+    expect((await post(db2, 'key-alert-0003')).status).toBe(200);
+    expect(alerts).toHaveLength(1);
+  });
+
+  it('an alert channel that is down never fails the request: still 202, still recorded', async () => {
+    refundRouteDeps.notifier = () => ({ id: 'down', notify: async () => ({ ok: false, kind: 'unavailable', detail: 'ntfy 503', retryable: true }) });
+    const db = realPlatformDb();
+    seed(db, { provider: 'paddle', txn: 'txn_01hdown', chargedMsAgo: 3 * DAY });
+    expect((await post(db, 'key-alert-down')).status).toBe(202);
+    expect(db.count('refund_requests')).toBe(1);
   });
 
   it('no stored notification names the charge: recorded for a human, never refunded on a guess', async () => {
