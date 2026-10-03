@@ -1465,6 +1465,42 @@ function checkApp(app) {
       problems.push(`${DS_REL} maps a Play data type to inventory row ${JSON.stringify(id)}, which does not exist in ${INVENTORY_REL}.`);
     }
   }
+  // ⏱ 2026-10-01 · O-DATA-SAFETY-CITES-A-1-AS-NO-ACCOUNT (rv2-business 025). An exclusion whose reason is
+  // a SWITCH STATE names the switch in `notFromThisAppWhile`, and this reads it. The provider_notifications
+  // exclusion said "No seller account exists (OWNER_QUEUE A-1)" for a month after the account went live:
+  // the real reason was that checkout is closed, which is a flag in the tree and not an owner row.
+  const whileRaw = ds.inventory?.notFromThisAppWhile ?? {};
+  for (const [id, cond] of Object.entries(whileRaw)) {
+    if (id.startsWith('_')) continue;
+    const at = `${DS_REL} inventory.notFromThisAppWhile["${id}"]`;
+    if (!Object.prototype.hasOwnProperty.call(excluded, id)) {
+      problems.push(`${at} holds an exclusion that inventory.notFromThisApp does not make. A condition with no exclusion is a reason for nothing.`);
+      continue;
+    }
+    if (!cond || typeof cond.file !== 'string' || typeof cond.path !== 'string' || !Object.prototype.hasOwnProperty.call(cond, 'equals')) {
+      problems.push(`${at} must be {file, path, equals}. A condition that cannot be read cannot be checked, and an exclusion resting on it is unargued.`);
+      continue;
+    }
+    const flagAbs = join(ROOT, ...cond.file.split('/'));
+    let flagDoc;
+    try {
+      flagDoc = JSON.parse(readFileSync(flagAbs, 'utf8'));
+    } catch (err) {
+      problems.push(`${at} reads ${cond.file}, which is absent or not JSON (${err.message}). The exclusion's reason can no longer be checked.`);
+      continue;
+    }
+    const path = cond.path.replaceAll('{app}', app);
+    let v = flagDoc;
+    for (const seg of path.split('.')) v = v !== null && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, seg) ? v[seg] : undefined;
+    if (v === undefined) {
+      problems.push(`${at} reads ${cond.file} \`${path}\`, which does not exist. The switch the exclusion rests on was renamed or removed.`);
+    } else if (v !== cond.equals) {
+      problems.push(
+        `🔴 ${at}: the exclusion holds only while ${cond.file} \`${path}\` is ${JSON.stringify(cond.equals)}, and it is ${JSON.stringify(v)}. ` +
+          `Its stated reason is now false: this app's users reach the thing that writes ${id}. Move it out of inventory.notFromThisApp into the answer row that describes it.`,
+      );
+    }
+  }
   if (mappingChecked === 0 && cleanSoFar()) {
     coverageLost(['NOT ONE personal-data inventory row was compared to the declaration.']);
   }
