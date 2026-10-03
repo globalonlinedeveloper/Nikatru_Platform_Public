@@ -44,6 +44,14 @@ check, the unit's own smoke and a ledger record.
      `pagesProject` (nikatru-apex) — never on the paused Git project `nikatru`. The
      `site` job of deploy-web.yml records `--pages-deployment-id` since the same date;
      an earlier record names no id and is refused.
+   - ⏱ 2026-10-02 (PB-09, row O-PAGES-REPROMOTE-OF-LIVE-BUILD-REFUSED): before either
+     Pages POST, the project's production deployment (`canonical_deployment`) is read
+     with `readProject` from `tooling/ops/check-pages-deployments.mjs`. When it IS the
+     recorded id, the step prints `already live: <id>`, makes no POST and writes the
+     same outputs a re-promotion writes, so the smoke and the record still run. A
+     Cloudflare answer of `8000039` ("currently in production"), the deployment going
+     live between that read and the POST, is the same no-op success. A failed read is
+     a warning, and the POST decides.
    - a Worker: `wrangler rollback <version-id> --message "<run and ledger id>" --yes`,
      from `services/<worker>/`, with the island's binary. The run then reads
      `Current Version ID:` back and refuses if it is not the id it asked for.
@@ -121,6 +129,13 @@ An attended no-op re-promotion of what is live now: dispatch with `unit:
 subscriptiontracker-web` and `deployment:` the newest successful ledger
 Deployment for it, first with `dry_run` ticked (read the printed command), then
 unticked. Re-promoting the live build changes nothing a visitor sees; its smoke
-going green is the evidence limb 4 needs. If Cloudflare refuses to roll back to
-the deployment that is already live, the refusal is printed and nothing changed:
-record that, and re-promote the previous one instead.
+going green is the evidence limb 4 needs.
+
+⏱ 2026-10-02 (PB-09 drill): a drill re-promotes the newest record, and that is now a
+no-op for EVERY kind that still proves the path, the smoke and the record. `platform`
+did it green in run 36970507126 (ledger Deployment 6801839308), which set
+`revert.worker.platform`'s `lastDone`. `nikatru-site` (run 36970520119) and
+`subscriptiontracker-web` (run 36970542712) went red on Cloudflare's `8000039: You
+cannot rollback to the deployment that is currently in production.`; a Pages target
+that is already live is now `already live: <id>` with no POST, so those two are
+re-drilled after this lands, and their rows' `lastDone` stays null until then.

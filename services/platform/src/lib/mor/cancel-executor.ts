@@ -17,7 +17,7 @@
 //   · bounded: MAX_CANCEL_RETRIES_PER_RUN rows a run, oldest first;
 //   · a row with no provider or no subscription reference is a human's (it is
 //     never selected), and a STORE row is never recorded (the route answers 409);
-//   · tolerant: before migration 0027 has run, the SELECT names columns that do
+//   · tolerant: before migration 0028 has run, the SELECT names columns that do
 //     not exist; that is caught, logged, and nothing is done.
 // The account-deletion half needs nothing here: DELETE /v1/account cancels
 // first or does not delete (lib/mor/cancel-on-delete.ts).
@@ -94,7 +94,7 @@ export async function executeQueuedCancels(
           .all<QueuedRow>()
       ).results ?? [];
   } catch (err) {
-    console.error(`[cancel-executor] queue unreadable (migration 0027 not applied?): ${err instanceof Error ? err.message : 'error'}`);
+    console.error(`[cancel-executor] queue unreadable (migration 0028 not applied?): ${err instanceof Error ? err.message : 'error'}`);
     return { ...report, skipped: 'queue_unreadable' };
   }
 

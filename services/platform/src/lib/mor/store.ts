@@ -854,7 +854,7 @@ async function applyAdjustment(
  * NOT A SUBSCRIPTION. A Razorpay refund or dispute carries `payment_id`; whether its payment entity
  * also names the subscription is unconfirmed (razorpay.ts header). So every subscription event of
  * such a rail that names the payment it charged (`subscription.charged`) writes
- * `payment id → subscription id` into `provider_payment_links` (migration 0024), and an adjustment
+ * `payment id → subscription id` into `provider_payment_links` (migration 0025), and an adjustment
  * resolves its subscription through that link first. ⚠️ The link is fixture-proven only:
  * tooling/ports/payments.json keeps the razorpay `refund revokes` case PENDING until one real
  * test-mode refund is seen to resolve by it, so flip limb 5 cannot read the adapter as finished.

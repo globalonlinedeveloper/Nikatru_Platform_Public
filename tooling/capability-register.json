@@ -667,6 +667,20 @@
       },
       "detail": "2026-09-24 · O-LINK-LAUNCHER-SEAM-UNOWNED. Opening an external link is a per-platform native call with real gaps (ExternalLinkCapabilities), and until this package existed the brick and apps/subscriptiontracker each imported url_launcher directly -- the two dated `|url_launcher` bypasses assert-package-boundaries.mjs printed on every run. It is a package rather than a second capability on packages/purchases because that seam, CheckoutLauncher, opens checkout pages https-only and refuses mailto: by design; hosting legal pages and the support address there would make a money seam own the privacy policy. It is not in platform_storage because the adapter must enforce core's LinkPolicy on every link, and a separate package keeps the one url_launcher import for non-checkout links in a place assert-package-boundaries limb C can name."
     },
+    "packages/app_lock": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "local_auth"
+      },
+      "detail": "2026-10-01 · T16 XP-03. The device biometric is a per-platform native bridge (BiometricPrompt, LocalAuthentication, Windows Hello) with real gaps — no Linux, no web — which AppLockCapabilities declares. It is not a second capability on platform_storage because the lock is a policy (PIN hash, delay, attempt cap, sign-out recovery) with a screen of its own, and every stamped app inherits it whole; it is not in auth_supabase because a lock is not an identity and must work signed out."
+    },
+    "packages/widgets": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "home_widget"
+      },
+      "detail": "2026-10-01 · T16 XP-04/XP-05/IM-11. home_widget ships the AppWidget and WidgetKit bridges (a store the widget process reads) and quick_actions the launcher-shortcut bridges; both differ per target, which GlanceCapabilities declares. One package for every surface an app shows OUTSIDE its window — the glance, the shortcuts and the share-in route — rather than three, per [pipeline C-4]."
+    },
     "packages/chassis_screens": {
       "reason": "chassis",
       "evidence": {
@@ -1188,6 +1202,52 @@
         "test": "packages/external_links/test/external_link_capabilities_test.dart",
         "pinnedTo": "url_launcher 6.x — re-review on any major bump",
         "degradesOn": "https: and mailto: can be HANDED OVER on all six targets and web, and whether anything answers is the platform's call: a device or desktop with no handler registered for the scheme (no mail client, a headless Linux session) answers false or throws, and a web popup blocker can refuse a link not started by a tap. The adapter reports all of these as LinkOutcome.notOpened, never as success. Fuchsia has no implementation (MissingPluginException, also notOpened)."
+      }
+    },
+    {
+      "id": "app_lock",
+      "capability": "App lock (XP-03, Free under ADR 101): a PIN on every target, the device biometric where local_auth has one, lock on resume after a chosen delay, five wrong PINs sign out and signing back in is the recovery.",
+      "owner": "packages/app_lock",
+      "package": "nikatru_app_lock",
+      "seams": [
+        {
+          "file": "packages/app_lock/lib/src/app_lock_controller.dart",
+          "symbol": "BiometricUnlocker"
+        }
+      ],
+      "consumers": [
+        "apps/subscriptiontracker"
+      ],
+      "note": "2026-10-01 · T16. The app builds ONE AppLockController at its composition root (lib/state/providers/device_surfaces.dart) and mounts ONE AppLockGate in MaterialApp.router's builder. The brick does not adopt it yet; the PR names that as the follow-up.",
+      "capabilityMatrix": {
+        "file": "packages/app_lock/lib/src/app_lock_capabilities.dart",
+        "symbol": "AppLockCapabilities",
+        "test": "packages/app_lock/test/app_lock_capabilities_test.dart",
+        "pinnedTo": "local_auth 3.x — re-review on any major bump",
+        "degradesOn": "The PIN works on all six targets and web. The biometric exists on Android (BiometricPrompt, FragmentActivity host), iOS and macOS (LocalAuthentication) and Windows (Hello); Linux, web and Fuchsia have no local_auth implementation and keep the PIN. A device with nothing enrolled answers unavailable, never throws."
+      }
+    },
+    {
+      "id": "widgets",
+      "capability": "The surfaces an app shows outside its window: the two-fact glance (XP-04, Pro under ADR 101) on the home-screen widget, tray item or PWA badge; the launcher shortcuts (XP-05); and the share-in route to the import hub (IM-11).",
+      "owner": "packages/widgets",
+      "package": "nikatru_widgets",
+      "seams": [
+        {
+          "file": "packages/widgets/lib/src/glance_publisher.dart",
+          "symbol": "GlancePublisher"
+        }
+      ],
+      "consumers": [
+        "apps/subscriptiontracker"
+      ],
+      "note": "2026-10-01 · T16. The app computes its own facts (sublyGlance) and the package owns the Pro gate, the wire format the native widgets read, the publishers, the shortcut routing and the share channel. Built: Android widget, web badge, Android/iOS shortcuts, the share channel. Waiting, each named in GlanceCapabilities.why: iOS/macOS WidgetKit and Share extensions (Xcode targets), the Windows/Linux tray, the jump list and dock menu.",
+      "capabilityMatrix": {
+        "file": "packages/widgets/lib/src/glance_capabilities.dart",
+        "symbol": "GlanceCapabilities",
+        "test": "packages/widgets/test/glance_test.dart",
+        "pinnedTo": "home_widget 0.10.x and quick_actions 1.x — re-review on any bump",
+        "degradesOn": "home_widget has Android and iOS implementations only, so macOS, Windows and Linux name a tray/menu-bar equivalent that waits for runner code; quick_actions has Android and iOS only, so desktop names the jump list and dock menu; web shows the Badging API count where the browser has it (Firefox does not). A target with no receiver for a share installs quietly (MissingPluginException)."
       }
     },
     {

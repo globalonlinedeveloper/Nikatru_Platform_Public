@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0024_provider_payment_links.sql — A RAZORPAY REFUND OR DISPUTE FINDS ITS
+-- 0025_provider_payment_links.sql — A RAZORPAY REFUND OR DISPUTE FINDS ITS
 -- SUBSCRIPTION BY THE PAYMENT IT REVERSES (PR #1149, lead ruling item 2,
 -- option b, 2026-10-02; O-RAZORPAY-CHECKOUT-ADAPTER).
 --

@@ -725,9 +725,14 @@ const REQUIRED_COVERAGE = [
     // share-a-month sheet (`showShareMonthSheet`) arrived swept ('nothing on
     // the share-a-month sheet is naked'). Read off the per-root line:
     // `21 of 21 … across 117 case(s)`.
-    surfaces: 21,
+    // ⏱ 2026-10-02 · club-st-singles SE-04: 21 → 22 surfaces and 117 → 118
+    // cases — Settings' "Connected accounts" sheet
+    // (`showConnectedAccountsSheet`) arrived swept ('nothing on the connected
+    // accounts sheet is naked'). Read off the per-root line: `22 of 22 …
+    // across 118 case(s)`.
+    surfaces: 22,
     a11yFiles: 1,
-    cases: 117,
+    cases: 118,
     label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
@@ -867,9 +872,16 @@ const REQUIRED_COVERAGE = [
     // 5 -> 6 files, 75 -> 77 cases — AiDisclosureDialog and AiOutputLabel,
     // swept in the new a11y_ai_test.dart (light + dark each). Read off the
     // per-root line: `36 of 36 … from 6 a11y test file(s) across 77 case(s)`.
-    surfaces: 36,
-    a11yFiles: 6,
-    cases: 77,
+    // ⏱ 2026-10-02 · club-st-singles EN-21, SE-04: 34 -> 36 surfaces, 5 -> 6
+    // files, 75 -> 77 cases — EmailCodeForm and ConnectedAccountsView arrived
+    // swept in a11y_account_plus_test.dart (light + dark kPhone each). Read off
+    // the merged tree: `36 of 36 … from 6 a11y test file(s) across 77 case(s)`.
+    // ⏱ 2026-10-03 · merge of main into #1176 (both sides above): 36 -> 38
+    // surfaces, 6 -> 7 files, 77 -> 79 cases. Read off the merged tree:
+    // `38 of 38 … from 7 a11y test file(s) across 79 case(s)`.
+    surfaces: 38,
+    a11yFiles: 7,
+    cases: 79,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -989,6 +1001,16 @@ const REQUIRED_COVERAGE = [
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
+  },
+  // ⏱ 2026-10-01 · T16 XP-03: the app lock, derived as a root the day it
+  // landed. Measured, not guessed: 2 surfaces (the gate and its screen), one
+  // a11y file, 2 cases (each loops both schemes), both surfaces swept.
+  {
+    dir: 'packages/app_lock',
+    surfaces: 2,
+    a11yFiles: 1,
+    cases: 2,
+    label: 'the app lock (XP-03) — the screen a locked person cannot get past, both surfaces swept',
   },
 ];
 
@@ -1111,6 +1133,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
         // can WRITE a budget, swept in a11y_semantics_test.dart.
         'features/insights/budget_editor.dart#showBudgetEditorSheet',
+        // 2026-10-01 (SE-04): Settings' "Connected accounts" sheet, swept in
+        // a11y_semantics_test.dart.
+        'features/auth/connected_accounts_sheet.dart#showConnectedAccountsSheet',
         // 2026-10-01 (ST-T9 EN-18): the after-sign-in setup, in the same
         // change as its sweep (a11y_semantics_test.dart "setup · …").
         'features/setup/setup_screen.dart#SetupScreen',
@@ -1151,6 +1176,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'ai/ai_disclosure.dart#AiDisclosureDialog',
         'ai/ai_disclosure.dart#AiOutputLabel',
         'auth/check_inbox_screen.dart#CheckInboxView',
+        // 2026-10-01 (EN-21, SE-04): swept in a11y_account_plus_test.dart.
+        'auth/email_code_form.dart#EmailCodeForm',
         'auth/legal_consent_fields.dart#LegalConsentFieldsView',
         'auth/reaccept_terms_screen.dart#ReacceptTermsView',
         'auth/reset_password_screen.dart#ResetPasswordView',
@@ -1173,6 +1200,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'integrity/tampered_build_screen.dart#TamperedBuildScreen',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
+        'settings/connected_accounts_view.dart#ConnectedAccountsView',
         'settings/report_content_dialog.dart#ReportContentDialog',
         // 2026-10-01 (audit D8): the heading node, in the same change as its sweep.
         'settings/help_section.dart#SettingsHeading',
@@ -1273,6 +1301,14 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/two_pane.dart#TwoPane',
       'packages/design_system/lib/src/widgets/two_pane.dart#TwoPanePlaceholder',
     ]),
+  ],
+  [
+    'packages/app_lock',
+    new Set(
+      ['src/app_lock_gate.dart#AppLockGate', 'src/app_lock_gate.dart#AppLockScreen'].map(
+        (k) => `packages/app_lock/lib/${k}`,
+      ),
+    ),
   ],
 ]);
 

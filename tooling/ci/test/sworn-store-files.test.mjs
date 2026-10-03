@@ -403,6 +403,9 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
     // (O-APPLE-PROVER-SKIPS-THE-PKG, `--built`): 40 × 7 = 280.
     // 40 → 42 on 2026-09-28 when `share_plus` (ST-X1, the settings CSV export)
     // was linked on both Apple targets: 42 × 7 = 294.
+    // 42 → 48 on 2026-10-01 (T16): home_widget, local_auth_darwin,
+    // quick_actions_ios and sign_in_with_apple on iOS, the two darwin ones on
+    // macOS: 48 × 7 = 336.
     // Widening the regex to `\d+` would buy quiet and lose exactly the signal.
     withTree(
       (root) =>
@@ -411,7 +414,7 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
         }),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /carries 294 character\(s\) of `basis` across 42 row\(s\); the floor is 2000/);
+        assert.match(r.stderr, /carries 336 character\(s\) of `basis` across 48 row\(s\); the floor is 2000/);
       },
     );
   });

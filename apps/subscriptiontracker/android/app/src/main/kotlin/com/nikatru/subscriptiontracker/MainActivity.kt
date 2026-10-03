@@ -4,7 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -17,8 +17,13 @@ import io.flutter.plugin.common.MethodChannel
  *  · `initial` (Dart → here): the share that launched the activity, once.
  *  · `shared` (here → Dart): one that arrives while it runs (singleTop, so it
  *    lands in [onNewIntent] rather than a second copy of the app).
+ *
+ * ⏱ 2026-10-01 · XP-03 · a FRAGMENT activity, because local_auth_android's
+ * BiometricPrompt needs a FragmentActivity host; on a plain FlutterActivity
+ * every biometric unlock fails with `no_fragment_activity` and the lock screen
+ * falls back to the PIN.
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
     private var pending: Map<String, String>? = null
 

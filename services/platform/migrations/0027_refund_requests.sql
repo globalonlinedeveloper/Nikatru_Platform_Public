@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0026_refund_requests.sql — EVERY IN-WINDOW REFUND A USER ASKED FOR, AND WHAT
+-- 0027_refund_requests.sql — EVERY IN-WINDOW REFUND A USER ASKED FOR, AND WHAT
 -- BECAME OF IT (refund-finish, MF-5; O-REFUND-IN-WINDOW-UNAUTOMATED).
 --
 -- Applies to the SHARED platform_db (services/platform is the sole applier):
