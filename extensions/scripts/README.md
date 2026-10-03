@@ -73,7 +73,7 @@ work only one person can do teaches everyone that red is negotiable.
 |---|---|---|
 | `discover.mjs` | globs `Category/Tool/tool.json` → the CI matrix, diff-aware | emits **ids**. Every ambiguity widens to ALL tools |
 | `lint.mjs` | `node --check` on every shipped `.js`/`.mjs` | also accepts `core` and `scripts`. Fails when it checks **zero shipped files** |
-| `policy-check.mjs` | the eight gates of the architecture's §4.3 | strips comments and strings before scanning; see below |
+| `policy-check.mjs` | the eight gates of the architecture's §4.3, plus gate 9: a third-party-shaped packaged file (`.min.*`, `@license`/`@preserve`, a foreign SPDX header) must be recorded, hash and all, in `THIRD_PARTY.json` | strips comments and strings before scanning (gate 9 reads raw text: a licence header IS a comment); see below |
 | `check-version.mjs` | manifest == CHANGELOG top == tag, and no shipped-file commit after the stamp without an `[Unreleased]` section | delegates to the tool's own `publish/bump-version.mjs --check` when it has one; a shallow checkout is exit 2 |
 | `sync-core.mjs` | `core/<channel>` → `<tool>/vendor/core` + hashes | refuses to write over strays; refuses an unsatisfiable pin |
 | `check-core-sync.mjs` | fails if a tool's `vendor/core` drifted | compares file ↔ core ↔ recorded hash; names CRLF-only drift as such |

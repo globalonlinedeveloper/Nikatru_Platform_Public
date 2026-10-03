@@ -48,6 +48,8 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 // [pipeline C-11] buildAppTheme + AppThemeX, for the brand-seed property.
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:nikatru_chassis_screens/shell/app_shell.dart'
+    show kConfigRefreshInterval;
 import 'package:subscriptiontracker/app.dart';
 import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
@@ -4163,6 +4165,107 @@ void main() {
         core.AppConfig.fromJson(body(kProbeUpdateUrl)).updateUrl,
         kProbeUpdateUrl,
       );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // [pipeline 10]D-8 — A FLOOR RAISED AFTER LAUNCH WALLS THE RUNNING APP
+  // (O-FORCE-UPDATE-VERSION-READ-UNPROVEN, folding O-WEB-KILL-SWITCH-LAUNCH-ONLY).
+  //
+  // 🔴 THE DEFECT. `appConfigProvider` resolved once, at launch, so a floor the
+  // service raised while the app was open reached nobody until they relaunched
+  // — and a web tab is opened once and kept for days. The app now wraps its root
+  // in the chassis's `listenForConfigRefresh`, which re-reads the config on a
+  // resume (on web, the tab coming back to the front) and on a timer. RED
+  // CONTROL: make the re-read a no-op in lib/app.dart and all three cases fail
+  // — the wall never moves, because nothing re-reads the floor.
+  //
+  // The served floor is a variable the override READS, so a re-read sees the
+  // raised value and a launch-time read does not.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('property: floor-rereads-after-launch', () {
+    Future<ProviderContainer> launch(
+      WidgetTester tester,
+      String Function() floor,
+    ) async {
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => _onboardedStore()),
+          packageVersionProvider.overrideWith((_) async => '1.0.0'),
+          appConfigProvider.overrideWith(
+            (_) async => _servedConfig(
+              minSupportedVersion: floor(),
+              updateUrl: kProbeUpdateUrl,
+            ),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+      await c.read(packageVersionProvider.future);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+      return c;
+    }
+
+    testWidgets('a RESUME re-reads the floor and walls the running app', (
+      WidgetTester tester,
+    ) async {
+      String floor = '1.0.0';
+      await launch(tester, () => floor);
+      expect(
+        find.text('Update required'),
+        findsNothing,
+        reason: 'the running version meets the floor served at launch',
+      );
+
+      floor = '9.9.9';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _turnsAndDrain(tester);
+      await _turns(tester);
+
+      expect(
+        find.text('Update required'),
+        findsOneWidget,
+        reason:
+            'a floor raised after launch must wall the running app on its next '
+            'resume — on web, the tab coming back to the front',
+      );
+    });
+
+    testWidgets(
+      'the TIMER re-reads it for an app that never leaves the front',
+      (WidgetTester tester) async {
+        String floor = '1.0.0';
+        await launch(tester, () => floor);
+        expect(find.text('Update required'), findsNothing);
+
+        floor = '9.9.9';
+        await tester.pump(kConfigRefreshInterval);
+        await _turnsAndDrain(tester);
+        await _turns(tester);
+
+        expect(find.text('Update required'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a floor LOWERED again lifts the wall without a relaunch', (
+      WidgetTester tester,
+    ) async {
+      String floor = '9.9.9';
+      await launch(tester, () => floor);
+      expect(find.text('Update required'), findsOneWidget);
+
+      floor = '1.0.0';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _turnsAndDrain(tester);
+      await _turns(tester);
+
+      expect(find.text('Update required'), findsNothing);
     });
   });
 

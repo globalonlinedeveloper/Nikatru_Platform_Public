@@ -20,6 +20,10 @@
      7  icons               16/32/48/128 present, real PNGs, declared size
      8  no _underscore      no root entry starting with _ except _locales
 
+   And gate 9, added 2026-10-01 and not in the spec either: a packaged file that
+   looks third-party (a .min name, an @license/@preserve tag, a foreign SPDX
+   header) must be recorded in THIRD_PARTY.json with its origin and hash.
+
    And gate 0, which is not in the spec because it is not about extensions: it
    is about this script. See "THE SUBJECT IS ALSO A CLAIM" below.
 
@@ -77,6 +81,7 @@
    --release implies --owner-actions-fatal and makes limb 6b (a string still
    AWAITING-TRANSLATION) a failure; it does not imply --warnings-as-errors. */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Report, parseArgs, die } from './lib/report.mjs';
@@ -1899,6 +1904,133 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
   } else {
     r.pass('no reserved underscore paths at the package root',
       roots.has('_locales') ? '_locales is the one permitted exception, and it is present' : undefined);
+  }
+}
+
+/* ---------------- 9. third-party files are recorded ----------------
+   O-EXTENSION-THIRD-PARTY-FILES-UNGATED (rv2-security-015). lib/licence.mjs
+   grades the tool's OWN notice and nothing else, so a minified library dropped
+   into a tool — every future tool is stamped from the template, and that is how
+   one arrives — would ship with no record of where it came from, which version
+   it is or what licence it carries. Vacuous on the day it landed (no packaged
+   file carried a marker), which is the day a gate is cheapest to add.
+
+   A packaged file is THIRD-PARTY-SHAPED when its name is *.min.{js,mjs,cjs,css},
+   or its text carries an @license / @preserve tag, or an SPDX-License-Identifier
+   that is not first-party. First-party is the house licence (every extension is
+   PolyForm Shield, README.md) anywhere, and core/core.json's own "license" for a
+   file under vendor/core/ only — MPL-2.0 is first-party THERE, because that is
+   where sync-core.mjs puts core, and foreign anywhere else. The scan reads the
+   RAW text, not the stripped text the other gates use: a licence header lives in
+   a comment by definition.
+
+   Each such file must be listed in THIRD_PARTY.json at the root of this tree,
+   with path (relative to the tree root), upstream URL, version, SPDX and sha256
+   — and the sha256 must be the bytes that ship, so a library upgraded in place
+   under a stale record fails too. An entry for this tool that names a file the
+   package does not select is a record of nothing, and fails.
+
+   An empty packaged set is exit 2, not a pass: a scan of nothing proves nothing,
+   and gate 0 above says why that state prints clean everywhere else. */
+{
+  const HOUSE_SPDX = new Set(['PolyForm-Shield-1.0.0', 'LicenseRef-PolyForm-Shield-1.0.0']);
+  const MINIFIED = /\.min\.(?:js|mjs|cjs|css)$/i;
+  // Not preceded by a word character, so legal@license.example is an address.
+  const TAG = /(?<![\w.@-])@(license|preserve)\b/g;
+  const SPDX = /SPDX-License-Identifier:[ \t]*([^\r\n]*)/g;
+  const REG_REL = 'THIRD_PARTY.json';
+  const label = 'third-party files in the package are recorded in ' + REG_REL;
+
+  const subject = files.filter(f => !f.startsWith('_locales/'));
+  if (subject.length === 0) {
+    die(label + ': the packaged set holds no file outside _locales/, so there is nothing to scan,\n' +
+      'and a scan of nothing would print the same pass over any content whatsoever. Fix the package\n' +
+      'rules in ' + tool.rel + '/tool.json; "the graded set is the shipped set" above names what went missing.');
+  }
+
+  let coreSpdx = null;
+  {
+    const cj = readJson(path.join(root, 'core', 'core.json'));
+    if (!cj.error && cj.value && typeof cj.value.license === 'string' && cj.value.license.trim()) coreSpdx = cj.value.license.trim();
+  }
+  const firstParty = (rel, id) => HOUSE_SPDX.has(id) || (coreSpdx !== null && id === coreSpdx && rel.startsWith('vendor/core/'));
+
+  /* Every reason a file is third-party-shaped, per file. */
+  const shaped = new Map();
+  const mark = (rel, why) => { if (!shaped.has(rel)) shaped.set(rel, []); shaped.get(rel).push(why); };
+  const spdxOf = new Map();
+  let textScanned = 0;
+  for (const rel of subject) {
+    if (MINIFIED.test(rel)) mark(rel, 'a minified file name');
+    const src = raw(rel);
+    if (src === null) continue;   // not a text file this script reads, or already FAILED as unreadable
+    textScanned++;
+    for (const m of src.matchAll(TAG)) mark(rel, '@' + m[1] + ' at line ' + lineOf(src, m.index));
+    for (const m of src.matchAll(SPDX)) {
+      const id = m[1].replace(/\s*(?:\*\/|--!?>).*$/, '').trim();
+      if (!spdxOf.has(rel)) spdxOf.set(rel, []);
+      spdxOf.get(rel).push(id);
+      if (!firstParty(rel, id)) mark(rel, 'SPDX "' + (id || '(empty)') + '" at line ' + lineOf(src, m.index));
+    }
+  }
+
+  /* The register. Absent is an empty register — a tree with no third-party
+     file needs no file saying so — but present and unreadable is a gate that
+     cannot decide, which is exit 2 and never a guess. */
+  const regAbs = path.join(root, REG_REL);
+  let entries = [];
+  if (fs.existsSync(regAbs)) {
+    const p = readJson(regAbs);
+    if (p.error) die(REG_REL + ' does not parse, so no third-party file can be checked against it: ' + p.error);
+    if (!p.value || typeof p.value !== 'object' || Array.isArray(p.value) || !Array.isArray(p.value.files)) {
+      die(REG_REL + ' must be an object with a "files" array; it is not, so no third-party file can be checked against it.');
+    }
+    entries = p.value.files;
+  }
+  const prefix = tool.rel + '/';
+  const problems = [];
+  const listed = new Map();
+  entries.forEach((e, i) => {
+    const at = REG_REL + ' files[' + i + ']';
+    if (!e || typeof e !== 'object' || typeof e.path !== 'string' || !e.path) { problems.push(at + ' has no "path"'); return; }
+    if (!e.path.startsWith(prefix)) return;   // another tool's entry: graded when that tool is
+    const rel = e.path.slice(prefix.length);
+    const bad = [];
+    if (typeof e.upstream !== 'string' || !/^https:\/\/\S+$/.test(e.upstream)) bad.push('"upstream" is not an https URL');
+    if (typeof e.version !== 'string' || !e.version.trim()) bad.push('"version" is empty');
+    if (typeof e.spdx !== 'string' || !e.spdx.trim()) bad.push('"spdx" is empty');
+    if (typeof e.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(e.sha256)) bad.push('"sha256" is not 64 lowercase hex digits');
+    if (!files.includes(rel)) bad.push('names a file the package does not select — a record of nothing');
+    if (bad.length) { problems.push(at + ' (' + e.path + '): ' + bad.join('; ')); return; }
+    let bytes;
+    try { bytes = fs.readFileSync(path.join(tool.dirAbs, rel)); }
+    catch (err) { problems.push(at + ' (' + e.path + '): cannot read it: ' + (err.code || err.message)); return; }
+    const got = crypto.createHash('sha256').update(bytes).digest('hex');
+    if (got !== e.sha256) {
+      const lf = crypto.createHash('sha256').update(bytes.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').digest('hex');
+      problems.push(at + ' (' + e.path + '): sha256 is ' + got + ', the record says ' + e.sha256 +
+        (lf === e.sha256 ? ' — the difference is CRLF line endings only' : ' — the file that ships is not the file recorded'));
+      return;
+    }
+    const declared = (spdxOf.get(rel) || []).filter(id => !firstParty(rel, id));
+    if (declared.some(id => id !== e.spdx.trim())) {
+      problems.push(at + ' (' + e.path + '): the file declares SPDX ' + JSON.stringify(declared) + ', the record says "' + e.spdx + '"');
+      return;
+    }
+    listed.set(rel, e);
+  });
+  const unrecorded = [...shaped.keys()].filter(rel => !listed.has(rel));
+  for (const rel of unrecorded) problems.push(rel + ': ' + shaped.get(rel).join(', ') + ' — and no ' + REG_REL + ' entry');
+
+  if (problems.length) {
+    r.fail(label, problems.map(s => '  ' + s).join('\n') + '\n' +
+      'A third-party file ships with a record of where it came from, which version it is, its licence and\n' +
+      'the hash of the bytes that ship. Add an entry to ' + REG_REL + ' at the root of this tree:\n' +
+      '  { "path": "' + prefix + '<file>", "upstream": "https://…", "version": "…", "spdx": "…", "sha256": "…" }\n' +
+      '(node scripts/sha256.mjs <file> prints the hash). If the file is first-party, drop the marker instead.');
+  } else {
+    r.pass(label, subject.length + ' packaged file(s) by name, ' + textScanned + ' read for licence markers; ' +
+      (listed.size ? listed.size + ' recorded third-party file(s), each hash-matched' : 'none is third-party-shaped'));
   }
 }
 

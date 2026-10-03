@@ -396,7 +396,9 @@
       "description": [
         "Second and third copies of the melos pin: the ci.yml workspace-gate install line and the README install",
         "line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY). SAME depNameTemplate as the versions.json manager above",
-        "on purpose, so all copies share one branch; the pubspec.yaml copy joins it through the melos group rule."
+        "on purpose, so all copies share one branch; the pubspec.yaml copy joins it through the melos group rule.",
+        "⏱ 2026-10-01: a fourth copy, the time-travel.yml Dart leg's install line, which runs the workspace gate's",
+        "own `melos run test` and so must move with it (tooling/ci/test/renovate-reach.test.mjs T1 found it unreached)."
       ],
       "matchStrings": [
         "dart pub global activate melos (?<currentValue>[0-9][^\\s'\"#`]*)"
@@ -405,6 +407,7 @@
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/ci\\.yml$/",
+        "/^\\.github\\/workflows\\/time-travel\\.yml$/",
         "/^README\\.md$/"
       ]
     },
@@ -471,7 +474,9 @@
       "description": [
         "Second copy of the mason_cli pin: the ci.yml app-brick install line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
         "SAME depNameTemplate as the tooling/versions.json manager above ON PURPOSE: Renovate puts upgrades with one",
-        "branch name on one branch, so both copies move in one PR. tooling/ci/assert-renovate-reach.mjs proves it."
+        "branch name on one branch, so both copies move in one PR. tooling/ci/assert-renovate-reach.mjs proves it.",
+        "⏱ 2026-10-01: a third copy, the time-travel.yml brick leg's install line, which stamps the backend the way",
+        "ci.yml's app-brick job does and so must move with it."
       ],
       "matchStrings": [
         "dart pub global activate mason_cli (?<currentValue>[0-9][^\\s'\"#]*)"
@@ -479,7 +484,8 @@
       "depNameTemplate": "mason_cli",
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/ci\\.yml$/"
+        "/^\\.github\\/workflows\\/ci\\.yml$/",
+        "/^\\.github\\/workflows\\/time-travel\\.yml$/"
       ]
     },
     {

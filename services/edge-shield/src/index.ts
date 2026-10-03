@@ -349,7 +349,7 @@ export default {
     const route = classify(new URL(request.url), request.method);
     if (route.kind === 'jwks') return jwks(ctx, mark);
     if (route.kind === 'limit') {
-      const refused = await admit(route.cls, env);
+      const refused = await admit(route.cls, env, mark);
       if (refused) return refused;
     }
     return passThrough(request, mark);
