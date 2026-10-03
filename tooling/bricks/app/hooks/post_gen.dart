@@ -1157,7 +1157,11 @@ void _writeMsixConfig(
       )
       ..writeln('  build_windows: false')
       ..writeln('  architecture: x64')
-      ..writeln('  languages: en-us')
+      ..writeln(
+        '  # From tooling/i18n/locales.json (`node tooling/i18n/locales.mjs '
+        '--write` re-renders it; assert-locale-register fails on drift).',
+      )
+      ..writeln('  languages: ${_msixLanguages()}')
       ..writeln('  capabilities: internetClient')
       ..writeln('  output_path: build/windows/msix');
     file.writeAsStringSync(existing + buffer.toString());
@@ -1251,4 +1255,25 @@ void _writeStoreGraphics(
       'The stamped store tree is incomplete and CI will say so.',
     );
   }
+}
+
+/// The MSIX `languages:` value: the `msix` tag of every SUPPORTED row of the
+/// locale register (tooling/i18n/locales.json), comma-separated — the same
+/// string `tooling/i18n/locales.mjs --write` renders into an app's pubspec, so
+/// a stamped app is already current. Falls back to the source locale only if
+/// the register cannot be read, and says so: assert-locale-register then fails
+/// the stamped app's pubspec rather than letting the gap ship.
+String _msixLanguages() {
+  try {
+    final decoded =
+        jsonDecode(File('tooling/i18n/locales.json').readAsStringSync()) as Map;
+    final tags = <String>[
+      for (final row in decoded['locales'] as List)
+        if ((row as Map)['status'] == 'supported') row['msix'] as String,
+    ];
+    if (tags.isNotEmpty) return tags.join(', ');
+  } on Object catch (e) {
+    stderr.writeln('locale register: tooling/i18n/locales.json unreadable ($e)');
+  }
+  return 'en-us';
 }

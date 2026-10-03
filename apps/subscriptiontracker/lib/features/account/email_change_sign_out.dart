@@ -38,7 +38,7 @@ import 'package:flutter_riverpod/legacy.dart'
     show StateController, StateProvider;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 
 /// What the sign-in screen says after a confirmed e-mail change.

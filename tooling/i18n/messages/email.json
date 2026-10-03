@@ -1,0 +1,117 @@
+{
+  "$comment": [
+    "SERVER-SENT COPY, per locale of tooling/i18n/locales.json. [lane i18n-pipeline]",
+    "",
+    "digest: the renewal-reminder digest the platform Worker mails (services/platform/src/lib/reminders.ts",
+    "imports this file at build time; esbuild inlines it). The locale is the person's stored `locale`",
+    "preference; a locale with no block here, or a key missing from one, falls back to English.",
+    "",
+    "authMail: the three GoTrue templates. tooling/i18n/auth-mail.mjs renders them into",
+    "docs/platform/supabase/email-templates/*.html as ONE template each that branches on",
+    "`.Data.locale` (the account's user_metadata), English last and byte-identical to the template it",
+    "replaced, so an account with no locale — every account until the client writes one — gets",
+    "exactly the mail it got before.",
+    "",
+    "⚠️ The ta and hi copy was written by an agent session (2026-10-02) from the app's own ARB",
+    "terminology and is UNREVIEWED: it needs a native reader before it is relied on (the owner-review",
+    "rule for published copy; C-OWNER-APPROVAL-BOUNDARY). tooling/i18n/translation-qa.mjs writes the",
+    "review sheet. `{name}`-style placeholders are filled by the renderer, never translated."
+  ],
+  "digest": {
+    "en": {
+      "subjectOne": "{name} renews on {date}",
+      "subjectMany": "{count} subscriptions renew by {date}",
+      "intro": "These subscriptions renew soon:",
+      "why": "You get this because you switched on renewal reminder emails in {app}.",
+      "change": "Change them in the app",
+      "stop": "Stop these emails",
+      "cycle": { "weekly": "weekly", "monthly": "monthly", "quarterly": "quarterly", "yearly": "yearly" }
+    },
+    "ta": {
+      "subjectOne": "{name} {date} அன்று புதுப்பிக்கப்படும்",
+      "subjectMany": "{date}க்குள் {count} சந்தாக்கள் புதுப்பிக்கப்படும்",
+      "intro": "இந்தச் சந்தாக்கள் விரைவில் புதுப்பிக்கப்படும்:",
+      "why": "{app} இல் புதுப்பிப்பு நினைவூட்டல் மின்னஞ்சல்களை இயக்கியதால் இதைப் பெறுகிறீர்கள்.",
+      "change": "பயன்பாட்டில் அவற்றை மாற்றவும்",
+      "stop": "இந்த மின்னஞ்சல்களை நிறுத்து",
+      "cycle": { "weekly": "வாராந்திரம்", "monthly": "மாதாந்திரம்", "quarterly": "காலாண்டுக்கு ஒருமுறை", "yearly": "ஆண்டுதோறும்" }
+    },
+    "hi": {
+      "subjectOne": "{name} का नवीनीकरण {date} को है",
+      "subjectMany": "{date} तक {count} सदस्यताओं का नवीनीकरण होगा",
+      "intro": "इन सदस्यताओं का नवीनीकरण जल्द होगा:",
+      "why": "आपको यह इसलिए मिल रहा है क्योंकि आपने {app} में नवीनीकरण रिमाइंडर ईमेल चालू किए हैं।",
+      "change": "ऐप में इन्हें बदलें",
+      "stop": "ये ईमेल बंद करें",
+      "cycle": { "weekly": "साप्ताहिक", "monthly": "मासिक", "quarterly": "त्रैमासिक", "yearly": "वार्षिक" }
+    }
+  },
+  "authMail": {
+    "en": {
+      "copyLink": "If the button doesn't work, copy this link into your browser:",
+      "sentBy": "Sent by Nikatru",
+      "confirm-signup": {
+        "heading": "Confirm your email",
+        "body": "Welcome to Nikatru. Tap the button below to\n            confirm <strong>{{ .Email }}</strong> and activate your account.",
+        "button": "Confirm email",
+        "ignore": "Didn't create this account? You can safely ignore this email."
+      },
+      "magic-link": {
+        "heading": "Your sign-in link",
+        "body": "Tap the button below to sign in to Nikatru as <strong>{{ .Email }}</strong>.\n            This link can only be used once.",
+        "button": "Sign in to Nikatru",
+        "ignore": "Didn't request this link? You can safely ignore this email."
+      },
+      "reset-password": {
+        "heading": "Reset your password",
+        "body": "We received a request to reset the password for <strong>{{ .Email }}</strong>.\n            Tap the button below to choose a new one.",
+        "button": "Reset password",
+        "ignore": "Didn't request a password reset? You can safely ignore this email — your password is unchanged."
+      }
+    },
+    "ta": {
+      "copyLink": "பொத்தான் வேலை செய்யவில்லை என்றால், இந்த இணைப்பை உங்கள் உலாவியில் நகலெடுக்கவும்:",
+      "sentBy": "Nikatru அனுப்பியது",
+      "confirm-signup": {
+        "heading": "உங்கள் மின்னஞ்சலை உறுதிசெய்யவும்",
+        "body": "Nikatru-க்கு வரவேற்கிறோம். <strong>{{ .Email }}</strong> ஐ உறுதிசெய்து உங்கள் கணக்கைச் செயல்படுத்த\n            கீழே உள்ள பொத்தானைத் தட்டவும்.",
+        "button": "மின்னஞ்சலை உறுதிசெய்",
+        "ignore": "இந்தக் கணக்கை நீங்கள் உருவாக்கவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம்."
+      },
+      "magic-link": {
+        "heading": "உங்கள் உள்நுழைவு இணைப்பு",
+        "body": "<strong>{{ .Email }}</strong> ஆக Nikatru-இல் உள்நுழைய கீழே உள்ள பொத்தானைத் தட்டவும்.\n            இந்த இணைப்பை ஒருமுறை மட்டுமே பயன்படுத்த முடியும்.",
+        "button": "Nikatru-இல் உள்நுழை",
+        "ignore": "இந்த இணைப்பை நீங்கள் கோரவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம்."
+      },
+      "reset-password": {
+        "heading": "உங்கள் கடவுச்சொல்லை மீட்டமைக்கவும்",
+        "body": "<strong>{{ .Email }}</strong> க்கான கடவுச்சொல்லை மீட்டமைக்கக் கோரிக்கை வந்துள்ளது.\n            புதிய ஒன்றைத் தேர்வுசெய்ய கீழே உள்ள பொத்தானைத் தட்டவும்.",
+        "button": "கடவுச்சொல்லை மீட்டமை",
+        "ignore": "கடவுச்சொல் மீட்டமைப்பை நீங்கள் கோரவில்லையா? இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம் — உங்கள் கடவுச்சொல் மாறவில்லை."
+      }
+    },
+    "hi": {
+      "copyLink": "अगर बटन काम न करे, तो यह लिंक अपने ब्राउज़र में कॉपी करें:",
+      "sentBy": "Nikatru द्वारा भेजा गया",
+      "confirm-signup": {
+        "heading": "अपना ईमेल कन्फ़र्म करें",
+        "body": "Nikatru में आपका स्वागत है। <strong>{{ .Email }}</strong> कन्फ़र्म करने और अपना खाता चालू करने के लिए\n            नीचे दिया बटन टैप करें।",
+        "button": "ईमेल कन्फ़र्म करें",
+        "ignore": "यह खाता आपने नहीं बनाया? आप इस ईमेल को अनदेखा कर सकते हैं।"
+      },
+      "magic-link": {
+        "heading": "आपका साइन-इन लिंक",
+        "body": "<strong>{{ .Email }}</strong> के रूप में Nikatru में साइन इन करने के लिए नीचे दिया बटन टैप करें।\n            यह लिंक सिर्फ़ एक बार इस्तेमाल हो सकता है।",
+        "button": "Nikatru में साइन इन करें",
+        "ignore": "यह लिंक आपने नहीं माँगा? आप इस ईमेल को अनदेखा कर सकते हैं।"
+      },
+      "reset-password": {
+        "heading": "अपना पासवर्ड रीसेट करें",
+        "body": "हमें <strong>{{ .Email }}</strong> का पासवर्ड रीसेट करने का अनुरोध मिला है।\n            नया पासवर्ड चुनने के लिए नीचे दिया बटन टैप करें।",
+        "button": "पासवर्ड रीसेट करें",
+        "ignore": "पासवर्ड रीसेट आपने नहीं माँगा? आप इस ईमेल को अनदेखा कर सकते हैं — आपका पासवर्ड नहीं बदला है।"
+      }
+    }
+  }
+}

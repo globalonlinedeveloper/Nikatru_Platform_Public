@@ -15,7 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import '../auth/connected_accounts_sheet.dart' show showConnectedAccountsSheet;
 import '../shared/chassis_adapters.dart' show DevicesSection;
