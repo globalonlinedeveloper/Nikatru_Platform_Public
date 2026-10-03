@@ -107,7 +107,14 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
   if (EDGE_RETRY_STATUSES.includes(res.status)) {
     const first = res.status;
     await sleep(RETRY_GAP_MS);
-    res = await post();
+    // The retry's own timeout or network error keeps the FIRST status in its
+    // message (PR #1177 review, finding 4): both attempts are named, always.
+    try {
+      res = await post();
+    } catch (e) {
+      const why = e instanceof MagicLinkRefused ? e.message : `${e?.name ?? 'Error'}: ${e?.message ?? e}`;
+      throw new MagicLinkRefused(`generate_link failed: HTTP ${first}, then on the one retry: ${why}`);
+    }
     if (!res.ok) {
       throw new MagicLinkRefused(`generate_link failed: HTTP ${first}, then HTTP ${res.status} on the one retry\n${await res.text()}`);
     }

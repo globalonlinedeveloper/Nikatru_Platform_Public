@@ -10,10 +10,15 @@
 // runner lost mid-job) already left, at the start of the next E2E run.
 //
 // 🔴 WHAT IT MAY SELECT — ALL OF THESE, OR THE USER IS NEVER TOUCHED:
-//   · its email is EXACTLY tooling/e2e/e2e_email.mjs's E2E_EMAIL_SHAPE — the
-//     provisioner's own prefix, a 13-digit tag, @nikatru.com, anchored at both
-//     ends. GoTrue's `filter` narrows the list server-side, but it is a substring
-//     match and is never trusted: every row is held to the shape here;
+//   · its email is EXACTLY tooling/e2e/e2e_email.mjs's E2E_SWEEPABLE_SHAPE
+//     MARKED FOR E2E_APP_ID — the provisioner's own prefix, this app's id, a
+//     13-digit tag, @nikatru.com, anchored at both ends. Only e2e.yml marks an
+//     address (E2E_SWEEP_APP), so a store capture's user (rows in the SANDBOX
+//     databases), a native-auth-proof user and another app's user are never in
+//     reach: the sweep purges rows only where THIS app's e2e.yml users keep them,
+//     and never deletes an identity whose rows it could not reach (PR #1177
+//     review, finding 3). GoTrue's `filter` narrows the list server-side, but it
+//     is a substring match and is never trusted: every row is held to the shape;
 //   · its id is a UUID (it is interpolated into the DELETE path);
 //   · BOTH witnesses of age — GoTrue's `created_at` and the address's own tag —
 //     are older than STALE_AFTER_MS (2 h). Every job that provisions one of these
@@ -23,22 +28,30 @@
 // At most SWEEP_CAP (20) users per run, oldest first. It prints COUNTS and user
 // ids, never an address.
 //
-// Each selected user goes through the SAME path the always() purge uses
-// (tooling/e2e/purge_requests.mjs purgeUserTables + purgeAuthUser), against
-// E2E_APP_ID's database as tooling/e2e/backend.mjs resolves it. A second leg
-// sweeping the same user concurrently is harmless: the D1 deletes are idempotent
-// and the identity delete forgives 404.
+// Each selected user goes through the SAME per-user path the always() purge
+// uses (tooling/e2e/purge_requests.mjs purgeUserTables + purgeAuthUser), against
+// E2E_APP_ID's PRODUCTION database as tooling/e2e/backend.mjs resolves it — the
+// database purge.mjs purges for e2e.yml. (The consent artifact purge.mjs also
+// deletes is keyed by the browser profile's anon_id, not by the user, so no
+// sweep can find it.) A second leg sweeping the same user concurrently is
+// harmless: the D1 deletes are idempotent and the identity delete forgives 404.
+//
+// ⏱ 2026-10-03 — 🔴 A FAILED SWEEP NEVER FAILS THE E2E (PR #1177 review,
+// finding 2). This is best-effort hygiene in front of the proof that grades
+// production health; an auth 5xx, a timeout, a refusal or any throw here prints
+// ONE `::warning::` with the failure count and the status (never an address)
+// and exits 0, so the run goes on to provision and prove. Only the always()
+// purge of THIS run's users is mandatory, and it stays so.
 //
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLOUDFLARE_ACCOUNT_ID,
 //      CLOUDFLARE_API_TOKEN, E2E_APP_ID.
-// Exit 0 swept (or nothing to sweep) · 1 a refusal, a list that could not be
-// read, or a user that was not fully purged.
+// Exit 0, always: swept, nothing to sweep, or a `::warning::` saying why not.
 // ─────────────────────────────────────────────────────────────────────────────
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { e2eEmailTagMs, E2E_EMAIL_PREFIX } from './e2e_email.mjs';
+import { e2eSweepTagMs, E2E_EMAIL_PREFIX } from './e2e_email.mjs';
 import { purgeClient, purgeUserTables, purgeAuthUser, PLAIN_TABLE } from './purge_requests.mjs';
-import { e2eTargetOrExit } from './backend.mjs';
+import { BackendRefused, backendOf, e2eAppOf } from './backend.mjs';
 import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 /** A user younger than this may belong to a run still in flight. */
@@ -51,16 +64,17 @@ export const LIST_MAX_PAGES = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The users a sweep may delete, from GoTrue user objects: the ids of those that
- * pass every rule in the header, oldest first, at most `cap`. `matched` counts
- * the rows of the E2E shape at any age; `young` those of them kept for age.
+ * The users a sweep for [appId] may delete, from GoTrue user objects: the ids of
+ * those that pass every rule in the header, oldest first, at most `cap`.
+ * `matched` counts the rows marked for [appId] at any age; `young` those of them
+ * kept for age. Without an app id nothing is ever selected.
  */
-export function selectStale(users, { nowMs = Date.now(), staleAfterMs = STALE_AFTER_MS, cap = SWEEP_CAP } = {}) {
+export function selectStale(users, { appId, nowMs = Date.now(), staleAfterMs = STALE_AFTER_MS, cap = SWEEP_CAP } = {}) {
   const stale = [];
   let matched = 0;
   let young = 0;
   for (const u of users ?? []) {
-    const tagMs = e2eEmailTagMs(u?.email);
+    const tagMs = e2eSweepTagMs(u?.email, appId);
     if (tagMs === null) continue;
     if (typeof u.id !== 'string' || !UUID.test(u.id)) continue;
     matched++;
@@ -77,9 +91,11 @@ export function selectStale(users, { nowMs = Date.now(), staleAfterMs = STALE_AF
 
 /**
  * Lists, selects and purges. Never throws for a request: a list that cannot be
- * read is `listFailed`, and every purge failure is counted in `failures`.
+ * read is `listFailed` with its `status` (an HTTP code or an error name, never
+ * the error's text, which could quote a response holding addresses), and every
+ * purge failure is counted in `failures`.
  */
-export async function sweepStale(client, { dbId, userTables, nowMs = Date.now(), log = console.log, warn = console.error } = {}) {
+export async function sweepStale(client, { appId, dbId, userTables, nowMs = Date.now(), log = console.log, warn = console.error } = {}) {
   const users = [];
   let partial = false;
   try {
@@ -90,10 +106,11 @@ export async function sweepStale(client, { dbId, userTables, nowMs = Date.now(),
       if (page === LIST_MAX_PAGES) partial = true;
     }
   } catch (e) {
-    warn(`WARN: the stale sweep could not list auth users, so it swept nothing: ${e.message}`);
-    return { listFailed: true, failures: 1, purged: 0, selected: 0 };
+    const status = statusOf(e);
+    warn(`WARN: the stale sweep could not list auth users (${status}), so it swept nothing`);
+    return { listFailed: true, status, failures: 1, purged: 0, selected: 0 };
   }
-  const sel = selectStale(users, { nowMs });
+  const sel = selectStale(users, { appId, nowMs });
   log(
     `stale sweep: ${sel.matched} throwaway E2E user(s) listed, ${sel.young} younger than ${STALE_AFTER_MS / 3_600_000} h kept, ` +
       `${sel.stale} stale, ${sel.ids.length} selected (cap ${SWEEP_CAP})` +
@@ -106,44 +123,69 @@ export async function sweepStale(client, { dbId, userTables, nowMs = Date.now(),
     failures += f;
     if (f === 0) purged++;
   }
-  return { listFailed: false, failures, purged, selected: sel.ids.length };
+  return { listFailed: false, status: failures > 0 ? 'a purge request failed' : 'ok', failures, purged, selected: sel.ids.length };
+}
+
+/** An error's HTTP status (`HTTP 503`) when its message carries one, `no answer`
+ *  for a timeout or a lost connection, else its name — never its text. */
+export function statusOf(e) {
+  const msg = String(e?.message ?? '');
+  const m = /\bHTTP (\d{3})\b/.exec(msg);
+  if (m) return `HTTP ${m[1]}`;
+  if (e?.name === 'TimeoutError' || /did not answer|timed out|fetch failed/i.test(msg)) return 'no answer (a timeout or a lost connection)';
+  return String(e?.name ?? 'Error');
+}
+
+/** The ONE warning a sweep that did not finish prints (GitHub annotates it). */
+export function sweepWarning({ failures, status, purged = 0, selected = 0 }) {
+  return (
+    `::warning title=Stale E2E user sweep::the sweep did not finish (${failures} failure(s), ${status}); ` +
+    `${purged} of ${selected} selected user(s) fully purged. The E2E run continues; this run's own users are still purged by its always() steps.`
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const need = (name) => {
-    const v = process.env[name];
-    if (!v) {
-      console.error(`Missing required env var: ${name}`);
-      process.exit(1);
-    }
-    return v;
+  try {
+    await main();
+  } catch (e) {
+    // Anything unforeseen is a warning too: the sweep never fails the E2E.
+    console.log(sweepWarning({ failures: 1, status: statusOf(e) }));
+  }
+}
+
+async function main() {
+  // Every refusal is a warning and exit 0 (the header), and every exit is above
+  // the first request (purge.mjs's header: an exit over an open undici handle
+  // crashes libuv on Windows). Below the first request nothing exits; the code
+  // stays 0.
+  const skip = (status) => {
+    console.log(sweepWarning({ failures: 1, status: `REFUSED: ${status}; nothing was sent` }));
+    process.exit(0);
   };
-  // Every exit is above the first request (purge.mjs's header: an exit over an
-  // open undici handle crashes libuv on Windows and reports 127).
+  const need = (name) => process.env[name] || skip(`${name} is not set`);
   let supaUrl;
   try {
     supaUrl = credentialOrigin(need('SUPABASE_URL'), 'supabase');
   } catch (e) {
     if (!(e instanceof CredentialOriginRefused)) throw e;
-    console.error(`SUPABASE_URL: ${e.message}. Exit 1: nothing was sent.`);
-    process.exit(1);
+    skip('SUPABASE_URL is not a pinned credential origin');
   }
   const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
   const acct = need('CLOUDFLARE_ACCOUNT_ID');
   const token = need('CLOUDFLARE_API_TOKEN');
-  const { appDb: dbId, userTables } = e2eTargetOrExit(need('E2E_APP_ID'), { env: 'production', code: 1, prefix: 'REFUSED' });
-  const bad = userTables.filter((t) => !PLAIN_TABLE.test(t));
-  if (bad.length > 0) {
-    console.error(`REFUSED: ${JSON.stringify(bad)} is not a plain table name. Nothing was swept.`);
-    process.exit(1);
+  const appId = need('E2E_APP_ID');
+  let dbId;
+  let userTables;
+  try {
+    ({ appDb: dbId } = backendOf(appId, { env: 'production' }));
+    ({ userTables } = e2eAppOf(appId));
+  } catch (e) {
+    if (!(e instanceof BackendRefused)) throw e;
+    skip('E2E_APP_ID resolves to no app database');
   }
+  if (userTables.some((t) => !PLAIN_TABLE.test(t))) skip('a user table is not a plain table name');
 
-  const client = purgeClient({ acct, token, supaUrl, serviceKey });
-  const r = await sweepStale(client, { dbId, userTables });
-  if (r.failures > 0) {
-    console.error(`Stale sweep finished with ${r.failures} failure(s); ${r.purged} of ${r.selected} selected user(s) fully purged.`);
-    process.exitCode = 1;
-  } else {
-    console.log(`Stale sweep complete: ${r.purged} user(s) purged.`);
-  }
+  const r = await sweepStale(purgeClient({ acct, token, supaUrl, serviceKey }), { appId, dbId, userTables });
+  if (r.failures > 0) console.log(sweepWarning(r));
+  else console.log(`Stale sweep complete: ${r.purged} user(s) purged.`);
 }
