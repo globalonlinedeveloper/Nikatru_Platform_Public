@@ -210,8 +210,8 @@ function refusedBy(verdict: StrictVerdict): Response | null {
  *      then the challenge's MAC, app and expiry (challengeIsOurs);
  *   5. the kind's per-network ceiling;
  *   6. the body, then the D1 redemption (single use — burned pass or fail);
- *   7. the proof (verifyOp: shape, per-network daily share, global ceiling,
- *      and only then Google; or the key's signature, then its daily budget).
+ *   7. the proof (verifyOp: shape, then the Play token decrypted, verified and
+ *      graded locally — no Google call; or the key's signature, then its daily budget).
  * So a malformed proof or a forged challenge costs no limiter, no D1 and no
  * crypto beyond one HMAC.
  *
@@ -252,7 +252,7 @@ async function admit(
   }
   // Each kind's own per-network ceiling, all FAIL CLOSED like the two above:
   // key registration's for every kind; the unattested kind's, far tighter; and
-  // Play Integrity's, spent BEFORE a decode is asked of Google (review of #1070).
+  // Play Integrity's, spent BEFORE a proof is decrypted and verified (review of #1070).
   if (op === 'install') {
     const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_INSTALL_LIMITER, c, 'NATIVE_AUTH_INSTALL_LIMITER'));
     if (r) return r;
