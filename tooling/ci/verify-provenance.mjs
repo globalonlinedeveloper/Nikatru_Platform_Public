@@ -4,7 +4,7 @@
 // build-provenance attestation this lane can VERIFY, before the release is
 // described, checksummed or published.
 //
-// ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE, build-provenance). The
+// ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it), build-provenance). The
 // release jobs (build-platforms.yml `release`, extensions.yml `release`) run
 // actions/attest-build-provenance over their release directory; this wrapper
 // then runs `gh attestation verify <file> --repo <owner/repo> --signer-workflow

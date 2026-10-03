@@ -1082,7 +1082,7 @@ when somebody widens this path.
 assert-channel-register.mjs asserts the aggregator `needs` EVERY other job
 in the file, so a durable-release job outside it could fail while "All 6
 platforms built" still printed. ⏱ 2026-10-01: `durable_symbols` (the tag's symbols to R2,
-O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS) joins it on the same terms. ⏱ 2026-10-03: so does `attest`, the attest-only job that signs and verifies every release file (O-RELEASES-HAVE-NO-PROVENANCE): a run whose files did not verify is red. It is also why `release` carries NO
+O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it)) joins it on the same terms. ⏱ 2026-10-03: so does `attest`, the attest-only job that signs and verifies every release file (O-RELEASES-HAVE-NO-PROVENANCE): a run whose files did not verify is red. It is also why `release` carries NO
 job-level `if:` — a conditional job resolves to `skipped`, and this
 aggregator (correctly) treats `skipped` as not-green. The tag-only part of
 that job is therefore a STEP-level condition, which leaves the job itself

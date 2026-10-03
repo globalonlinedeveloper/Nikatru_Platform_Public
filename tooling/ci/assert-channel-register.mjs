@@ -1264,6 +1264,16 @@ for (const c of channels) {
             );
           } else {
             submissionsResolved++;
+            // ⏱ 2026-10-03 (review of #1187, finding 4; review AA-18, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT (absent from open.json until the next Private pass records it)): the job
+            // that runs a submission script rehearses it on the BUILT artifact. `--allow-missing-artifact` lets the script
+            // validate a listing with no package on disk, which is how the Apple lane validated nothing signed; the flag
+            // is for a laptop, never a lane. Comment lines are skipped: a `# why:` may name the flag it forbids.
+            const blind = (wf.jobs.get(sub.job) ?? []).filter((l) => !/^\s*#/.test(l) && /--allow-missing-artifact\b/.test(l));
+            if (blind.length) {
+              problems.push(
+                `${where}: job "${sub.job}" in ${sub.workflow} runs with --allow-missing-artifact (${blind[0].trim().slice(0, 120)}). A rehearsal that tolerates a missing package validates a listing and never the bytes the store receives; build and sign the artifact in the lane instead.`,
+              );
+            }
           }
         }
       }

@@ -27,7 +27,7 @@ on:
         default: ''
         type: string
 
-  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
+  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)): a
   # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
   # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
   # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
@@ -62,9 +62,9 @@ jobs:
       # before it reads the set, and one outside the set naming the set; only then is it an output.
       - name: The app input names one app of the workspace
         id: app
-        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
-        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
-        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+        # why: a SCHEDULED run has no input, so its app comes from the workspace set, read from the emitter,
+        # never written here. One app is that app; a set of more than one ROTATES, one app a week, and the
+        # step names the turn (tooling/ci/scheduled-rehearsal.mjs; review of #1187, finding 5): it never refuses.
         env:
           APP_INPUT: ${{ inputs.app }}
           EVENT_NAME: ${{ github.event_name }}
@@ -72,7 +72,7 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" = schedule ]; then
             apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
-            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
+            APP_INPUT="$(node tooling/ci/scheduled-rehearsal.mjs --apps "$apps")"
           fi
           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
@@ -386,7 +386,7 @@ jobs:
           retention-days: 90
           if-no-files-found: error
       # why: BEFORE the store upload, and the one copy of this build's mapping that outlives the run: a store
-      # serves the build for years and the artifact above expires at 90 days (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
+      # serves the build for years and the artifact above expires at 90 days (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it)).
       # Private R2, keyed symbols/<app>/<channel>/<version>+<build>/; the record below carries its sha256.
       # assert-obfuscation-coupled.mjs limb DURABLE holds it before the `--submit` step.
       - name: Copy this build's symbols to the release store (R2), before the upload
@@ -403,7 +403,7 @@ jobs:
             --version "${release_line}.${RUN_NUMBER}" --build "$RUN_NUMBER" \
             --dir "apps/${APP}/build/symbols/windows" --out "${RUNNER_TEMP}/symbols-record.json"
       # why: BEFORE the upload — fails at 80% of the store's stated limit, warns at 2× the median the ledger's
-      # earlier records carry (tooling/channel-register.json storeSizeLimit; O-ARTIFACT-SIZES-UNRECORDED).
+      # earlier records carry (tooling/channel-register.json storeSizeLimit; O-ARTIFACT-SIZES-UNRECORDED (absent from open.json until the next Private pass records it)).
       - name: The windows-store artifact is within its store's size limit
         shell: bash
         env:
@@ -468,6 +468,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
-          # why: the bytes the store received, named in the record by sha256 and size (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST).
+          # why: the bytes the store received, named in the record by sha256 and size (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it)).
           MSIX: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
         run: node tooling/ci/record-deployment.mjs "${APP}-windows-store" --state in_review --listing-url "$LISTING_URL" --mode production --artifact "$MSIX" --build-number "$RUN_NUMBER" --symbols-record "${RUNNER_TEMP}/symbols-record.json"

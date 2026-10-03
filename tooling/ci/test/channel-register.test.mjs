@@ -214,7 +214,7 @@ const deferredWindowsStore = () => ({
  *  what makes "the job never invokes that script" a case that can be written. */
 const SUBMIT_WORKFLOW = '.github/workflows/submit-thing.yml';
 const SUBMIT_SCRIPT = 'tooling/release/submit-thing.mjs';
-const submitWorkflow = ({ jobRunsScript = true } = {}) =>
+const submitWorkflow = ({ jobRunsScript = true, dryRunFlags = '' } = {}) =>
   [
     'name: Submit',
     'on:',
@@ -227,7 +227,8 @@ const submitWorkflow = ({ jobRunsScript = true } = {}) =>
     '  dry-run:',
     '    runs-on: ubuntu-24.04',
     '    steps:',
-    `      - run: ${jobRunsScript ? `node ${SUBMIT_SCRIPT} --dry-run` : 'echo nothing'}`,
+    `      - run: ${jobRunsScript ? `node ${SUBMIT_SCRIPT} --dry-run${dryRunFlags}` : 'echo nothing'}`,
+    '      # why: NO --allow-missing-artifact here (a comment naming the flag is not a call)',
     '',
   ].join('\n');
 
@@ -477,6 +478,7 @@ function tree({
   submissionScriptOnDisk = true,
   submissionWorkflowOnDisk = true,
   jobRunsScript = true,
+  dryRunFlags = '',
   // The PACKAGING half of a submission block. Off by default for the same
   // reason `withSubmission` is: every existing case keeps its exact output.
   withRecipeScript = false,
@@ -768,7 +770,7 @@ function tree({
   if (withSubmission) {
     if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the submission path\n");
     if (submissionScriptOnDisk || (withRecipeScript && recipeScriptOnDisk)) write('tooling/release/submit-common.mjs', '// RELEASE_LIBRARIES member\n');
-    if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
+    if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript, dryRunFlags }));
     if (withRecipeScript) {
       if (recipeScriptOnDisk) write(RECIPE_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the packaging path\n");
       write(PACKAGE_WORKFLOW, packageWorkflow({ invoked: recipeScriptInvoked }));
@@ -1455,6 +1457,15 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   // 🔴 THE CASE THAT MAKES THE OTHER THREE MEAN SOMETHING. A real script and a
   // real job that have nothing to do with each other pass every existence check
   // and are not a wired submission path.
+  // ⏱ 2026-10-03 (review of #1187, finding 4; AA-18): the rehearsal runs on the built artifact, never past a missing one.
+  test('FAILS when the submission job runs its script with --allow-missing-artifact (a comment naming it does not count)', () => {
+    const green = run(tree({ withSubmission: true }));
+    assert.equal(green.code, 0, green.out);
+    const { code, out } = run(tree({ withSubmission: true, dryRunFlags: ' --allow-missing-artifact' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /runs with --allow-missing-artifact/);
+  });
+
   test('FAILS when the named job exists but never invokes the named script', () => {
     const { code, out } = run(tree({ withSubmission: true, jobRunsScript: false }));
     assert.equal(code, 1, out);

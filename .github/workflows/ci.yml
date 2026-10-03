@@ -784,7 +784,7 @@ jobs:
       - name: No release lane finishes with the artifact stuck inside the run
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-durable.mjs
-      # why: O-RELEASES-HAVE-NO-PROVENANCE. Every release job attests and verifies its directory before
+      # why: O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it). Every release job attests and verifies its directory before
       # it is described, and no other job holds id-token or attestations write.
       - name: Every release file is attested and verified, and only a release job can sign
         if: ${{ !cancelled() }}

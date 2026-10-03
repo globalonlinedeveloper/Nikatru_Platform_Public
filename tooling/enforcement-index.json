@@ -3477,6 +3477,19 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/submit-appstore.yml#gate",
+      ".github/workflows/submit-play.yml#gate",
+      ".github/workflows/submit-snap.yml#gate",
+      ".github/workflows/submit-windows-store.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/scheduled-rehearsal.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/signing-seam.mjs",

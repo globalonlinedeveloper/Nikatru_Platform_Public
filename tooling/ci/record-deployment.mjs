@@ -87,8 +87,8 @@
 //       flag is optional, and `--mode production` only adds `payload.mode`.
 //   node tooling/ci/record-deployment.mjs <app>-<store channel> … --artifact <file> --build-number <n> \
 //        [--symbols-record <file.json>]
-//     → ⏱ 2026-10-01 · THE BYTES THE STORE RECEIVED (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST,
-//       O-ARTIFACT-SIZES-UNRECORDED; review AA-12, AA-21). `payload.artifact` is
+//     → ⏱ 2026-10-01 · THE BYTES THE STORE RECEIVED (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it),
+//       O-ARTIFACT-SIZES-UNRECORDED (absent from open.json until the next Private pass records it); review AA-12, AA-21). `payload.artifact` is
 //       {name, sha256, size, buildNumber} of the file read HERE, so the ledger names the bytes and
 //       not only the commit; `payload.symbols` is r2-durable-copy.mjs's record of the build's
 //       symbols {r2Key, sha256, size, stored}. Store rows only (kind: store); --artifact and

@@ -1597,7 +1597,7 @@ jobs:
         run: node tooling/ci/assert-release-json.mjs --dir extensions/dist
 
       # why: the attest job signs EVERY file of this directory, release.json and both checksum files included, so
-      # it takes the directory as it stands after all are written (O-RELEASES-HAVE-NO-PROVENANCE). The dry-run
+      # it takes the directory as it stands after all are written (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it)). The dry-run
       # guard: a rehearsal attests nothing (an attestation leaves the run), so it hands nothing over.
       - name: Hand the attest job the release directory, release.json and the checksum files included
         if: inputs.dry_run != true
@@ -1689,7 +1689,7 @@ jobs:
   # checksum-verified -- never a fresh pack, so the store receives the bytes the rehearsal graded
   # and the Release published. The release job stays unbound: a tag push and a rehearsal never
   # wait for a reviewer. Store secrets stay repository secrets, named on the steps that use them.
-  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE; review of #1187, findings 2 and 3). The ONLY job in this file
+  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it); review of #1187, findings 2 and 3). The ONLY job in this file
   # that can sign: id-token and attestations write are granted here alone (assert-build-provenance.mjs limb F), so
   # no step of the release job — npm ci, the pack scripts — can mint an OIDC token. It attests every release file,
   # release.json and both checksum files included, reads each back with gh attestation verify pinned to this
@@ -1937,7 +1937,7 @@ jobs:
           LISTING_URL: ${{ steps.amo.outputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
         # why --artifact: the record names the zip AMO was sent by sha256 and size, not only the commit
-        # (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST; assert-release-provenance.mjs limb 5).
+        # (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it); assert-release-provenance.mjs limb 5).
         run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL" --mode production --artifact "release-assets/${TOOL}-firefox.zip" --build-number "$RUN_NUMBER"
 
       # why: in this job and only for this store's word (EXT-3): the verdict is the register's, read
@@ -2267,7 +2267,7 @@ jobs:
           }
 
           # The attest job is NOT a lane: it runs after every successful release job but a dry-run rehearsal's
-          # (O-RELEASES-HAVE-NO-PROVENANCE). That release must see it succeed; every other event must leave it SKIPPED.
+          # (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it)). That release must see it succeed; every other event must leave it SKIPPED.
           if [ "$RELEASE" = success ] && [ "${DRY_RUN:-}" != true ]; then
             case "$ATTEST" in
               success) ;;

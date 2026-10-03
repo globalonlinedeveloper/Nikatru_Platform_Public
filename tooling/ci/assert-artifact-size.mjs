@@ -3,7 +3,7 @@
 // assert-artifact-size.mjs — a store artifact is held to its store's size limit
 // BEFORE it is uploaded, and a sudden growth is said out loud.
 //
-// ⏱ ADDED 2026-10-01 (O-ARTIFACT-SIZES-UNRECORDED, review AA-21). No step in this
+// ⏱ ADDED 2026-10-01 (O-ARTIFACT-SIZES-UNRECORDED (absent from open.json until the next Private pass records it), review AA-21). No step in this
 // repository read the size of anything it shipped: the 379.9 MB macOS .app was
 // found by a reviewer reading an artifact list, not by a check. Two rules, both
 // read from the channel's row in tooling/channel-register.json:

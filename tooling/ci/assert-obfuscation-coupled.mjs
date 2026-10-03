@@ -699,7 +699,7 @@ for (const [key, why] of sinkExempt) {
   }
 }
 
-// ── LIMB DURABLE — ⏱ 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07) ──
+// ── LIMB DURABLE — ⏱ 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it), review AA-07) ──
 // The COUPLING limb accepts an `actions/upload-artifact` of the mapping, and every
 // store build's mapping lived exactly there: 90 days, while the store serves the
 // build for years. So a build that LEAVES for a store, or for a Release, must first
@@ -732,7 +732,7 @@ for (const wf of workflows) {
       problems.push(
         `DURABLE ${wf.rel} job "${job.name}" submits to a store at :${submitAt} and ${copyAt === null ? 'never runs' : `runs only AFTER it (:${copyAt})`} ` +
           '`tooling/ci/r2-durable-copy.mjs --kind symbols`. The build\'s mapping would outlive the run only as a 90-day artifact, and a copy after the upload ' +
-          'does not run when the upload fails. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS',
+          'does not run when the upload fails. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it)',
       );
     }
   }
@@ -751,7 +751,7 @@ for (const wf of workflows) {
       problems.push(
         `DURABLE ${wf.rel} job "${job.name}" publishes a GitHub Release from obfuscated builds, and neither it nor any job it needs runs ` +
           '`tooling/ci/r2-durable-copy.mjs --kind symbols`. The tag\'s mappings — the apps.gov.in .apk a person uploads from that Release among them — ' +
-          'would exist only as 90-day artifacts. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS',
+          'would exist only as 90-day artifacts. O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it)',
       );
     }
   }

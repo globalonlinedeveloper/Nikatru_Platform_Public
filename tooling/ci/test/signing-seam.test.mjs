@@ -138,7 +138,7 @@ describe('signing-seam · releaseSignal (the ref half)', () => {
   });
 });
 
-// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): limb (c).
+// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): limb (c).
 describe('signing-seam · the platform proof is a release lane (limb c)', () => {
   const PROOF = '.github/workflows/build-platforms.yml';
   const armed = { id: 'fixture-a', submittable: true, served: false, lane: LANE, submission: { workflow: SUB } };

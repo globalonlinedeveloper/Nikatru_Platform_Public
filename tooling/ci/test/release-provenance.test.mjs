@@ -2705,7 +2705,7 @@ describe('assert-release-provenance — limb 2b, the sandbox exemption', () => {
   });
 });
 
-// ⏱ ADDED 2026-10-01 — limb 5 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST, review AA-12). A
+// ⏱ ADDED 2026-10-01 — limb 5 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it), review AA-12). A
 // production record a `--submit` job writes names the bytes the store received. Green
 // control first; then each mutation that must fail.
 describe('assert-release-provenance — limb 5: a production submission record passes --artifact', () => {

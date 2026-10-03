@@ -963,7 +963,7 @@ export function gradeRunHistory(read, nowMs) {
 }
 
 // ── 🔴 THE STORE LANES' REHEARSALS, GRADED FOR AGE TOO (`--store-lanes`) ────────
-// ⏱ ADDED 2026-10-01 (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE). The four
+// ⏱ ADDED 2026-10-01 (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)). The four
 // submit-*.yml dry runs were dispatch-only and nothing graded their freshness:
 // the Apple and Windows lanes had run once ever and the Snap lane last passed
 // 2026-08-09, while every row they rehearse was ARMED. The same two pieces as the
@@ -988,9 +988,21 @@ export function gradeRunHistory(read, nowMs) {
 // PRINTS ⬜ and from it the same answer FAILS. Two weekly cycles fit before it.
 // Delete the date, not the limb, once every lane has rehearsed on its timer.
 //
+// ⏱ 2026-10-03 (review of #1187, finding 5): A STALE LANE NEVER GATES A PULL
+// REQUEST. A rehearsal goes stale for reasons no PR causes (a store secret not yet
+// set, an outage), and ci.yml runs this on every PR, so from STORE_LANE_DEADLINE a
+// stale lane would have turned EVERY PR's ci-gate red at once. On a `pull_request`
+// run the same verdict PRINTS, owned by STORE_LANE_OWNER and dated; on every other
+// event (main, a dispatch) it fails from the deadline. The event is `--event`, else
+// GITHUB_EVENT_NAME, so the tests pin it with no real clock and no real event.
+//
 // Offline: `--store-lanes --store-runs-file <json> --now <iso>`, where the JSON
 // maps each workflow FILE NAME to a fixture in anchored-run-read's shapes.
 export const STORE_LANE_DEADLINE = '2026-10-21';
+export const STORE_LANE_OWNER = 'O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)';
+
+/** PURE. Does a stale store lane FAIL this run? Only from the deadline, and never on a pull request. */
+export const storeLaneGates = (nowMs, event) => nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`) && event !== 'pull_request';
 
 /** The armed rows whose submission has a dry-run job, grouped by workflow:
  *  `[{ workflow, rows: [id] }]`, in register order. Pure. */
@@ -1080,7 +1092,9 @@ async function storeLanesMain() {
   }
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  const enforced = nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`);
+  const event = flag('--event') ?? process.env.GITHUB_EVENT_NAME ?? '';
+  const enforced = storeLaneGates(nowMs, event);
+  const pastDeadline = nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`);
   let fresh = 0;
   for (const { workflow, rows } of subjects) {
     const file = workflow.split('/').pop();
@@ -1121,9 +1135,12 @@ async function storeLanesMain() {
     if (enforced) {
       fail(line);
       console.error(`      Remedy: fix what keeps its weekly dry run from going green; a dispatch (gh workflow run ${file} -f app=<id>) discharges it once.`);
+    } else if (pastDeadline) {
+      console.log(`⬜  ${line}`);
+      console.log(`      PRINTED, NOT FAILED, on a pull_request run: a stale rehearsal is not this PR's doing. Owner ${STORE_LANE_OWNER}; it FAILS on the main and dispatched runs since ${STORE_LANE_DEADLINE}.`);
     } else {
       console.log(`⬜  ${line}`);
-      console.log(`      PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}: the weekly schedule landed with this limb. From that date this line FAILS.`);
+      console.log(`      PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}: the weekly schedule landed with this limb. From that date this line FAILS (never on a pull_request run; owner ${STORE_LANE_OWNER}).`);
     }
   }
   if (!process.exitCode) {

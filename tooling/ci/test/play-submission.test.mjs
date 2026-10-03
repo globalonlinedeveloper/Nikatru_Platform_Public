@@ -1471,7 +1471,7 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
 // ─────────────────────────────────────────────────────────────────────────────
 // --sync-listing — the listing tree, pushed through an edit of its own (2026-10-01)
 // ─────────────────────────────────────────────────────────────────────────────
-// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): the lane's rehearsal touches Play.
+// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE (absent from open.json until the next Private pass records it)): the lane's rehearsal touches Play.
 describe('submit-play --dry-run --touch-store — an edit opened, read and deleted, never committed', () => {
   const DRY_TOUCH = ['--dry-run', '--touch-store', '--app', 'subscriptiontracker', '--allow-missing-artifact'];
   const SA = () => ({

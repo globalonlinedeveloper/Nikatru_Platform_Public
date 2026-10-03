@@ -3,7 +3,7 @@
 // assert-build-provenance.mjs — every file a release publishes is ATTESTED and
 // VERIFIED before it is described, and no other job can sign anything.
 //
-// ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE, build-provenance). There
+// ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it), build-provenance). There
 // were zero `actions/attest*` steps in .github/, so nothing tied a release file
 // to the workflow, commit and run that built it: SHA256SUMS proves the bytes
 // match a list, and whoever can change a file can change the list beside it.

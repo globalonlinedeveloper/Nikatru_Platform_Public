@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // r2-durable-copy.mjs — put a store build's symbols where they outlive the run.
 //
-// ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07).
+// ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it), review AA-07).
 // A store build is obfuscated, so the ONLY thing that turns its crash reports
 // back into names is the split-debug-info directory of THAT build — a rebuild
 // writes a different one. Until today the one decodable copy of a submitted

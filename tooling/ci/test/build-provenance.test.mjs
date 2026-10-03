@@ -1,5 +1,5 @@
 // build-provenance.test.mjs — every release file is attested and verified by an attest-only job
-// (O-RELEASES-HAVE-NO-PROVENANCE): tooling/ci/assert-build-provenance.mjs (the static half) and
+// (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it)): tooling/ci/assert-build-provenance.mjs (the static half) and
 // tooling/ci/verify-provenance.mjs (the verify wrapper, against a stubbed `gh`).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';

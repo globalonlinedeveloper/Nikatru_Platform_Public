@@ -87,7 +87,7 @@ export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflo
 
   if (ref.startsWith('refs/tags/')) reasons.push(`the run is a TAG push (${ref})`);
 
-  // (c) ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): the PLATFORM
+  // (c) ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): the PLATFORM
   // PROOF — the register's `aggregatingJob.workflow`, passed by the adapter — on any ref. Its weekly
   // run is the evidence that every armed channel builds its store artifact; an unsigned build of an
   // armed row went green there, so the proof certified an artifact no store would take. Matched on

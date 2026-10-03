@@ -16,6 +16,7 @@
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
+import { scheduledApp } from '../scheduled-rehearsal.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -42,6 +43,7 @@ import {
   storeLaneSchedule,
   evaluateStoreLane,
   STORE_LANE_DEADLINE,
+  storeLaneGates,
 } from '../assert-platform-proof-fresh.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 import { workspaceApps } from '../app-set.mjs';
@@ -817,8 +819,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
           '  linux_web_android:\n    name: Linux + Web + Android\n',
           '  linux_web_android:\n    name: Linux + Web + Android\n    outputs: { decoy: "needs: [linux_web_android, windows, apple]" }\n',
         )
-        // ⏱ 2026-10-01: the aggregator also needs `durable_symbols` (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
-        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]', '    needs: [gate, prepare]'),
+        // ⏱ 2026-10-01: the aggregator also needs `durable_symbols` (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it)).
+        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release, attest]', '    needs: [gate, prepare]'),
     );
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
@@ -830,8 +832,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   test('the aggregator written in BLOCK form is read correctly — no false red on a legal spelling', () => {
     const root = mutate((s) =>
       s.replace(
-        '    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]',
-        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - durable_symbols\n      - release',
+        '    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release, attest]',
+        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - durable_symbols\n      - release\n      - attest',
       ),
     );
     assert.equal(assertWatchedWorkflowIntact(root), null);
@@ -1248,7 +1250,7 @@ describe('the PR #806 page and its cross-read, through the CLI (E2, E3, E6)', ()
   });
 });
 
-// ── ⏱ 2026-10-01 · the store lanes' rehearsals (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE) ──
+// ── ⏱ 2026-10-01 · the store lanes' rehearsals (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)) ──
 describe('--store-lanes: every armed row\'s submission workflow has a green dry run within 14 days', () => {
   const AFTER = '2026-10-25T12:00:00Z';
   const BEFORE = '2026-10-10T12:00:00Z';
@@ -1263,11 +1265,14 @@ describe('--store-lanes: every armed row\'s submission workflow has a green dry 
     writeFileSync(file, JSON.stringify(doc));
     return file;
   };
-  const runStore = (file, now) => {
+  // The event is pinned (`--event`), never inherited: on a CI pull_request run GITHUB_EVENT_NAME is
+  // pull_request, which (finding 5 of the #1187 review) prints a stale lane instead of failing it.
+  const runStore = (file, now, event = 'push') => {
     const env = { ...process.env };
     delete env.GITHUB_TOKEN;
     delete env.GH_TOKEN;
-    return spawnSync(process.execPath, [GUARD, '--store-lanes', '--store-runs-file', file, '--now', now], { cwd: REPO, encoding: 'utf8', env });
+    delete env.GITHUB_EVENT_NAME;
+    return spawnSync(process.execPath, [GUARD, '--store-lanes', '--store-runs-file', file, '--now', now, '--event', event], { cwd: REPO, encoding: 'utf8', env });
   };
 
   test('the subject set is DERIVED from the armed rows: the four submit lanes, Apple naming both its rows', () => {
@@ -1316,6 +1321,24 @@ describe('--store-lanes: every armed row\'s submission workflow has a green dry 
     assert.match(r.stdout, new RegExp(`PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}`));
   });
 
+  // ⏱ 2026-10-03 (review of #1187, finding 5): nothing turns every PR's ci-gate red from the deadline.
+  test(`after ${STORE_LANE_DEADLINE} a stale lane on a PULL REQUEST run PRINTS, owned and dated; the same on main FAILS`, () => {
+    const file = storeFixture('store-pr.json', AFTER, { 'submit-snap.yml': 15 });
+    const pr = runStore(file, AFTER, 'pull_request');
+    assert.equal(pr.status, 0, pr.stdout + pr.stderr);
+    assert.match(pr.stdout, /⬜  store lane submit-snap\.yml .* is not fresh/);
+    assert.match(pr.stdout, /PRINTED, NOT FAILED, on a pull_request run: a stale rehearsal is not this PR's doing\. Owner O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)/);
+    assert.equal(runStore(file, AFTER, 'push').status, 1);
+  });
+
+  test('storeLaneGates is the clock and the event, nothing else (injected, no real date)', () => {
+    const at = (d) => Date.parse(`${d}T00:00:00Z`);
+    assert.equal(storeLaneGates(at('2026-10-20'), 'push'), false);
+    assert.equal(storeLaneGates(at(STORE_LANE_DEADLINE), 'push'), true);
+    assert.equal(storeLaneGates(at('2027-01-01'), 'workflow_dispatch'), true);
+    assert.equal(storeLaneGates(at('2027-01-01'), 'pull_request'), false);
+  });
+
   test('a fixture missing a lane is COVERAGE LOST (exit 2), never a pass', () => {
     const file = join(TMP, 'store-partial.json');
     const fresh = new Date(Date.parse(AFTER) - 86_400_000).toISOString();
@@ -1350,5 +1373,35 @@ describe('--store-lanes: every armed row\'s submission workflow has a green dry 
     const v = evaluateStoreLane([{ id: 1, conclusion: 'failure', updated_at: at(1) }, { id: 2, conclusion: 'success', event: 'workflow_dispatch', updated_at: at(3) }], now);
     assert.equal(v.ok, true);
     assert.equal(v.runId, 2);
+  });
+});
+
+describe('scheduled-rehearsal.mjs — a scheduled store rehearsal takes one app a week, and never refuses a second', () => {
+  const ROTATE = join(REPO, 'tooling/ci/scheduled-rehearsal.mjs');
+  const rot = (apps, now) => spawnSync(process.execPath, [ROTATE, '--apps', JSON.stringify(apps), '--now', now], { encoding: 'utf8' });
+  test('one app is that app, every week', () => {
+    for (const now of ['2026-10-05T00:00:00Z', '2026-10-12T00:00:00Z']) assert.equal(rot(['subscriptiontracker'], now).stdout, 'subscriptiontracker');
+  });
+  test('TWO apps (the day member 5 lands one) take turns week by week — exit 0, never the old refusal', () => {
+    const a = rot(['b', 'a'], '2026-10-05T00:00:00Z');
+    const b = rot(['b', 'a'], '2026-10-12T00:00:00Z');
+    assert.equal(a.status, 0, a.stderr);
+    assert.equal(b.status, 0, b.stderr);
+    assert.deepEqual([a.stdout, b.stdout].sort(), ['a', 'b']);
+    assert.match(a.stderr, /turn \d of 2 \[a, b\]; next week: /);
+    assert.deepEqual(scheduledApp(['a', 'b', 'c'], 0), { app: 'a', index: 0, of: 3, week: 0, set: ['a', 'b', 'c'] });
+    assert.equal(scheduledApp(['c', 'b', 'a'], 7 * 86_400_000).app, 'b');
+  });
+  test('an empty set is COVERAGE LOST (exit 2): there is no app to rehearse', () => {
+    const r = rot([], '2026-10-05T00:00:00Z');
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /COVERAGE LOST/);
+  });
+  test('every real submit lane takes its scheduled app from the rotation, and none keeps the refusal', () => {
+    for (const f of ['submit-play.yml', 'submit-appstore.yml', 'submit-windows-store.yml', 'submit-snap.yml']) {
+      const text = readFileSync(join(REPO, '.github/workflows', f), 'utf8');
+      assert.match(text, /APP_INPUT="\$\(node tooling\/ci\/scheduled-rehearsal\.mjs --apps "\$apps"\)"/, f);
+      assert.doesNotMatch(text, /Give the dry-run job a matrix over the set/, f);
+    }
   });
 });

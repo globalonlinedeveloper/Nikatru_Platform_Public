@@ -401,7 +401,7 @@ a fact about bytes rather than a claim about configuration.
 
 ### before step **Dry-run the Google Play submission (opens and deletes an uncommitted edit)**
 
-⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): `--touch-store`. The
+⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE (absent from open.json until the next Private pass records it)): `--touch-store`. The
 rehearsal used to shape-check the service-account JSON and send nothing, so a revoked key or a
 lost app grant was found by the first real upload. It now mints a token, opens an edit
 (`edits.insert`), reads its tracks and DELETES it (`edits.delete`); no commit is reachable from

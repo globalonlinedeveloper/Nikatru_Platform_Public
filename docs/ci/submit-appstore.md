@@ -116,7 +116,7 @@ this?" — unrecoverable after the fact without this.
 
 ### before step **Prepare the Apple distribution identity**
 
-⏱ 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT).
+⏱ 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT (absent from open.json until the next Private pass records it)).
 Until this date both builds were UNSIGNED BY CHOICE and both dry runs passed
 `--allow-missing-artifact`, so this lane validated a listing and never a package,
 and the owner's manual first upload had no validated signed .ipa or .pkg to take.

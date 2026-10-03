@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // store-bytes-record.test.mjs — the bytes a store receives, and the symbols that
-// decode them, are recorded durably (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST,
-// O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS; review AA-07, AA-12, AA-21).
+// decode them, are recorded durably (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it),
+// O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it); review AA-07, AA-12, AA-21).
 //
 // Two writers, one record:
 //   · record-deployment.mjs `--artifact <file> --build-number <n>` hashes the file

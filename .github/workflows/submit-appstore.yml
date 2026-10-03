@@ -17,7 +17,7 @@ on:
         required: true
         type: string
 
-  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
+  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)): a
   # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
   # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
   # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
@@ -52,9 +52,9 @@ jobs:
       # before it reads the set, and one outside the set naming the set; only then is it an output.
       - name: The app input names one app of the workspace
         id: app
-        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
-        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
-        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+        # why: a SCHEDULED run has no input, so its app comes from the workspace set, read from the emitter,
+        # never written here. One app is that app; a set of more than one ROTATES, one app a week, and the
+        # step names the turn (tooling/ci/scheduled-rehearsal.mjs; review of #1187, finding 5): it never refuses.
         env:
           APP_INPUT: ${{ inputs.app }}
           EVENT_NAME: ${{ github.event_name }}
@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" = schedule ]; then
             apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
-            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
+            APP_INPUT="$(node tooling/ci/scheduled-rehearsal.mjs --apps "$apps")"
           fi
           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
@@ -118,7 +118,7 @@ jobs:
       - name: Resolve the app's store SDK key secret (apple-iap)
         id: rc-key
         run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
-      # ⏱ CHANGED 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT). Both builds
+      # ⏱ CHANGED 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT (absent from open.json until the next Private pass records it)). Both builds
       # below were UNSIGNED BY CHOICE and the two dry runs passed --allow-missing-artifact, so this lane
       # validated a listing and never the package: the owner's manual first upload had no validated signed
       # .ipa or .pkg to take. The lane now SIGNS IN-LANE with the seam build-platforms.yml's apple job uses.

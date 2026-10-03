@@ -1128,7 +1128,7 @@ for (const wf of workflows) {
     }
 
     // ── limb 5: a submission's record names the bytes the store received ────
-    // ⏱ 2026-10-01 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST, review AA-12). The ledger
+    // ⏱ 2026-10-01 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it), review AA-12). The ledger
     // named the COMMIT a store build came from and never the file the store was
     // sent: Play re-signs, Microsoft repackages, and "which bytes did the store get"
     // had no answer once the run's artifacts expired. So every `record-deployment.mjs`
@@ -1146,7 +1146,7 @@ for (const wf of workflows) {
             problems.push(
               `${wf.rel}: job "${job.name}" records a production submission at ${lineAt(wf, l.n)} without \`--artifact\`. ` +
                 'The ledger would name the commit and not the bytes the store received; `--artifact <file> --build-number <n>` makes record-deployment.mjs hash ' +
-                'that file into the Deployment payload ({name, sha256, size, buildNumber}). O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST',
+                'that file into the Deployment payload ({name, sha256, size, buildNumber}). O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it)',
             );
           }
         }

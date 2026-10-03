@@ -608,7 +608,7 @@ jobs:
       # why: the artifact is preserved BEFORE the identity check that can reject it. A
       # refusal must leave the evidence behind, not delete it.
       # ⏱ 2026-09-24: now AFTER the read-back, which must follow msix:create directly; `if: failure()` still keeps the .msix it refuses.
-      # ⏱ 2026-10-01 (O-ARTIFACT-SIZES-UNRECORDED, AA-21): `failure()`, not `always()` — on a green run
+      # ⏱ 2026-10-01 (O-ARTIFACT-SIZES-UNRECORDED (absent from open.json until the next Private pass records it), AA-21): `failure()`, not `always()` — on a green run
       # `store-<app>-windows-msix` below holds the same bytes, and the diagnostic copy was a second upload of them.
       - name: Keep the .msix even if what follows refuses it
         if: failure()
@@ -1051,7 +1051,7 @@ jobs:
           fi
           echo "All 6 platforms built"
 
-  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE; review of #1187, findings 2 and 3). The ONLY job that can sign:
+  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it); review of #1187, findings 2 and 3). The ONLY job that can sign:
   # id-token and attestations write are granted here and nowhere else in this file (assert-build-provenance.mjs limb F),
   # so no step of the long publishing job can mint an OIDC token. It attests every file of the release directory —
   # the installers, the archives, release.json and SHA256SUMS — then reads each back with gh attestation verify,
@@ -1106,7 +1106,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  # ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07). A tag's builds are the
+  # ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it), review AA-07). A tag's builds are the
   # ones that ship — the apps.gov.in .apk a person uploads from the Release above all — and their
   # symbols lived only in the 90-day `symbols-<app>-*` artifacts. This copies each symbols directory to
   # the private R2 release store (tooling/channel-register.json releaseStore) BEFORE the Release exists:
@@ -1351,7 +1351,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
       # why: the attest job below signs EVERY file of this directory, release.json and SHA256SUMS included, so it
-      # takes the directory as it stands after both are written (O-RELEASES-HAVE-NO-PROVENANCE). Named
+      # takes the directory as it stands after both are written (O-RELEASES-HAVE-NO-PROVENANCE (absent from open.json until the next Private pass records it)). Named
       # release-dist-<app>, never <app>-…, for the reason the record upload below gives.
       - name: Hand the attest job the release directory, release.json and SHA256SUMS included
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

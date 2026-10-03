@@ -1441,7 +1441,7 @@ describe('apple-signing — the endings, run as a process', () => {
   });
 });
 
-// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): the brief's red control,
+// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS (absent from open.json until the next Private pass records it)): the brief's red control,
 // a build-platforms dispatch with the Apple env block removed, run as a process.
 describe('apple-signing — the platform proof over ARMED Apple rows must sign', () => {
   const PROOF_RUN = { GITHUB_REF: 'refs/heads/feat/x', GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/feat/x' };

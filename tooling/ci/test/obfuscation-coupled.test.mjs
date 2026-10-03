@@ -734,7 +734,7 @@ ${FLOOR_ANCHOR}`;
   });
 });
 
-// ⏱ ADDED 2026-10-01 — LIMB DURABLE (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07).
+// ⏱ ADDED 2026-10-01 — LIMB DURABLE (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS (absent from open.json until the next Private pass records it), review AA-07).
 // A build that leaves for a store or a Release has its symbols copied to the private R2
 // release store first. Green control first, then the two mutations that must fail.
 describe('assert-obfuscation-coupled — LIMB DURABLE (the symbols outlive the run before the build leaves)', () => {

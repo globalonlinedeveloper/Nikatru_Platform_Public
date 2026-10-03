@@ -276,7 +276,7 @@ async function cli() {
 const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-play');
 
 const DRY_RUN = flag('dry-run');
-// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): `--dry-run --touch-store` is the
+// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE (absent from open.json until the next Private pass records it)): `--dry-run --touch-store` is the
 // lane's rehearsal. It REQUIRES the service account, then opens an edit, reads its tracks and DELETES it
 // uncommitted — the only proof a dry run can give that the key still authenticates and still sees the app.
 // Without the flag a dry run stays local (a laptop, a test) and sends nothing, as before.
