@@ -854,6 +854,9 @@
   "provision-backend.test.mjs":
     34,
 
+  "provision-reviewer-accounts.test.mjs":
+    8,
+
   "pseudonymity-firewall.test.mjs":
     17,
 

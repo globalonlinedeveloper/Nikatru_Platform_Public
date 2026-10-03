@@ -526,7 +526,7 @@ export function makeOpsDb(root) {
 // are the bytes in src/, not a transpiled copy this script produced.
 // ─────────────────────────────────────────────────────────────────────────────
 let hooksRegistered = false;
-async function registerTypeScriptResolution() {
+export async function registerTypeScriptResolution() {
   if (hooksRegistered) return;
   const { registerHooks } = await import('node:module');
   registerHooks({

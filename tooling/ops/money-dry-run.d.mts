@@ -81,6 +81,8 @@ export interface RedControlResult {
 export const REPO_ROOT: string;
 export const DEFAULT_CORPUS_REL: string;
 export const MIGRATIONS_REL: string;
+/** The resolve hook that lets bare node import services/ TypeScript (extensionless relative specifiers). */
+export function registerTypeScriptResolution(): Promise<void>;
 export function defaultCorpusDir(root?: string): string;
 export const DEFAULT_NOW_MS: number;
 export const RAIL_B_PROVIDER: string;
