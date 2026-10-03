@@ -1937,3 +1937,32 @@ describe('sites/nikatru/functions/_middleware.js — the apex serves no Markdown
     await unchanged('/index.html', '<!doctype html><title>Nikatru</title>');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-03 · lane feedback-intake (Do 9): a same-origin POST form needs the
+// Pages Function that receives it. nikatru.com's /support "Report a problem" form
+// posts to /api/report; deleting that Function must fail the build.
+describe('check-site-integrity · a same-origin form has its Function', () => {
+  const form = (action) =>
+    `<html><body><form class="report" method="post" action="${action}"><textarea name="description"></textarea></form></body></html>\n`;
+
+  test('PASSES when the form posts to a Function that exists', () => {
+    const dir = build('form-ok', { extra: { 'sites/a/support.html': form('/api/handler') } });
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+  });
+
+  test('🔴 FAILS when the form posts to /api/report and functions/api/report.js is missing', () => {
+    const dir = build('form-missing', { extra: { 'sites/a/support.html': form('/api/report') } });
+    const { code, out } = run(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /support\.html has a form that POSTs to \/api\/report, and sites\/a\/functions\/api\/report\.js does not exist/);
+  });
+
+  test('an off-origin or GET form is not this limb\'s business', () => {
+    const page =
+      '<html><body><form method="get" action="/search"></form><form method="post" action="https://example.com/x"></form></body></html>\n';
+    const { code, out } = run(build('form-skip', { extra: { 'sites/a/support.html': page } }));
+    assert.equal(code, 0, out);
+  });
+});

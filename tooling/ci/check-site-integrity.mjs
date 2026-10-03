@@ -1182,6 +1182,45 @@ const functionsByRoot = siteRoots.map((root) => {
 });
 const functionFiles = functionsByRoot.flatMap((r) => r.files);
 
+// ── a form that posts to this origin has a Function to receive it ────────────
+// ⏱ 2026-10-03 · lane feedback-intake (Do 9). nikatru.com's /support "Report a
+// problem" form posts SAME-ORIGIN to /api/report, a Pages Function that forwards
+// over a service binding, which is what keeps `form-action 'self'` and
+// `connect-src 'self'` as they are. A static host answers a POST to a path with
+// no Function as a 405 (or the 404 page), so a deleted or renamed Function turns
+// every report into an error page with every other limb green. So: every
+// `<form method="post" action="/x/y">` on a root needs `<root>/functions/x/y.js`
+// (or `.../y/index.js`). A form posting off-origin is the CSP's business, not
+// this limb's, and is skipped.
+let sameOriginForms = 0;
+for (const { root, files } of functionsByRoot) {
+  const have = new Set(files.map((f) => relative(join(root, 'functions'), f).replace(/\\/g, '/')));
+  for (const page of htmlIn(root)) {
+    const html = stripInert(readFileSync(page, 'utf8'));
+    for (const m of html.matchAll(/<form\b[^>]*>/gi)) {
+      const tag = m[0];
+      if (!/\bmethod\s*=\s*["']?post\b/i.test(tag)) continue;
+      const action = (tag.match(/\baction\s*=\s*["']([^"']+)["']/i) ?? [])[1];
+      if (!action || !action.startsWith('/') || action.startsWith('//')) continue;
+      sameOriginForms++;
+      const path = action.split(/[?#]/)[0].replace(/^\/+|\/+$/g, '');
+      if (!have.has(`${path}.js`) && !have.has(`${path}/index.js`)) {
+        problems.push(
+          `${relative(repoRoot, page)} has a form that POSTs to ${action}, and ${relative(repoRoot, root)}/functions/${path}.js does not exist. ` +
+            'A static host answers that POST with an error page, so every submission is lost while the page still renders. ' +
+            'Restore the Function, or point the form at one that exists.',
+        );
+      }
+    }
+  }
+}
+if (SCANNING_OWN_REPO && sameOriginForms === 0) {
+  problems.push(
+    'COVERAGE LOST: no page under sites/ has a same-origin POST form, so the form-has-a-Function limb ranged over nothing. ' +
+      "nikatru.com's /support carries the Report a problem form (lane feedback-intake); if it moved, this limb has to follow it.",
+  );
+}
+
 // ── what a Pages Function does with a visitor's IP, and what it promises ─────
 // text-reductions.mjs returns an UNKNOWN extension VERBATIM and says nothing —
 // the trap its own header records against `.kts`. Every file below is a `.js`
