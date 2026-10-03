@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /config/:app — CFG-1. Compiled-in defaults overlaid with a KV override
-// (`config:<app>`), edge-cached. Unknown app ⇒ 404. Never returns secrets.
+// (`config:<app>`), edge-cached — by the Worker's own Cache API calls since
+// 2026-10-01 (src/lib/edge-cache.ts: the CDN never cached it, measured).
+// Unknown app ⇒ 404. Never returns secrets.
 //
 // 🔴 VALIDATE BEFORE THE KV READ. This route used to read
 // `CONFIG_KV.get('config:' + appId)` as its FIRST statement, with the app id
@@ -40,8 +42,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { DEFAULT_CHANNEL, MARKET_PATTERN, isKnownApp, isKnownChannel, priceForMarket, resolveConfig } from '../config';
+import { DEFAULT_CHANNEL, MARKET_PATTERN, isKnownApp, isKnownChannel, isPricedMarket, priceForMarket, resolveConfig } from '../config';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
+import { EDGE_CACHE_HEADER, edgeCacheKey, edgeCacheMatch, edgeCachePut, hitResponse, waitUntilOf } from '../lib/edge-cache';
 
 const app = new Hono<AppEnv>();
 
@@ -67,6 +70,37 @@ app.get('/:app', async (c) => {
     return c.json({ error: 'unknown_market' }, 400);
   }
 
+  // ⏱ 2026-10-01 · O-WORKER-RESPONSES-NOT-EDGE-CACHED. The Worker's OWN cache
+  // (src/lib/edge-cache.ts says why the CDN never cached this route). A hit costs
+  // no KV read and no ceiling budget, and `?cb=<random>` lands on the same entry
+  // as no parameter at all.
+  //
+  // 🔴 ⏱ 2026-10-03 · PR #1165 ruling (MONEY). THE KEY IS EVERY INPUT THE BODY
+  // DEPENDS ON: the app (the path), the channel AND the market. It was keyed on
+  // `?channel=` alone, so whichever market warmed the entry first was served to
+  // every buyer after it — an India buyer could get USD, or a US buyer rupees.
+  // Nothing else reaches the body: KV is read by app id only, and no header is
+  // read at all. Each input is keyed by the ANSWER it selects, not its spelling:
+  // an absent market and a well-formed market with no book of its own (both the
+  // default book) are one entry, and the parameter order and any other parameter
+  // never split one. Case and empty values cannot split or share an entry either:
+  // `?market=in`, `?market=` and `?channel=` (and `?channel=default`) are all
+  // 400s above, so a malformed value can neither write an entry nor overwrite a
+  // valid one. Red control:
+  // test/edge-cache.test.ts, "keyed on the market".
+  const keyChannel = channel ?? DEFAULT_CHANNEL;
+  const keyMarket = market !== undefined && isPricedMarket(market) ? market : undefined;
+  const canonical = new URL(c.req.url);
+  canonical.search = '';
+  if (keyChannel !== DEFAULT_CHANNEL) canonical.searchParams.set('channel', keyChannel);
+  if (keyMarket !== undefined) canonical.searchParams.set('market', keyMarket);
+  const cacheKey = edgeCacheKey(canonical.toString(), ['channel', 'market']);
+  const hit = await edgeCacheMatch(cacheKey);
+  if (hit) {
+    const r = hitResponse(hit);
+    return c.newResponse(r.body, r);
+  }
+
   // The SAME server-derived ceiling /v1/events got in PR #91, on its own
   // namespace so it cannot spend that route's budget (and that route cannot
   // spend this one's).
@@ -81,6 +115,9 @@ app.get('/:app', async (c) => {
   // caller can rotate bounds nothing; fails OPEN if the binding is absent, so a
   // missing binding degrades config resolution to exactly today's behaviour
   // rather than taking every app's launch path down.
+  // ⏱ 2026-10-01: the cache-key half of this is no longer true — the key above
+  // drops every parameter but `?channel=` and `?market=` — so the ceiling now
+  // bounds misses only.
   if (!(await withinEdgeCeiling(c.env.CONFIG_CEILING_LIMITER, c, 'CONFIG_CEILING_LIMITER'))) {
     return c.json({ error: 'rate_limited' }, 429);
   }
@@ -95,11 +132,14 @@ app.get('/:app', async (c) => {
   }
   const cfg = resolveConfig(appId, kvValue, channel ?? DEFAULT_CHANNEL);
   if (!cfg) return c.json({ error: 'unknown_app' }, 404);
-  // Edge + client cache; overrides propagate within the TTL. The market is in the
-  // query string, so it is part of the cache key: an India answer is never served
-  // to a buyer who declared no market.
+  // Edge + client cache; overrides propagate within the TTL — the Worker's own
+  // cache honours the same `s-maxage`. The body is built from the SAME `keyMarket`
+  // the key carries, so an entry can only ever hold the book its key names.
   c.header('Cache-Control', 'public, max-age=300, s-maxage=300');
-  return c.json(market === undefined ? cfg : priceForMarket(cfg, appId, market));
+  c.header(EDGE_CACHE_HEADER, 'MISS');
+  const res = c.json(keyMarket === undefined ? cfg : priceForMarket(cfg, appId, keyMarket));
+  await edgeCachePut(cacheKey, res, waitUntilOf(c));
+  return res;
 });
 
 export default app;

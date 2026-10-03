@@ -479,7 +479,10 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
     assert.match(c, /return anchoredPage\(repo, q\.workflow, qs, runs, wide\.workflow_runs\.length >= UNIT_PAGE, what\);/, 'unitRunsPage\'s fallback');
     assert.match(c, /if \(hit \|\| !pageFull\) return hit; if \(gapBelow\) throw new StaleGap\(gapBelow\);/, 'ghNewestRun on the shared page');
     assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), all: runs, pageFull, gapBelow \};/, 'unitRunsPage passes the gap on, and the UNFILTERED page for the superseded read');
-    assert.match(c, /const c = unitConclusion\(q, run, await jobsOfRun\(repo, run\.id, cache\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
+    // ⏱ 2026-10-02 — the loop moved into scanUnitRuns, its job-list read injected (#1115 review, finding 2); both halves are held.
+    assert.match(c, /const c = unitConclusion\(q, run, await jobsFor\(run\.id\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
+    // ⏱ 2026-10-03 · scanUnit now calls scanUnitRuns once per page it reads (ops-watch 37080147071).
+    assert.match(c, /const found = await scanUnitRuns\(q, page, all, wf, \(runId\) => jobsOfRun\(repo, runId, cache\)\);/, 'scanUnit hands scanUnitRuns the unfiltered page and the live job-list read');
     // ⏱ 2026-10-03 · the scan now also returns how far back it read (ops-watch 37080147071); the gap check is unchanged.
     assert.match(c, /return \{ \.\.\.gapCheckedScan\(entries, pageFull, gapBelow\), reach \};/, 'scanUnit');
     assert.match(c, /const older = olderUnitPage\(await ghJson\(olderUnitPagePath\(repo, q\.workflow, q\.headBranch, next\.boundary\)\), /, 'scanUnit reads a deeper page only through the checked keyset read');

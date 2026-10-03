@@ -45,6 +45,7 @@ const GUARD = join(CI_DIR, 'assert-stamp-properties.mjs');
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const PROP_TEST = 'test/chassis_properties_test.dart';
 const PROVIDERS = 'lib/state/providers.dart';
+const SNAP_NAME = 'store/linux-snap/snap-name.txt';
 /** The one member of EXEMPT_APPS. Named here rather than derived, because the
  *  point of these cases is that the guard's own list is not empty and not free. */
 const EXEMPT = 'apps/subscriptiontracker';
@@ -95,6 +96,9 @@ before(() => {
   // clean, plus the package manifest that makes it a workspace member.
   cpSync(join(REPO, BRICK), join(BASE, EXEMPT), { recursive: true, filter });
   writeFileSync(join(BASE, EXEMPT, 'pubspec.yaml'), 'name: subscriptiontracker\ndescription: fixture stand-in\n');
+  // ⏱ 2026-10-01 · [10]D-8 grades the ARMED linux-snap row against the app's own snap name
+  // (O-FORCE-UPDATE-VERSION-READ-UNPROVEN), and the brick's copy is the template `{{snap_name}}`.
+  cpSync(join(REPO, EXEMPT, SNAP_NAME), join(BASE, EXEMPT, SNAP_NAME));
   PRISTINE_PROP = readFileSync(join(REPO, BRICK, PROP_TEST), 'utf8');
   PRISTINE_PROVIDERS = readFileSync(join(REPO, BRICK, PROVIDERS), 'utf8');
   PRISTINE_REGISTER = readFileSync(join(REPO, DOD_REGISTER), 'utf8');

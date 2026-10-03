@@ -335,6 +335,7 @@ void main() {
             ),
             mustUpdate: false,
             onUpdate: () {},
+            onConfigRefresh: () {},
             shell: (Widget routed) => AppLifecycleFlush(
               onBackground: () {},
               child: ConsentScrim(
@@ -393,6 +394,7 @@ void main() {
             ),
             mustUpdate: false,
             onUpdate: () {},
+            onConfigRefresh: () {},
             shell: (Widget routed) => AppLifecycleFlush(
               onBackground: () {},
               child: ConsentScrim(
@@ -459,6 +461,7 @@ void main() {
             ),
             mustUpdate: false,
             onUpdate: () {},
+            onConfigRefresh: () {},
             shell: (Widget routed) => AppLifecycleFlush(
               onBackground: () {},
               child: ConsentScrim(
@@ -515,6 +518,7 @@ void main() {
             ),
             mustUpdate: true,
             onUpdate: () {},
+            onConfigRefresh: () {},
             shell: (Widget routed) => AppLifecycleFlush(
               onBackground: () {},
               child: ConsentScrim(
@@ -579,6 +583,7 @@ void main() {
             ),
             mustUpdate: false,
             onUpdate: () {},
+            onConfigRefresh: () {},
             shell: (Widget routed) => AppLifecycleFlush(
               onBackground: () {},
               child: ConsentScrim(

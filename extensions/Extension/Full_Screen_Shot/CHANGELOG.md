@@ -47,6 +47,14 @@ next version number when one is stamped.
   has, carries a placeholders block unlike English, or serves English for a key not declared
   `AWAITING-TRANSLATION`.
 
+### Security
+
+- **The background worker checks who is talking to it** (rv2-security-014). Another extension
+  gets no answer at all, and deleting your data, reading the data summary or the diagnostic
+  bundle, starting a batch and starting a capture are answered only for FullShot's own pages —
+  never for a script running inside a web page. A capture asked for by a page that is itself a
+  tab acts on that tab, never on one it names.
+
 ## [1.10.3] — 2026-09-29
 
 A build milestone, like every entry here: the manifest is stamped because the shipped files moved

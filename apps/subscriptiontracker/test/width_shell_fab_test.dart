@@ -508,7 +508,7 @@ const List<List<String>> _illustrative = <List<String>>[
 class _IllustrativeRepo implements SubscriptionRepository {
   @override
   Future<List<Subscription>> fetchAll() async {
-    final DateTime today = DateTime.now();
+    final DateTime today = wallClock();
     DateTime renews(List<String> row) =>
         DateTime(today.year, today.month, today.day + int.parse(row[3]));
     return <Subscription>[
@@ -645,7 +645,7 @@ void main() {
       // The soonest charge. ⏱ ST-T3b (ST-M3): home lists the next charges
       // by their ROLLED date, so which seed row is on screen depends on the
       // day — `subs.first` (Netflix) is no longer always one of them.
-      final String soonest = SubMath.upcoming(subs, DateTime.now()).first.name;
+      final String soonest = SubMath.upcoming(subs, wallClock()).first.name;
       await tester.tap(
         find
             .descendant(

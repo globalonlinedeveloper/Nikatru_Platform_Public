@@ -46,6 +46,9 @@
 //                 that the semantics are correct, a check that merely asserts
 //                 "a heartbeat landed today" is GREEN ON A FAILING KEEP-ALIVE.
 //                 Assert on the outcome column, not on the row's presence.
+//   2b. CAPPED  — ⏱ 2026-10-01: a retention job whose newest N rows are all ok=1
+//                 and all say a store was still full when its budget ran out
+//                 (`cappedNightsRed` in the register). Graded as RED: exit 1.
 //   3. UNKNOWN  — no token, a non-200, unparseable JSON, an unrecognised cron
 //                 expression. ALL FAIL CLOSED. "I could not tell" must never
 //                 read as "it is fine"; that is precisely how the original claim
@@ -273,15 +276,47 @@ export function firstFireAfterMs(expr, fromMs) {
 }
 
 /**
+ * The integer a heartbeat `detail` carries as `<name>=<n>`, or null. The token
+ * must open the detail or follow whitespace, so `capped` never reads the number
+ * inside `prune_capped=`.
+ */
+export function detailToken(detail, name) {
+  const m = new RegExp(`(?:^|\\s)${name}=(\\d+)(?![\\w.])`).exec(String(detail ?? ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * ⏱ 2026-10-01. The targets whose newest `nights` rows ALL carry `token` above 0.
+ * Fewer than `nights` rows for a target is not enough history to say so, and a
+ * row without the token (a run that failed before it could count) breaks the
+ * streak rather than extending it: that run is graded by the outcome limb.
+ */
+export function cappedTargets(rows, token, nights) {
+  const byTarget = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const key = r.target ?? '(none)';
+    if (!byTarget.has(key)) byTarget.set(key, []);
+    byTarget.get(key).push(r);
+  }
+  const stuck = [];
+  for (const [target, list] of byTarget) {
+    const newest = [...list].sort((a, b) => Date.parse(b.ran_at) - Date.parse(a.ran_at)).slice(0, nights);
+    if (newest.length === nights && newest.every((r) => (detailToken(r.detail, token) ?? 0) > 0)) stuck.push(target);
+  }
+  return stuck;
+}
+
+/**
  * The decision, kept pure. `rows` are the newest-first heartbeat rows for ONE
- * job; `cronExpr` is that job's declared cron expression.
+ * job; `cronExpr` is that job's declared cron expression; `capped`, when the
+ * register declares one for the job, is `{ token, nights }` (cappedNightsRed).
  *
  * ⚠️ It takes the EXPRESSION, not a precomputed interval, and that is the whole
  * repair: an interval can only answer "how old is the newest row", which is a
  * different question from "did the run that was due actually run". See
  * MISSED_RUN_GRACE_HOURS for the real event that separated them.
  */
-export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
+export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null, capped = null) {
   if (!Array.isArray(rows)) {
     return { ok: false, kind: 'unknown', reason: `${job}: the query result was not an array — an unreadable answer is a failure, not a pass` };
   }
@@ -419,6 +454,27 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
         '. A check that only asked "did a row land today" would be green on exactly this, and one that asked ' +
         'only about the newest ROW would be green whenever another target of the same job succeeded.',
     };
+  }
+  // ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED — A RETENTION JOB
+  // THAT KEEPS FALLING BEHIND IS RED. Every row above says ok=1, and that is true:
+  // the sweep ran. What it cannot say in `ok` is that a store is still FULL when
+  // its per-run budget runs out, night after night, so a declared period has
+  // stopped being kept. `capped` comes from the register's `cappedNightsRed`
+  // (see deriveWatchedJobs), and its `_cappedNightsRedWhy` states the slack.
+  if (capped && typeof capped.token === 'string') {
+    const stuck = cappedTargets(rows, capped.token, capped.nights);
+    if (stuck.length > 0) {
+      return {
+        ok: false,
+        kind: 'capped',
+        ageHours,
+        reason:
+          `${job}: ${stuck.map((t) => `target ${t}`).join(', ')} carried \`${capped.token}=\` above 0 on each of its newest ` +
+          `${capped.nights} runs. Every run SUCCEEDED (ok=1) and still left expired rows behind, so the declared retention ` +
+          'period is no longer being kept. Clear the backlog (or raise the per-run budget with its arithmetic), then let a ' +
+          `run print \`${capped.token}=0\`.`,
+      };
+    }
   }
   // The green line names the occurrence it covered, so a reader can check the
   // pass rather than take it. "fresh (28.1h old)" was literally true on the
@@ -647,6 +703,33 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} has no D1 binding carrying \`migrations_dir\`, so the database that owns the heartbeat table cannot be resolved.`);
       continue;
     }
+    // ⏱ 2026-10-01 · THE CAPPED-NIGHTS RULE (`cappedNightsRed`). Optional per row,
+    // but never half-read: a token job the row does not watch, or a token the
+    // Worker's source never writes, would be a rule that can never fire.
+    const cappedRule = new Map();
+    const rule = row.cappedNightsRed;
+    if (rule !== undefined) {
+      const nights = rule?.nights;
+      const tokens = rule?.tokens;
+      // ≤ 20: queryD1 reads a job's newest 20 rows, so a longer streak could not be seen.
+      if (!Number.isInteger(nights) || nights < 1 || nights > 20 || !tokens || typeof tokens !== 'object' || Array.isArray(tokens)) {
+        problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed must be { nights: 1..20, tokens: { job: token } }; it is ${JSON.stringify(rule)}.`);
+        continue;
+      }
+      let ruleBroken = false;
+      for (const [job, token] of Object.entries(tokens)) {
+        if (!Object.prototype.hasOwnProperty.call(watched, job)) {
+          problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed names job "${job}", which ${row.id}.watchedJobs does not watch: a rule over rows nobody reads.`);
+          ruleBroken = true;
+        } else if (typeof token !== 'string' || !/^\w+$/.test(token) || !src.includes(`${token}=`)) {
+          problems.push(`COVERAGE LOST — ${row.id}.cappedNightsRed reads token \`${token}=\` for "${job}", and ${dirname(cfgRel)}/src never writes it: the rule could never fire.`);
+          ruleBroken = true;
+        } else {
+          cappedRule.set(job, { token, nights });
+        }
+      }
+      if (ruleBroken) continue;
+    }
     for (const [job, jobCrons] of Object.entries(watched)) {
       if (!src.includes(`'${job}'`) && !src.includes(`"${job}"`)) {
         problems.push(
@@ -655,7 +738,7 @@ export function deriveWatchedJobs(root) {
         );
         continue;
       }
-      jobs.push({ id: row.id, job, databaseId: dbId, cron: jobCrons, declaredAtMs: declaredAtMs.get(job) });
+      jobs.push({ id: row.id, job, databaseId: dbId, cron: jobCrons, declaredAtMs: declaredAtMs.get(job), capped: cappedRule.get(job) ?? null });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -872,7 +955,7 @@ async function main() {
       unreadable.push(`${j.job}: ${e.message}`);
       continue;
     }
-    const verdict = evaluateJob(j.job, rows, j.cron, nowMs, j.declaredAtMs);
+    const verdict = evaluateJob(j.job, rows, j.cron, nowMs, j.declaredAtMs, j.capped);
     if (verdict.pending) pending.push(verdict.reason);
     else if (verdict.ok) okLines.push(verdict.reason);
     else failures.push(verdict.reason);

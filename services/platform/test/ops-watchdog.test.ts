@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   boxaTargets,
   boxaReachability,
@@ -31,6 +31,7 @@ import {
 import ciYml from '../../../.github/workflows/ci.yml?raw';
 import opsWatchYml from '../../../.github/workflows/ops-watch.yml?raw';
 import type { Env } from '../src/types';
+import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The laptop watchdog's portable work, on the
@@ -148,8 +149,11 @@ describe('boxaReachability — Box A over HTTP, never a silent pass', () => {
       throw new Error('connect ETIMEDOUT');
     }));
     const { e, bound } = env({ BOXA_REACH_URLS: 'https://a.test/,https://b.test/,https://c.test/' });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     await boxaReachability(e);
-    expect(bound.map((r) => [r[0], r[1], r[2]])).toEqual([
+    // ⏱ 2026-10-01 · each ok=0 row first READS its previous row (lib/owner-page.ts),
+    // binding (job, target); the recorded rows are the 5-value INSERT tuples.
+    expect(bound.filter((r) => r.length === 5).map((r) => [r[0], r[1], r[2]])).toEqual([
       [BOXA_REACH_JOB, 'https://a.test/', 1],
       [BOXA_REACH_JOB, 'https://b.test/', 0],
       [BOXA_REACH_JOB, 'https://c.test/', 0],
@@ -261,6 +265,16 @@ describe('main conclusions and GlitchTip monitors — findings are detail, not o
 });
 
 describe('opsWatchdogJob — beat only after the work, never when it throws', () => {
+  // ⏱ 2026-10-01 · the double's runs are dated against NOW, and the ops-watch
+  // freshness limb (PB-10) ages them against the clock - so the clock is NOW.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('🔴 records every row FIRST, then beats exactly once', async () => {
     const events: string[] = [];
     apiDouble({ events });
@@ -282,7 +296,8 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
     expect(events).toEqual(['batch', 'beat']);
     const notOk = bound.filter((r) => r[2] === 0).map((r) => r[1]);
     // ⏱ 2026-09-24: 'actions-stuck-runs' left this list with the check (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY).
-    expect(notOk).toEqual(['main:ci.yml', 'main:ops-watch.yml', 'glitchtip-monitor-6', 'glitchtip-monitor-22']);
+    // ⏱ 2026-10-01: 'ops-watch-freshness' joined it — with main:ops-watch.yml unread, its age was not judged.
+    expect(notOk).toEqual(['main:ci.yml', 'main:ops-watch.yml', 'ops-watch-freshness', 'glitchtip-monitor-6', 'glitchtip-monitor-22']);
   });
 
   it('🔴 when the checks THROW: one ok=0 row, and the beat is WITHHELD', async () => {
@@ -323,9 +338,10 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
 
   it('@ceiling — the declared subrequest budget is the sum of its parts, and the worst case stays inside it', async () => {
     // ⏱ 2026-09-24: the two run lists and the cancels left this pass (18 -> 13); OPS_STUCK_RUNS_MAX_SUBREQUESTS holds them.
+    // ⏱ 2026-10-01: + 1 for the owner page the ops-watch freshness row can send (13 -> 14).
     expect(OPS_WATCHDOG_MAX_SUBREQUESTS).toBe(
       1 + OPS_MAIN_WORKFLOWS.length * OPS_MAIN_READ_ATTEMPTS * 2 + OPS_PUSH_TRIGGERED_ON_MAIN.length +
-        OPS_GLITCHTIP_MONITORS.length + 1,
+        OPS_GLITCHTIP_MONITORS.length + 1 + 1,
     );
     // Worst case: every main page stale on every attempt, so each spends its retry and its cross-reads, and
     // every push-triggered workflow then spends its one head_sha second path. The stuck runs and the cancel
@@ -337,7 +353,51 @@ describe('opsWatchdogJob — beat only after the work, never when it throws', ()
       GITHUB_DISPATCH_TOKEN: TOKEN, GLITCHTIP_TOKEN: GT_TOKEN, OPS_WATCHDOG_HEARTBEAT_URL: BEAT, OPS_WATCHDOG_CANCEL_STUCK: 'true',
     });
     await opsWatchdogJob(e);
+    // Every page refused, so ops-watch's age was not judged and no owner page went out: the budget less one.
+    expect(f.mock.calls.length).toBe(OPS_WATCHDOG_MAX_SUBREQUESTS - 1);
+  });
+
+  it('@ceiling — the worst case WITH the owner page spends exactly the budget', async () => {
+    // ⏱ 2026-10-01 · PB-10. ci.yml spends everything it can (both attempts, both cross-reads,
+    // the head_sha path). ops-watch.yml's first cross-read proves its page stale but holds no
+    // completed run; its second answers a completed run 7 h old — readable, past the ceiling,
+    // so the owner page goes out. That is the one path that spends all 14.
+    const old = minutesAgo(3 * 24 * 60);
+    let opsCross = 0;
+    const f = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === BEAT) return new Response('', { status: 200 });
+      if (url === RESEND_EMAILS_URL) return json({ id: 'resend-fixture-id' });
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_SHA, commit: { message: 'm', committer: { date: minutesAgo(600) } } });
+      if (url.includes('/workflows/ops-watch.yml/') && url.includes('created=')) {
+        opsCross += 1;
+        return json({
+          workflow_runs: [
+            opsCross === 1
+              ? { id: 60, status: 'in_progress', conclusion: null, created_at: old, updated_at: minutesAgo(7 * 60) }
+              : { id: 60, status: 'completed', conclusion: 'success', created_at: old, updated_at: minutesAgo(7 * 60) },
+          ],
+        });
+      }
+      if (url.includes('/actions/workflows/') && url.includes('created=')) {
+        return json({ workflow_runs: [{ id: 60, status: 'in_progress', conclusion: null, created_at: old, updated_at: old }] });
+      }
+      if (url.includes('/actions/workflows/')) {
+        return json({ workflow_runs: [{ id: 50, head_sha: 'f'.repeat(40), status: 'completed', conclusion: 'success', created_at: old, updated_at: old }] });
+      }
+      if (url.includes('/monitors/')) return json({ name: 'm', isUp: true, lastChange: minutesAgo(60) });
+      return new Response('', { status: 404 });
+    });
+    vi.stubGlobal('fetch', f);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { e, bound } = env({
+      GITHUB_DISPATCH_TOKEN: TOKEN, GLITCHTIP_TOKEN: GT_TOKEN, OPS_WATCHDOG_HEARTBEAT_URL: BEAT, RESEND_API_KEY: 're_SECRET-TOKEN-VALUE',
+    });
+    await opsWatchdogJob(e);
+    expect(f.mock.calls.filter(([u]) => String(u) === RESEND_EMAILS_URL)).toHaveLength(1);
     expect(f.mock.calls.length).toBe(OPS_WATCHDOG_MAX_SUBREQUESTS);
+    const fresh = bound.find((r) => r[1] === 'ops-watch-freshness' && r.length === 5);
+    expect(String(fresh?.[3])).toMatch(/^FINDING: \[owner paged\] ops-watch\.yml has STOPPED: newest completed run 60/);
   });
 });
 

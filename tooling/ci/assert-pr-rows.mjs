@@ -13,7 +13,11 @@
 // moves. The register lives in the private corpus, which CI cannot read, and
 // nothing in this repository read a PR body, so the closure audit's verdicts had
 // no path back to a row. The body is the one place a PR can say which rows it
-// closes or advances, and a squash merge carries it into main's history.
+// closes or advances. A squash merge does NOT carry it into main's history by
+// itself: GitHub's default squash message is the branch's commit messages, and
+// measured 2026-10-01 82 of 114 merges lost the line that way (SYN-C1). The
+// lander passes the body (tooling/ops/land-merge.mjs) and assert-main-rows.mjs
+// fails main when the newest merge arrives without the line.
 //
 // ── THE LINE ─────────────────────────────────────────────────────────────────
 // Exactly one line, outside `<!-- -->` comments and fenced code blocks, of one
@@ -23,7 +27,12 @@
 // A leading `- ` bullet and `**Rows:**` bold are stripped first, so
 // `- **Rows:** <row id>` is the same line. `<`, `>` and every other form are
 // refused; the template's placeholder is one of them, on purpose, so a body
-// left as the template wrote it is red.
+// left as the template wrote it is red. The SINGULAR `Row:` (`**Row:**` too) is
+// refused by name, even beside a valid `Rows:` line: main's reader reads
+// `^Rows:` only, so 7 merges that wrote `Row:` named rows nothing ever counted.
+// The bullet and bold forms are accepted here; main's reader reads only a bare
+// `Rows:` at the start of a line, so the lander rewrites the line bare
+// (tooling/ops/land-merge.mjs) before it squashes.
 //
 // ── WIRING ───────────────────────────────────────────────────────────────────
 // ci.yml job guard-meta runs this on pull_request events, `edited` included, so
@@ -121,8 +130,8 @@ export function visibleLines(body) {
   return out;
 }
 
-/** A visible line with its leading `- ` bullet and `**Rows:**` bold stripped. */
-const normalise = (text) => text.replace(/^- /, '').replace(/^\*\*Rows:\*\*/, 'Rows:').replace(/[ \t]+$/, '');
+/** A visible line with its leading `- ` bullet and `**Rows:**` (or `**Row:**`) bold stripped. */
+const normalise = (text) => text.replace(/^- /, '').replace(/^\*\*(Rows?):\*\*/, '$1:').replace(/[ \t]+$/, '');
 
 /** Judge what follows `Rows:`. Returns `{ ok: true, kind, ids | reason }` or `{ ok: false, why }`. */
 export function judgeValue(raw) {
@@ -154,13 +163,17 @@ export function judgeValue(raw) {
  * The verdict on one PR body, with no I/O.
  *   { ok: true,  kind: 'ids', ids, line }         one valid id list
  *   { ok: true,  kind: 'none', reason, line }     one valid `none`
+ *   { ok: false, problem: 'singular', lines }     a `Row:` line, which main's reader never reads
  *   { ok: false, problem: 'missing', hints }      no line (hints: visible near misses)
  *   { ok: false, problem: 'duplicated', lines }   more than one line
  *   { ok: false, problem: 'malformed', line, why } one line, not in an accepted form
  */
 export function parseRows(body) {
   const visible = visibleLines(body);
-  const found = visible.map(({ n, text }) => ({ n, text: normalise(text) })).filter((l) => /^Rows:/.test(l.text));
+  const normalised = visible.map(({ n, text }) => ({ n, text: normalise(text) }));
+  const singular = normalised.filter((l) => /^Row:/.test(l.text));
+  if (singular.length) return { ok: false, problem: 'singular', lines: singular.map((l) => l.n) };
+  const found = normalised.filter((l) => /^Rows:/.test(l.text));
   if (found.length === 0) {
     const hints = visible
       .filter(({ text }) => /rows\s*:|\*\*rows\*\*/i.test(text))
@@ -176,6 +189,9 @@ export function parseRows(body) {
 
 /** One sentence per failing verdict, for the FAIL line and the annotation. */
 export function describeVerdict(verdict) {
+  if (verdict.problem === 'singular') {
+    return `the pull request body has a singular \`Row:\` line (line${verdict.lines.length > 1 ? 's' : ''} ${verdict.lines.join(', ')}); main's reader reads only \`Rows:\`, so the rows it names are never counted — write \`Rows:\``;
+  }
   if (verdict.problem === 'missing') return 'the pull request body has no `Rows:` line';
   if (verdict.problem === 'duplicated') return `the pull request body has ${verdict.lines.length} \`Rows:\` lines (lines ${verdict.lines.join(', ')}); it carries exactly one`;
   return `the \`Rows:\` line at body line ${verdict.line} is malformed: ${verdict.why}`;
