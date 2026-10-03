@@ -1605,6 +1605,15 @@ describe('judgeDeployRun — a stale direct project asks the CI run for its expe
     await assert.rejects(readDeployRun(SHA, { env: {}, fetchImpl: fakeFetch(null, null) }), CouldNotLook, 'no token is could-not-look');
   });
 
+  test('🔴 RED CONTROL — judgeDeployRun ITSELF refuses a run for another sha, whatever handed it in (#1166 review)', () => {
+    // Not through readDeployRun, whose own filter would drop the run first: the re-check is pinned alone.
+    const run = { ...fixture('runs-in-progress.json').workflow_runs[0], head_sha: 'f'.repeat(40) };
+    const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW, deployRun: { ok: true, run, jobs: null } });
+    assert.equal(v.code, 1, 'another commit\'s in-progress run is not this commit\'s deploy');
+    assert.notEqual(v.pending, true);
+    assert.match(v.line, /UNKNOWN: could not read the deploy run for fcf77f1 — the run returned \(37020790032\) is for "f{40}", not fcf77f1e/);
+  });
+
   test('a run in progress whose commit age cannot be read is RED, UNKNOWN', async () => {
     const deployRun = await lookup(fixture('runs-in-progress.json'), null);
     const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: null, now: NOW, deployRun });
