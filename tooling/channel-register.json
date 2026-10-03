@@ -665,13 +665,19 @@
               "and it is blocked upstream on G3. Until it lands the reader below PRINTS the gap (the",
               "channel is `served: false`) and is FATAL on `--for-submission`, which is the same",
               "print/fail split every other deferred-channel rule in this contract uses. Uploading the",
-              "files to App Store Connect is an owner action in every case — nothing here uploads."
+              "files to App Store Connect is an owner action in every case — nothing here uploads.",
+              "",
+              "⏱ BUILT 2026-10-03 (release lane apple-ready): tooling/store/capture-iap-review.mjs drives",
+              "apps/<app>/integration_test/iap_review_screenshot_test.dart on the iphone set's simulator in",
+              "store-screenshots.yml capture-ios — the real PaywallScreen with a one-product fixture rail at the",
+              "price App Store Connect accepted (StoreKit returns no product still in Missing Metadata). It",
+              "derives the products and prices as the reader does; CAPTURE.json records the rail as a fixture."
             ],
             "dir": "iap-review",
             "fileName": "<product_id>.png",
             "onePerProduct": true,
             "productsFrom": "services/platform/src/app-config-data.json → apps.<app_id>.paywall.offerings[] where term != \"one_time\"",
-            "capturedBy": "integration_test/iap_review_screenshot_test.dart (UNBUILT as of 2026-09-22)",
+            "capturedBy": "tooling/store/capture-iap-review.mjs",
             "provenanceFile": "CAPTURE.json",
             "format": "png",
             "alpha": false,
@@ -1372,18 +1378,19 @@
         "and never the SIGNING secrets: an ANDROID_* upload key, an APPLE_*_P12* certificate or a provisioning profile could be read",
         "by any env-less job with every guard green. assert-channel-register 8c rule (e) now holds every read whose name matches",
         "`match` to a job bound to `environment`, or to a job this block licenses by name in `repositoryFallback` until its date.",
-        "The three fallbacks are today's env-less signing jobs. store-publish carries a REQUIRED REVIEWER, so binding the main",
+        "The four fallbacks are today's env-less signing jobs. store-publish carries a REQUIRED REVIEWER, so binding the main",
         "build to it would pause every build for a person; the owner's choice is that, or a signing environment with a main-only",
         "branch policy and no reviewer (`moveStep`). Every fallback expires on #1095's move date; after it the read FAILS."
       ],
       "match": ["^ANDROID_", "^APPLE_[A-Z0-9_]*P12", "PROVISIONING"],
       "environment": "store-publish",
       "storedAt": "repository",
-      "moveStep": "Owner (a GitHub setting): create the signing environment (or reuse store-publish), copy the ANDROID_* and APPLE_* signing secrets into it with `gh secret set --env`, bind the three jobs below to it, then delete the repository copies and remove each fallback.",
+      "moveStep": "Owner (a GitHub setting): create the signing environment (or reuse store-publish), copy the ANDROID_* and APPLE_* signing secrets into it with `gh secret set --env`, bind the four jobs below to it, then delete the repository copies and remove each fallback.",
       "repositoryFallback": [
         { "job": ".github/workflows/build-platforms.yml#linux_web_android", "until": "2026-11-30", "why": "The main build signs the Android release bundle with the upload key on every push; binding it to store-publish would add a required reviewer to every build." },
         { "job": ".github/workflows/build-platforms.yml#apple", "until": "2026-11-30", "why": "The main build signs the iOS and macOS builds with the distribution certificates and profiles; same reviewer cost as the Android job." },
-        { "job": ".github/workflows/submit-play.yml#dry-run", "until": "2026-11-30", "why": "The Play rehearsal builds and signs the exact bundle the submit job uploads, so the submit job can verify its sha256; it uploads nothing." }
+        { "job": ".github/workflows/submit-play.yml#dry-run", "until": "2026-11-30", "why": "The Play rehearsal builds and signs the exact bundle the submit job uploads, so the submit job can verify its sha256; it uploads nothing." },
+        { "job": ".github/workflows/submit-appstore.yml#dry-run", "until": "2026-11-30", "why": "Lead ruling R1 (club-rt-store, 2026-10-03), the twin of the Play rehearsal above: the Apple rehearsal signs the .ipa and .pkg in-lane (review AA-18, C-07) so the owner uploads exactly the validated signed bytes; it uploads nothing. Same reviewer cost as the Play dry run." }
       ]
     },
     "nonSigning": [
@@ -1466,6 +1473,18 @@
         "kind": "service-credential",
         "productionData": "read",
         "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read (the WAF custom-rule phase included), Access: Apps and Policies Read (tooling/ops/check-edge-zone.mjs, added to the owner's mint list 2026-10-01 by lane fix-edge-as-code), Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It deploys nothing and signs nothing, BUT D1 read is account-scoped: it can SELECT every row of every production database, user and consent rows included (#1095 review, finding 2), so it is `productionData: read` and no pull_request-reachable job holds it (limb 8d). Its readers are ci.yml's post-gate `live-reads` job (a push to main, after ci-gate: the ops register's D1 heartbeat probe and the nightly-proof timer limb) and ops-watch.yml's scheduled readers, which prefer it over CLOUDFLARE_API_TOKEN."
+      },
+      {
+        "name": "R2_RELEASE_ACCESS_KEY_ID",
+        "kind": "service-credential",
+        "productionData": "none",
+        "why": "⏱ DECLARED 2026-10-01, NOT YET MINTED (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07). The Access Key ID of an R2 API token scoped to the ONE bucket `releaseStore.bucket` names, with Object Read & Write and nothing else. tooling/ci/r2-durable-copy.mjs reads it (by the name `releaseStore.credentials.accessKeyId` gives) to copy a store build's symbols into that private bucket before the store upload, in submit-play.yml, submit-windows-store.yml and submit-snap.yml `submit`, and build-platforms.yml `durable_symbols` on a tag. A service credential: it authenticates CI to storage this factory operates, never enters an artifact and signs nothing. NOT the deploy token: CLOUDFLARE_API_TOKEN's scope cannot be read from CI, and widening it to R2 write would give every deploy job write access to the archive. Minting it is a token-permission step, so it is the OWNER's (`releaseStore.ownerStep`); until it exists the copy warns and records `stored: false`, and after `releaseStore.pendingUntil` it fails."
+      },
+      {
+        "name": "R2_RELEASE_SECRET_ACCESS_KEY",
+        "kind": "service-credential",
+        "productionData": "none",
+        "why": "⏱ DECLARED 2026-10-01, NOT YET MINTED — the Secret Access Key of the same bucket-scoped R2 API token as R2_RELEASE_ACCESS_KEY_ID, read by the same script in the same four jobs, under the same pending date. It is the half that authenticates; the id alone writes nothing. Never printed: r2-durable-copy.mjs hands it to the AWS CLI through its environment only, and composes the endpoint from the account id so the pair cannot be sent to another host."
       },
       {
         "name": "CLOUDFLARE_D1_TOKEN",
@@ -1916,6 +1935,23 @@
       }
     ]
   },
+  "releaseStore": {
+    "_why": [
+      "⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, O-STORE-BYTES-BYPASS-THE-RELEASE; review AA-07, AA-12). The private R2 bucket a store build's SYMBOLS are copied into, durably, BEFORE the store upload: a store serves a build for years and the mapping that decodes its crash reports was a 90-day Actions artifact. tooling/ci/r2-durable-copy.mjs is the one writer and composes the key from `symbolsKey`; tooling/ci/assert-obfuscation-coupled.mjs limb DURABLE requires the copy before every store `--submit` step, and in a job the tag run's `release` job needs (build-platforms.yml `durable_symbols`).",
+      "PRIVATE, and that is the point: an obfuscation mapping un-obfuscates the build for whoever holds it, which is why `symbols-*` is outside the release job's `<app>-*` download. Nothing here is served from dl.nikatru.com.",
+      "The credential is a bucket-scoped token the OWNER mints (`ownerStep`). Until it exists every copy prints a ::warning:: and records `stored: false` with the sha256 it would have stored; after `pendingUntil` a missing credential fails the job."
+    ],
+    "bucket": "nikatru-release-store",
+    "visibility": "private",
+    "symbolsKey": "symbols/{app}/{channel}/{version}+{build}/",
+    "credentials": {
+      "accountId": "CLOUDFLARE_ACCOUNT_ID",
+      "accessKeyId": "R2_RELEASE_ACCESS_KEY_ID",
+      "secretAccessKey": "R2_RELEASE_SECRET_ACCESS_KEY"
+    },
+    "pendingUntil": "2026-11-30",
+    "ownerStep": "OWNER: in Cloudflare R2 create an R2 API token with Object Read & Write on the bucket nikatru-release-store ONLY (no account-wide permission, no other bucket), and store its Access Key ID and Secret Access Key as repository secrets R2_RELEASE_ACCESS_KEY_ID and R2_RELEASE_SECRET_ACCESS_KEY. Read back with `gh secret list` (names only)."
+  },
   "releaseBuildsNeverShipped": {
     "_why": [
       "🔴 ⏱ 2026-09-22 — LIFTED OUT OF assert-channel-register.mjs, WHERE IT WAS A `const` CALLED",
@@ -2187,6 +2223,12 @@
         ],
         "forbidsWhy": "POLICY for `paddle`: once IAP is offered there is NO in-app steering to another rail, and the US link-out program is not taken (its 0% window ends 2026-09-30, after which ~10% nets below Play Billing). MECHANICAL for `apple-iap`. 🔴 THE SIDELOAD OF THIS SAME APP IS `paddle` — see purchaseRails.awaitingChannelRow.android-sideload. The rail follows the CHANNEL, not the artifact.",
         "source": "[ADR 039] D2"
+      },
+      "storeSizeLimit": {
+        "bytes": 500000000,
+        "measures": "the .aab file, which holds every ABI's split and so bounds any one device's compressed download from above",
+        "source": "https://support.google.com/googleplay/android-developer/answer/9859372 — \"Base module: 500MB\" (maximum compressed download size), read 2026-10-01",
+        "readAt": "2026-10-01"
       },
       "artifactFormats": [
         ".aab"
@@ -2902,6 +2944,12 @@
           }
         ]
       },
+      "storeSizeLimit": {
+        "bytes": 25000000000,
+        "measures": "the .msix package",
+        "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements — \"25 GB maximum per package\", read 2026-10-01",
+        "readAt": "2026-10-01"
+      },
       "artifactFormats": [
         ".msix"
       ],
@@ -3262,6 +3310,8 @@
           }
         ]
       },
+      "storeSizeLimit": null,
+      "_storeSizeLimitWhy": "Read 2026-10-01: https://snapcraft.io/docs/releasing-your-app states no maximum snap size, and no other primary source was found. Null is that declaration — tooling/ci/assert-artifact-size.mjs holds this row to the 2× median rule only — and a sourced number replaces it, never a guessed one.",
       "artifactFormats": [
         ".snap"
       ],

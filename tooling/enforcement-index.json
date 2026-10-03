@@ -156,7 +156,9 @@
       "R-3"
     ],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#apple"
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/apple-signing.mjs",
@@ -340,6 +342,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#durable_symbols",
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/build-platforms.yml#release",
@@ -353,8 +356,8 @@
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit",
-      ".github/workflows/submit-windows-store.yml#dry-run"
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-app-versioning.mjs",
@@ -374,6 +377,7 @@
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -454,7 +458,9 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#apple",
-      ".github/workflows/ci.yml#workspace-gate"
+      ".github/workflows/ci.yml#workspace-gate",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-signed-apple.mjs",
@@ -487,6 +493,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-artifact-size.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
@@ -507,6 +525,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-availability.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-build-provenance.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -678,6 +706,7 @@
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -913,6 +942,7 @@
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/migrate-platform-db.yml#migrate",
       ".github/workflows/rollback.yml#rollback",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#submit"
@@ -1251,7 +1281,9 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store",
-      ".github/workflows/submit-appstore.yml#dry-run"
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-iap-review-screenshots.mjs",
@@ -1549,6 +1581,7 @@
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/ops-watch.yml#heartbeats",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -1939,6 +1972,7 @@
       ".github/workflows/store-screenshots.yml#capture-ios",
       ".github/workflows/store-screenshots.yml#capture-linux",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -2475,7 +2509,8 @@
       "ADR 093"
     ],
     "invokedBy": [
-      ".github/workflows/submit-appstore.yml#dry-run"
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-small-business-program.mjs",
@@ -2492,8 +2527,7 @@
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/ci.yml#linux-artifacts",
-      ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit"
+      ".github/workflows/submit-snap.yml#dry-run"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-snapcraft-generable.mjs",
@@ -2732,6 +2766,7 @@
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
@@ -2927,7 +2962,8 @@
       "C-6"
     ],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#apple"
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/submit-appstore.yml#dry-run"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-xcode-floor.mjs",
@@ -3120,7 +3156,6 @@
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run"
     ],
     "kind": "guard",
@@ -3174,6 +3209,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-release-carries.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/ci.yml#guard-tests-floor"
     ],
@@ -3197,7 +3242,6 @@
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
       ".github/workflows/symbolication-proof.yml#prove",
       ".github/workflows/trufflehog.yml#scan"
@@ -3307,6 +3351,20 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#durable_symbols",
+      ".github/workflows/submit-appstore.yml#submit",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/r2-durable-copy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "D-3"
     ],
@@ -3347,6 +3405,7 @@
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -3556,6 +3615,17 @@
     "ref": "tooling/ci/update-exit.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/extensions.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/verify-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [],
@@ -4305,7 +4375,6 @@
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
       ".github/workflows/symbolication-proof.yml#prove"
     ],
@@ -4402,8 +4471,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#linux-artifacts",
-      ".github/workflows/submit-snap.yml#dry-run",
-      ".github/workflows/submit-snap.yml#submit"
+      ".github/workflows/submit-snap.yml#dry-run"
     ],
     "kind": "script",
     "ref": "tooling/release/generate-snapcraft.mjs",
@@ -4412,6 +4480,7 @@
   },
   {
     "claims": [
+      "ADR 031",
       "C-6",
       "D-10",
       "D-6",
@@ -4420,7 +4489,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-dryrun",
-      ".github/workflows/submit-appstore.yml#dry-run"
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-appstore.yml#submit"
     ],
     "kind": "script",
     "ref": "tooling/release/submit-appstore.mjs",
@@ -4733,6 +4803,16 @@
     ],
     "kind": "script",
     "ref": "tooling/store/capture-fallback-fonts.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture-ios"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/capture-iap-review.mjs",
     "references": [],
     "state": "WIRED"
   },

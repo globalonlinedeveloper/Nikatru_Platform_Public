@@ -38,6 +38,10 @@ import {
   requiredTargets,
   PLATFORM_BUILD_TARGETS,
   PROOF_INPUT_PATHS,
+  storeLaneSubjects,
+  storeLaneSchedule,
+  evaluateStoreLane,
+  STORE_LANE_DEADLINE,
 } from '../assert-platform-proof-fresh.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 import { workspaceApps } from '../app-set.mjs';
@@ -813,7 +817,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
           '  linux_web_android:\n    name: Linux + Web + Android\n',
           '  linux_web_android:\n    name: Linux + Web + Android\n    outputs: { decoy: "needs: [linux_web_android, windows, apple]" }\n',
         )
-        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, release]', '    needs: [gate, prepare]'),
+        // ⏱ 2026-10-01: the aggregator also needs `durable_symbols` (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
+        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]', '    needs: [gate, prepare]'),
     );
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
@@ -825,8 +830,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   test('the aggregator written in BLOCK form is read correctly — no false red on a legal spelling', () => {
     const root = mutate((s) =>
       s.replace(
-        '    needs: [gate, prepare, linux_web_android, windows, apple, release]',
-        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - release',
+        '    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]',
+        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - durable_symbols\n      - release',
       ),
     );
     assert.equal(assertWatchedWorkflowIntact(root), null);
@@ -1240,5 +1245,110 @@ describe('the PR #806 page and its cross-read, through the CLI (E2, E3, E6)', ()
       /READ {4}\(GitHub run history\) : {2}fixture standing in for GET \/repos\/\S+\/actions\/workflows\/build-platforms\.yml\/runs\?status=success&per_page=100 · 2 row\(s\) returned, per_page 100, saturated no · newest qualifying run 32003607931 \(updated_at 2026-08-17T07:07:59Z\) · cross-read not run \(fixture has none\)$/m,
     );
     assert.doesNotMatch(r.stdout, /STALE PAGE/);
+  });
+});
+
+// ── ⏱ 2026-10-01 · the store lanes' rehearsals (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE) ──
+describe('--store-lanes: every armed row\'s submission workflow has a green dry run within 14 days', () => {
+  const AFTER = '2026-10-25T12:00:00Z';
+  const BEFORE = '2026-10-10T12:00:00Z';
+  const LANES = ['submit-play.yml', 'submit-appstore.yml', 'submit-windows-store.yml', 'submit-snap.yml'];
+  const storeFixture = (name, now, ages) => {
+    const at = (d) => new Date(Date.parse(now) - d * 86_400_000).toISOString();
+    const doc = {};
+    LANES.forEach((f, i) => {
+      doc[f] = ages[f] === null ? [] : [{ id: 900 + i, conclusion: 'success', status: 'completed', event: 'schedule', head_sha: HEAD_SHA, updated_at: at(ages[f] ?? 2), created_at: at(ages[f] ?? 2) }];
+    });
+    const file = join(TMP, name);
+    writeFileSync(file, JSON.stringify(doc));
+    return file;
+  };
+  const runStore = (file, now) => {
+    const env = { ...process.env };
+    delete env.GITHUB_TOKEN;
+    delete env.GH_TOKEN;
+    return spawnSync(process.execPath, [GUARD, '--store-lanes', '--store-runs-file', file, '--now', now], { cwd: REPO, encoding: 'utf8', env });
+  };
+
+  test('the subject set is DERIVED from the armed rows: the four submit lanes, Apple naming both its rows', () => {
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8'));
+    const subjects = storeLaneSubjects(register);
+    assert.deepEqual(subjects.map((s) => s.workflow.split('/').pop()).sort(), [...LANES].sort());
+    assert.deepEqual(subjects.find((s) => s.workflow.endsWith('submit-appstore.yml')).rows, ['ios-appstore', 'macos-appstore']);
+  });
+
+  test('an UNARMED row is not a subject, and a register with none armed is COVERAGE LOST', () => {
+    const row = { id: 'x', served: false, submittable: false, lane: null, submission: { workflow: '.github/workflows/submit-x.yml', job: 'dry-run' } };
+    assert.deepEqual(storeLaneSubjects({ channels: [row] }), []);
+    assert.deepEqual(storeLaneSubjects({ channels: [{ ...row, served: true }] }), [{ workflow: '.github/workflows/submit-x.yml', rows: ['x'] }]);
+  });
+
+  test('every real lane declares a weekly cron the limb can read', () => {
+    for (const f of LANES) {
+      const s = storeLaneSchedule(REPO, `.github/workflows/${f}`);
+      assert.equal(s.problem, null, `${f}: ${s.problem}`);
+      assert.equal(s.interval, 7, f);
+    }
+  });
+
+  test('GREEN: every lane rehearsed within the ceiling passes', () => {
+    const r = runStore(storeFixture('store-fresh.json', AFTER, {}), AFTER);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /ok  store lanes — 4 armed submission workflow\(s\) graded, 4 fresh within 14 day\(s\)/);
+  });
+
+  test('THE RED CONTROL: a 15-day-old dry run FAILS, naming the lane and its rows', () => {
+    const r = runStore(storeFixture('store-stale.json', AFTER, { 'submit-snap.yml': 15 }), AFTER);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /FAIL  store lane submit-snap\.yml \(armed: linux-snap\) is not fresh — the newest green run 903 \(schedule\) is 15\.0 days old, ceiling 14/);
+  });
+
+  test('a lane with no green run at all FAILS', () => {
+    const r = runStore(storeFixture('store-none.json', AFTER, { 'submit-appstore.yml': null }), AFTER);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /store lane submit-appstore\.yml \(armed: ios-appstore, macos-appstore\) is not fresh — no successful run at all/);
+  });
+
+  test(`before ${STORE_LANE_DEADLINE} the same stale lane PRINTS and does not fail — the dated start, stated`, () => {
+    const r = runStore(storeFixture('store-early.json', BEFORE, { 'submit-snap.yml': 15 }), BEFORE);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /⬜  store lane submit-snap\.yml .* is not fresh/);
+    assert.match(r.stdout, new RegExp(`PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}`));
+  });
+
+  test('a fixture missing a lane is COVERAGE LOST (exit 2), never a pass', () => {
+    const file = join(TMP, 'store-partial.json');
+    const fresh = new Date(Date.parse(AFTER) - 86_400_000).toISOString();
+    writeFileSync(file, JSON.stringify({ 'submit-play.yml': [{ id: 1, conclusion: 'success', event: 'schedule', head_sha: HEAD_SHA, updated_at: fresh, created_at: fresh }] }));
+    const r = runStore(file, AFTER);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /store lane submit-appstore\.yml — its run history could not be read: the fixture carries no run history for submit-appstore\.yml/);
+  });
+
+  test('a lane whose schedule is removed FAILS before any run is read (mutation of the real file)', () => {
+    const root = join(TMP, 'store-unscheduled');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    const real = readFileSync(join(REPO, '.github/workflows/submit-snap.yml'), 'utf8');
+    const cut = real.replace(/\n  schedule:\n    - cron: '[^']+'[^\n]*\n/, '\n');
+    assert.notEqual(cut, real, 'the mutation removed nothing');
+    writeFileSync(join(root, '.github/workflows/submit-snap.yml'), cut);
+    const s = storeLaneSchedule(root, '.github/workflows/submit-snap.yml');
+    assert.match(s.problem, /declares no `schedule:` cron, so its dry run runs only when somebody dispatches it/);
+  });
+
+  test('a fortnightly cron cannot keep a 14-day ceiling and FAILS', () => {
+    const root = join(TMP, 'store-slow');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    const real = readFileSync(join(REPO, '.github/workflows/submit-play.yml'), 'utf8');
+    writeFileSync(join(root, '.github/workflows/submit-play.yml'), real.replace(/- cron: '0 7 \* \* 2'/, "- cron: '0 7 1,15 * *'"));
+    assert.match(storeLaneSchedule(root, '.github/workflows/submit-play.yml').problem, /cannot keep its rehearsal fresh|fires only every/);
+  });
+
+  test('evaluateStoreLane counts a dispatch as well as a schedule, and ignores a failure', () => {
+    const now = Date.parse(AFTER);
+    const at = (d) => new Date(now - d * 86_400_000).toISOString();
+    const v = evaluateStoreLane([{ id: 1, conclusion: 'failure', updated_at: at(1) }, { id: 2, conclusion: 'success', event: 'workflow_dispatch', updated_at: at(3) }], now);
+    assert.equal(v.ok, true);
+    assert.equal(v.runId, 2);
   });
 });

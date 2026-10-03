@@ -1793,7 +1793,7 @@ async function main() {
     const version = flag('version') ?? die('--emit-release-json needs --version <X.Y.Z[.N]>');
     const minSupportedFlag = flag('min-supported'); // read only to be refused, on every surface: releaseFloor below
     const surfaceFlag = flag('surface');
-    const build = has('build') ? flag('build') : null;
+    const build = has('build') ? flag('build') : null; const provenance = readProvenance(flag('provenance')); // O-RELEASES-HAVE-NO-PROVENANCE
     // ⏱ 2026-09-25 — the record's tag must name `--app` (O-TAG-BUILDS-EVERY-APP). No ref type is passed here.
     await refuseAnotherUnitsTag('--emit-release-json', { app, tag, refType: null });
     const out = join(dir, RELEASE_JSON_NAME);
@@ -1848,7 +1848,7 @@ async function main() {
     const minSupported = floorFor(files.map((f) => f.stamp?.channel)); // O-UPDATE-FLOOR-HAS-NO-CHANNEL
     const json = buildReleaseJson({
       app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
-      register: loadRegister(), treeRoot, files,
+      register: loadRegister(), treeRoot, files, provenance,
     });
     // O-RELEASE-EMITTER-WRITES-UNCHECKED — graded BEFORE the file exists, by the
     // schema and validator assert-release-json.mjs limb 1 uses. Written first, a
@@ -1877,7 +1877,7 @@ async function main() {
     'Usage: --stage <from> --out <dir> --app <id> --tag <tag> --ref-type <tag|branch> [--stamps <dir>] | --write <dir> --app <id> --tag <tag> --sha <sha>',
     '       | --verify <dir> | --emit-assets <dir> | --emit-environments <dir> --app <id>',
     '       | --emit-release-json <dir> --app <id> --tag <tag> --sha <sha> --run-url <url> --notes-url <url>',
-    '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension] [--stamps <dir>]',
+    '         --released-at <iso> --version <X.Y.Z[.N]> [--build <n>] [--surface app|extension] [--stamps <dir>] [--provenance <file>]',
     '         (--stamps is required on every surface but the extension one, for both --stage and --emit-release-json)',
     '         (no --min-supported: the app surface reads services/platform/src/app-config-data.json, the extension surface states X.Y.Z of --version)',
   );
@@ -1921,7 +1921,7 @@ function coverageLost(msg, ...more) {
  */
 export function buildReleaseJson({
   app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build = null,
-  register, treeRoot, files,
+  register, treeRoot, files, provenance = null,
 }) {
   /**
    * ⬜ THE FORMATS A RELEASE DIRECTORY CARRIES THAT NO CHANNEL ACCEPTS, declared
@@ -2046,6 +2046,9 @@ export function buildReleaseJson({
         sha256: f.sha256,
         size: f.size,
         channels: channelsFor(f, format),
+        // ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE): the attestation THIS run signed and verified for these
+        // bytes, from tooling/ci/verify-provenance.mjs; absent only when the lane passed no --provenance.
+        ...(provenance === null ? {} : { provenance: provenanceFor(f, provenance) }),
       };
     });
 
@@ -2593,4 +2596,45 @@ function highestFloor(floors) {
     if (cmp > 0) top = f;
   }
   return top;
+}
+
+/**
+ * ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE). `--provenance <file>`: the record
+ * tooling/ci/verify-provenance.mjs wrote after `gh attestation verify` passed for
+ * every file of the release directory. Null when the flag is absent; a record that
+ * cannot be read or is not that shape is refused, never half-used.
+ */
+function readProvenance(path) {
+  if (path === null || path === undefined) return null;
+  let rec;
+  try {
+    rec = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    return die(`--provenance ${path} cannot be read as JSON (${e.code ?? e.message}).`);
+  }
+  const ok =
+    rec?.schema === 'nikatru.provenance/1' &&
+    /^[0-9]+$/.test(String(rec.attestationId ?? '')) &&
+    typeof rec.attestationUrl === 'string' && rec.attestationUrl.startsWith('https://') &&
+    rec.files !== null && typeof rec.files === 'object';
+  if (!ok) {
+    return die(
+      `--provenance ${path} is not a nikatru.provenance/1 record (schema, attestationId, attestationUrl, files).`,
+      'It is written by tooling/ci/verify-provenance.mjs and by nothing else.',
+    );
+  }
+  return rec;
+}
+
+/** One artefact's provenance, or a refusal: a described file the verify step did not verify, or verified as other bytes. */
+function provenanceFor(f, rec) {
+  const entry = Object.hasOwn(rec.files, f.name) ? rec.files[f.name] : null;
+  if (entry === null || entry.sha256 !== f.sha256) {
+    die(
+      `${f.name} carries no verified build provenance: ${entry === null ? 'the --provenance record does not name it' : `it was verified as sha256 ${entry.sha256}, and the file is ${f.sha256}`}.`,
+      'Every file a release publishes is attested and verified BEFORE it is described (actions/attest-build-provenance,',
+      'then tooling/ci/verify-provenance.mjs); a file added after the verify step is a file nobody can verify.',
+    );
+  }
+  return { attestationId: rec.attestationId, attestationUrl: rec.attestationUrl };
 }

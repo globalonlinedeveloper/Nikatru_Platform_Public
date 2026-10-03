@@ -120,10 +120,23 @@ export const PUBLIC_REACH = Object.freeze({
     env: null,
     reaches: () => true,
   },
-  // submit-appstore.mjs refuses --submit by design, so no job submits these today. The day one does,
-  // its submission is for App Review, which is the public listing.
-  'ios-appstore': { step: 'a submission for App Review', env: null, reaches: () => true },
-  'macos-appstore': { step: 'a submission for App Review', env: null, reaches: () => true },
+  // ⏱ 2026-10-03 (release lane apple-ready): submit-appstore.mjs --submit UPLOADS a build for TestFlight
+  // processing and stops; it never submits for App Review, which stays the owner's console act. A
+  // TestFlight build is the Apple twin of Play's internal track — the one place an attested iOS sign-in
+  // can be proven before nativeAuth flips — so it stays open. APPLE_RELEASE_TARGET is the variable the
+  // script itself refuses any value of but `testflight` (or unset), so the two cannot mean different things.
+  'ios-appstore': {
+    step: 'a submission for App Review (the owner\'s console act; submit-appstore.mjs only uploads for TestFlight)',
+    env: 'APPLE_RELEASE_TARGET',
+    unset: 'submit-appstore.mjs uploads the build for TestFlight processing and submits nothing for review',
+    reaches: (target) => target !== 'testflight',
+  },
+  'macos-appstore': {
+    step: 'a submission for App Review (the owner\'s console act; submit-appstore.mjs only uploads for TestFlight)',
+    env: 'APPLE_RELEASE_TARGET',
+    unset: 'submit-appstore.mjs uploads the build for TestFlight processing and submits nothing for review',
+    reaches: (target) => target !== 'testflight',
+  },
 });
 
 /** Submitting app channels that owe NO declaration gate, each with its ruling. Limb 3 fails a

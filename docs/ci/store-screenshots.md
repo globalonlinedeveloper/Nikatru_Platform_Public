@@ -866,3 +866,16 @@ other. That is a real, mechanical, non-vacuous check — but a guard lands with 
 mutation proof, in its own increment, and inventing one inside a documentation change is how a
 repository acquires a check nobody can defend. **Filed as a proposal here; not written.**
 
+
+## ⏱ 2026-10-03 — `capture-ios` also captures the IAP review screenshots (release lane apple-ready)
+
+**Appended, not rewritten.** Two steps right after **Boot the simulators the register names**:
+**Capture the IAP review screenshots (one per auto-renewable product)** runs
+`tooling/store/capture-iap-review.mjs`, which derives the products (every offering whose `term` is not
+`one_time`), the price App Store Connect accepted for each (`prices…store.readBack.apple`) and the
+simulator (the iphone set's) and drives `integration_test/iap_review_screenshot_test.dart`; then
+`assert-iap-review-screenshots.mjs --for-submission` grades the frames. They run BEFORE the listing drive
+because they need no account and no backend, so a listing failure does not cost them. The
+`iap-review/` directory travels in both uploads and in the review pull request. Why the rail is a
+fixture: StoreKit returns no product still in "Missing Metadata", which is what these frames clear;
+`CAPTURE.json` says so in `rail`.

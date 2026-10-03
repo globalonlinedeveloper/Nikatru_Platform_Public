@@ -320,7 +320,9 @@ describe('⏱ 2026-10-01 — limb 3: the nativeAuth and device-coverage gates, a
   const IOS_NAME_STEP =
     '      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)\n' +
     '        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore\n';
-  const BUILD_MACOS = '      - name: Build macOS (unsigned on purpose — this lane must never submit)\n';
+  // ⏱ 2026-10-03 (club-store-chain, review AA-18): the dry run now signs in-lane and builds macOS, THEN
+  // iOS (an archive + export), so the LAST build is the iOS one.
+  const BUILD_LAST_APPLE = '      - name: Build iOS (signed archive + export)\n';
   const PLAY_NATIVE_DRY =
     '      - name: A build that cannot sign in reaches no public track (android-play)\n' +
     '        run: node tooling/ci/assert-channel-register.mjs --for-submission=android-play\n';
@@ -361,19 +363,24 @@ describe('⏱ 2026-10-01 — limb 3: the nativeAuth and device-coverage gates, a
   test('🔴 (AA-02) the order is against the LAST build: a gate between the iOS and the macOS build is a finding', () => {
     const root = realCopy((r) => {
       mutateFile(r, APPSTORE, IOS_NAME_STEP, '');
-      mutateFile(r, APPSTORE, BUILD_MACOS, `${IOS_NAME_STEP}${BUILD_MACOS}`);
+      mutateFile(r, APPSTORE, BUILD_LAST_APPLE, `${IOS_NAME_STEP}${BUILD_LAST_APPLE}`);
     });
     const { code, out } = preconditions(root);
     assert.equal(code, 1, out);
     assert.match(out, /MASKED PRECONDITION {2}\S+submit-appstore[.]yml:\d+ job "dry-run" channel ios-appstore[\s\S]*GATE BEFORE THE BUILD: [^\n]*submit-appstore[.]yml:\d+/, out);
   });
 
-  test('(AA-02) a REAL submit job keeps its gates first: the snap submit job gates before it builds, and is green', () => {
+  // ⏱ 2026-10-03 (club-store-chain, review AA-23): the snap submit job takes the dry run's .snap by sha256
+  // and builds nothing, so "gates first" is measured against the step that hands the snap to the store.
+  test('(AA-02) a REAL submit job keeps its gates first: the snap submit job gates before it uploads, builds nothing, and is green', () => {
     const snap = readFileSync(join(REPO, SNAP), 'utf8');
     const submitAt = snap.indexOf('\n  submit:\n');
     assert.ok(submitAt !== -1, 'the snap submit job anchor moved');
     const job = snap.slice(submitAt);
-    assert.ok(job.indexOf('assert-name-clearance.mjs --for-submission=linux-snap') < job.indexOf('flutter-release-build.mjs'), 'the snap submit job no longer gates first');
+    assert.equal(job.indexOf('flutter-release-build.mjs'), -1, 'the snap submit job builds again instead of taking the dry run\'s bytes');
+    const gate = job.indexOf('assert-name-clearance.mjs --for-submission=linux-snap');
+    const upload = job.indexOf('submit-snap.mjs --submit');
+    assert.ok(gate !== -1 && upload !== -1 && gate < upload, 'the snap submit job no longer gates first');
     assert.equal(preconditions(realCopy()).code, 0);
   });
 

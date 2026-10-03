@@ -52,7 +52,18 @@ provenance is evidence about nothing: nobody can tell afterwards whether it
 showed a LIVE build or a DEMO one, and a demo build paints a "Demo data" banner
 across the screen.
 
-## ⬜ The capture is UNBUILT, and this directory is empty on purpose
+## ⏱ 2026-10-03 — the capture is BUILT (release lane apple-ready)
+
+`tooling/store/capture-iap-review.mjs` drives `integration_test/iap_review_screenshot_test.dart`
+on the iphone listing set's simulator, in `store-screenshots.yml`'s `capture-ios` job
+(dispatch it with `channel: ios-appstore`). It took the second route below: the real
+`PaywallScreen`, the app's theme and strings, and a rail serving ONE product per frame at the
+price App Store Connect accepted for it (`prices.apps.subscriptiontracker.<product>.store.readBack.apple`
+in `services/platform/src/app-config-data.json`) — StoreKit returns no product that is still in
+"Missing Metadata", which is the state this screenshot clears. `CAPTURE.json` records the rail as a
+fixture. The frames arrive here through that job's pull request, never by hand.
+
+## (until 2026-10-03) The capture was UNBUILT, and this directory was empty on purpose
 
 `integration_test/iap_review_screenshot_test.dart` does not exist yet. It needs a
 machine with Xcode and a paywall rendering real StoreKit products, and it is

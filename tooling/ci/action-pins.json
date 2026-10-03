@@ -12,6 +12,14 @@
   ],
   "pins": [
     {
+      "action": "actions/attest-build-provenance",
+      "sha": "4d101475d8b20a2381f78447822ac1eab6504dd8",
+      "version": "v4.2.2",
+      "using": "composite",
+      "readAt": "2026-10-03",
+      "source": "runs.using read from action.yml at the sha (gh api repos/actions/attest-build-provenance/contents/action.yml?ref=<sha>); version is the latest release tag, whose ref resolves to the sha (gh api repos/actions/attest-build-provenance/git/ref/tags/v4.2.2). It wraps actions/attest@508db95d (v4.2.1) by its own SHA pin."
+    },
+    {
       "action": "actions/cache",
       "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
       "version": "v6.1.0",

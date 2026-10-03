@@ -1056,7 +1056,8 @@ the thing they operate on does not outlive the job. Every one of them is
 reachable from here; none was before.
 
 THE POSTURE IS IN THE NAME, for the reason recorded on the Android
-upload above: `subscriptiontracker-ios-unsigned-build-proof` cannot be mistaken for a
+upload above: `ci-proof-ios-app-subscriptiontracker-unsigned-build-proof` (⏱ renamed 2026-10-01
+out of the `<app>-*` namespace, §release-carried) cannot be mistaken for a
 submittable build by anyone reading the run's artifact list, and today
 it is exactly what it says — apple-signing.mjs exports
 `unsigned-build-proof` when the four Apple secrets are absent, which
@@ -1075,12 +1076,13 @@ when somebody widens this path.
 
 ## job `all_platforms`
 
-### above `needs: [gate, prepare, linux_web_android, windows, apple, release]`
+### above `needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]`
 
 `release` is in this list for the same reason every other job is:
 assert-channel-register.mjs asserts the aggregator `needs` EVERY other job
 in the file, so a durable-release job outside it could fail while "All 6
-platforms built" still printed. It is also why `release` carries NO
+platforms built" still printed. ⏱ 2026-10-01: `durable_symbols` (the tag's symbols to R2,
+O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS) joins it on the same terms. It is also why `release` carries NO
 job-level `if:` — a conditional job resolves to `skipped`, and this
 aggregator (correctly) treats `skipped` as not-green. The tag-only part of
 that job is therefore a STEP-level condition, which leaves the job itself
@@ -1193,11 +1195,11 @@ workspace, leg #1 must not publish app #2's binaries under app #1's tag.
 ⏱ 2026-09-27, download-artifact v4.3.0 → v8.0.1. From v5 a `pattern:`
 that matches exactly ONE artifact is extracted straight into `path:`, not
 into `path/<name>/` (its README: "This change also applies to patterns
-that only match a single artifact"). `<app>-*` always matches at least
-two: `<app>-linux-web-android-<posture>` and `<app>-macos` are uploaded
-unconditionally with `if-no-files-found: error` by jobs this one needs,
-so every artifact keeps its own directory and the archive loop below
-still makes one .tar.gz per artifact. The apps.gov.in download matches
+that only match a single artifact"). ⏱ 2026-10-01: `<app>-*` matches NO
+artifact today — every upload is `ci-proof-…`, `store-<app>-…` or `symbols-<app>-…`
+unless a channel's row says a Release carries it (§release-carried) — so the
+stage step creates `downloads/` itself before `--stage` reads it, and a
+future `<app>-…` upload still keeps its own directory once two match. The apps.gov.in download matches
 zero or one, so it names its own directory as its `path:`.
 
 ### before step **Stage the installers and archive the rest**
@@ -1747,7 +1749,9 @@ the Play .apk put back into the `<app>-*` upload.
 ⏱ 2026-09-24 — no `<app>-*` upload names an installer path any more (§store-only), so limb 9 counts
 the apps.gov.in download limb 10 grades as the release's installer source: a stager with neither is
 still COVERAGE LOST. The Play .apk mutation now lands beside the Linux bundle, the one path left in
-the `<app>-linux-web-android-<posture>` upload.
+the `<app>-linux-web-android-<posture>` upload. ⏱ 2026-10-01: that upload is
+`ci-proof-linux-bundle-<app>` now (§release-carried), so the mutation names it back into
+`<app>-*` in the same edit.
 
 ## store-only — a Release never carries a file only a store takes
 
@@ -2171,3 +2175,16 @@ call run bare from any workflow step — `glitchtip-cli releases|deploys|send-ev
 — is exit 1. A continued line is joined by the step's own shell (`\` for bash, a backtick for
 pwsh) before it is split. It cannot see a pwsh variable that holds the CLI's path; no workflow
 does that today.
+
+## release-carried — a Release carries only what a channel's row claims
+
+⏱ 2026-10-01 (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES, review AA-13). The release job downloads the
+`<app>-*` namespace and archives whatever `--stage` does not lift, so every upload in that
+namespace is published. The App Store-signed macOS `.app`, the unsigned iOS `.app` and the Linux
+bundle were in it while no register row takes any of them: macos-appstore takes the `.pkg`,
+linux-snap builds its own `.snap`, linux-appimage has no lane. They are `ci-proof-macos-app-<app>`,
+`ci-proof-ios-app-<app>-<posture>` and `ci-proof-linux-bundle-<app>` now, and
+`assert-release-durable.mjs` limb 1c fails any `<app>-*` upload whose paths map to no row that is
+served or that `releaseCarriesFor` says a Release carries. The runbook's §3 is generated from the
+same derivation (`gen-release-carries.mjs`).
+

@@ -578,14 +578,27 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
     // Web: 5% + 50 minor on each price (the sub-$10 cell carries the published rate until a quote exists).
     assert.match(netLine(r.out, `${APP} pro_monthly`, 'web'), /USD +5\.99 → net +5\.19 +\(paddle-under-10:/);
     assert.match(netLine(r.out, `${APP} pro_yearly`, 'web'), /USD +34\.99 → net +32\.74 +\(paddle-checkout:/);
-    // Play at 15%, Apple at the standard 30% until the Small Business Program enrolment (A-18).
+    // Play at 15%; Apple at the Small Business 15% since the owner recorded the enrolment approval (A-18,
+    // fee-register `apple-small-business-enrolment` = 2026-09-25). The null-cell standard-rate path is the fixture tests below.
     assert.match(netLine(r.out, `${APP} pro_monthly`, 'android-play'), /USD +7\.19 → net +6\.11/);
-    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /USD +7\.19 → net +5\.03 .*⬜ below web 5\.19 until A-18/);
-    assert.match(netLine(r.out, `${APP} pro_yearly`, 'macos-appstore'), /USD +41\.99 → net +29\.39 .*⬜ below web 32\.74 until A-18/);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /USD +7\.19 → net +6\.11 +\(apple-iap-small-business: 15%\)$/);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'macos-appstore'), /USD +41\.99 → net +35\.69 +\(apple-iap-small-business: 15%\)$/);
     // The India web book: GST out of the price, 2% + 0.5% on the whole of it.
     assert.match(netLine(r.out, `${APP} pro_yearly`, 'web·IN'), /INR +999\.00 → net +821\.64/);
-    assert.match(r.out, /⬜ \d+ Apple row\(s\) net below web at the standard rate until .*apple-small-business-enrolment/);
+    assert.doesNotMatch(r.out, /⬜ \d+ Apple row\(s\) net below web/);
     assert.match(r.out, /apps-gov-in +none +sells nothing/);
+  });
+
+  test('with the enrolment cell null (A-18 not recorded), Apple nets at the standard rate and is gated, not a finding', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['apple-small-business-enrolment'].value = null;
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 0, r.all);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /USD +7\.19 → net +5\.03 .*⬜ below web 5\.19 until A-18/);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'macos-appstore'), /USD +41\.99 → net +29\.39 .*⬜ below web 32\.74 until A-18/);
+    assert.match(r.out, /⬜ \d+ Apple row\(s\) net below web at the standard rate until .*apple-small-business-enrolment/);
   });
 
   test('RED CONTROL: a fixture channel that nets below its web row is exit 1, naming both nets', () => {

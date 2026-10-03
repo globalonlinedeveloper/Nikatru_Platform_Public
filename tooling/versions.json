@@ -577,6 +577,7 @@
     "           v0.4.2`), so its customManager strips that prefix and this value never carries one."
   ],
   "msstore_cli": "0.4.3",
+  "snapcraft_track": "9.x/stable",
 
   "runner_ubuntu": "ubuntu-24.04",
   "runner_windows": "windows-2025",
@@ -615,6 +616,10 @@
     "that publishes production, declared here and advanced by nobody. It now has a customManager."
   ],
   "$updateExemptions": [
+    {
+      "key": "snapcraft_track",
+      "why": "A SNAP STORE TRACK, not a version series: `snap install snapcraft --classic --channel <track>` installs the newest revision on that track, so the pin holds the MAJOR (the pack format and its CLI) and lets point releases move, which is how the snap store means a track to be used. No datasource on https://docs.renovatebot.com/modules/datasource/ reads a snap store channel map. ADDED 2026-10-01 (review AA-04/AA-23): build-platforms.yml linux_web_android and submit-snap.yml both ran `snap install snapcraft --classic` with no channel, i.e. whatever the default track served that day; measured that day against api.snapcraft.io/v2/snaps/info/snapcraft, `stable` and `9.x/stable` both served 9.1.3 and `8.x/stable` 8.14.5, so this pin keeps what both lanes installed. tooling/ci/assert-update-coverage.mjs refuses a workflow line that installs snapcraft without `--channel` from a variable that this key fills. Advanced by the owner when a new snapcraft major is wanted, with a weekly proof behind it."
+    },
     {
       "key": "runner_ubuntu",
       "why": "A GitHub Actions RUNNER IMAGE LABEL, not a package. Renovate's built-in github-actions manager DOES propose runner labels: Dependency Dashboard #417, read 2026-09-21, listed ubuntu 24.04 -> 26.04 under it. That proposal rewrites `runs-on:` and never this key, so it is red by construction; renovate.json disables it for the github-actions manager, and this key stays an owner decision. It is also not a version in the usual sense: see $runners_comment above, where windows-latest AND windows-2025 both migrated to a new Visual Studio under an unchanged pin. A bot bumping the label would not have caught that either. Advanced by the owner when an image family is retired, which fails loudly rather than silently."

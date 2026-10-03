@@ -24,7 +24,7 @@
     "the portal grouping step, and this file says so.",
     "",
     "`profileKey` is the entitlement Apple writes into an App Store profile when the App ID carries the",
-    "capability — READ BACK from profiles JWVU72A2N6 and 26RV2N2Y4L on 2026-09-16. IN_APP_PURCHASE",
+    "capability — READ BACK from profiles JWVU72A2N6 and 26RV2N2Y4L on 2026-09-16 (APP_ATTEST from 5PM2N74969 and B5VRU86G9J on 2026-10-03). IN_APP_PURCHASE",
     "writes none. `entitlementKey` is what the app's own Runner.entitlements must carry; it is null for",
     "APPLE_ID_AUTH because every target signs in through the OAuth redirect and the one Services ID",
     "(packages/auth_supabase/lib/src/supabase_auth_repository.dart, ADR 088 §4): the capability is on the",
@@ -57,7 +57,7 @@
   "protected": {
     "why": "Live, hand-grouped, or baked into the APPLE_PROVISIONING_PROFILES_BASE64 secret. provision-apple.mjs refuses to delete, re-create, re-group or re-mint any of these even with --apply, and says what it would have done instead. Re-minting a protected profile breaks the release lane until the secret is re-set, which is an owner step.",
     "bundleIds": ["com.nikatru.platform", "com.nikatru.subscriptiontracker"],
-    "profiles": ["JWVU72A2N6", "26RV2N2Y4L"],
+    "profiles": ["5PM2N74969", "B5VRU86G9J"],
     "certificates": ["ND3WDZ2B5K", "RDYD44LRCZ"]
   },
   "_retired_why": [
@@ -73,7 +73,9 @@
     { "id": "HRJS9Z65X6", "kind": "profile", "retiredOn": "2026-09-09", "why": "The MAC_APP_STORE profile against YZGQND6Z9C, deleted with it. Recorded deleted in a7b92d8e (#576)." },
     { "id": "W5XX7RJ4WQ", "kind": "bundleId", "retiredOn": "unknown", "why": "The UNIVERSAL App ID for com.nikatru.subscriptiontracker minted in a7b92d8e (#576). Superseded by apps.subscriptiontracker.resourceId, first recorded in 500af608 (#780) on 2026-09-16; an identifier holds one App ID, so it was gone by then. No commit records the deletion day." },
     { "id": "ZUHKLYLZNR", "kind": "profile", "retiredOn": "unknown", "why": "The IOS_APP_STORE profile against W5XX7RJ4WQ, minted in a7b92d8e (#576). Superseded by protected.profiles, first recorded in 500af608 (#780) on 2026-09-16. No commit records the deletion day." },
-    { "id": "97KS2MWMVC", "kind": "profile", "retiredOn": "unknown", "why": "The MAC_APP_STORE profile against W5XX7RJ4WQ, minted in a7b92d8e (#576). Superseded by protected.profiles, first recorded in 500af608 (#780) on 2026-09-16. No commit records the deletion day." }
+    { "id": "97KS2MWMVC", "kind": "profile", "retiredOn": "unknown", "why": "The MAC_APP_STORE profile against W5XX7RJ4WQ, minted in a7b92d8e (#576). Superseded by protected.profiles, first recorded in 500af608 (#780) on 2026-09-16. No commit records the deletion day." },
+    { "id": "JWVU72A2N6", "kind": "profile", "retiredOn": "2026-10-03", "why": "The IOS_APP_STORE profile against 5Y2628ZNU7. Invalidated by the App Attest tick on 2026-10-03, re-minted as 5PM2N74969." },
+    { "id": "26RV2N2Y4L", "kind": "profile", "retiredOn": "2026-10-03", "why": "The MAC_APP_STORE profile against 5Y2628ZNU7. Invalidated by the App Attest tick on 2026-10-03, re-minted as B5VRU86G9J." }
   ],
   "capabilities": {
     "IN_APP_PURCHASE": {
@@ -100,6 +102,14 @@
       "entitlementKey": { "ios": "com.apple.developer.declared-age-range", "macos": null },
       "entitlementValue": true,
       "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick Declared Age Range → Save → Confirm. The API refuses DECLARED_AGE_RANGE as a capabilityType on write (ADR 088 §6)."
+    },
+    "APP_ATTEST": {
+      "apiWritable": false,
+      "profileKey": { "IOS_APP_STORE": "com.apple.developer.devicecheck.appattest-environment", "MAC_APP_STORE": null },
+      "entitlementKey": { "ios": "com.apple.developer.devicecheck.appattest-environment", "macos": null },
+      "entitlementValue": "production",
+      "_why": "⏱ 2026-10-03 · the platform Worker verifies an App Attest attestation on every native iOS sign-in (services/platform/src/lib/native-attest/app-attest.ts; packages/platform_storage/ios/…/NativeAttestPlugin.swift), so the App ID must carry the capability. MEASURED 2026-10-03T10:29Z: POST /v1/bundleIdCapabilities with capabilityType APP_ATTEST on 5Y2628ZNU7 answered 409 ENTITY_ERROR.ATTRIBUTE.TYPE (not in the write enum), and nothing changed. The owner ticked it in the portal; READ BACK 2026-10-03T15:10Z: the App ID declares APP_ATTEST, and the re-minted profiles are 5PM2N74969 (IOS_APP_STORE, whose entitlements carry com.apple.developer.devicecheck.appattest-environment) and B5VRU86G9J (MAC_APP_STORE, whose entitlements do NOT). So both keys are PER-PLATFORM: iOS only. The iOS Runner.entitlements carries it = production (Apple, com.apple.developer.devicecheck.appattest-environment), the only environment the Worker accepts (AAGUID_PRODUCTION); the macOS files must not, because the macOS profile cannot sign it.",
+      "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick App Attest → Save → Confirm. The API refuses APP_ATTEST as a capabilityType on write (measured 2026-10-03). The tick INVALIDATES both App Store profiles: re-mint them with provision-apple.mjs --apply and re-set APPLE_PROVISIONING_PROFILES_BASE64 in the same sitting."
     }
   },
   "macosEntitlementFiles": {
@@ -138,7 +148,7 @@
     "subscriptiontracker": {
       "bundleId": "com.nikatru.subscriptiontracker",
       "resourceId": "5Y2628ZNU7",
-      "capabilities": ["IN_APP_PURCHASE", "APPLE_ID_AUTH", "DECLARED_AGE_RANGE"]
+      "capabilities": ["IN_APP_PURCHASE", "APPLE_ID_AUTH", "DECLARED_AGE_RANGE", "APP_ATTEST"]
     }
   }
 }

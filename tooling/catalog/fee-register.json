@@ -70,9 +70,9 @@
     },
     "apple-small-business-enrolment": {
       "rail": "apple-iap",
-      "value": null,
-      "asOf": "2026-09-29",
-      "source": "App Store Connect, Account Holder only (owner queue A-18); the timing rule from https://developer.apple.com/app-store/small-business-program/ (read 2026-09-30)",
+      "value": "2026-09-25",
+      "asOf": "2026-10-03",
+      "source": "Apple email \"Welcome to the App Store Small Business Program.\" sent 2026-09-25T20:03:46Z to the Account Holder at nikatru.com (the APPROVAL notice; read by lead 7185eb 2026-10-03), and the owner attestation in chat 2026-10-03; the owner reads it in App Store Connect, Account Holder only (owner queue A-18); the timing rule from https://developer.apple.com/app-store/small-business-program/ (read 2026-09-30)",
       "quote": "Your proceeds will be adjusted fifteen (15) days after the end of the fiscal calendar month in which your enrollment is approved.",
       "verify": "The owner reads the Small Business Program status in App Store Connect and writes the day Apple APPROVED the enrolment (YYYY-MM-DD, a plain date, not the day it was requested) here; node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission then passes.",
       "note": "`value` is the APPROVAL date because Apple times the reduced commission from it: proceeds are adjusted 15 days after the end of the Apple fiscal month in which the enrolment is approved, so sales between approval and that day still pay the standard rate. The net sheet does not model that window.",

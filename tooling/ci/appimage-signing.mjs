@@ -537,6 +537,8 @@ function main() {
     rows: [channel],
     gitRef: process.env.GITHUB_REF ?? '',
     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
+    // (c): the platform proof is a release lane for an armed row (review AA-28).
+    proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
     label: 'AppImage',
   });
 

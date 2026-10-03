@@ -19,5 +19,11 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- ⏱ 2026-10-03 · App Attest. The platform Worker accepts only a
+	     production attestation (AAGUID_PRODUCTION). Derived from APP_ATTEST in
+	     tooling/apple-provisioning.json (iOS only: the macOS profile carries no
+	     App Attest key); the re-minted iOS App Store profile grants it. -->
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>production</string>
 </dict>
 </plist>

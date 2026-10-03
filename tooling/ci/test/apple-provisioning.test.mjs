@@ -63,13 +63,15 @@ const [DIST_CERT] = REAL.protected.certificates;
 const APP_ID = REAL.apps.subscriptiontracker.resourceId;
 const DAR = 'com.apple.developer.declared-age-range';
 const SIWA = 'com.apple.developer.applesignin';
+const AA = 'com.apple.developer.devicecheck.appattest-environment';
 
-/** The three capabilities exactly as SubscriptionTracker's App ID read them
- *  back on 2026-09-16. */
+/** The capabilities exactly as SubscriptionTracker's App ID read them back on
+ *  2026-09-16, plus APP_ATTEST, read back after the owner's tick on 2026-10-03. */
 const LIVE_GROUPED = [
   { capabilityType: 'IN_APP_PURCHASE', settings: null },
   { capabilityType: 'APPLE_ID_AUTH', settings: [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'RELATED_APP_CONSENT' }] }] },
   { capabilityType: 'DECLARED_AGE_RANGE', settings: null },
+  { capabilityType: 'APP_ATTEST', settings: null },
 ];
 const judge = (live, primaries = [ANCHOR], reg = REAL) =>
   judgeCapabilities({ reg, slug: 'subscriptiontracker', live, primaries });
@@ -116,6 +118,20 @@ describe('the register', () => {
     assert.deepEqual(expectedProfileKeys(r, 'subscriptiontracker', 'MAC_APP_STORE'), ['y']);
     assert.deepEqual(expectedProfileKeys(r, 'subscriptiontracker', 'IOS_APP_STORE'), ['x']);
   });
+  // ⏱ 2026-10-03 · APP_ATTEST: the live macOS profile carries no App Attest key,
+  // so one side of the per-type form may be null — but not both, and not absent.
+  test('a per-type profileKey may be null on one side, never on both, never absent', () => {
+    const r = clone(REAL);
+    r.capabilities.IN_APP_PURCHASE.profileKey = { IOS_APP_STORE: 'x', MAC_APP_STORE: null };
+    assert.deepEqual(validateRegister(r), []);
+    r.apps.subscriptiontracker.capabilities = ['IN_APP_PURCHASE'];
+    assert.deepEqual(expectedProfileKeys(r, 'subscriptiontracker', 'MAC_APP_STORE'), []);
+    assert.deepEqual(expectedProfileKeys(r, 'subscriptiontracker', 'IOS_APP_STORE'), ['x']);
+    r.capabilities.IN_APP_PURCHASE.profileKey = { IOS_APP_STORE: null, MAC_APP_STORE: null };
+    assert.match(validateRegister(r).join('\n'), /one string per profile type/);
+    r.capabilities.IN_APP_PURCHASE.profileKey = { IOS_APP_STORE: 'x', MAC_APP_STORE: '' };
+    assert.match(validateRegister(r).join('\n'), /one string per profile type/);
+  });
   test('the anchor cannot be declared as an app', () => {
     const r = clone(REAL);
     r.apps.platform = { bundleId: ANCHOR, capabilities: ['IN_APP_PURCHASE'] };
@@ -151,12 +167,16 @@ describe('the register', () => {
   });
   // ⏱ 2026-10-01 · EN-19: Sign in with Apple joined it — the native sheet
   // will not present without the entitlement; the browser door never needed it.
-  test('the real derivation: Runner.entitlements carries Sign in with Apple and Declared Age Range', () => {
+  // ⏱ 2026-10-03: App Attest joined it, iOS only — the re-minted iOS profile carries
+  // the key and the macOS one does not, as read back after the re-mint.
+  test('the real derivation: Runner.entitlements carries Sign in with Apple, Declared Age Range and App Attest', () => {
     assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker')], [
       [SIWA, ['Default']],
       [DAR, true],
+      [AA, 'production'],
     ]);
-    assert.deepEqual(expectedProfileKeys(REAL, 'subscriptiontracker', 'IOS_APP_STORE').sort(), [SIWA, DAR].sort());
+    assert.deepEqual(expectedProfileKeys(REAL, 'subscriptiontracker', 'IOS_APP_STORE').sort(), [SIWA, DAR, AA].sort());
+    assert.deepEqual(expectedProfileKeys(REAL, 'subscriptiontracker', 'MAC_APP_STORE').sort(), [SIWA, DAR].sort());
   });
   // ── O-SECOND-APP-SIGNS-AS-THE-FIRST — the bundle id apple-signing keeps ─────
   test('bundleIdOf answers the real app its register row — the green control', () => {
@@ -176,10 +196,11 @@ describe('the register', () => {
 });
 
 describe('plist reading', () => {
-  test('the real Runner.entitlements parses to exactly its two keys', () => {
+  test('the real Runner.entitlements parses to exactly its three keys', () => {
     const r = parseFlatDict(readFileSync(join(REPO, 'apps/subscriptiontracker/ios/Runner/Runner.entitlements'), 'utf8'));
     assert.equal(r.ok, true);
-    assert.deepEqual([...r.entries.keys()].sort(), [SIWA, DAR].sort());
+    assert.deepEqual([...r.entries.keys()].sort(), [SIWA, DAR, AA].sort());
+    assert.equal(r.entries.get(AA), 'production');
   });
   test('a key named only inside a comment is not a key', () => {
     const r = parseFlatDict(`<plist><dict><!-- <key>${DAR}</key><true/> --></dict></plist>`);
@@ -227,9 +248,17 @@ describe('the three-way comparison', () => {
     assert.match(compareFileToDeclared(new Map([[DAR, true], ['k', true]]), want).join(), /carries k/);
     assert.match(compareFileToDeclared(new Map([[DAR, false]]), want).join(), /requires true/);
   });
-  const liveProfile = new Map([[DAR, true], [SIWA, ['Default']], ['application-identifier', 'x']]);
+  const liveProfile = new Map([[DAR, true], [SIWA, ['Default']], [AA, 'production'], ['application-identifier', 'x']]);
+  // The live macOS profile (protected.profiles[1], 2026-10-03) carries no App Attest key.
+  const liveMacProfile = new Map([[DAR, true], [SIWA, ['Default']], ['application-identifier', 'x']]);
   test('the live profile agrees — green control', () => {
     assert.deepEqual(compareProfile({ reg: REAL, slug: 'subscriptiontracker', profileType: 'IOS_APP_STORE', profileEntries: liveProfile, fileEntries: want }), []);
+    assert.deepEqual(compareProfile({ reg: REAL, slug: 'subscriptiontracker', profileType: 'MAC_APP_STORE', profileEntries: liveMacProfile, fileEntries: null }), []);
+  });
+  test('an iOS profile minted before the App Attest tick fails and says re-mint', () => {
+    const p = new Map(liveProfile);
+    p.delete(AA);
+    assert.match(compareProfile({ reg: REAL, slug: 'subscriptiontracker', profileType: 'IOS_APP_STORE', profileEntries: p, fileEntries: null }).join(), /lacks .*appattest-environment.*APP_ATTEST.*re-mint/);
   });
   test('a profile that predates a capability fails', () => {
     const p = new Map(liveProfile);
@@ -251,7 +280,7 @@ describe('judging the App ID', () => {
   test('SubscriptionTracker as read back is settled — green control', () => {
     const v = judge(LIVE_GROUPED);
     assert.equal(v.settled, true);
-    assert.deepEqual(v.present, ['IN_APP_PURCHASE', 'APPLE_ID_AUTH', 'DECLARED_AGE_RANGE']);
+    assert.deepEqual(v.present, ['IN_APP_PURCHASE', 'APPLE_ID_AUTH', 'DECLARED_AGE_RANGE', 'APP_ATTEST']);
   });
   test('an UNGROUPED app (no Sign in with Apple) is not settled and names the grouping step', () => {
     const v = judge(LIVE_GROUPED.filter((c) => c.capabilityType !== 'APPLE_ID_AUTH'));
@@ -279,6 +308,12 @@ describe('judging the App ID', () => {
     assert.equal(v.portal[0].capability, 'DECLARED_AGE_RANGE');
     assert.match(v.portal[0].step, /Declared Age Range/);
   });
+  test('a missing APP_ATTEST names its portal step', () => {
+    const v = judge(LIVE_GROUPED.filter((c) => c.capabilityType !== 'APP_ATTEST'));
+    assert.equal(v.settled, false);
+    assert.equal(v.portal[0].capability, 'APP_ATTEST');
+    assert.match(v.portal[0].step, /com\.nikatru\.subscriptiontracker .*App Attest/);
+  });
   test('a missing writable capability is proposed, not reported as portal work', () => {
     const v = judge(LIVE_GROUPED.filter((c) => c.capabilityType !== 'IN_APP_PURCHASE'));
     assert.deepEqual(v.toEnable, ['IN_APP_PURCHASE']);
@@ -299,8 +334,10 @@ describe('judging the App ID', () => {
 
 describe('planning profiles', () => {
   const name = 'Nikatru Subscription Tracker';
-  const full = new Map([[DAR, true], [SIWA, ['Default']]]);
-  const prof = (id, kind, state, entries = full) => ({ id, name: profileName(name, kind), profileType: kind.profileType, profileState: state, entries });
+  const full = new Map([[DAR, true], [SIWA, ['Default']], [AA, 'production']]);
+  // As read back 2026-10-03: the macOS profile carries no App Attest key.
+  const fullMac = new Map([[DAR, true], [SIWA, ['Default']]]);
+  const prof = (id, kind, state, entries = kind.profileType === 'MAC_APP_STORE' ? fullMac : full) => ({ id, name: profileName(name, kind), profileType: kind.profileType, profileState: state, entries });
   const [IOS, MAC] = PROFILE_KINDS;
   const plan = (profiles, settled = true, reg = REAL) => planProfiles({ reg, slug: 'subscriptiontracker', appName: name, settled, profiles });
   test('the names follow ADR 088 §5', () => {
@@ -465,9 +502,30 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
     assert.match(r.stderr, /declares no com\.apple\.developer\.declared-age-range/);
   });
   test('the register no longer declaring the capability fails the other direction', () => {
-    const r = run(tree({ mutate: (t) => edit(t, 'tooling/apple-provisioning.json', (s) => s.replace(', "DECLARED_AGE_RANGE"]', ']')) }));
+    // ⏱ 2026-10-03: the mutation asserts it changed the file — the old
+    // `, "DECLARED_AGE_RANGE"]` stopped matching when APP_ATTEST joined the
+    // list, and a mutation that no-ops would have tested the green tree.
+    const drop = (cap) => (s) => {
+      const out = s.replace(`, "${cap}"`, '');
+      assert.notEqual(out, s, `the mutation did not remove ${cap}`);
+      return out;
+    };
+    const r = run(tree({ mutate: (t) => edit(t, 'tooling/apple-provisioning.json', drop('DECLARED_AGE_RANGE')) }));
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /which no declared capability requires/);
+    assert.match(r.stderr, /declared-age-range, which no declared capability requires/);
+    const a = run(tree({ mutate: (t) => edit(t, 'tooling/apple-provisioning.json', drop('APP_ATTEST')) }));
+    assert.equal(a.status, 1);
+    assert.match(a.stderr, /appattest-environment, which no declared capability requires/);
+  });
+  test('the App Attest key removed from Runner.entitlements fails', () => {
+    const r = run(tree({ mutate: (t) => edit(t, `${APP}/ios/Runner/Runner.entitlements`, (s) => s.replace(`<key>${AA}</key>`, '<key>other</key>')) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declares no com\.apple\.developer\.devicecheck\.appattest-environment/);
+  });
+  test('the App Attest key added to a macOS file fails — the macOS profile cannot sign it', () => {
+    const r = run(tree({ mutate: (t) => edit(t, `${APP}/macos/Runner/Release.entitlements`, (s) => s.replace('</dict>', `<key>${AA}</key><string>production</string></dict>`)) }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /appattest-environment/);
   });
   test('an Xcode project that never points at the file fails', () => {
     const r = run(tree({ mutate: (t) => edit(t, `${APP}/ios/Runner.xcodeproj/project.pbxproj`, (s) => s.replaceAll('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;', '')) }));
@@ -590,14 +648,16 @@ describe('assert-apple-entitlements — the tree guard, against a copied tree', 
 describe('macOS entitlements — the register and the derivation (O-STAMP-APPLE-MACOS-ENTITLEMENTS)', () => {
   // ⏱ 2026-10-01 · EN-19: plus Sign in with Apple, whose macOS side is the
   // same key — the native sheet presents on macOS too.
+  // ⏱ 2026-10-03: nor App Attest — the live macOS profile carries no key for it.
   test('the real derivation: each macOS file carries its base sandbox keys, Sign in with Apple, and NOT Declared Age Range', () => {
     const rel = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/Release.entitlements');
     assert.deepEqual([...rel.keys()], ['com.apple.security.app-sandbox', 'com.apple.security.network.client', SIWA]);
     const dbg = expectedMacosEntitlements(REAL, 'subscriptiontracker', 'Runner/DebugProfile.entitlements');
     assert.equal(dbg.has(DAR), false);
+    assert.equal(dbg.has(AA), false);
     assert.equal(dbg.has('com.apple.security.cs.allow-jit'), true);
-    // …while the iOS derivation is its own two keys.
-    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker').keys()], [SIWA, DAR]);
+    // …while the iOS derivation is its own three keys.
+    assert.deepEqual([...expectedEntitlements(REAL, 'subscriptiontracker').keys()], [SIWA, DAR, AA]);
   });
   test('entitlementKeyFor reads all three shapes', () => {
     assert.equal(entitlementKeyFor({ entitlementKey: null }, 'macos'), null);

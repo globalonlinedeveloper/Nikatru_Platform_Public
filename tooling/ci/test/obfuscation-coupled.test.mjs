@@ -733,3 +733,56 @@ ${FLOOR_ANCHOR}`;
     assert.match(out, /channel-register\.json exists and is not JSON/);
   });
 });
+
+// ⏱ ADDED 2026-10-01 — LIMB DURABLE (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07).
+// A build that leaves for a store or a Release has its symbols copied to the private R2
+// release store first. Green control first, then the two mutations that must fail.
+describe('assert-obfuscation-coupled — LIMB DURABLE (the symbols outlive the run before the build leaves)', () => {
+  const COPY = '      - name: Copy the symbols to R2\n        run: node tooling/ci/r2-durable-copy.mjs --kind symbols --app subscriptiontracker --channel linux-snap --version 1.0.1 --build 1 --dir build/symbols/linux --out r.json\n';
+  const SUBMIT = '      - name: Upload to the store\n        run: node tooling/release/submit-snap.mjs --submit --app subscriptiontracker\n';
+  const submitLane = (steps) => COMPLIANT.replace('      - uses: actions/upload-artifact@v4\n', `${steps}      - uses: actions/upload-artifact@v4\n`);
+
+  test('GREEN CONTROL — the copy BEFORE the `--submit` step passes, and the output counts the job', () => {
+    const { code, out } = run(fixture({ 'submit.yml': submitLane(COPY + SUBMIT) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /DURABLE: 1 store-submit job\(s\) and 0 tag-release job\(s\) copy the symbols to R2 first/);
+  });
+
+  test('MUTATION — the copy moved AFTER the `--submit` step ⇒ exit 1 naming both lines', () => {
+    const { code, out } = run(fixture({ 'submit.yml': submitLane(SUBMIT + COPY) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /DURABLE \.github\/workflows\/submit\.yml job "linux" submits to a store at :\d+ and runs only AFTER it \(:\d+\) `tooling\/ci\/r2-durable-copy\.mjs --kind symbols`/);
+  });
+
+  test('MUTATION — no copy at all ⇒ exit 1', () => {
+    const { code, out } = run(fixture({ 'submit.yml': submitLane(SUBMIT) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /submits to a store at :\d+ and never runs `tooling\/ci\/r2-durable-copy\.mjs --kind symbols`/);
+  });
+
+  const tagLane = (releaseNeeds) =>
+    COMPLIANT.replace('on:\n  workflow_dispatch:\n', "on:\n  workflow_dispatch:\n  push:\n    tags: ['*-v*']\n") +
+    `  durable:
+    runs-on: ubuntu-24.04
+    needs: linux
+    steps:
+${COPY}  release:
+    runs-on: ubuntu-24.04
+    needs: [${releaseNeeds}]
+    steps:
+      - name: Publish
+        run: gh release create "$TAG" dist/*
+`;
+
+  test('GREEN CONTROL — a tag release whose publishing job needs the copy job passes', () => {
+    const { code, out } = run(fixture({ 'build.yml': tagLane('linux, durable') }));
+    assert.equal(code, 0, out);
+    assert.match(out, /DURABLE: 0 store-submit job\(s\) and 1 tag-release job\(s\)/);
+  });
+
+  test('MUTATION — the copy job dropped from the publishing job\'s needs ⇒ exit 1', () => {
+    const { code, out } = run(fixture({ 'build.yml': tagLane('linux') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /DURABLE \.github\/workflows\/build\.yml job "release" publishes a GitHub Release from obfuscated builds, and neither it nor any job it needs runs/);
+  });
+});

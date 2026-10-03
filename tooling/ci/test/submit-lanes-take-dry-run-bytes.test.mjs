@@ -25,13 +25,12 @@
 //   (4) the job does not download an artifact whose name is that same job's output,
 //       or the check runs after the download's consumer, the `--submit` step.
 //
-// ONE RECORDED EXCEPTION, AND IT RETIRES ITSELF: submit-snap.yml. Its script,
-// tooling/release/submit-snap.mjs PG-5(c), REFUSES `--submit` unless the SAME job
-// runs `snapcraft pack` before it ("this job built the bytes it is sending"), and the
-// C2 brief forbids changing a submit script. The exception holds only while that
-// script still carries the needle; delete PG-5(c) and this file starts failing the
-// snap lane until it takes its dry run's bytes too. It is also held load-bearing:
-// the exception fails if the snap submit job stops packing.
+// THE SNAP EXCEPTION RETIRED ITSELF ON 2026-10-01 (review AA-23). submit-snap.yml's
+// submit job packed its own .snap because tooling/release/submit-snap.mjs PG-5(c)
+// refused `--submit` otherwise. PG-5 now also accepts the run's dry-run job as the
+// packer when the submit job checks that job's sha256 first, and submit-snap.yml
+// takes its dry run's bytes like the other two lanes, so the domain has no
+// exception left and the machinery for one stays, empty, for the next lane.
 //
 // Run:  node --single-threaded --test tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,16 +73,7 @@ const NEEDS_OUTPUT = /^\$\{\{\s*needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Z
 
 // The one exception. `needle` is read out of `script` on every run: gone, and the
 // exception no longer applies.
-const EXCEPTIONS = new Map([
-  [
-    `${WORKFLOW_DIR}/submit-snap.yml`,
-    {
-      script: 'tooling/release/submit-snap.mjs',
-      needle: "const PACK_VERB = 'snapcraft pack';",
-      why: 'submit-snap.mjs PG-5(c) refuses --submit unless the same job packs, and the C2 brief forbids editing a submit script',
-    },
-  ],
-]);
+const EXCEPTIONS = new Map();
 
 const segmentsOf = (step) => shellSegments(joinShellContinuations(step.run?.text ?? ''));
 
@@ -183,11 +173,22 @@ describe('a confirmed submit job ships the dry-run job\'s bytes (O-SUBMIT-REBUIL
     assert.deepEqual(blocking(graded), []);
   });
 
-  test('the snap exception is still load-bearing: its script demands the pack, and its submit job packs', () => {
+  test('submit-snap.yml#submit is graded with no exception, and takes its dry run\'s snap by sha256', () => {
     const snap = gradeWorkflow(REPO, SNAP);
     assert.equal(snap.length, 1, 'submit-snap.yml no longer has exactly one submitting job');
-    assert.equal(snap[0].excepted, true, `${SNAP_SCRIPT} no longer carries ${EXCEPTIONS.get(SNAP).needle}: take the dry run's bytes in submit-snap.yml and delete the exception`);
-    assert.ok(snap[0].findings.some((f) => /rebuilds: .*`snapcraft pack`/.test(f)), `submit-snap.yml#submit no longer packs, so the exception excuses nothing: delete it\n${snap[0].findings.join('\n')}`);
+    assert.equal(snap[0].excepted, false);
+    assert.deepEqual(snap[0].findings, []);
+  });
+
+  test('RC-SNAP FAILS when submit-snap.yml#submit packs its own snap again', () => {
+    const root = tree({
+      [SNAP]: once(
+        "      - name: Take the dry-run job's snap\n",
+        '      - name: Pack again\n        run: sudo snapcraft pack --destructive-mode\n      - name: Take the dry-run job\'s snap\n',
+      ),
+    });
+    const f = blocking(gradeTree(root));
+    assert.ok(f.some((x) => /submit-snap\.yml job "submit" rebuilds: .*`snapcraft pack`/.test(x)), f.join('\n'));
   });
 
   test('RC2 FAILS when submit-play.yml#submit builds the bundle again (the closes\' own control)', () => {
@@ -257,10 +258,9 @@ describe('a confirmed submit job ships the dry-run job\'s bytes (O-SUBMIT-REBUIL
     assert.match(f[0], /submit-play\.yml job "submit" downloads no artifact named by an output of job "dry-run"/);
   });
 
-  test('the snap exception EXPIRES when submit-snap.mjs stops demanding the pack', () => {
-    const root = tree({ [SNAP_SCRIPT]: once("const PACK_VERB = 'snapcraft pack';", "const PACK_VERB = 'snapcraft  pack';") });
+  test('RC-SNAP-SHA FAILS when submit-snap.yml#submit stops checking the dry-run snap\'s sha256', () => {
+    const root = tree({ [SNAP]: once("printf '%s  %s\\n' \"$EXPECTED_SHA256\" \"$SNAP\" | sha256sum --check --strict -", 'true') });
     const f = blocking(gradeTree(root));
-    assert.ok(f.some((x) => /submit-snap\.yml job "submit" rebuilds: line \d+ runs `flutter build`/.test(x)), f.join('\n'));
     assert.ok(f.some((x) => /submit-snap\.yml job "submit" runs --submit and checks no sha256/.test(x)), f.join('\n'));
   });
 });

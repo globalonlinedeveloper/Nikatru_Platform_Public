@@ -720,9 +720,12 @@ export function selfTest(root) {
     // ⏱ 2026-09-24 — anchored on the Linux bundle: the .aab line it used to sit beside is
     // in the `store-<app>-android-aab-…` upload now, which the release never downloads
     // (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
+    // ⏱ 2026-10-01 — and the Linux bundle is `ci-proof-linux-bundle-<app>` now, outside the
+    // `<app>-*` download too (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES), so the ONE edit both
+    // names that upload back into the namespace and puts the Play .apk into it.
     [
-      '            apps/${{ matrix.app }}/build/linux/x64/release/bundle\n',
-      '            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk\n            apps/${{ matrix.app }}/build/linux/x64/release/bundle\n',
+      '          name: ci-proof-linux-bundle-${{ matrix.app }}\n          path: |\n',
+      '          name: ${{ matrix.app }}-linux-bundle\n          path: |\n            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk\n',
     ],
   );
 

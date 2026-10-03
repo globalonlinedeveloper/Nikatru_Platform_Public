@@ -752,7 +752,7 @@ describe('§A10/A11 — a draft pull request runs nothing; ready_for_review runs
   test('RED: any other conjunct on an aggregator fails A1 — each one is an event on which the gate is skipped', () => {
     caught(run(mutant([['ci.yml', GATE_LINE, "    if: always() && github.event_name != 'pull_request'\n"]])), /job "ci-gate" carries `if: always\(\) && github\.event_name != 'pull_request'`; it must be exactly/);
     caught(
-      run(mutant([['build-platforms.yml', '    needs: [gate, prepare, linux_web_android, windows, apple, release]\n    if: always()\n', "    needs: [gate, prepare, linux_web_android, windows, apple, release]\n    if: always() && github.event_name != 'schedule'\n"]])),
+      run(mutant([['build-platforms.yml', '    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]\n    if: always()\n', "    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]\n    if: always() && github.event_name != 'schedule'\n"]])),
       /job "all_platforms" carries `if: always\(\) && github\.event_name != 'schedule'`; it must be exactly `always\(\)`/,
     );
   });

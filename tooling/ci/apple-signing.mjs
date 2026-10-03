@@ -1307,6 +1307,8 @@ function main() {
     rows,
     gitRef: process.env.GITHUB_REF ?? '',
     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
+    // (c): the platform proof is a release lane for an armed row (review AA-28).
+    proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
     label: 'Apple',
   });
 
@@ -1334,8 +1336,9 @@ function main() {
     // A release lane whose channels are NOT armed. Printed in full and not
     // fatal: no lane in this repository emits an .ipa or a .pkg, so failing
     // would block the release of five ready channels on an enrolment only the
-    // owner can buy. Guarded by `lane.required`, so a branch push, a fork PR and
-    // the weekly platform proof print exactly what they printed before.
+    // owner can buy. Guarded by `lane.required`, so a branch push and a fork PR
+    // print exactly what they printed before (the weekly platform proof is a
+    // release lane since 2026-10-01, limb (c) of signing-seam's releaseSignal).
     if (lane.required) {
       console.log('');
       for (const l of unarmedGapLines({

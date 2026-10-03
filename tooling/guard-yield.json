@@ -469,6 +469,11 @@
         "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-artifact-size.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-auth-callbacks.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",
@@ -488,6 +493,11 @@
         "basis": "exposure",
         "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/assert-build-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
     },
     "tooling/ci/assert-built-info-plist.mjs": {
       "catches": 0,
@@ -3345,6 +3355,11 @@
         "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
       }
     },
+    "tooling/ci/gen-release-carries.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/guard-test-shards.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
@@ -3418,6 +3433,11 @@
     "tooling/ci/price-figure.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/r2-durable-copy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ci/read-identity.mjs": {
@@ -3574,6 +3594,11 @@
     "tooling/ci/update-exit.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",
+      "evidence": []
+    },
+    "tooling/ci/verify-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/worker-routes.mjs": {
@@ -4128,6 +4153,11 @@
     "tooling/store/capture-fallback-fonts.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-20",
+      "evidence": []
+    },
+    "tooling/store/capture-iap-review.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/store/capture-play-screenshots.mjs": {

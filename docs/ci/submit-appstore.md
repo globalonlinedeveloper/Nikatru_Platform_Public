@@ -101,25 +101,37 @@ the id written to `$GITHUB_OUTPUT` as the job's `app` output.
 shell expands (the symbols artifact's `name:` and `path:`) read
 `${{ needs.gate.outputs.app }}` itself.
 
-### above `timeout-minutes: 30`
+### above `timeout-minutes: 45`
 
-30, and the number is headroom over a measurement rather than a neighbour:
-run 32947213393 (2026-08-26) completed this job in 12m04s with all 12
-steps green — iOS build 5m07s, macOS build 4m47s, no other step over 90s.
+⏱ 2026-10-01 (review AA-18): 45, not 30. The job now signs in-lane, so it
+adds a signed archive and export and a `productbuild` to the two compiles that
+run 32947213393 (2026-08-26) measured at 12m04s. No signed run of this job has
+been measured yet; build-platforms.yml's apple job, which does the same work,
+runs under its own 30-minute bound. Re-measure on the first green run.
 
 ### before step **Toolchain under test**
 
 When an Apple build breaks the first question is "what toolchain was
 this?" — unrecoverable after the fact without this.
 
-### before step **Build iOS (unsigned on purpose — this lane must never submit)**
+### before step **Prepare the Apple distribution identity**
 
-UNSIGNED on purpose: this lane builds unsigned by choice until the signing seam
-lands here, and `--submit` refuses (see the header). This proves the app still compiles
-for both Apple platforms; it does not produce a submittable artifact and
-nothing here pretends it does.
-🔴 UNSIGNED IS NOT THE SAME AS UNCONFIGURED, and until 2026-08-04 both
-steps were both. `AppConfig.isBackendLive` compares each define below
+⏱ 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT).
+Until this date both builds were UNSIGNED BY CHOICE and both dry runs passed
+`--allow-missing-artifact`, so this lane validated a listing and never a package,
+and the owner's manual first upload had no validated signed .ipa or .pkg to take.
+The lane now signs with `tooling/ci/apple-signing.mjs`, the seam build-platforms.yml's
+apple job uses, packages the .pkg with `productbuild`, PROVES both with
+`assert-artifact-signed-apple.mjs`, drops the flag, and publishes the two files and
+their `SHA256SUMS` as `store-<app>-apple-release-signed`. This workflow is a declared
+submission workflow of both Apple rows, so an absent or partial secret set FAILS
+the run (signing-seam limb b); a non-release posture fails the step after it.
+`--submit` still refuses: nothing here uploads to App Store Connect.
+
+### before step **Build iOS (signed archive + export)**
+
+🔴 SIGNED IS NOT THE SAME AS CONFIGURED, and until 2026-08-04 both
+steps were unconfigured. `AppConfig.isBackendLive` compares each define below
 against a PLACEHOLDER constant, so a build passing none of them resolves
 `MockAuthRepository` and `SeedApiClient` — the artifact this submission
 path validated was the DEMO build, with mock sign-in and seeded data, and
@@ -148,6 +160,9 @@ id (`tooling/apple-provisioning.json`, read by apple-provisioning.mjs
 `APP_STORE_CONNECT_*_APP_ID` secret is ONE record, the first app's, and a
 second app's dry run would otherwise validate against it and pass. Per-app App
 Store records are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's.
+⏱ 2026-10-01 (review AA-18): no `--allow-missing-artifact`. The job signs and
+packages first, so the script reads the .ipa and the .pkg at the row's
+`signing.seam.artifactGlob`, and an absent one FAILS the dry run.
 
 ### before step **Dry-run the App Store submission (macOS)**
 
@@ -178,3 +193,42 @@ declared dry-run-only (parent decision): every run records itself, with its mode
 
 GitHub creates the two `-dry-run` environments the first time a Deployment names them, with no
 protection rules. UNVERIFIED on this repository until the first dry run after the merge.
+
+## ⏱ 2026-10-03 — the upload job, `submit` (release lane apple-ready) {#upload}
+
+**Appended, not rewritten.** Until this date `tooling/release/submit-appstore.mjs --submit` refused
+by design (seven `UNVERIFIED:` lines) and no job uploaded anything: the runbook's path was a Mac with
+Transporter, and there is no Mac. The upload is now a job of this lane, on the free `macos-26` runner.
+
+* **What it does, and what it never does.** It uploads the dry-run job's signed `.ipa` and/or `.pkg`
+  to App Store Connect for **TestFlight processing** and stops. It never creates a version, never
+  attaches a build to one and never submits anything for App Review — that stays the owner's one
+  console act ([ADR 031] class A).
+* **How.** The App Store Connect API's Build Uploads resource (API 4.1), read from
+  developer.apple.com/documentation/appstoreconnectapi/build-uploads on 2026-10-03:
+  `POST /v1/buildUploads` → `POST /v1/buildUploadFiles` (its `uploadOperations` are sent exactly as
+  given, each URL held to https under apple.com) → `PATCH /v1/buildUploadFiles/{id}` `uploaded: true`
+  → `GET /v1/buildUploads/{id}` until `PROCESSING` or `COMPLETE` (20-minute ceiling; `FAILED` is a
+  red run naming Apple's errors). The token is `ascJwt` (tooling/ops/provision-apple.mjs), measured
+  live. `xcrun altool` is not used.
+* **The owner's word, one per store.** `confirm_ios: UPLOAD-IOS-TO-TESTFLIGHT`,
+  `confirm_macos: UPLOAD-MACOS-TO-TESTFLIGHT` (limb 2 of assert-publish-steps-guarded.mjs refuses a
+  shared word), plus `listing_url` (`https://apps.apple.com/app/id<recordId>`, for the [10]D-9 record).
+  The job then waits on the `store-publish` environment's required reviewer; the script reads that
+  environment back (PG-5) because `environment:` alone fails open.
+* **The bytes are the dry run's.** No rebuild: the job downloads `store-<app>-apple-release-signed`,
+  checks both sha256 outputs (`sha256sum --check`, defined over macOS `shasum` when absent), re-runs
+  `apple-signing.mjs` only to export the identity names, and PROVEs both signatures before either
+  upload (PG-4 refuses the order reversed). The two version strings the upload declares are read off
+  the built bundles in the dry-run job with `plutil` and held to `<release_line>.<run_number>`.
+* **Gates, `--real-submission` where they carry it.** Every precondition the dry run runs, here too.
+  `nativeAuth: false` does NOT refuse a TestFlight upload: `APPLE_RELEASE_TARGET=testflight` reaches no
+  public step (submit-preconditions.mjs PUBLIC_REACH), as Play's internal track does not — the
+  attested iOS sign-in can only be proven on a TestFlight build. Any other target refuses, in the gate
+  and in the script. The declaration gate (`declaredOn`) and the screenshot gates DO refuse until the
+  owner's App Store Connect forms are recorded and the sets are captured.
+* **Records.** Each upload records `draft_staged` (staged, not in review; [10]D-6's cadence does not
+  count it) with `--artifact` and the R2 symbols record, conditioned on its own upload step.
+
+Dispatch (after review and merge, on `main` only):
+`gh workflow run submit-appstore.yml --ref main -f app=subscriptiontracker -f confirm_ios=UPLOAD-IOS-TO-TESTFLIGHT -f confirm_macos=UPLOAD-MACOS-TO-TESTFLIGHT -f listing_url=https://apps.apple.com/app/id6814737675`

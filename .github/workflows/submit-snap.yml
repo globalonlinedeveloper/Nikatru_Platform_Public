@@ -27,6 +27,13 @@ on:
         default: ''
         type: string
 
+  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
+  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
+  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
+  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
+  schedule:
+    - cron: '0 8 * * 3'   # Wednesdays 08:00 UTC
+
 permissions:
   contents: read
   checks: read
@@ -55,10 +62,18 @@ jobs:
       # before it reads the set, and one outside the set naming the set; only then is it an output.
       - name: The app input names one app of the workspace
         id: app
+        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
+        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
+        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
         env:
           APP_INPUT: ${{ inputs.app }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = schedule ]; then
+            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
+          fi
           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
@@ -71,6 +86,14 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    # why: the submit job ships THIS job's .snap, not a repack of a rebuild, and checks it
+    # against this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT, review AA-23), as submit-play.yml does.
+    outputs:
+      artifact: ${{ steps.bytes.outputs.artifact }}
+      sha256: ${{ steps.bytes.outputs.sha256 }}
+      # why: the release line the .snap above was versioned with; the submit job keys its durable R2 copy by it
+      # and has no pubspec read of its own, so the value travels, never recomputed (lead ruling R3).
+      release_line: ${{ steps.ver.outputs.release_line }}
     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
     # shell expands (artifact name and path) read the expression itself.
     env:
@@ -154,8 +177,14 @@ jobs:
           --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
           --app "$APP"
           --pack-runner ubuntu-24.04
-      - name: Install snapcraft
-        run: sudo snap install snapcraft --classic
+      # why: the TRACK is the pin in tooling/versions.json (snapcraft_track), the one build-platforms.yml packs
+      # with; assert-update-coverage.mjs refuses an install with no --channel read from it (review AA-04).
+      - name: Install snapcraft (the track tooling/versions.json pins)
+        run: |
+          set -euo pipefail
+          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
+          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
+          sudo snap install snapcraft --classic --channel "$track"
       - name: Pack the snap
         run: |
           set -euo pipefail
@@ -200,9 +229,21 @@ jobs:
       # sign in would be refused, and never refuses; the submit job passes --real-submission.
       - name: A build that cannot sign in reaches no public risk (linux-snap)
         run: node tooling/ci/assert-channel-register.mjs --for-submission=linux-snap
+      # why: the hand-off the submit job verifies, and the upload below reads the same output, so the
+      # name is written once. Nothing runs between this hash and that upload.
+      - name: Hand the submit job this snap's name and sha256
+        id: bytes
+        env:
+          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
+        run: |
+          set -euo pipefail
+          sum="$(sha256sum "$SNAP" | cut -d ' ' -f 1)"
+          echo "artifact=${APP}-linux-snap" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
+          echo "${sum}  ${SNAP}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ needs.gate.outputs.app }}-linux-snap
+          name: ${{ steps.bytes.outputs.artifact }}
           path: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
           retention-days: 7
           if-no-files-found: error
@@ -221,7 +262,9 @@ jobs:
     timeout-minutes: 30
     needs: [gate, dry-run]
     # why: a typed phrase, not a checkbox, and the dispatch default is empty.
-    if: inputs.confirm == 'SUBMIT-TO-SNAP-STORE'
+    # why the event conjunct: this lane also runs on a schedule, which must never reach the store
+    # (assert-publish-steps-guarded limb (a)).
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'SUBMIT-TO-SNAP-STORE'
     # why: this line is the owner-approval PAUSE (ADR 031 class A), and on its own it
     # FAILS OPEN -- GitHub creates a referenced environment that does not exist, with
     # no protection rules, and runs. tooling/release/submit-snap.mjs therefore also
@@ -285,19 +328,6 @@ jobs:
               exit 1
               ;;
           esac
-      - uses: ./.github/actions/setup-flutter
-      - name: Linux build deps (the same list the Linux build lane installs)
-        run: |
-          set -euo pipefail
-          deps="$(node tooling/release/generate-snapcraft.mjs --emit-build-deps)"
-          echo "installing: ${deps}"
-          sudo apt-get update
-          sudo apt-get install -y ${deps}
-      - name: Resolve the workspace
-        run: flutter pub get --enforce-lockfile
-      - name: Derive the release line from pubspec
-        id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
@@ -309,90 +339,73 @@ jobs:
       # only; SNAP_CHANNEL is unset here as on the upload step, so the upload goes to latest/edge.
       - name: A build that cannot sign in reaches no public risk (linux-snap)
         run: node tooling/ci/assert-channel-register.mjs --for-submission=linux-snap --real-submission
-      - name: Build linux
+      # why: THE DRY RUN'S SNAP, NOT A REPACK OF A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT, review
+      # AA-23): one compile and one `snapcraft pack` per dispatch. The dry-run job graded the recipe
+      # (assert-snapcraft-generable.mjs) and packed these bytes, and the sha256 below proves they are those
+      # bytes; submit-snap.mjs PG-5 reads both off that job. Retention is 7 days and there is no fallback.
+      - name: Take the dry-run job's snap
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.dry-run.outputs.artifact }}
+          path: apps/${{ needs.gate.outputs.app }}/build/linux/snap
+      # why: the value arrives through env:, never interpolated into run: (zizmor).
+      - name: The snap is the one the dry-run job hashed (sha256)
         env:
-          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs "$APP" linux linux-snap
-      # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — this step used to sit
-      # after `snapcraft pack`, which was already "BEFORE the upload, not after"
-      # and is now earlier still: a pack failure is a step failure like any
-      # other, and GitHub skips the rest of a failed job, so a mapping kept only
-      # after the pack is a mapping the pack can take with it. It now sits
-      # immediately after the build, ahead of every assertion and every network
-      # call in this job. Same lesson, same source:
-      # post-audit-obfuscation-and-symbols.md §9.3.
-      # why: this is the only copy of the mapping for a snap that is about to
-      # reach real users, and a rebuild produces a DIFFERENT one. 90 days, not
-      # 7: this snap ships.
+          EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
+          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
+            echo "FAIL the dry-run job's sha256 output is '${EXPECTED_SHA256}', not 64 hex digits: nothing to check the download against." >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$SNAP" | sha256sum --check --strict -
+      # why: the mapping of the snap above is the dry-run job's (same build), already in the crash sink
+      # from that job. Kept again here for 90 days, not 7, because this snap ships; BEFORE the upload,
+      # so a failed upload cannot skip it.
+      - name: Take the dry-run job's symbols for this snap
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: symbols-${{ needs.gate.outputs.app }}-linux-snap-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: symbols-${{ needs.gate.outputs.app }}-linux-snap
           path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
           retention-days: 90
           if-no-files-found: error
-      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
-      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
-      - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
-      # why: BEFORE the store upload, for the same reason the artifact above is.
-      # This snap reaches real users, so its mapping is the one that will
-      # actually be needed. The 90-day artifact above is already written when
-      # this runs, so a GlitchTip outage costs the sink copy and nothing else —
-      # and it FAILS THE JOB rather than skipping, deliberately: a release that
-      # goes to the Snap Store with no readable symbols is the state this unit
-      # exists to stop. The wrapper names GLITCHTIP_TOKEN when it is absent. The project
-      # is the ONE declaration, tooling/ops/glitchtip-project.json, never the app.
-      - name: Upload the native debug symbols to GlitchTip
+      # why: `snapcraft upload` is the transport, so the submit job still installs it, from the same track.
+      - name: Install snapcraft (the track tooling/versions.json pins)
+        run: |
+          set -euo pipefail
+          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
+          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
+          sudo snap install snapcraft --classic --channel "$track"
+      # why: BEFORE the store upload, and the one copy of this build's mapping that outlives the run: a store
+      # serves the build for years and the artifact above expires at 90 days (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
+      # Private R2, keyed symbols/<app>/<channel>/<version>+<build>/; the record below carries its sha256.
+      # assert-obfuscation-coupled.mjs limb DURABLE holds it before the `--submit` step.
+      - name: Copy this build's symbols to the release store (R2), before the upload
         env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASE_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          R2_RELEASE_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RELEASE_LINE: ${{ needs.dry-run.outputs.release_line }}
         run: |
           set -euo pipefail
-          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
-          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
-          node tooling/ops/upload-native-symbols.mjs \
-            --cli "${RUNNER_TEMP}/glitchtip-cli" \
-            --dir "apps/${APP}/build/symbols/linux" \
-            --org "$gt_org" --project "$gt_project"
-      - name: Generate the snapcraft recipe
-        run: >
-          node tooling/release/generate-snapcraft.mjs
-          --app "$APP"
-          --bundle "apps/${APP}/build/linux/x64/release/bundle"
-          --out "$RUNNER_TEMP/snapcraft-${APP}"
-          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-      - name: The generated recipe is complete, still derived, and packable here
-        run: >
-          node tooling/ci/assert-snapcraft-generable.mjs
-          --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
-          --app "$APP"
-          --pack-runner ubuntu-24.04
-      - name: Install snapcraft
-        run: sudo snap install snapcraft --classic
-      - name: Pack the snap
-        run: |
-          set -euo pipefail
-          project="${RUNNER_TEMP}/snapcraft-${APP}"
-          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
-          cd "$project"
-          sudo snapcraft pack --destructive-mode
-          count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
-          if [ "$count" -ne 1 ]; then
-            echo "FAIL snapcraft exited 0 and left ${count} .snap file(s) in ${project}:" >&2
-            find "$project" -maxdepth 1 -type f -name '*.snap' >&2
-            echo "     Exactly one is required. Zero is a pack that produced nothing while reporting" >&2
-            echo "     success; more than one means this step would have to choose which snap the" >&2
-            echo "     channel submits, and a chooser with no stated rule picks silently." >&2
-            exit 1
-          fi
-          built="$(find "$project" -maxdepth 1 -type f -name '*.snap')"
-          mkdir -p "$(dirname "$collected")"
-          sudo mv "$built" "$collected"
-          sudo chown "$(id -u):$(id -g)" "$collected"
-          ls -l "$collected"
+          release_line="${RELEASE_LINE}"
+          node tooling/ci/r2-durable-copy.mjs --kind symbols --app "$APP" --channel linux-snap \
+            --version "${release_line}.${RUN_NUMBER}" --build "$RUN_NUMBER" \
+            --dir "apps/${APP}/build/symbols/linux" --out "${RUNNER_TEMP}/symbols-record.json"
+      # why: BEFORE the upload — fails at 80% of the store's stated limit, warns at 2× the median the ledger's
+      # earlier records carry (tooling/channel-register.json storeSizeLimit; O-ARTIFACT-SIZES-UNRECORDED).
+      - name: The linux-snap artifact is within its store's size limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
+        run: node tooling/ci/assert-artifact-size.mjs --app "$APP" --channel linux-snap "$SNAP"
       # why: CONFIRM is the TYPED word, passed through -- a literal `--confirm` here made the
       # script's own confirm check a tautology. Same shape as submit-play.yml.
       - name: Upload to the Snap Store
@@ -412,4 +425,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing-url "$LISTING_URL" --mode production
+          RUN_NUMBER: ${{ github.run_number }}
+          # why: the bytes the store received, named in the record by sha256 and size (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST).
+          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
+        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing-url "$LISTING_URL" --mode production --artifact "$SNAP" --build-number "$RUN_NUMBER" --symbols-record "${RUNNER_TEMP}/symbols-record.json"

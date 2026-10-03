@@ -248,8 +248,13 @@ const failLines = (out) => out.split('\n').filter((l) => l.startsWith('FAIL '));
 const GOOD_KT = 'package com.example.demo\n\nimport io.flutter.embedding.android.FlutterActivity\n\nclass MainActivity : FlutterActivity()\n';
 const GOOD_ANALYSIS = 'analyzer:\n  errors:\n    avoid_print: error\n';
 
-function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '', generated = null, git = true } = {}) {
+// V7's floor: the duty-matrix row the guard reads, written into each fixture root.
+// `null` writes a matrix with no such row; the default is the real floor's shape.
+function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '', generated = null, git = true, targetFloor = 36 } = {}) {
   const dir = join(TMP, `r${seq++}`);
+  mkdirSync(join(dir, 'tooling', 'legal'), { recursive: true });
+  const duties = targetFloor === null ? [] : [{ id: 'play-target-api-level', enforced: { targetSdkAtLeast: targetFloor } }];
+  writeFileSync(join(dir, 'tooling', 'legal', 'duty-matrix.json'), JSON.stringify({ duties }));
   const kt = join(dir, 'apps', 'demo', 'android', 'app', 'src', 'main', 'kotlin', 'com', 'example', 'demo');
   mkdirSync(kt, { recursive: true });
   if (kotlin !== null) writeFileSync(join(kt, 'MainActivity.kt'), kotlin);
@@ -338,11 +343,27 @@ describe('assert-android-vapt-manifest', () => {
   });
 
   test('V3: an absent usesCleartextTraffic fails below targetSdk 28 and passes at 28', () => {
-    const low = run(fixture({ manifest: baseManifest({ targetSdk: 27 }) }));
+    const low = run(fixture({ manifest: baseManifest({ targetSdk: 27 }), targetFloor: 21 }));
     assert.equal(low.code, 1, low.out);
     assert.match(low.out, /FAIL V3 cleartext — usesCleartextTraffic is absent and targetSdkVersion is 27/);
-    const at = run(fixture({ manifest: baseManifest({ targetSdk: 28 }) }));
+    const at = run(fixture({ manifest: baseManifest({ targetSdk: 28 }), targetFloor: 21 }));
     assert.equal(at.code, 0, at.out);
+  });
+
+  // ⏱ 2026-10-01 (review AA-22): the BUILT target, against the duty matrix's floor.
+  test('V7: a built targetSdkVersion below the duty-matrix floor fails, and at the floor passes', () => {
+    const low = run(fixture({ manifest: baseManifest({ targetSdk: 35 }) }));
+    assert.equal(low.code, 1, low.out);
+    assert.match(low.out, /FAIL V7 target API — the built <uses-sdk android:targetSdkVersion> is 35, and tooling\/legal\/duty-matrix\.json `play-target-api-level` requires at least 36/);
+    const at = run(fixture({ manifest: baseManifest({ targetSdk: 36 }) }));
+    assert.equal(at.code, 0, at.out);
+    assert.match(at.out, /V7 target API 36 >= 36/);
+  });
+
+  test('V7: a duty matrix with no play-target-api-level floor is COVERAGE LOST, not a pass', () => {
+    const { code, out } = run(fixture({ targetFloor: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/legal\/duty-matrix\.json duty `play-target-api-level` carries no integer `enforced\.targetSdkAtLeast`/);
   });
 
   test('V4: a Google API key in a meta-data value fails', () => {
@@ -368,7 +389,7 @@ describe('assert-android-vapt-manifest', () => {
 
   test('V5: a service exported IMPLICITLY by its intent-filter fails', () => {
     const svc = el('service', [A('name', 'io.plugin.Svc')], [el('intent-filter', [], [el('action', [A('name', 'io.plugin.BIND')])])]);
-    const { code, out } = run(fixture({ manifest: baseManifest({ targetSdk: 30, app: { usesCleartextTraffic: false }, extraComponents: [svc] }) }));
+    const { code, out } = run(fixture({ manifest: baseManifest({ targetSdk: 30, app: { usesCleartextTraffic: false }, extraComponents: [svc] }), targetFloor: 21 }));
     assert.equal(code, 1, out);
     assert.match(out, /FAIL V5 exported — <service android:name="io\.plugin\.Svc"> is exported \(implicitly, by its intent-filter\)/);
   });

@@ -64,6 +64,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-build-provenance.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-channel-register.mjs",
       "property": "refuses-blind",
       "evidence": "and the lane scan resolved NO emitted format for any of",
@@ -375,6 +379,11 @@
       "path": "tooling/release/generate-snapcraft.mjs",
       "property": "workflow-scan",
       "reads": "build-platforms.yml (BUILD_WORKFLOW), through parseWorkflow and shellSegments"
+    },
+    {
+      "path": "tooling/release/submit-appstore.mjs",
+      "property": "workflow-scan",
+      "reads": "the submission workflow the channel register names (default submit-appstore.yml), through parseWorkflow — PG-4: the upload job declares environment: and runs assert-artifact-signed-apple.mjs before --submit"
     },
     {
       "path": "tooling/release/submit-play.mjs",

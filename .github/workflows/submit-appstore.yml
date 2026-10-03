@@ -1,6 +1,6 @@
 name: "Store submit: Apple App Store"
 
-run-name: "Store submit: Apple App Store — ${{ inputs.app }} (dry run) by @${{ github.actor }}"
+run-name: "Store submit: Apple App Store — ${{ inputs.app }} — ${{ (inputs.confirm_ios == 'UPLOAD-IOS-TO-TESTFLIGHT' || inputs.confirm_macos == 'UPLOAD-MACOS-TO-TESTFLIGHT') && 'UPLOAD for TestFlight' || 'dry run' }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/submit-appstore.md. Only `# why:` lines live here, and
@@ -13,9 +13,35 @@ on:
       # either one is an app id written into this file. The gate job checks it against the
       # workspace set; every other job reads the gate's output, never this input.
       app:
-        description: 'The app to dry-run: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        description: 'The app to dry-run (and, with confirm, upload): one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
         required: true
         type: string
+      # why: typed phrases, not checkboxes ([ADR 031] class A), ONE PER STORE (limb 2 of
+      # assert-publish-steps-guarded.mjs: a shared word is one decision taken twice). The submit job uploads
+      # the dry-run job's signed .ipa and/or .pkg to App Store Connect for TestFlight processing and NEVER
+      # submits anything for App Review; tooling/release/submit-appstore.mjs compares each word again.
+      confirm_ios:
+        description: 'Type UPLOAD-IOS-TO-TESTFLIGHT to upload the signed .ipa to App Store Connect (TestFlight processing; never submitted for review). Anything else uploads nothing for iOS.'
+        required: true
+        default: 'dry-run-only'
+        type: string
+      confirm_macos:
+        description: 'Type UPLOAD-MACOS-TO-TESTFLIGHT to upload the signed .pkg to App Store Connect (TestFlight processing; never submitted for review). Anything else uploads nothing for macOS.'
+        required: true
+        default: 'dry-run-only'
+        type: string
+      listing_url:
+        description: 'The App Store listing the upload is recorded against, https://apps.apple.com/app/id<the app.yaml recordId>. Required for an upload; ignored by the dry run.'
+        required: false
+        default: ''
+        type: string
+
+  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
+  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
+  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
+  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
+  schedule:
+    - cron: '0 8 * * 2'   # Tuesdays 08:00 UTC
 
 permissions:
   contents: read
@@ -45,23 +71,40 @@ jobs:
       # before it reads the set, and one outside the set naming the set; only then is it an output.
       - name: The app input names one app of the workspace
         id: app
+        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
+        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
+        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
         env:
           APP_INPUT: ${{ inputs.app }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = schedule ]; then
+            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
+          fi
           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Validate the submission path
     runs-on: macos-26
-    timeout-minutes: 30
+    # why 45: a signed archive + export and a productbuild on top of the two compiles (review AA-18).
+    timeout-minutes: 45
     needs: gate
     # why: the job-level write scope the two record steps at the end need
     # (O-APPLE-SUBMISSION-UNRECORDED); it replaces the workflow's grant for this job.
     permissions:
       contents: read
       deployments: write
+    # why: the validated signed bytes, named and hashed for the owner's manual first upload (review C-07).
+    outputs:
+      artifact: ${{ steps.bytes.outputs.artifact }}
+      ipa_sha256: ${{ steps.bytes.outputs.ipa_sha256 }}
+      pkg_sha256: ${{ steps.bytes.outputs.pkg_sha256 }}
+      # why: the two version strings the upload record declares, read off the built bundles (plutil).
+      short_version: ${{ steps.versions.outputs.short_version }}
+      bundle_version: ${{ steps.versions.outputs.bundle_version }}
     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
     # shell expands (artifact name and path) read the expression itself.
     env:
@@ -84,6 +127,12 @@ jobs:
           sw_vers
           xcodebuild -version
           uname -m
+      # why: the floor the register declares for the two Apple rows, read off the runner's own Xcode before
+      # anything compiles with it (review AA-18): a rehearsal on an Xcode App Store Connect refuses is no rehearsal.
+      - name: The Xcode floor is met, not just declared
+        run: node tooling/ci/assert-xcode-floor.mjs
+      - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
+        run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
       # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
       # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
       # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
@@ -91,26 +140,58 @@ jobs:
       - name: Resolve the app's store SDK key secret (apple-iap)
         id: rc-key
         run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
-      # ⏱ RENAMED 2026-09-09. This step was called "unsigned — no distribution
-      # certificate exists", and that reason stopped being true today: a
-      # DISTRIBUTION certificate and an IOS_APP_STORE profile were issued through
-      # the ASC API, and build-platforms.yml now emits a SIGNED .ipa with them.
-      # This workflow deliberately does NOT: it ends at a refusal (see
-      # tooling/release/submit-appstore.mjs, which refuses --submit by design),
-      # so what it needs is a compile proof, not a signed artifact it must not
-      # upload. The build stays unsigned because this lane must not submit — not
-      # because nothing here could sign.
-      - name: Build iOS (unsigned on purpose — this lane must never submit)
+      # ⏱ CHANGED 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT). Both builds
+      # below were UNSIGNED BY CHOICE and the two dry runs passed --allow-missing-artifact, so this lane
+      # validated a listing and never the package: the owner's manual first upload had no validated signed
+      # .ipa or .pkg to take. The lane now SIGNS IN-LANE with the seam build-platforms.yml's apple job uses.
+      # This workflow is a declared submission workflow of both rows, so apple-signing.mjs refuses an
+      # absent or partial secret set on an armed row (signing-seam limb b) — a FAILED run, never an unsigned one.
+      # It still uploads nothing: tooling/release/submit-appstore.mjs refuses --submit by design.
+      - name: Prepare the Apple distribution identity
         env:
-          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs "$APP" ios ios-appstore
-      # Same correction as the iOS step above: unsigned BY CHOICE, not for want
-      # of a certificate. A Mac Installer Distribution certificate exists too.
-      - name: Build macOS (unsigned on purpose — this lane must never submit)
+          APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+          APPLE_DIST_CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
+        run: node tooling/ci/apple-signing.mjs --app "$APP" --channel ios-appstore --channel macos-appstore
+      # why: the rehearsal is of the SIGNED artifact or it is nothing. Should both rows ever be unarmed the seam
+      # would print a legal unsigned posture; this lane refuses it rather than validate a package it did not make.
+      - name: This rehearsal validates the signed artifact, so the posture must be release-signed
+        run: |
+          set -euo pipefail
+          if [ "${APPLE_SIGNING_POSTURE:-}" != release-signed ]; then
+            echo "::error title=Apple dry run::apple-signing.mjs exported posture '${APPLE_SIGNING_POSTURE:-(none)}', not release-signed. This lane rehearses the signed .ipa and .pkg; an unsigned build is no evidence about either."
+            exit 1
+          fi
+      # why: the same appended settings as build-platforms.yml's apple job — the Flutter templates ship
+      # AUTOMATIC signing with an empty team, and APPLE_TEAM_ID is a secret a tracked xcconfig would publish.
+      # Both spellings of the iOS identity: the template's `[sdk=iphoneos*]` setting outranks the plain one.
+      - name: Point the Xcode projects at the imported identity
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: |
+          set -euo pipefail
+          {
+            echo ""
+            echo "CODE_SIGN_STYLE = Manual"
+            echo "DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}"
+            echo "CODE_SIGN_IDENTITY = ${APPLE_DIST_IDENTITY}"
+            echo "CODE_SIGN_IDENTITY[sdk=iphoneos*] = ${APPLE_DIST_IDENTITY}"
+            echo "PROVISIONING_PROFILE_SPECIFIER = ${APPLE_IOS_PROFILE_NAME}"
+          } >> ios/Flutter/Release.xcconfig
+          {
+            echo ""
+            echo "CODE_SIGN_STYLE = Manual"
+            echo "DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}"
+            echo "CODE_SIGN_IDENTITY = ${APPLE_DIST_IDENTITY}"
+            echo "PROVISIONING_PROFILE_SPECIFIER = ${APPLE_MACOS_PROFILE_NAME}"
+          } >> macos/Runner/Configs/Release.xcconfig
+      - name: The signing identity is reachable from this shell
+        run: |
+          set -euo pipefail
+          security list-keychains -d user
+          security find-identity -v "$APPLE_KEYCHAIN_PATH"
+      - name: Build macOS (signed by the imported identity)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -118,6 +199,16 @@ jobs:
           REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
+      # why: `flutter build ipa` archives and exports against the ExportOptions.plist apple-signing.mjs wrote;
+      # the same obfuscation flags as the build-platforms.yml apple job, so the symbols below are unchanged.
+      - name: Build iOS (signed archive + export)
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs "$APP" ipa ios-appstore
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
       # end "Retained rather than sent to the crash sink because
       # tooling/versions.json pins ONE glitchtip-cli binary and it is
@@ -136,6 +227,33 @@ jobs:
             apps/${{ needs.gate.outputs.app }}/build/symbols/macos
           retention-days: 90
           if-no-files-found: error
+      # why: a Mac App Store submission is a .pkg, signed by the INSTALLER certificate (a different one from
+      # the identity that signed the .app); `--component <app> /Applications` is the one productbuild mode
+      # the Mac App Store accepts. The path is the row's signing.seam.artifactGlob, the one
+      # tooling/release/submit-appstore.mjs reads.
+      - name: Package the macOS .pkg (Mac App Store)
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: |
+          set -euo pipefail
+          app="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error title=pkg::no .app in build/macos/Build/Products/Release to package"
+            exit 1
+          fi
+          mkdir -p build/macos/pkg
+          out="build/macos/pkg/${APP}.pkg"
+          productbuild --component "$app" /Applications \
+            --sign "$APPLE_INSTALLER_IDENTITY" \
+            --keychain "$APPLE_KEYCHAIN_PATH" \
+            "$out"
+          ls -l "$out"
+      # why: nothing here trusts an exit code — the guard reads the signature, the profile, the entitlements and
+      # the Info.plist back out of the bytes the owner will upload (the build-platforms.yml apple job's PROVE step).
+      - name: PROVE the .ipa and .pkg are real and signed
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ needs.gate.outputs.app }}/build/ios/ipa/*.ipa
+          apps/${{ needs.gate.outputs.app }}/build/macos/pkg/*.pkg
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
       # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
@@ -168,17 +286,15 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        # why: --allow-missing-artifact here and NOT on the Windows lane. The builds above are
-        # unsigned by choice until the signing seam lands in this lane, and --submit refuses,
-        # so there is no signed .ipa to validate; the Windows dry run builds and packages a real
-        # .msix first and must not be given this flag.
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app "$APP" --allow-missing-artifact
+        # why: NO --allow-missing-artifact (review AA-18, ⏱ 2026-10-01). The job signs and packages the .ipa
+        # and the .pkg first, so the script validates packages that exist on disk, as the Windows dry run does.
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app "$APP"
       - name: Dry-run the App Store submission (macOS)
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP"
       # why: O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): the gates below run AFTER both builds and both
       # store dry runs, so a red gate still fails this job, but only once both platforms were rehearsed.
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A dry run green over a name the owner has not HELD
@@ -224,6 +340,65 @@ jobs:
         run: node tooling/ci/assert-channel-register.mjs --for-submission=ios-appstore
       - name: A build that cannot sign in is not submitted for App Review (macos-appstore)
         run: node tooling/ci/assert-channel-register.mjs --for-submission=macos-appstore
+      # why: the upload record names CFBundleShortVersionString and CFBundleVersion, and App Store Connect holds
+      # the binary to them. Read here, off the bundles that were built and proven, with plutil (this runner has it;
+      # the binary plist an Xcode build writes needs it), and held to the release line the builds were given.
+      - name: Read the version strings the upload will declare, off the built bundles
+        id: versions
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          unzip -q -o "apps/${APP}/build/ios/ipa/${APP}.ipa" 'Payload/*.app/Info.plist' -d "$work"
+          ios_plist="$(find "$work/Payload" -maxdepth 2 -name Info.plist | head -1)"
+          mac_app="$(find "apps/${APP}/build/macos/Build/Products/Release" -maxdepth 1 -name '*.app' | head -1)"
+          [ -n "$ios_plist" ] && [ -n "$mac_app" ] || { echo "::error title=versions::no iOS Info.plist in the .ipa, or no macOS .app"; exit 1; }
+          key() { plutil -extract "$1" raw -o - "$2"; }
+          ios_short="$(key CFBundleShortVersionString "$ios_plist")"
+          ios_build="$(key CFBundleVersion "$ios_plist")"
+          mac_short="$(key CFBundleShortVersionString "${mac_app}/Contents/Info.plist")"
+          mac_build="$(key CFBundleVersion "${mac_app}/Contents/Info.plist")"
+          want_short="${RELEASE_LINE}.${RUN_NUMBER}"
+          echo "iOS ${ios_short} (${ios_build}) · macOS ${mac_short} (${mac_build}) · expected ${want_short} (${RUN_NUMBER})"
+          if [ "$ios_short" != "$want_short" ] || [ "$mac_short" != "$want_short" ] || [ "$ios_build" != "$RUN_NUMBER" ] || [ "$mac_build" != "$RUN_NUMBER" ]; then
+            echo "::error title=versions::the built bundles do not carry ${want_short} (${RUN_NUMBER}), the version flutter-release-build.mjs gave them"
+            exit 1
+          fi
+          echo "short_version=${want_short}" >> "$GITHUB_OUTPUT"
+          echo "bundle_version=${RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      # why: the hand-off (review C-07). ⏱ 2026-10-03: the `submit` job below takes exactly these bytes, checks
+      # them against these sha256 outputs and uploads them for TestFlight processing; the sha256 also travels IN
+      # the artifact (SHA256SUMS, `shasum -a 256 -c` reads it).
+      - name: Hash the validated .ipa and .pkg for the owner's upload
+        id: bytes
+        env:
+          IPA_DIR: apps/${{ needs.gate.outputs.app }}/build/ios/ipa
+          PKG_DIR: apps/${{ needs.gate.outputs.app }}/build/macos/pkg
+        run: |
+          set -euo pipefail
+          ipa="$(find "$IPA_DIR" -maxdepth 1 -name '*.ipa' | head -1)"
+          pkg="${PKG_DIR}/${APP}.pkg"
+          [ -s "$ipa" ] && [ -s "$pkg" ] || { echo "::error title=Apple hand-off::the .ipa or the .pkg is missing or empty"; exit 1; }
+          ipa_sum="$(shasum -a 256 "$ipa" | cut -d ' ' -f 1)"
+          pkg_sum="$(shasum -a 256 "$pkg" | cut -d ' ' -f 1)"
+          mkdir -p "${RUNNER_TEMP}/apple-signed"
+          cp "$ipa" "$pkg" "${RUNNER_TEMP}/apple-signed/"
+          ( cd "${RUNNER_TEMP}/apple-signed" && shasum -a 256 ./*.ipa ./*.pkg > SHA256SUMS && shasum -a 256 -c SHA256SUMS )
+          echo "artifact=store-${APP}-apple-release-signed" >> "$GITHUB_OUTPUT"
+          echo "ipa_sha256=${ipa_sum}" >> "$GITHUB_OUTPUT"
+          echo "pkg_sha256=${pkg_sum}" >> "$GITHUB_OUTPUT"
+          echo "${ipa_sum}  ${ipa}"
+          echo "${pkg_sum}  ${pkg}"
+      # why `store-` and release-signed in the name: the submittable formats, validated above, for the owner's
+      # manual first upload (Private/runbooks/store-submission-apple.md); 90 days, as build-platforms.yml keeps them.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.bytes.outputs.artifact }}
+          path: ${{ runner.temp }}/apple-signed
+          retention-days: 90
+          if-no-files-found: error
       # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
       # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,
       # into "<app>-ios-appstore-dry-run" and "<app>-macos-appstore-dry-run", which no reader of the
@@ -238,3 +413,221 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/record-deployment.mjs "${APP}-macos-appstore" --mode dry-run
+
+  # ⏱ ADDED 2026-10-03 (release lane apple-ready): the upload. It ships the dry-run job's signed bytes to
+  # App Store Connect for TestFlight processing and STOPS — attaching a build to a version and submitting it
+  # for App Review stay the owner's console act ([ADR 031] class A). docs/ci/submit-appstore.md §upload.
+  submit:
+    name: Upload to App Store Connect for TestFlight (owner-approved; never submitted for review)
+    # why macos-26: assert-artifact-signed-apple.mjs reads each signature with codesign and pkgutil before the upload.
+    runs-on: macos-26
+    # why 60: two uploads, each read back for up to 20 minutes of App Store Connect processing.
+    timeout-minutes: 60
+    needs: [gate, dry-run]
+    # why: a typed phrase, never a schedule. The dispatch default is dry-run-only.
+    if: github.event_name == 'workflow_dispatch' && (inputs.confirm_ios == 'UPLOAD-IOS-TO-TESTFLIGHT' || inputs.confirm_macos == 'UPLOAD-MACOS-TO-TESTFLIGHT')
+    # why: the owner-approval PAUSE (ADR 031 class A). It FAILS OPEN on its own (GitHub creates a missing
+    # environment with no rules), so submit-appstore.mjs PG-5 reads the protection rules back at run time.
+    environment: store-publish
+    permissions:
+      contents: read
+      checks: read
+      deployments: write
+    # why: the same checked output the dry-run job read, so both jobs name one app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # why: ONLY main uploads, checked before anything else runs (O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2):
+      # `workflow_dispatch` runs on whatever ref the dispatcher picks, and `environment:` alone fails open.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      - name: A real upload must name the listing it will be recorded against
+        env:
+          LISTING_URL: ${{ inputs.listing_url }}
+        run: |
+          set -euo pipefail
+          case "${LISTING_URL}" in
+            https://apps.apple.com/*)
+              echo "⬜ [10]D-9 the upload will be recorded against ${LISTING_URL}"
+              ;;
+            '')
+              echo "FAIL the \`listing_url\` dispatch input is EMPTY, and this job is a REAL upload." >&2
+              echo "     The [10]D-9 recorder refuses a store environment with no --listing-url, so this run could" >&2
+              echo "     upload and then be unable to record what it did. Re-dispatch with listing_url set, e.g." >&2
+              echo "       https://apps.apple.com/app/id<apps/<app>/app.yaml stores.ios-appstore.recordId>" >&2
+              exit 1
+              ;;
+            *)
+              echo "FAIL \`listing_url\` is ${LISTING_URL}, which is not an https://apps.apple.com/ URL." >&2
+              exit 1
+              ;;
+          esac
+      # why: kept with no build to feed (submit-play.yml's shape): it exports the posture, the team pin and the
+      # two identity names the signature guard below holds the downloaded bundles to. Nothing is compiled here.
+      - name: Prepare the Apple distribution identity
+        env:
+          APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+          APPLE_DIST_CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
+        run: node tooling/ci/apple-signing.mjs --app "$APP" --channel ios-appstore --channel macos-appstore
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES — every gate the dry-run job ran, here where the upload runs,
+      # with --real-submission on each gate that carries it (limb 3 of assert-publish-steps-guarded.mjs).
+      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore
+      - name: Name clearance holds for macos-appstore (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=macos-appstore
+      - name: Every auto-renewable has its review screenshot (--for-submission)
+        run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
+      # why: --real-submission (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): this job is a REAL upload, so the app's
+      # stores.ios-appstore declaredOn must be a date; the ios-appstore audit also answers for macOS.
+      - name: The app's App Store declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP" --real-submission
+      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
+      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
+      - name: The Small Business Program enrolment is recorded before an App Store sale (ios-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission
+      - name: The Small Business Program enrolment is recorded before an App Store sale (macos-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=macos-appstore --real-submission
+      - name: The App Store screenshot sets cover their declared device types (ios-appstore)
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=ios-appstore
+      - name: The App Store screenshot sets cover their declared device types (macos-appstore)
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=macos-appstore
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. Refused while nativeAuth is false only where the build reaches the
+      # public (App Review); a TestFlight upload is the Apple twin of Play's internal track, where the attested
+      # sign-in is proven. APPLE_RELEASE_TARGET is the variable the upload step passes and the script enforces.
+      - name: A build that cannot sign in reaches no public step (ios-appstore)
+        env:
+          APPLE_RELEASE_TARGET: testflight
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=ios-appstore --real-submission
+      - name: A build that cannot sign in reaches no public step (macos-appstore)
+        env:
+          APPLE_RELEASE_TARGET: testflight
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=macos-appstore --real-submission
+      # why: THE DRY RUN'S BYTES, NOT A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT): one compile per dispatch.
+      - name: Take the dry-run job's signed .ipa and .pkg
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.dry-run.outputs.artifact }}
+          path: ${{ runner.temp }}/apple-signed
+      # why: the values arrive through env:, never interpolated into run: (zizmor). macOS ships `shasum`; the
+      # GNU name is defined over it when absent, so the check reads the same on either runner image.
+      - name: The .ipa and .pkg are the ones the dry-run job hashed (sha256)
+        env:
+          IPA_SHA256: ${{ needs.dry-run.outputs.ipa_sha256 }}
+          PKG_SHA256: ${{ needs.dry-run.outputs.pkg_sha256 }}
+          DL: ${{ runner.temp }}/apple-signed
+        run: |
+          set -euo pipefail
+          if ! command -v sha256sum >/dev/null 2>&1; then sha256sum() { shasum -a 256 "$@"; }; fi
+          for sum in "$IPA_SHA256" "$PKG_SHA256"; do
+            if ! printf '%s' "$sum" | grep -Eqx '[0-9a-f]{64}'; then
+              echo "FAIL a dry-run sha256 output is '${sum}', not 64 hex digits: nothing to check the download against." >&2
+              exit 1
+            fi
+          done
+          printf '%s  %s\n' "$IPA_SHA256" "${DL}/${APP}.ipa" | sha256sum --check -
+          printf '%s  %s\n' "$PKG_SHA256" "${DL}/${APP}.pkg" | sha256sum --check -
+          mkdir -p "apps/${APP}/build/ios/ipa" "apps/${APP}/build/macos/pkg"
+          cp "${DL}/${APP}.ipa" "apps/${APP}/build/ios/ipa/${APP}.ipa"
+          cp "${DL}/${APP}.pkg" "apps/${APP}/build/macos/pkg/${APP}.pkg"
+      # why: BEFORE the upload (submit-appstore.mjs PG-4 refuses otherwise): the signature, the embedded profile,
+      # the entitlements and the Info.plist read back out of the exact bytes App Store Connect will receive.
+      - name: PROVE the .ipa and .pkg are real and signed
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ needs.gate.outputs.app }}/build/ios/ipa/${{ needs.gate.outputs.app }}.ipa
+          apps/${{ needs.gate.outputs.app }}/build/macos/pkg/${{ needs.gate.outputs.app }}.pkg
+      # why: the mappings of both bundles are the dry-run job's (same builds), kept there 90 days and already in the
+      # crash sink. BEFORE each upload, the one copy that outlives the run (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS):
+      # private R2, keyed symbols/<app>/<channel>/<version>+<build>/; each record below carries its sha256.
+      - name: Take the dry-run job's symbols for these bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: symbols-${{ needs.gate.outputs.app }}-appstore
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols
+      - name: Copy the iOS build's symbols to the release store (R2), before the upload
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm_ios == 'UPLOAD-IOS-TO-TESTFLIGHT'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASE_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          R2_RELEASE_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          SHORT_VERSION: ${{ needs.dry-run.outputs.short_version }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/ci/r2-durable-copy.mjs --kind symbols --app "$APP" --channel ios-appstore
+          --version "$SHORT_VERSION" --build "$BUNDLE_VERSION"
+          --dir "apps/${APP}/build/symbols/ios" --out "${RUNNER_TEMP}/symbols-record-ios.json"
+      - name: Copy the macOS build's symbols to the release store (R2), before the upload
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm_macos == 'UPLOAD-MACOS-TO-TESTFLIGHT'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASE_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          R2_RELEASE_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          SHORT_VERSION: ${{ needs.dry-run.outputs.short_version }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/ci/r2-durable-copy.mjs --kind symbols --app "$APP" --channel macos-appstore
+          --version "$SHORT_VERSION" --build "$BUNDLE_VERSION"
+          --dir "apps/${APP}/build/symbols/macos" --out "${RUNNER_TEMP}/symbols-record-macos.json"
+      - name: Upload the iOS build to App Store Connect (TestFlight processing; never submitted for review)
+        id: upload_ios
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm_ios == 'UPLOAD-IOS-TO-TESTFLIGHT'
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          CONFIRM: ${{ inputs.confirm_ios }}
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_RELEASE_TARGET: testflight
+          SHORT_VERSION: ${{ needs.dry-run.outputs.short_version }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/release/submit-appstore.mjs --submit --channel ios-appstore --app "$APP"
+          --confirm "$CONFIRM" --bundle-short-version "$SHORT_VERSION" --bundle-version "$BUNDLE_VERSION"
+      - name: Upload the macOS build to App Store Connect (TestFlight processing; never submitted for review)
+        id: upload_macos
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm_macos == 'UPLOAD-MACOS-TO-TESTFLIGHT'
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          CONFIRM: ${{ inputs.confirm_macos }}
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_RELEASE_TARGET: testflight
+          SHORT_VERSION: ${{ needs.dry-run.outputs.short_version }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/release/submit-appstore.mjs --submit --channel macos-appstore --app "$APP"
+          --confirm "$CONFIRM" --bundle-short-version "$SHORT_VERSION" --bundle-version "$BUNDLE_VERSION"
+      # why: an upload is STAGED, not sent for review, so it is recorded `draft_staged`, which [10]D-6's cadence does
+      # not count; only the owner's console "Submit for Review" makes it in_review. Each record is conditioned on its
+      # own upload's ACT (assert-publish-records rule 6), so a failed macOS upload still records the iOS one.
+      - name: Record the iOS upload in the [10]D-9 ledger
+        if: always() && steps.upload_ios.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LISTING_URL: ${{ inputs.listing_url }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/ci/record-deployment.mjs "${APP}-ios-appstore" --state draft_staged --listing-url "$LISTING_URL"
+          --mode production --artifact "apps/${APP}/build/ios/ipa/${APP}.ipa" --build-number "$BUNDLE_VERSION"
+          --symbols-record "${RUNNER_TEMP}/symbols-record-ios.json"
+      - name: Record the macOS upload in the [10]D-9 ledger
+        if: always() && steps.upload_macos.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LISTING_URL: ${{ inputs.listing_url }}
+          BUNDLE_VERSION: ${{ needs.dry-run.outputs.bundle_version }}
+        run: >
+          node tooling/ci/record-deployment.mjs "${APP}-macos-appstore" --state draft_staged --listing-url "$LISTING_URL"
+          --mode production --artifact "apps/${APP}/build/macos/pkg/${APP}.pkg" --build-number "$BUNDLE_VERSION"
+          --symbols-record "${RUNNER_TEMP}/symbols-record-macos.json"
