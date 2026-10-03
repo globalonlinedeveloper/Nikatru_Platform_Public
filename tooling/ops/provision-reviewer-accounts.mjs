@@ -52,8 +52,8 @@
 //   the narrowest one, `--feature-set` (default store_review_comp@1, status
 //   `draft`, the single member subscriptiontracker) — a reviewed, opt-in act.
 //
-// Prints NO secret: a password appears as its length and the first 8 hex of its
-// sha256, never its characters.
+// Prints NO secret: a password appears as its length, never its characters and
+// never a hash of it.
 //
 // 🔴 THE IDENTITY STACK IS THE ONE PRODUCTION TRUSTS, READ FROM THE FILE THE DEPLOY
 // READS: services/platform/wrangler.jsonc vars.SUPABASE_URL (Box C's GoTrue). A
@@ -76,8 +76,8 @@
 // Exit 0 = done (or planned). 1 = a request or a refusal stopped it. 2 = COVERAGE
 // LOST: a credential, the vault, or the comp precondition is missing.
 // ─────────────────────────────────────────────────────────────────────────────
-import { createHash, randomInt } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { randomInt } from 'node:crypto';
+import { closeSync, existsSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -114,33 +114,51 @@ export function newPassword(pick = (n) => randomInt(n)) {
   }
 }
 
-/** How a secret is shown: never its characters. */
-export const fingerprint = (v) => `${v.length} chars, sha256 ${createHash('sha256').update(v).digest('hex').slice(0, 8)}`;
+/** How a secret is shown: its length, never its characters and never a hash of
+ *  it (a fast hash of a password is a guessable one — CodeQL js/insufficient-
+ *  password-hash on the first draft of this line). */
+export const fingerprint = (v) => `${v.length} chars`;
 
 // ── the vault: exact-name reads, append-only writes ─────────────────────────
-/** Every `NAME=value` line, by exact name. NEVER a split on `=`: a free-form
- *  paste carries no `=`, and a splitting reader prints the value whole. */
-export function readVault(path) {
+/** `NAME=value` lines of one vault text, by exact name. NEVER a split on `=`: a
+ *  free-form paste carries no `=`, and a splitting reader prints the value whole. */
+function parseVault(text) {
   const out = new Map();
-  if (!existsSync(path)) return out;
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+  for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Za-z_0-9]+)\s*=\s*(.*)$/);
     if (m && !out.has(m[1])) out.set(m[1], m[2].trim().replace(/^["']|["']$/g, ''));
   }
   return out;
 }
 
-/** Appends `name=value` unless the vault already says exactly that. A name
- *  present with ANOTHER value is a refusal: this file never rewrites a line. */
-export function appendVault(path, name, value) {
-  const have = readVault(path).get(name);
-  if (have === value) return false;
-  if (have !== undefined) {
-    throw new Refused(1, [`the vault already holds ${name} with a different value; this tool appends and never rewrites. Resolve it by hand.`]);
+/** Every `NAME=value` line of the vault at `path` (an absent vault is empty). */
+export function readVault(path) {
+  try {
+    return parseVault(readFileSync(path, 'utf8'));
+  } catch (e) {
+    if (e?.code === 'ENOENT') return new Map();
+    throw e;
   }
-  const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  appendFileSync(path, `${text === '' || text.endsWith('\n') ? '' : '\n'}${name}=${value}\n`);
-  return true;
+}
+
+/** Appends `name=value` unless the vault already says exactly that. A name
+ *  present with ANOTHER value is a refusal: this file never rewrites a line.
+ *  ONE descriptor, opened for append, is both the read and the write, so the
+ *  text judged is the text appended to (no check-then-use window). */
+export function appendVault(path, name, value) {
+  const fd = openSync(path, 'a+');
+  try {
+    const text = readFileSync(fd, 'utf8');
+    const have = parseVault(text).get(name);
+    if (have === value) return false;
+    if (have !== undefined) {
+      throw new Refused(1, [`the vault already holds ${name} with a different value; this tool appends and never rewrites. Resolve it by hand.`]);
+    }
+    writeSync(fd, `${text === '' || text.endsWith('\n') ? '' : '\n'}${name}=${value}\n`);
+    return true;
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** The vault this run reads and appends to: --vault, else <root>/.claude/secrets.env,
