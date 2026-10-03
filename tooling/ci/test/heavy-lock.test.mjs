@@ -675,6 +675,9 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     // ⏱ 2026-09-26: workflow-scan.mjs imports the release-build composer and the app set (O-FLUTTER-BUILD-TYPED-PER-LINE)
     mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
     copyFileSync(join(SCRIPTS, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+    // ⏱ 2026-10-03: the stamp leg restores the tree through tooling/kit/stamp-sandbox.mjs (fix-brick-stamp-outside-repo)
+    mkdirSync(join(root, 'tooling', 'kit'), { recursive: true });
+    copyFileSync(join(SCRIPTS, '..', 'kit', 'stamp-sandbox.mjs'), join(root, 'tooling', 'kit', 'stamp-sandbox.mjs'));
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');

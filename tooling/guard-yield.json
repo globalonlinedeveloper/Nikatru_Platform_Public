@@ -737,6 +737,11 @@
         }
       ]
     },
+    "tooling/ci/assert-codeql-lite.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-codeql-pr-no-new-high.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-30",
@@ -1529,7 +1534,7 @@
     },
     "tooling/ci/assert-main-rows.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ci/assert-mechanism-claims.mjs": {
@@ -3568,7 +3573,7 @@
     },
     "tooling/ci/update-exit.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ci/worker-routes.mjs": {
@@ -3728,7 +3733,7 @@
     },
     "tooling/ops/check-cloudflare-usage.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/check-code-scanning-age.mjs": {
@@ -3818,7 +3823,7 @@
     },
     "tooling/ops/check-worker-versions.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/create-glitchtip-release.mjs": {
@@ -4050,7 +4055,7 @@
     },
     "tooling/scripts/test-clock.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-03",
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/sites/gen-auth-mail.mjs": {

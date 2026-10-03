@@ -2346,13 +2346,12 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  workflow, duty.freshness.time-travel (.github/workflows/time-travel.yml).
    *  The replay measured 32 after the row: one new page plus one cross-check,
    *  answered by replayWorld's derived run.
-   *  2026-10-02: 30 → 31 on main, ONE read: the laptop heartbeat (`beat.json`
-   *  on ref lead/heartbeat, the contents API), made only when a duty.laptop.*
-   *  row is failing, so the outage rule can grade it DEGRADED during a proven
-   *  outage (O-LAPTOP-OUTAGE-READS-AS-RED). A healthy run makes none.
-   *  2026-10-03: 33 at the merge of main into club/rt-ports — the two raises
-   *  above are independent (+2 time-travel, +1 heartbeat); the replay measured
-   *  33 on the merged tree, and 32 reds this test. */
+   *  2026-10-02: +1, ONE read: the laptop heartbeat (`beat.json` on ref
+   *  lead/heartbeat, the contents API), made only when a duty.laptop.* row is
+   *  failing, so the outage rule can grade it DEGRADED during a proven outage
+   *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read on
+   *  main, before the time-travel row; a healthy run makes none.
+   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree. */
   const OPS_GITHUB_REQUEST_CEILING = 33;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;

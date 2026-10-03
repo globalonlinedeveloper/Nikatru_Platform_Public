@@ -29,12 +29,9 @@ describe("the shield's limiter is the rate-limiter port", () => {
   it('a limiter over budget refuses the request — through the port fake', async () => {
     const limiter = memoryRateLimiter({ budget: 2 });
     const env: Env = { AUTH_PASSWORD_GLOBAL_LIMITER: limiter };
-    // ⏱ 2026-10-03 · club rt-ports stack: `admit` takes the shield's release mark
-    // since #1115's review (apply-platform); this test arrived beside it (port-storage).
-    const mark = 'test-release';
-    expect(await admit('auth-password', env, mark)).toBeNull();
-    expect(await admit('auth-password', env, mark)).toBeNull();
-    const refused = await admit('auth-password', env, mark);
+    expect(await admit('auth-password', env, 'test-release')).toBeNull();
+    expect(await admit('auth-password', env, 'test-release')).toBeNull();
+    const refused = await admit('auth-password', env, 'test-release');
     expect(refused?.status).toBe(429);
     expect(limiter.keys).toEqual(['global:auth-password', 'global:auth-password', 'global:auth-password']);
   });

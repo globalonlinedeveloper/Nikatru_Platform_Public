@@ -1,11 +1,10 @@
 // Runs around EVERY test file under apps/subscriptiontracker/test (Flutter
 // picks up the nearest flutter_test_config.dart and calls [testExecutable]).
 //
-// It does two things. It answers the secure-storage channel (below). And with
-// `NIKATRU_TEST_NOW` set, `wallClock` (the seam behind `nowProvider`) starts at
-// that instant, so the weekly time-travel run executes this suite on another
-// day; unset — every pull request, every local run — the clock is untouched.
-// See test/support/test_clock.dart.
+// With `NIKATRU_TEST_NOW` unset — every pull request, every local run — the
+// clock is untouched. With it set, `wallClock` (the seam behind
+// `nowProvider`) starts at that instant, so the weekly time-travel run executes
+// this suite on another day. See test/support/test_clock.dart.
 
 import 'dart:async';
 import 'dart:io' show Platform;
@@ -27,8 +26,8 @@ import 'support/test_clock.dart';
 /// fresh install, which is what those tests describe. A test that needs another
 /// store still overrides `secureStoreProvider`, as before.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  TestWidgetsFlutterBinding.ensureInitialized();
   installTestClock(Platform.environment);
+  TestWidgetsFlutterBinding.ensureInitialized();
   final Map<String, String> keychain = <String, String>{};
   setUp(keychain.clear);
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

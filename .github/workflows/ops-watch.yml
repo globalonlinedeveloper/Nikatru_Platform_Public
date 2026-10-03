@@ -371,7 +371,7 @@ jobs:
     timeout-minutes: 10
     # why: deployments: read is for check-worker-versions.mjs, which reads each
     # Worker's newest ledger record (GET .../deployments?environment=<unit>).
-    # actions read lets the reader ask the CI run for a stale direct project's expected commit whether its
+    # actions: read lets the reader ask the CI run for a stale direct project's expected commit whether its
     # deploy has run yet, so a deploy queued behind GitHub's runners reads PENDING instead of a failed one.
     permissions:
       actions: read

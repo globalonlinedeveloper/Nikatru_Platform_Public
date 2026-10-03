@@ -1149,7 +1149,7 @@
         "binding": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
         "kind": "ratelimits",
         "scope": "shared",
-        "purpose": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), review of #1070. The per-NETWORK ceiling on Play Integrity verifications, spent BEFORE a decode is asked of Google, keyed `edge:<colo>:<asn>`. `simple: { limit: 10, period: 60 }`: one network cannot spend the Cloud project's daily quota (the global daily ceiling below Google's is PLAY_INTEGRITY_DAILY_CEILING, a D1 counter). FAILS CLOSED (503). Its own namespace (1025; the sandbox's is 1026).",
+        "purpose": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), review of #1070. The per-NETWORK ceiling on Play Integrity verifications, spent BEFORE a token is decrypted and verified, keyed `edge:<colo>:<asn>`. `simple: { limit: 10, period: 60 }`: one network's burst of local crypto. ⏱ 2026-10-03 (O-PLAY-INTEGRITY-LOCAL-VERIFY): verification is local, so there is no Google quota and no daily D1 counter behind it. FAILS CLOSED (503). Its own namespace (1025; the sandbox's is 1026).",
         "readers": [
           "services/platform/src/routes/native-auth.ts"
         ]
