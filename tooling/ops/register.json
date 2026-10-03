@@ -1854,6 +1854,7 @@
           "unit": {
             "jobs": [
               "status",
+              "status-page",
               "supabase-drift",
               "prod-provenance",
               "runner-budget",

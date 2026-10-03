@@ -1845,6 +1845,16 @@ jobs:
       # gaps tooling/a11y/exceptions.json holds, both ways; the page itself is regen.mjs's to compare.
       - name: The accessibility statement publishes exactly the register's gaps
         run: node tooling/ci/assert-a11y-statement.mjs
+      # why: lane status-page (O-PUBLIC-STATUS-PAGE-MISSING). A public component always has a monitor,
+      # a row marked public always has a component; an incident is public and carries no personal data;
+      # and sites/status is what tooling/status/build-status.mjs renders from them (its sitemap lastmod
+      # is the page's git date, which is why it is here, with full history, and not in regen.mjs ORDER).
+      - name: Every public status component has a monitor, and every public row a component
+        run: node tooling/ci/assert-status-components.mjs
+      - name: Incidents carry no personal data
+        run: node tooling/ci/assert-incidents.mjs
+      - name: The status page is a fresh render of its registers (compare only)
+        run: node tooling/status/build-status.mjs --check
       # why: lane a11y-statement (O-WEB-A11Y-SCAN-MISSING). axe-core is pinned in _playwright/'s
       # lockfile and injected from the local install, so no request leaves the runner.
       - name: Install the fleet Playwright and axe-core (lockfile), and Playwright's Chromium
@@ -1858,6 +1868,9 @@ jobs:
       # tooling/a11y/exceptions.json fails; a register row nothing fired on is STALE and fails.
       - name: Every indexable page passes the accessibility scan, or its gap is registered
         run: node tooling/a11y/scan.mjs
+      # why: lane status-page — the status site is a second deploy root with the same bar.
+      - name: The status page passes the accessibility scan
+        run: node tooling/a11y/scan.mjs --site sites/status
       # why: the scan's three red controls, every run. Each must exit exactly 1: an unlabeled button,
       # a sticky nav taller than its scroll padding (SC 2.4.11), and the real apps hub judged by a
       # register with its real exception deleted.

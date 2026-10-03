@@ -5901,7 +5901,9 @@ async function main() {
       // header, and the probe reads it on both routes it binds and exits 1 without it.
       // ⏱ 2026-10-01 · PB-08: rollback.yml's smoke is `rollback.mjs --run-smoke`, which runs the
       // re-promoted unit's OWN deploy smoke — one of the three above, by rollback.mjs SMOKE_SCRIPTS.
-      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs|check-edge-shield\.mjs|rollback\.mjs\s+--run-smoke\b/g) ?? []).length;
+      // ⏱ 2026-10-03 · lane status-page: `build-status.mjs --smoke` reads the deployed status.json
+      // back and refuses one that is not this build's (tooling/status/build-status.mjs smoke()).
+      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs|check-edge-shield\.mjs|rollback\.mjs\s+--run-smoke\b|build-status\.mjs\s+--smoke\b/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });
       }

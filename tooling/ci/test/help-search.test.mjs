@@ -120,7 +120,7 @@ test('🔴 an index over its budget is refused', () => {
 test('🔴 a hand edit of a committed index fails --check', () => {
   const tmp = mkdtempSync(path.join(tmpdir(), 'help-check-'));
   try {
-    for (const rel of ['content', 'tooling/i18n/locales.json', 'services/platform/src/app-config-data.json', 'apps/subscriptiontracker/dod.json', 'apps/subscriptiontracker/lib/l10n/app_en.arb', 'packages/design_system/lib/src/l10n/chassis_en.arb', 'extensions/Extension/Full_Screen_Shot/_locales/en/messages.json', 'sites/nikatru', 'packages/help/lib/src', 'extensions/Extension/Full_Screen_Shot/pages', 'extensions/templates/tool/lib']) {
+    for (const rel of ['content', 'tooling/i18n/locales.json', 'services/platform/src/app-config-data.json', 'apps/subscriptiontracker/dod.json', 'apps/subscriptiontracker/lib/l10n/app_en.arb', 'packages/design_system/lib/src/l10n/chassis_en.arb', 'extensions/Extension/Full_Screen_Shot/_locales/en/messages.json', 'sites/nikatru', 'sites/status', 'packages/help/lib/src', 'extensions/Extension/Full_Screen_Shot/pages', 'extensions/templates/tool/lib']) {
       cpSync(path.join(ROOT, rel), path.join(tmp, rel), { recursive: true });
     }
     const quiet = () => {};
@@ -148,12 +148,18 @@ test('the stemmer, the one-edit test and the synonyms behave as documented', () 
 // ── Do 3: recall is a number with a floor ───────────────────────────────────
 
 test('🔴 deleting one article\'s asked list drops an article below the per-article floor', () => {
+  // Measured over every article rather than pinned to one: which article's
+  // `asked` lines carry its eval questions moves as articles and synonyms are
+  // added. The claim is that the floor BITES for some single deletion, and the
+  // overall average does not hide it.
   const c = collect(ROOT);
-  const gutted = c.articles.map((a) => (a.id === 'platform/delete-account' ? { ...a, fm: { ...a.fm, asked: [] } } : a));
-  const r = recallProblems('en', indexOf(gutted), EVAL, gutted);
-  // Overall recall still reads 0.985 — the average hides it; the per-article floor does not.
-  assert.ok(r.recall.recall >= 0.9);
-  assert.ok(r.problems.some((p) => /under the 0\.9 floor/.test(p)), r.problems.join('\n'));
+  const reds = [];
+  for (const target of c.articles) {
+    const gutted = c.articles.map((a) => (a.id === target.id ? { ...a, fm: { ...a.fm, asked: [] } } : a));
+    const r = recallProblems('en', indexOf(gutted), EVAL, gutted);
+    if (r.problems.some((p) => /under the 0\.9 floor/.test(p)) && r.recall.recall >= 0.9) reds.push(target.id);
+  }
+  assert.ok(reds.length > 0, 'no single asked-list deletion reds the per-article floor');
 });
 
 test('🔴 an eval query that is an article\'s own asked line is refused', () => {

@@ -102,7 +102,9 @@
 // a fixture tree, so every decision branch is exercised with no network. It
 // prints a loud banner so its presence in a real ops-watch log is unmistakable.
 //
-// Usage:  node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>]
+// Usage:  node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>] [--json <out>]
+//         --json writes every probed surface's verdict (ok | unhealthy | unreached)
+//         for the public status page (tooling/status/build-status.mjs).
 //
 // ⏱ APPENDED 2026-09-25 (row O-OPS-PROBE-US-EDGE-STALL): ops-watch went red with
 // NOTHING ANSWERED three times (runs 35996417635, 36110724525, 36113462303) while
@@ -113,7 +115,7 @@
 // (runStatus); an answer is graded like any other, nothing is still exit 2, and
 // a `⚠ SLOW PATH` block names every surface that needed it.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -551,7 +553,7 @@ export function statusWorstCaseMs(n) {
   return n * (READ_ATTEMPTS * PROBE_TIMEOUT_MS + RETRY_WALL_CEILING_MS) + secondLookWallMs(PROBE_TIMEOUT_MS);
 }
 function printUsage() {
-  console.log('Usage: node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>]');
+  console.log('Usage: node tooling/ops/status.mjs [--root <repoRoot>] [--probes-file <json>] [--json <out>]');
   console.log('');
   console.log('  Answers "is anything broken right now?" over the surfaces derived from');
   console.log(`  ${DELEGATE_REL} — [11]E-9's register, which owns the hostname set.`);
@@ -560,6 +562,7 @@ function printUsage() {
   console.log('  --probes-file <json>  { "<hostname>": { "status": 200, "body": "…" } | { "error": "…" } | { "unreached": "…" } }');
   console.log('                        an `unreached` row may carry "secondLook": [ <probe>, … ], one per second-look attempt.');
   console.log('                        OFFLINE: nothing is contacted. Announces itself loudly.');
+  console.log('  --json <out>          also write each probed surface\'s verdict (ok | unhealthy | unreached) to <out>.');
   console.log('');
   console.log(`  exit ${EXIT_OK} = every probed surface answered as declared`);
   console.log(`  exit ${EXIT_UNHEALTHY} = at least one probed surface is UNHEALTHY (I looked, it is broken)`);
@@ -575,6 +578,7 @@ function printUsage() {
 export async function runStatus({
   root = ROOT,
   probesFile = flag('--probes-file'),
+  jsonOut = flag('--json'),
   doFetch = fetch,
   sleep,
   out = (line) => console.log(line),
@@ -641,11 +645,25 @@ export async function runStatus({
   const failures = [];
   const lost = [];
   const healthy = [];
+  const readings = {};
   for (const { s, probe } of looked) {
     const verdict = evaluateSurface(s, probe);
+    readings[s.hostname] = verdict.ok ? 'ok' : verdict.kind === 'unreached' ? 'unreached' : 'unhealthy';
     if (verdict.ok) healthy.push(verdict.reason);
     else if (verdict.kind === 'unreached') lost.push(verdict.reason);
     else failures.push(verdict.reason);
+  }
+  // ⏱ 2026-10-03 · lane status-page: the same verdicts, as data, for
+  // tooling/status/build-status.mjs. Written whatever the exit; nothing about
+  // what is probed or how it is graded changes. Each surface is `ok`,
+  // `unhealthy` or `unreached`; an unprobeable row is absent.
+  if (jsonOut) {
+    try {
+      writeFileSync(jsonOut, `${JSON.stringify({ checkedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), surfaces: readings }, null, 2)}\n`);
+    } catch (e) {
+      err(`✗ could not write the readings to ${jsonOut}: ${e.message}`);
+      return EXIT_CANNOT_LOOK;
+    }
   }
 
   const dataBearing = surfaces.filter((s) => s.dataBearing).length;

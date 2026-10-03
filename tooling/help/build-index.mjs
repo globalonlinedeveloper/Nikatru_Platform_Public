@@ -38,6 +38,8 @@
 //   ext:<dir>:<key>                extensions/Extension/<dir>/_locales/en/
 //                                  messages.json has the key
 //   page:/<path>[#id]              sites/nikatru serves the page (and the id)
+//   site:<dir>                     sites/<dir>/index.html exists (another deploy
+//                                  root, e.g. the status page)
 // 🔴 NO PRICE. A price literal (a currency sign or code beside a number) is
 // refused: prices live on /pricing, and terms and refund wording is the owner's
 // — an article links those pages, never restates them.
@@ -214,6 +216,11 @@ export function gateState(root, gate, cache = new Map()) {
     const msgs = load(rel, JSON.parse);
     return msgs && msgs[key] ? { on: true } : { on: false, why: `${rel} has no message ${key}` };
   }
+  if (kind === 'site') {
+    // ⏱ 2026-10-03 · lane status-page: another deploy root serves a page (sites/<dir>/index.html).
+    const rel = `sites/${what.replace(/[^a-z0-9-]/g, '')}/index.html`;
+    return load(rel, (t) => t) === null ? { on: false, why: `${rel} does not exist` } : { on: true };
+  }
   if (kind === 'page') {
     const [p, id] = what.split('#');
     const clean = p.replace(/^\/+|\/+$/g, '');
@@ -223,7 +230,7 @@ export function gateState(root, gate, cache = new Map()) {
     if (id && !new RegExp(`\\bid="${id.replace(/[^a-z0-9-]/gi, '')}"`).test(html)) return { on: false, why: `${p} has no id="${id}"` };
     return { on: true };
   }
-  return { on: false, why: `gate kind ${JSON.stringify(kind)} is not config, dod, l10n, ext or page` };
+  return { on: false, why: `gate kind ${JSON.stringify(kind)} is not config, dod, l10n, ext, page or site` };
 }
 
 /** Inline Markdown: **bold**, [text](url). Links to nikatru.com or a site path only. */
@@ -241,7 +248,7 @@ function inline(text, problems, where) {
     if (m[1] !== undefined) out += `<b>${esc(m[1])}</b>`;
     else {
       const url = m[3];
-      if (!(url.startsWith('/') || url.startsWith(`${ORIGIN}/`) || url === ORIGIN)) problems.push(`${where}: a link off nikatru.com (${url})`);
+      if (!(url.startsWith('/') || /^https:\/\/(?:[a-z0-9-]+\.)?nikatru\.com(?:\/|$)/.test(url))) problems.push(`${where}: a link off nikatru.com (${url})`);
       out += `<a href="${esc(url.startsWith(ORIGIN) ? url.slice(ORIGIN.length) || '/' : url)}">${esc(m[2])}</a>`;
     }
     rest = rest.slice(m.index + m[0].length);

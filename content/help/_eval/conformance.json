@@ -7,23 +7,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 7.955042613949561
+          "score": 7.527190677202816
         },
         {
           "id": "subscriptiontracker/categories",
-          "score": 5.277773299943403
+          "score": 5.385899033211223
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 4.665152012613303
+          "score": 4.787642130754836
+        },
+        {
+          "id": "platform/service-status",
+          "score": 3.698835493504388
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 3.032970192011741
-        },
-        {
-          "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 2.7356000049882687
+          "score": 3.103460949589798
         }
       ]
     },
@@ -32,19 +32,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 11.655064287741009
+          "score": 10.708839968118152
+        },
+        {
+          "id": "platform/service-status",
+          "score": 6.411425571477187
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.727276561808157
+          "score": 4.795409157717199
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 2.7356000049882687
+          "score": 2.3846569358059244
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.246307640178508
+          "score": 1.9583480810462852
         }
       ]
     },
@@ -53,23 +57,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 8.363184996006114
+          "score": 8.59184978181813
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 6.801270132603525
+          "score": 6.986920059164771
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 6.521777720748879
+          "score": 6.6706651675775115
         },
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 5.179203205219075
+          "score": 5.322084465491242
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 4.435237257016591
+          "score": 4.55824222515338
         }
       ]
     },
@@ -78,23 +82,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 8.861934319240413
+          "score": 9.028265880701879
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.246307640178508
+          "score": 2.286936685419082
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 1.545257258436917
+          "score": 1.6156584768355984
         },
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 1.4351179090894102
+          "score": 1.5005799201349979
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 1.3161794920676373
+          "score": 1.3764510664473601
         }
       ]
     },
@@ -103,23 +107,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 6.248693325160017
+          "score": 6.259036266844402
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 5.287385273958298
+          "score": 5.302879184774497
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 5.195025536493349
+          "score": 5.169471392853671
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 4.529747233196977
+          "score": 4.568144620337826
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 1.953009737463135
+          "score": 1.9939816048500296
         }
       ]
     },
@@ -128,23 +132,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 8.328211009332954
+          "score": 8.502178945660585
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 5.307810198590476
+          "score": 5.421094114519184
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 2.535835369993384
+          "score": 2.595402323565838
         },
         {
           "id": "platform/delete-account",
-          "score": 2.465439090664349
+          "score": 2.530451037985472
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.2176514731215233
+          "score": 2.2765848488226355
         }
       ]
     },
@@ -153,23 +157,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 7.3366680527106105
+          "score": 7.172590480919139
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 5.701208739936005
+          "score": 5.264709848756165
         },
         {
           "id": "platform/delete-account",
-          "score": 4.662941791974809
+          "score": 4.7779969058991
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 3.296484501090358
+          "score": 3.3788274505272753
         },
         {
-          "id": "fullshot/missing-or-repeated-content",
-          "score": 2.4892682303277107
+          "id": "platform/service-status",
+          "score": 2.7125900779727994
         }
       ]
     },
@@ -178,23 +182,23 @@
       "hits": [
         {
           "id": "platform/delete-account",
-          "score": 3.1311910954038806
+          "score": 3.2126358045295023
         },
         {
           "id": "subscriptiontracker/categories",
-          "score": 2.770851658990626
+          "score": 2.8434087838060167
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.7548122606115015
+          "score": 2.8270801202311264
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 2.2966067533217567
+          "score": 2.3572893446290877
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 1.7988685176229446
+          "score": 1.8471755528608986
         }
       ]
     },
@@ -203,23 +207,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 7.757859334729032
+          "score": 7.938749539338138
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 6.1154406175968905
+          "score": 6.240365655135667
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 5.9552120895511
-        },
-        {
-          "id": "platform/sign-in-problems",
-          "score": 2.817585246004238
+          "score": 6.095875970164407
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 2.816628597718248
+          "score": 2.882384291211683
+        },
+        {
+          "id": "platform/sign-in-problems",
+          "score": 2.8679087041640456
         }
       ]
     },
@@ -228,11 +232,11 @@
       "hits": [
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 12.24117520359033
+          "score": 12.440999043885993
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 4.042479232055515
+          "score": 4.116177270512064
         }
       ]
     },
@@ -241,23 +245,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 10.39098293745488
+          "score": 10.677480293670852
         },
         {
           "id": "platform/delete-account",
-          "score": 7.953484770133578
+          "score": 8.163222887790578
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 5.744942883266522
+          "score": 5.926876308073258
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 3.4208539075977877
+          "score": 3.555157367288296
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 2.9013179311665023
+          "score": 2.968794098657001
         }
       ]
     },
@@ -266,23 +270,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 7.950027377865656
+          "score": 8.16934329491348
         },
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 5.339693919118358
+          "score": 5.472565264764465
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 4.587321809936919
+          "score": 4.748839425853499
         },
         {
           "id": "platform/delete-account",
-          "score": 2.5381690811148707
+          "score": 2.6263650241391243
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.0622085113845374
+          "score": 2.1605267990789914
         }
       ]
     },
@@ -291,19 +295,19 @@
       "hits": [
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 10.799975683905014
+          "score": 10.995859448000266
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 3.526512331858065
+          "score": 3.599602816808625
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.6113979349926115
+          "score": 2.672593260956059
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 1.8057379355367693
+          "score": 1.8487451964015118
         }
       ]
     },
@@ -312,23 +316,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 7.341512268878592
+          "score": 7.172099551683845
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 5.589264433252924
+          "score": 5.438011979109935
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 2.816628597718248
-        },
-        {
-          "id": "subscriptiontracker/report-a-problem",
-          "score": 2.472826397701455
+          "score": 2.882384291211683
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 2.243684051809203
+          "score": 2.296875466478058
+        },
+        {
+          "id": "subscriptiontracker/report-a-problem",
+          "score": 2.2651268520306482
         }
       ]
     },
@@ -337,23 +341,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 5.307810198590476
+          "score": 5.421094114519184
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 2.817585246004238
+          "score": 2.8679087041640456
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 2.535835369993384
+          "score": 2.595402323565838
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.511610322342135
+          "score": 2.570653433769432
         },
         {
           "id": "fullshot/report-a-problem",
-          "score": 2.424696211581735
+          "score": 2.113631896406894
         }
       ]
     },
@@ -362,23 +366,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 8.556250498753858
+          "score": 8.203528473995608
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 5.768080063309071
+          "score": 5.603584722967273
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 3.976863257032268
+          "score": 3.643573558846419
+        },
+        {
+          "id": "platform/service-status",
+          "score": 3.015684360960091
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.6582426562469714
-        },
-        {
-          "id": "subscriptiontracker/insights",
-          "score": 2.258142300580203
+          "score": 2.4366808402736306
         }
       ]
     },
@@ -387,23 +391,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 10.828958933416155
+          "score": 11.068658018498493
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 3.235248181716673
+          "score": 3.3164104902586704
         },
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 2.9833811605255804
+          "score": 3.061249613474969
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 2.8447076326013634
+          "score": 2.9191750723512735
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.6712161336517997
+          "score": 2.7413780077138865
         }
       ]
     },
@@ -412,7 +416,7 @@
       "hits": [
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 6.9015267853873326
+          "score": 7.0031320486184345
         }
       ]
     },
@@ -421,23 +425,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 12.744149273625501
+          "score": 13.01385231340265
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 8.346582230853029
+          "score": 8.5224619182458
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 4.000992940908716
+          "score": 4.103138626592875
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 2.406208024292121
+          "score": 2.4630386164608176
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 1.9034184144449326
+          "score": 1.954223954187734
         }
       ]
     },
@@ -446,19 +450,19 @@
       "hits": [
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 16.88740318037567
+          "score": 17.172606357635903
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 5.578552726184185
+          "score": 5.681774624389647
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 4.001456499993731
+          "score": 4.071180831193914
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 1.7074531071813606
+          "score": 1.7430110969774668
         }
       ]
     },
@@ -467,15 +471,15 @@
       "hits": [
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 15.947818028870397
+          "score": 16.204178599346044
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 5.578552726184185
+          "score": 5.681774624389647
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 1.7074531071813606
+          "score": 1.7430110969774668
         }
       ]
     },
@@ -484,23 +488,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 14.731371755434402
+          "score": 14.985865695506867
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 7.264516748006571
+          "score": 7.40030120622869
+        },
+        {
+          "id": "platform/service-status",
+          "score": 2.2765546977770383
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 2.080091212218076
-        },
-        {
-          "id": "fullshot/missing-or-repeated-content",
-          "score": 1.8574353879820709
+          "score": 1.8859349279757867
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 1.7935246474738362
+          "score": 1.8256021874481383
         }
       ]
     },
@@ -509,11 +513,11 @@
       "hits": [
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 7.4814205327364105
+          "score": 7.603345749753489
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 2.562178067819766
+          "score": 2.608003124925912
         }
       ]
     },
@@ -522,23 +526,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 9.499640991266066
+          "score": 9.681263304123764
         },
         {
           "id": "subscriptiontracker/categories",
-          "score": 6.057947649137416
+          "score": 6.187949125565224
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 1.8592825268413244
+          "score": 1.9147195956256502
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 1.7935246474738362
+          "score": 1.8256021874481383
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 1.3380961031973893
+          "score": 1.3784467068157704
         }
       ]
     },
@@ -547,11 +551,11 @@
       "hits": [
         {
           "id": "subscriptiontracker/currency",
-          "score": 7.51653627385227
+          "score": 7.634358661791478
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 2.601469819087493
+          "score": 2.6470299336901246
         }
       ]
     },
@@ -560,23 +564,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 3.971205781890661
+          "score": 4.064528109770366
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 3.553798619142657
+          "score": 3.62578638642383
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 1.953009737463135
+          "score": 1.9939816048500296
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 1.747004157554886
+          "score": 1.7931371115281973
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 1.6579438297842783
+          "score": 1.7017958745102486
         }
       ]
     },
@@ -585,11 +589,11 @@
       "hits": [
         {
           "id": "subscriptiontracker/currency",
-          "score": 4.797804678078836
+          "score": 4.879964311234195
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 3.7163854558392764
+          "score": 3.781471333843035
         }
       ]
     },
@@ -598,19 +602,19 @@
       "hits": [
         {
           "id": "subscriptiontracker/insights",
-          "score": 8.173716923778613
+          "score": 8.315872964032648
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 7.241669569940083
+          "score": 7.367066196598694
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 4.9241187159338695
+          "score": 5.002497412469099
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.0212396160277577
+          "score": 2.058088635256032
         }
       ]
     },
@@ -619,23 +623,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/insights",
-          "score": 3.9873007661694717
+          "score": 4.1057217171257765
         },
         {
           "id": "platform/report-a-problem",
-          "score": 3.6948286935212327
+          "score": 3.474505238204956
         },
         {
           "id": "platform/delete-account",
-          "score": 2.465439090664349
-        },
-        {
-          "id": "fullshot/report-a-problem",
-          "score": 2.424696211581735
+          "score": 2.530451037985472
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.2176514731215233
+          "score": 2.2765848488226355
+        },
+        {
+          "id": "subscriptiontracker/sync-and-devices",
+          "score": 2.2012191533209093
         }
       ]
     },
@@ -644,23 +648,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 16.228027766765184
+          "score": 16.505810363608333
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 4.615149584130425
+          "score": 4.7230791185402765
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 3.2954335578909877
+          "score": 3.3737701126481783
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 2.829109526341757
+          "score": 2.8872941847413696
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 2.816628597718248
+          "score": 2.882384291211683
         }
       ]
     },
@@ -669,23 +673,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 15.264321148394444
+          "score": 15.537432040632137
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 4.021410579892026
+          "score": 4.123602037941157
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 2.7653932499526617
+          "score": 2.8378893695051386
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 2.4957202250784087
+          "score": 2.561624445040282
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 1.7865651623486127
+          "score": 1.8291453439211678
         }
       ]
     },
@@ -694,23 +698,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 10.678337241803533
+          "score": 10.755775412052994
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 3.187081999189575
+          "score": 3.243560053924066
         },
         {
           "id": "fullshot/report-a-problem",
-          "score": 2.424696211581735
+          "score": 2.4682753643991164
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 1.5248984964837677
+          "score": 1.4297203895660697
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 1.2660105193380466
+          "score": 1.1873450043753908
         }
       ]
     },
@@ -719,23 +723,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 8.584041891091356
+          "score": 8.73264639615607
         },
         {
           "id": "subscriptiontracker/free-trials",
-          "score": 2.79435381618972
+          "score": 2.8443006311959524
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 1.873731293682291
+          "score": 1.9080678165759546
         },
         {
           "id": "platform/report-a-problem",
-          "score": 1.7532381041052458
+          "score": 1.805695012229963
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 1.6904559965613366
+          "score": 1.7411382005110474
         }
       ]
     },
@@ -744,23 +748,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 11.580660441520045
+          "score": 11.057405209197276
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 3.825644474331761
+          "score": 3.764493145308517
+        },
+        {
+          "id": "platform/service-status",
+          "score": 3.757780328918413
         },
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 3.062652504226051
+          "score": 3.125165831831283
         },
         {
-          "id": "platform/report-a-problem",
-          "score": 2.6377627085760262
-        },
-        {
-          "id": "fullshot/privacy-and-data",
-          "score": 2.5617972752887015
+          "id": "subscriptiontracker/add-a-subscription",
+          "score": 2.561624445040282
         }
       ]
     },
@@ -768,20 +772,24 @@
       "query": "past payments list",
       "hits": [
         {
+          "id": "platform/service-status",
+          "score": 5.498383609581216
+        },
+        {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 4.6142608820470885
+          "score": 4.693606720075955
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 3.679969123908248
+          "score": 3.206621213500133
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.246307640178508
+          "score": 1.9583480810462852
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 1.873731293682291
+          "score": 1.9080678165759546
         }
       ]
     },
@@ -790,23 +798,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/sync-and-devices",
-          "score": 6.637093396279331
+          "score": 6.816172962377097
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 4.674007348842192
+          "score": 4.7862750493957265
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 2.60427022617416
+          "score": 2.6875520154184995
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.0483974541252157
+          "score": 2.091223793090136
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 1.8974438077664106
+          "score": 1.9602706560879195
         }
       ]
     },
@@ -815,23 +823,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/sync-and-devices",
-          "score": 5.493151326943648
+          "score": 5.451962906646141
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 3.8102051622901363
+          "score": 3.776468452141011
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 3.0914351812056617
+          "score": 3.0559347267523718
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 2.488205522621926
+          "score": 2.4609732476948585
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 1.7172777484489263
+          "score": 1.758309250567938
         }
       ]
     },
@@ -840,23 +848,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/sync-and-devices",
-          "score": 9.573416598213733
+          "score": 8.568304332224765
+        },
+        {
+          "id": "platform/service-status",
+          "score": 3.083572964495118
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 1.6412269173506917
+          "score": 1.5436850064298415
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 1.4922815962136449
+          "score": 1.4038283131538187
         },
         {
           "id": "fullshot/export-formats",
-          "score": 1.4664444939953716
-        },
-        {
-          "id": "subscriptiontracker/payments-and-history",
-          "score": 1.3161794920676373
+          "score": 1.379549781668848
         }
       ]
     },
@@ -865,11 +873,11 @@
       "hits": [
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 17.10243059317474
+          "score": 17.36810012258421
         },
         {
           "id": "fullshot/export-formats",
-          "score": 3.9041162084498024
+          "score": 3.974604762396676
         }
       ]
     },
@@ -878,19 +886,19 @@
       "hits": [
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 7.038754929333642
+          "score": 7.171255776270734
         },
         {
           "id": "platform/delete-account",
-          "score": 3.7927748300043427
+          "score": 3.869267206091502
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 3.5303499962512688
+          "score": 3.6018538030150915
         },
         {
           "id": "fullshot/export-formats",
-          "score": 1.6075772623028597
+          "score": 1.6366019609868663
         }
       ]
     },
@@ -899,23 +907,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/categories",
-          "score": 6.41508244011978
+          "score": 6.570123391200731
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 2.3292927552792975
+          "score": 2.3980199929895982
         },
         {
           "id": "subscriptiontracker/currency",
-          "score": 2.1877720197114
+          "score": 2.2332834781236834
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 1.8592825268413244
+          "score": 1.9147195956256502
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 1.6463478420099606
+          "score": 1.6812653443727543
         }
       ]
     },
@@ -924,23 +932,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/categories",
-          "score": 7.965636354111886
+          "score": 8.12110455403346
         },
         {
           "id": "subscriptiontracker/monthly-budget",
-          "score": 2.3292927552792975
+          "score": 2.3980199929895982
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 1.8592825268413244
+          "score": 1.9147195956256502
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 1.3380961031973893
+          "score": 1.3784467068157704
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 1.3141498381612047
+          "score": 1.3538131227245034
         }
       ]
     },
@@ -949,23 +957,23 @@
       "hits": [
         {
           "id": "fullshot/report-a-problem",
-          "score": 11.80947361799355
+          "score": 11.447978395422586
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 11.637166403171523
+          "score": 11.28307708235745
         },
         {
           "id": "platform/report-a-problem",
-          "score": 6.985381324892772
+          "score": 6.535948501282322
+        },
+        {
+          "id": "platform/service-status",
+          "score": 2.829609429877948
         },
         {
           "id": "platform/delete-account",
-          "score": 2.9728818333519635
-        },
-        {
-          "id": "fullshot/privacy-and-data",
-          "score": 1.9846453188293984
+          "score": 2.706450943031515
         }
       ]
     },
@@ -974,23 +982,23 @@
       "hits": [
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 9.823007570334708
+          "score": 9.64021305907283
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 4.663180247728876
+          "score": 4.785551339661527
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 4.484254022368408
+          "score": 4.604379856285253
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 4.36256075604478
+          "score": 4.4766335158963635
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.098702145120421
+          "score": 4.209332684821535
         }
       ]
     },
@@ -999,23 +1007,23 @@
       "hits": [
         {
           "id": "platform/sign-in-problems",
-          "score": 8.268349577052858
+          "score": 8.328324650357475
         },
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 4.3550936048972515
+          "score": 4.430421775768707
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 3.869753187268974
-        },
-        {
-          "id": "platform/report-a-problem",
-          "score": 2.706210360965583
+          "score": 3.8559213385112683
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.6712161336517997
+          "score": 2.7413780077138865
+        },
+        {
+          "id": "platform/report-a-problem",
+          "score": 2.6668208998852525
         }
       ]
     },
@@ -1024,11 +1032,11 @@
       "hits": [
         {
           "id": "platform/sign-in-problems",
-          "score": 8.032655520582015
+          "score": 8.161581193076422
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 2.461681237275673
+          "score": 2.505866948781736
         }
       ]
     },
@@ -1037,23 +1045,23 @@
       "hits": [
         {
           "id": "platform/delete-account",
-          "score": 5.333798663729488
+          "score": 5.472516680164006
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 2.697078199311539
+          "score": 2.767863330100688
         },
         {
           "id": "platform/report-a-problem",
-          "score": 2.2812120208946363
+          "score": 2.3417143111552763
         },
         {
           "id": "subscriptiontracker/categories",
-          "score": 1.9395961612934378
+          "score": 1.9903861486642114
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 1.9283685824280514
+          "score": 1.9789560841617881
         }
       ]
     },
@@ -1062,23 +1070,23 @@
       "hits": [
         {
           "id": "platform/delete-account",
-          "score": 9.648981828464281
+          "score": 9.919877324965062
         },
         {
           "id": "subscriptiontracker/cancel-a-subscription",
-          "score": 6.2759252027616395
+          "score": 6.48107033913268
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 6.175666168209289
+          "score": 6.382237487519423
         },
         {
           "id": "subscriptiontracker/categories",
-          "score": 3.6903775783307835
+          "score": 3.829517029676878
         },
         {
           "id": "platform/log-out-everywhere",
-          "score": 2.697078199311539
+          "score": 2.767863330100688
         }
       ]
     },
@@ -1087,23 +1095,23 @@
       "hits": [
         {
           "id": "platform/log-out-everywhere",
-          "score": 14.924375275265113
+          "score": 14.712169156843142
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 11.896425802281984
-        },
-        {
-          "id": "subscriptiontracker/sync-and-devices",
-          "score": 2.910987535504283
+          "score": 11.612817017530315
         },
         {
           "id": "platform/delete-account",
-          "score": 2.833264352371917
+          "score": 2.891526650645121
         },
         {
-          "id": "subscriptiontracker/insights",
-          "score": 1.9770264813334841
+          "id": "platform/service-status",
+          "score": 2.722105857516229
+        },
+        {
+          "id": "subscriptiontracker/sync-and-devices",
+          "score": 2.598529481768699
         }
       ]
     },
@@ -1112,23 +1120,23 @@
       "hits": [
         {
           "id": "platform/log-out-everywhere",
-          "score": 12.668306314145038
+          "score": 12.414366786596363
         },
         {
           "id": "subscriptiontracker/sync-and-devices",
-          "score": 7.417073399746857
+          "score": 7.213483290824886
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 5.366977391531307
+          "score": 4.967119024412351
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 4.433894789017862
+          "score": 4.498036392621939
         },
         {
-          "id": "fullshot/redact-and-annotate",
-          "score": 2.0483974541252157
+          "id": "platform/service-status",
+          "score": 2.722105857516229
         }
       ]
     },
@@ -1137,23 +1145,23 @@
       "hits": [
         {
           "id": "fullshot/capture-full-page",
-          "score": 6.608408700068833
+          "score": 6.6087077366537565
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 5.492332805650043
+          "score": 5.549936817504183
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.934599964447701
+          "score": 4.99358918739889
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 4.36256075604478
+          "score": 4.4766335158963635
         },
         {
           "id": "fullshot/export-formats",
-          "score": 2.8139231373697013
+          "score": 2.809274292907336
         }
       ]
     },
@@ -1162,19 +1170,19 @@
       "hits": [
         {
           "id": "fullshot/capture-full-page",
-          "score": 10.0217621170584
+          "score": 10.208733580610458
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.983382387130432
+          "score": 5.087045764956463
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 3.313341699918625
+          "score": 3.3897966847746197
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.7526022602374143
+          "score": 2.8169183393105683
         }
       ]
     },
@@ -1183,23 +1191,23 @@
       "hits": [
         {
           "id": "fullshot/capture-full-page",
-          "score": 6.232419870306979
+          "score": 6.353076350637149
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 4.330098375318549
+          "score": 4.262588923125553
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 3.313341699918625
+          "score": 3.3897966847746197
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 2.795828204936364
+          "score": 2.560604703112443
         },
         {
-          "id": "subscriptiontracker/free-trials",
-          "score": 2.6209519394825525
+          "id": "fullshot/missing-or-repeated-content",
+          "score": 2.5479096635625456
         }
       ]
     },
@@ -1208,23 +1216,23 @@
       "hits": [
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 8.955264720192176
+          "score": 9.08478023139459
         },
         {
           "id": "subscriptiontracker/renewal-reminders",
-          "score": 4.721187240935378
+          "score": 4.8065710168458375
         },
         {
           "id": "fullshot/export-formats",
-          "score": 3.1603343108856983
+          "score": 3.2163861301757883
         },
         {
           "id": "subscriptiontracker/edit-or-delete",
-          "score": 2.7446481814057773
+          "score": 2.785793531608417
         },
         {
           "id": "subscriptiontracker/sync-and-devices",
-          "score": 2.2872395617467407
+          "score": 2.3285491105064535
         }
       ]
     },
@@ -1233,19 +1241,23 @@
       "hits": [
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 15.183822893405232
+          "score": 14.691434147247874
+        },
+        {
+          "id": "platform/service-status",
+          "score": 3.1677319378817743
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 2.1123825803065728
+          "score": 2.1624304608978915
         },
         {
           "id": "fullshot/export-formats",
-          "score": 2.0913783618585584
+          "score": 2.1409635800815656
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 1.7865651623486127
+          "score": 1.8291453439211678
         }
       ]
     },
@@ -1254,11 +1266,11 @@
       "hits": [
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 6.940712943564808
+          "score": 7.051579595991365
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 3.2559748696678303
+          "score": 3.313547044826433
         }
       ]
     },
@@ -1267,23 +1279,23 @@
       "hits": [
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 11.312868021145086
+          "score": 11.528227627083737
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 6.8341525709318764
+          "score": 6.973047162111324
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 3.313341699918625
+          "score": 3.3897966847746197
         },
         {
           "id": "subscriptiontracker/calendar-feed",
-          "score": 3.0722488364802576
+          "score": 3.135210692339076
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.7526022602374143
+          "score": 2.8169183393105683
         }
       ]
     },
@@ -1292,11 +1304,11 @@
       "hits": [
         {
           "id": "fullshot/export-formats",
-          "score": 7.628767983710219
+          "score": 7.745941436957809
         },
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 4.453585067574689
+          "score": 4.530295537926895
         }
       ]
     },
@@ -1305,7 +1317,7 @@
       "hits": [
         {
           "id": "fullshot/export-formats",
-          "score": 14.577284577151053
+          "score": 14.786305940022253
         }
       ]
     },
@@ -1314,23 +1326,23 @@
       "hits": [
         {
           "id": "fullshot/export-formats",
-          "score": 7.735952590318648
+          "score": 7.906301603740298
         },
         {
           "id": "subscriptiontracker/export-your-data",
-          "score": 7.718242688672513
+          "score": 7.890683274845301
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 2.9593612674528824
+          "score": 3.0630333988835323
         },
         {
           "id": "platform/report-a-problem",
-          "score": 0.6260230264631794
+          "score": 0.6855269143292697
         },
         {
           "id": "subscriptiontracker/add-a-subscription",
-          "score": 0.6085803836416775
+          "score": 0.6664605409753004
         }
       ]
     },
@@ -1339,15 +1351,15 @@
       "hits": [
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 10.4011141274186
+          "score": 10.575406782904906
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 3.187081999189575
+          "score": 3.243560053924066
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 2.2872395617467407
+          "score": 2.3285491105064535
         }
       ]
     },
@@ -1356,23 +1368,23 @@
       "hits": [
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 12.746993491073246
+          "score": 12.987266795286942
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 4.663180247728876
+          "score": 4.785551339661527
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 4.36256075604478
+          "score": 4.4766335158963635
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.098702145120421
+          "score": 4.209332684821535
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 2.3336113138014407
+          "score": 2.4024953121976473
         }
       ]
     },
@@ -1381,23 +1393,23 @@
       "hits": [
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 13.377326172879677
+          "score": 13.636912199647352
         },
         {
           "id": "platform/sign-in-problems",
-          "score": 4.56198538105029
+          "score": 4.677484322919211
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 3.7757368848308692
+          "score": 3.871616777567455
         },
         {
           "id": "platform/report-a-problem",
-          "score": 2.983878379765094
+          "score": 3.059760875981673
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 2.856656297975885
+          "score": 2.9078122812866165
         }
       ]
     },
@@ -1406,23 +1418,23 @@
       "hits": [
         {
           "id": "fullshot/privacy-and-data",
-          "score": 8.629900896996269
+          "score": 8.805654278844907
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 4.663180247728876
+          "score": 4.785551339661527
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 4.484254022368408
+          "score": 4.604379856285253
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 4.098702145120421
+          "score": 4.209332684821535
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 2.3336113138014407
+          "score": 2.4024953121976473
         }
       ]
     },
@@ -1431,23 +1443,23 @@
       "hits": [
         {
           "id": "fullshot/privacy-and-data",
-          "score": 9.131278191042288
+          "score": 9.040276217620551
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 4.330098375318549
+          "score": 4.262588923125553
         },
         {
           "id": "fullshot/capture-full-page",
-          "score": 3.39174809712436
+          "score": 3.4699619654493894
         },
         {
           "id": "subscriptiontracker/payments-and-history",
-          "score": 2.8050902030104945
+          "score": 2.568991610173777
         },
         {
           "id": "fullshot/missing-or-repeated-content",
-          "score": 2.4892682303277107
+          "score": 2.5479096635625456
         }
       ]
     },
@@ -1456,23 +1468,23 @@
       "hits": [
         {
           "id": "fullshot/report-a-problem",
-          "score": 8.618738188620712
+          "score": 8.81272330666429
         },
         {
           "id": "platform/report-a-problem",
-          "score": 7.0599867684245545
+          "score": 7.214501160929195
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 5.3819855695006185
+          "score": 5.493166973296858
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 3.078924922531091
+          "score": 3.1590686154874925
         },
         {
           "id": "fullshot/redact-and-annotate",
-          "score": 2.1410552261064377
+          "score": 2.197916299720015
         }
       ]
     },
@@ -1480,20 +1492,24 @@
       "query": "talk to someone at nikatru",
       "hits": [
         {
-          "id": "platform/log-out-everywhere",
-          "score": 4.575986298794078
+          "id": "platform/report-a-problem",
+          "score": 7.159684084601048
         },
         {
           "id": "fullshot/report-a-problem",
-          "score": 3.0128178840150874
+          "score": 4.689863474706966
         },
         {
-          "id": "platform/report-a-problem",
-          "score": 2.5589276295081222
+          "id": "platform/log-out-everywhere",
+          "score": 4.641896831618377
         },
         {
-          "id": "platform/delete-account",
-          "score": 2.541061074214042
+          "id": "platform/service-status",
+          "score": 3.0185022783193416
+        },
+        {
+          "id": "subscriptiontracker/insights",
+          "score": 2.5847956876002316
         }
       ]
     },
@@ -1502,23 +1518,69 @@
       "hits": [
         {
           "id": "platform/report-a-problem",
-          "score": 11.36349783885045
+          "score": 11.262516230197676
         },
         {
           "id": "fullshot/report-a-problem",
-          "score": 5.898104973814448
+          "score": 6.027606965204571
         },
         {
           "id": "subscriptiontracker/report-a-problem",
-          "score": 5.828358206108398
+          "score": 5.956701045073877
         },
         {
           "id": "subscriptiontracker/insights",
-          "score": 2.315366429560495
+          "score": 2.3571423549960273
         },
         {
           "id": "fullshot/privacy-and-data",
-          "score": 1.9846453188293984
+          "score": 2.0316072657546025
+        }
+      ]
+    },
+    {
+      "query": "service outage today",
+      "hits": [
+        {
+          "id": "platform/service-status",
+          "score": 14.019424286757598
+        },
+        {
+          "id": "subscriptiontracker/add-a-subscription",
+          "score": 3.5830645565919506
+        },
+        {
+          "id": "subscriptiontracker/cancel-a-subscription",
+          "score": 2.3846569358059244
+        },
+        {
+          "id": "fullshot/missing-or-repeated-content",
+          "score": 2.0354685969006314
+        }
+      ]
+    },
+    {
+      "query": "everything seems broken, is it just me",
+      "hits": [
+        {
+          "id": "platform/service-status",
+          "score": 7.957169356994558
+        },
+        {
+          "id": "fullshot/capture-full-page",
+          "score": 3.5030851966619343
+        },
+        {
+          "id": "subscriptiontracker/edit-or-delete",
+          "score": 2.286936685419082
+        },
+        {
+          "id": "platform/report-a-problem",
+          "score": 1.8763291858691273
+        },
+        {
+          "id": "subscriptiontracker/report-a-problem",
+          "score": 1.8539050700458615
         }
       ]
     }

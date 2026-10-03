@@ -272,6 +272,14 @@
     {
       "query": "send a question to support from the website",
       "expect": "platform/report-a-problem"
+    },
+    {
+      "query": "service outage today",
+      "expect": "platform/service-status"
+    },
+    {
+      "query": "everything seems broken, is it just me",
+      "expect": "platform/service-status"
     }
   ]
 }

@@ -379,6 +379,10 @@ for (const root of siteRoots) {
     if (!/href\s*=\s*["']\/help\/["']/.test(m[1])) {
       problems.push(`${relative(repoRoot, f)}: the footer does not link /help/ (tooling/sites/chrome.mjs footer())`);
     }
+    // ⏱ 2026-10-03 · lane status-page: the status page, hosted apart (status.nikatru.com).
+    if (!/href\s*=\s*["']https:\/\/status\.nikatru\.com\/["']/.test(m[1])) {
+      problems.push(`${relative(repoRoot, f)}: the footer does not link https://status.nikatru.com/ (tooling/sites/chrome.mjs footer())`);
+    }
   }
   if (footers === 0) problems.push(`COVERAGE LOST — no page under ${relative(repoRoot, root)} carries the chrome footer, so no footer was checked for the /accessibility link`);
   a11yFootersChecked += footers;

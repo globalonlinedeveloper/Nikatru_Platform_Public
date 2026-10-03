@@ -4348,6 +4348,16 @@
       "source": "sites/nikatru",
       "pagesProject": "nikatru-apex",
       "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml, which serves nikatru.com since the owner moved the custom domain (D3b, 2026-09-26). The Git-connected project `nikatru` is paused and kept for rollback only (tooling/ops/pages-rollback-only.json). Re-promoted by .github/workflows/rollback.yml (unit nikatru-site) on `pagesProject`, and judged by the site's own deploy smoke."
+    },
+    {
+      "id": "status-site",
+      "deploymentEnvironment": "status-site",
+      "kind": "site",
+      "name": "Status page (sites/status), status.nikatru.com",
+      "url": "https://status.nikatru.com",
+      "source": "sites/status",
+      "pagesProject": "nikatru-status",
+      "notes": "⏱ 2026-10-03 · lane status-page. Direct Upload Pages project nikatru-status, deployed by the `status-site` job of .github/workflows/deploy-web.yml once the lead has created the project and the `status` DNS record and set STATUS_PAGE_LIVE=true; between pushes ops-watch.yml's `status-page` job publishes a state change (or the daily refresh). Hosted apart from every surface it reports on: it depends on no Worker and no box to render."
     }
   ],
   "nonChannelSigningIdentities": [

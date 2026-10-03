@@ -310,6 +310,7 @@
   "hosts": [
     {
       "hostname": "nikatru.com",
+      "statusPage": { "public": true, "component": "nikatru.com website" },
       "what": "the factory's public site — and since [ADR 075] the address EVERY app is published at, as a path: https://nikatru.com/<id>",
       "derivedFrom": "siteCanonicals",
       "monitor": { "id": 4, "name": "nikatru.com", "type": "GET", "expectedStatus": 200, "expectedBody": "<link rel=\"canonical\" href=\"https://nikatru.com/\">", "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
@@ -345,6 +346,7 @@
       "pathMonitors": [
         {
           "id": 3,
+          "statusPage": { "public": true, "component": "Subscription Tracker web app" },
           "name": "Subscription Tracker web",
           "type": "GET",
           "derivedFrom": "appCatalogue",
@@ -400,6 +402,7 @@
     },
     {
       "hostname": "rajasekarselvam.com",
+      "statusPage": { "public": true, "component": "rajasekarselvam.com website" },
       "what": "the founder site",
       "derivedFrom": "siteCanonicals",
       "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "GET", "expectedStatus": 200, "expectedBody": "<link rel=\"canonical\" href=\"https://rajasekarselvam.com/\">", "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
@@ -461,6 +464,7 @@
     },
     {
       "hostname": "subscriptiontracker-api.nikatru.com",
+      "statusPage": { "public": true, "component": "Subscription Tracker sync" },
       "what": "the subscriptiontracker-api Worker",
       "derivedFrom": "appCatalogue",
       "monitor": { "id": 2, "name": "Subscription Tracker API health", "type": "GET", "path": "/v1/health", "expectedStatus": 200, "expectedBody": "\"ok\":true", "intervalSeconds": 60, "verifiedOn": "2026-09-12" }
@@ -484,6 +488,7 @@
     },
     {
       "hostname": "platform.nikatru.com",
+      "statusPage": { "public": true, "component": "Accounts, reminders and problem reports" },
       "what": "the shared platform Worker — POST /v1/events and POST /v1/consent, the whole analytics and DPDP consent rail for every app in the portfolio",
       "derivedFrom": "workerCustomDomains",
       "monitor": { "id": 11, "name": "platform.nikatru.com", "type": "GET", "path": "/v1/health", "expectedStatus": 200, "expectedBody": "\"ok\":true", "confirmationThreshold": 2, "confirmationThresholdVerifiedOn": "2026-08-05", "intervalSeconds": 60, "verifiedOn": "2026-08-05" },
@@ -498,6 +503,7 @@
     },
     {
       "hostname": "config.nikatru.com",
+      "statusPage": { "public": true, "component": "App settings service" },
       "what": "the shared platform Worker's config surface — GET /config/:app, the pre-consent launch fetch every client makes",
       "derivedFrom": "workerCustomDomains",
       "monitor": { "id": 12, "name": "config.nikatru.com", "type": "GET", "path": "/config/subscriptiontracker", "expectedStatus": 200, "expectedBody": "\"app_id\"", "confirmationThreshold": 2, "confirmationThresholdVerifiedOn": "2026-08-05", "intervalSeconds": 60, "verifiedOn": "2026-08-05" },
@@ -511,6 +517,7 @@
     },
     {
       "hostname": "auth-api.nikatru.com",
+      "statusPage": { "public": true, "component": "Sign-in" },
       "what": "the self-hosted GoTrue auth API ([ADR 080]; on the auth box, Box C since 2026-09-24) — sign-in for every app, and the JWKS the platform Worker verifies every ES256 token against. The edge-shield Worker answers in front of it on the `auth-api.nikatru.com/auth/v1/*` zone route.",
       "derivedFrom": "edgeWorkerZoneRoutes",
       "monitor": { "id": 17, "name": "Supabase auth chain", "type": "GET", "path": "/auth/v1/.well-known/jwks.json", "expectedStatus": 200, "verifiedOn": "2026-09-11" },
@@ -588,6 +595,16 @@
         "openedOn": "2026-09-05",
         "closedOn": "2026-09-15",
         "howItWasClosed": "Honest closure (a) of the action above: an origin-side check on Box B beating a GlitchTip Heartbeat. Monitor 39 was created 2026-09-15T01:05:04Z by the session lead, not by this repository, and its first beat read back isUp true at 01:05:07Z. Re-read through the API (read-only GET organizations/nikatru/monitors/) at 2026-09-15T01:31:11Z: isUp true, project \"2\", interval 10800, checks at 01:05:07.187Z and 01:29:01.616Z (the :29 cron slot), both up."
+      }
+    },
+    {
+      "hostname": "status.nikatru.com",
+      "what": "the public status page, sites/status (lane status-page): its own Direct Upload Pages project, apart from every surface it reports on, and generated from this register by tooling/status/build-status.mjs",
+      "derivedFrom": "siteCanonicals",
+      "monitor": null,
+      "gap": {
+        "why": "⏱ 2026-10-03 · the Pages project `nikatru-status` and the `status` DNS record do not exist yet: both are lead steps of lane status-page, and there is nothing to watch until the first deploy. The page carries no statusPage component of its own: it does not report on itself.",
+        "action": "After the first deploy, create a GET monitor (expectedStatus 200, expectedBody the page's canonical tag) with the vault GLITCHTIP_TOKEN, as for ids 11 and 12, and record it here."
       }
     }
   ],

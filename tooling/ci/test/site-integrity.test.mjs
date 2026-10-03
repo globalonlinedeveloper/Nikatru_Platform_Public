@@ -323,7 +323,7 @@ function writeShot(dir, root, { web = 'RIFF-web-copy', master = 'PNG-master', ca
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
 /** The shared footer region tooling/sites/chrome.mjs splices into every page. */
-const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
+const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="https://status.nikatru.com/">Status</a> <a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
 
 /** A policy page that clears the floor: an <h1> plus >1000 visible characters. */
@@ -1405,6 +1405,12 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-footer-help', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/help/">Help</a>', ''));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /index\.html: the footer does not link \/help\//);
+  });
+
+  test('🔴 a footer that does not link the status page FAILS (lane status-page)', () => {
+    const r = afterEdit('cf-footer-status', (d) => patch(d, 'sites/nikatru/index.html', '<a href="https://status.nikatru.com/">Status</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link https:\/\/status\.nikatru\.com\//);
   });
 
   test('a root with no chrome footer at all is COVERAGE LOST for that limb', () => {
