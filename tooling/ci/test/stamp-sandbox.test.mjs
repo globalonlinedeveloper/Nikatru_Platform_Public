@@ -17,11 +17,11 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, win32, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STAMP_PATHS, snapshotTree, restoreTree, fsPath, REPO } from '../../kit/stamp-sandbox.mjs';
+import { STAMP_PATHS, STAMP_WRITES, snapshotTree, restoreTree, validateSnapshot, inWriteSet, fsPath, REPO, StampLeftover, SnapshotRefused } from '../../kit/stamp-sandbox.mjs';
 import { stampLeg } from '../../scripts/preflight.mjs';
 
 const SANDBOX = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'kit', 'stamp-sandbox.mjs');
@@ -40,37 +40,49 @@ const put = (root, rel, text = 'x\n') => {
 const status = (root) => git(root, 'status', '--porcelain=v1', '--ignored', '--untracked-files=all');
 
 /** A committed repo shaped like the files post_gen writes, the stamp paths
- *  gitignored as .gitignore does, and one uncommitted edit of a person's. */
+ *  gitignored as .gitignore does, and a person's uncommitted work from BEFORE
+ *  the run: an edit and a deletion inside the stamp's write set, an edit and
+ *  an untracked draft outside it. */
 function freshRepo() {
   const root = mkdtempSync(join(tmpdir(), 'stamp-sandbox-'));
   git(root, 'init', '-q', '-b', 'main');
   put(root, '.gitignore', STAMP_PATHS.map((p) => `${p}/`).join('\n') + '\n');
   put(root, 'pubspec.yaml', 'workspace:\n  - apps/subscriptiontracker\n');
   put(root, 'catalog/apps.json', '{"apps":["subscriptiontracker"]}\n');
+  put(root, 'catalog/bundles.json', '{"bundles":[]}\n');
   put(root, 'tooling/channel-register.json', '{"rows":[]}\n');
+  put(root, 'tooling/mail-transport.json', '{"allow":[]}\n');
   put(root, 'apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\n');
   put(root, 'notes/person.md', 'committed\n');
-  put(root, 'notes/gone.md', 'the person deletes this\n');
+  put(root, 'notes/clean.dart', 'void lib() {}\n');
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'base');
+  put(root, 'pubspec.yaml', 'workspace:\n  - apps/subscriptiontracker\n  - apps/my_wip\n');
+  rmSync(join(root, 'catalog/bundles.json'));
   put(root, 'notes/person.md', 'committed\nthe person is still typing\n');
   put(root, 'notes/draft.md', 'an untracked draft\n');
-  rmSync(join(root, 'notes/gone.md'));
   return root;
 }
 
-/** What a real `mason make app` + post_gen does to the tree, in miniature. */
+/** What a real `mason make app` + post_gen does to the tree, in miniature:
+ *  every write lands in STAMP_WRITES. */
 function fakeStamp(root) {
   put(root, 'apps/probe/lib/main.dart', 'void main() {}\n');
   put(root, 'apps/probe/app.yaml', 'id: probe\n');
   appendFileSync(join(root, 'pubspec.yaml'), '  - apps/probe\n');
   put(root, 'catalog/apps.json', '{"apps":["subscriptiontracker","probe"]}\n');
+  put(root, 'catalog/bundles.json', '{"bundles":[],"excluded":["probe"]}\n');
   put(root, 'tooling/channel-register.json', '{"rows":["probe"]}\n');
-  put(root, 'tooling/store/probe/listing.json', '{}\n');
-  rmSync(join(root, 'apps/subscriptiontracker/app.yaml'));
-  appendFileSync(join(root, 'notes/person.md'), 'and the stamp wrote here too\n');
-  rmSync(join(root, 'notes/draft.md'));
-  put(root, 'notes/gone.md', 'the stamp wrote back a file the person had deleted\n');
+  put(root, 'sites/nikatru/probe/privacy.html', '<p>probe</p>\n');
+  rmSync(join(root, 'tooling/mail-transport.json'));
+}
+
+/** A person (or another tool) writing WHILE the stamp runs, outside its write
+ *  set: the reviewer's probe on fc4d5cab, an edit to a clean tracked file and a
+ *  new file. */
+function personWritesDuringStamp(root) {
+  put(root, 'notes/clean.dart', 'void lib() { /* saved during leg 5 */ }\n');
+  put(root, 'notes/new_feature.dart', 'void feature() {}\n');
 }
 
 /** preflight's runner, faked: `mason` stamps, everything else exits 0. */
@@ -91,7 +103,7 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.notEqual(after, before);
     assert.match(after, /^!! apps\/probe\/app\.yaml$/m, 'the stamp directory is listed (ignored) after an unsandboxed stamp');
     assert.match(after, /^ M pubspec\.yaml$/m);
-    assert.match(after, /^\?\? tooling\/store\/probe\/listing\.json$/m);
+    assert.match(after, /^\?\? sites\/nikatru\/probe\/privacy\.html$/m);
   });
 
   test("preflight's stampLeg: the stamp and its grading run, and git status is unchanged afterwards", () => {
@@ -113,10 +125,11 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(seen, ['mason', 'flutter', 'dart', 'node']);
     assert.equal(status(root), before);
-    assert.equal(readFileSync(join(root, 'notes/person.md'), 'utf8'), 'committed\nthe person is still typing\n', "a person's uncommitted edit is kept as they left it, not reset to HEAD");
+    assert.equal(readFileSync(join(root, 'pubspec.yaml'), 'utf8'), 'workspace:\n  - apps/subscriptiontracker\n  - apps/my_wip\n', "a person's uncommitted edit to a set path is kept as they left it, not reset to HEAD");
     assert.equal(readFileSync(join(root, 'notes/draft.md'), 'utf8'), 'an untracked draft\n');
-    assert.equal(existsSync(join(root, 'notes/gone.md')), false, "a person's uncommitted deletion stays deleted");
-    assert.equal(existsSync(join(root, 'tooling/store/probe')), false, 'an emptied directory the stamp created is pruned');
+    assert.equal(existsSync(join(root, 'catalog/bundles.json')), false, "a person's uncommitted deletion stays deleted");
+    assert.equal(existsSync(join(root, 'sites/nikatru')), false, 'an emptied directory the stamp created is pruned');
+    assert.doesNotMatch(r.out, /not by it/, 'a clean run names no foreign path');
     assert.match(r.out, /stamp-sandbox: restored \d+ file\(s\), removed \d+ stamp path\(s\)/);
   });
 
@@ -149,14 +162,58 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.equal(status(root), before);
   });
 
-  test('a stamp directory that was there BEFORE the run is not this run’s, and is left alone', () => {
-    put(root, 'apps/probeapi/keep.txt', 'not this run\n');
+  test('🔴 a path changed DURING the stamp outside its write set is LEFT AS IS and named; the stamp\'s own outputs are still restored (review fc4d5cab finding 1)', () => {
     const before = status(root);
-    const r = stampLeg({ root, runner: runnerFor((cwd) => { fakeStamp(cwd); return { code: 0, out: '' }; }) });
+    const r = stampLeg({
+      root,
+      runner: runnerFor((cwd) => {
+        fakeStamp(cwd);
+        personWritesDuringStamp(cwd);
+        return { code: 0, out: 'stamped' };
+      }),
+    });
     assert.equal(r.code, 0, r.out);
-    assert.equal(status(root), before);
-    assert.equal(readFileSync(join(root, 'apps/probeapi/keep.txt'), 'utf8'), 'not this run\n');
+    assert.equal(readFileSync(join(root, 'notes/clean.dart'), 'utf8'), 'void lib() { /* saved during leg 5 */ }\n', 'the edit saved during the stamp was reverted');
+    assert.equal(readFileSync(join(root, 'notes/new_feature.dart'), 'utf8'), 'void feature() {}\n', 'the file created during the stamp was deleted');
+    assert.match(r.out, /^⬜ changed during the stamp, not by it: notes\/clean\.dart/m);
+    assert.match(r.out, /^⬜ changed during the stamp, not by it: notes\/new_feature\.dart/m);
+    // Everything else is exactly as before: the stamp's outputs are gone.
+    const expected = (before + ' M notes/clean.dart\n?? notes/new_feature.dart\n').split('\n').filter(Boolean).sort();
+    assert.deepEqual(status(root).split('\n').filter(Boolean).sort(), expected);
+    assert.equal(existsSync(join(root, 'apps/probe')), false);
   });
+
+  test('a person\'s pre-run edit outside the set that they change AGAIN during the stamp keeps the new bytes', () => {
+    const r = stampLeg({
+      root,
+      runner: runnerFor((cwd) => {
+        fakeStamp(cwd);
+        appendFileSync(join(cwd, 'notes/person.md'), 'still typing during leg 5\n');
+        return { code: 0, out: '' };
+      }),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.equal(readFileSync(join(root, 'notes/person.md'), 'utf8'), 'committed\nthe person is still typing\nstill typing during leg 5\n');
+    assert.match(r.out, /not by it: notes\/person\.md/);
+  });
+
+  for (const p of ['apps/probe', 'apps/probeapi']) {
+    test(`🔴 a leftover ${p}/ from an earlier run REFUSES the stamp, names the path and a MOVE, and touches nothing (review fc4d5cab nit 2)`, () => {
+      put(root, `${p}/keep.txt`, 'an earlier run\n');
+      const before = status(root);
+      let ran = false;
+      const r = stampLeg({ root, runner: () => { ran = true; return { code: 0, out: '' }; } });
+      assert.equal(r.code, 1);
+      assert.equal(ran, false, 'mason ran over a leftover');
+      assert.match(r.out, /REFUSED, nothing was stamped/);
+      assert.ok(r.out.includes(`${p} exists from an earlier stamp`), r.out);
+      assert.match(r.out, /mkdir -p "[^"]*stamped" && mv "/, 'the fix named is a move to the temp dir');
+      assert.doesNotMatch(r.out, /\brm\b/);
+      assert.equal(readFileSync(join(root, `${p}/keep.txt`), 'utf8'), 'an earlier run\n');
+      assert.equal(status(root), before);
+      assert.throws(() => snapshotTree(root), StampLeftover);
+    });
+  }
 
   test('🔴 a tree that cannot be snapshotted stamps NOTHING (COVERAGE LOST), rather than stamping what it cannot put back', () => {
     const notRepo = mkdtempSync(join(tmpdir(), 'stamp-sandbox-norepo-'));
@@ -194,12 +251,61 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.match(r.stderr, /usage:/);
   });
 
-  test('snapshot + restore directly: a rename and a deleted tracked file both come back', () => {
+  test('snapshot + restore directly: a rename and a deleted tracked file inside the set both come back', () => {
     const before = status(root);
     const snap = snapshotTree(root);
-    git(root, 'mv', 'catalog/apps.json', 'catalog/moved.json');
+    git(root, 'mv', 'catalog/apps.json', 'catalog/apps-landing.json');
+    rmSync(join(root, 'tooling/channel-register.json'));
     const r = restoreTree(snap);
     assert.deepEqual(r.left, []);
+    assert.deepEqual(r.foreign, []);
+    assert.equal(status(root), before);
+  });
+});
+
+describe('stamp-sandbox — a snapshot is checked before restore acts on it (review fc4d5cab nit 3)', () => {
+  let root;
+  let dir;
+  beforeEach(() => {
+    root = freshRepo();
+    dir = mkdtempSync(join(tmpdir(), 'stamp-sandbox-snap-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const tampered = {
+    "a path with '..' that leaves the root": (snap) => { snap.files['../escaped.txt'] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; },
+    'an absolute path': (snap) => { snap.files[join(dir, 'abs.txt')] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; },
+    'a write-set entry that is not in STAMP_WRITES': (snap) => { snap.writes.push('notes/'); },
+    "a write-set entry with '..'": (snap) => { snap.writes.push('../'); },
+    'a root that is a subdirectory, not the git top-level': (snap) => { snap.root = join(snap.root, 'catalog'); },
+    'a root that is not a git repository': (snap) => { snap.root = dir; },
+  };
+  for (const [what, mutate] of Object.entries(tampered)) {
+    test(`🔴 the CLI restore refuses ${what} with exit 2 and writes nothing`, () => {
+      const snapFile = join(dir, 'snap.json');
+      const snap = snapshotTree(root);
+      mutate(snap);
+      writeFileSync(snapFile, JSON.stringify(snap));
+      fakeStamp(root);
+      const stamped = status(root);
+      const r = spawnSync(process.execPath, [SANDBOX, 'restore', snapFile], { encoding: 'utf8' });
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /refused/);
+      assert.equal(status(root), stamped, 'a refused restore changed the tree');
+      assert.equal(existsSync(join(root, '..', 'escaped.txt')), false);
+      assert.throws(() => restoreTree(snap), SnapshotRefused);
+    });
+  }
+
+  test('GREEN CONTROL: the same snapshot, untampered, validates and restores', () => {
+    const before = status(root);
+    const snap = snapshotTree(root);
+    assert.deepEqual(validateSnapshot(snap), []);
+    fakeStamp(root);
+    restoreTree(snap);
     assert.equal(status(root), before);
   });
 });
@@ -208,6 +314,41 @@ describe('stamp-sandbox — paths', () => {
   test('a git path joins onto a Windows root with backslashes (path.win32), and onto a POSIX root with slashes', () => {
     assert.equal(fsPath('C:\\Users\\x\\repo', 'apps/probe/lib/main.dart', win32), 'C:\\Users\\x\\repo\\apps\\probe\\lib\\main.dart');
     assert.equal(fsPath('/home/x/repo', 'apps/probe/lib/main.dart', posix), '/home/x/repo/apps/probe/lib/main.dart');
+  });
+
+  test('the write set: a directory entry covers what is under it, a file entry only itself', () => {
+    assert.ok(inWriteSet('apps/probe/lib/main.dart'));
+    assert.ok(inWriteSet('pubspec.yaml'));
+    assert.ok(!inWriteSet('apps/probes/x'), 'apps/probe/ must not cover apps/probes/');
+    assert.ok(!inWriteSet('apps/probe'), 'the directory entry is a prefix with its slash');
+    assert.ok(!inWriteSet('pubspec.yaml.bak'));
+    assert.ok(!inWriteSet('apps/subscriptiontracker/app.yaml'));
+    for (const p of STAMP_PATHS) assert.ok(STAMP_WRITES.includes(`${p}/`), `${p}/ is a stamp directory outside the write set`);
+  });
+
+  test("the write set names every output the stamp's writers export, read from the writers themselves", async () => {
+    // A writer that renames its output, or a lane tag-owner starts rewriting,
+    // would otherwise fall out of the set and be left on disk after leg 5.
+    const render = await import('../../app-yaml/render.mjs');
+    const privacy = await import('../../app-yaml/render-privacy.mjs');
+    const wellKnown = await import('../../sites/generate-well-known.mjs');
+    const authMail = await import('../../sites/gen-auth-mail.mjs');
+    const personal = await import('../../sites/generate-personal-site.mjs');
+    const appsData = await import('../../sites/generate-apps-data.mjs');
+    const landing = await import('../../sites/generate-landing-payload.mjs');
+    const shared = await import('../../kit/stamp-shared.mjs');
+    const catalog = await import('../../catalog/read.mjs');
+    const auth = await import('../../ci/assert-auth-callbacks.mjs');
+    const tagOwner = await import('../../ci/tag-owner.mjs');
+    const outputs = [
+      render.CATALOGUE, render.REVENUECAT_APP_IDS_MODULE, render.STORE_SKUS_MODULE, privacy.TEMPLATE_LISTING,
+      `${wellKnown.WELL_KNOWN_DIR}/`, `${authMail.AUTH_MAIL_SERVED_DIR}/`, personal.PAGE, personal.LLMS, personal.SITEMAP,
+      appsData.SITE_DATA, landing.PAYLOAD, shared.E2E_LEG_REGISTER, catalog.BUNDLES_REGISTER, auth.MAIL_TRANSPORT,
+      ...tagOwner.derive(REPO).lanes.keys(),
+    ];
+    for (const o of outputs) assert.ok(STAMP_WRITES.includes(o), `${o} is written by the stamp's chain and missing from STAMP_WRITES`);
+    // Every FILE entry exists here, so a renamed output is caught, not carried.
+    for (const w of STAMP_WRITES.filter((e) => !e.endsWith('/'))) assert.ok(existsSync(join(REPO, w)), `STAMP_WRITES names ${w}, which does not exist`);
   });
 
   test('every STAMP_PATHS directory is gitignored in THIS repository, so a crash leaves nothing `git add -A` takes', () => {

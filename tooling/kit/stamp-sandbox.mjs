@@ -18,37 +18,97 @@
 // and gitignore the stamp directories (.gitignore, "Throwaway apps stamped by
 // the brick CI lane") so a hard crash leaves nothing a `git add -A` takes.
 //
-// WHAT RESTORE PUTS BACK, measured by git, never by a list of names:
-//   · a tracked file the run changed that was clean before → `git checkout HEAD --`
-//   · a file that was ALREADY dirty or untracked before (a person's own edit)
-//     → its bytes from the snapshot, never HEAD's, so an edit is not lost
-//   · an untracked, non-ignored file the run created → removed
-//   · a STAMP_PATHS directory (gitignored, so git does not list it) the run
-//     created → removed. One that existed before is left alone: it is not
-//     this run's.
+// WHAT RESTORE PUTS BACK — ONLY the stamp's own write set (STAMP_WRITES,
+// recorded in the snapshot), measured by git inside that set:
+//   · a set path the run changed that was clean before → `git checkout HEAD --`
+//   · a set path that was ALREADY dirty or untracked before (a person's own
+//     edit) → its bytes from the snapshot, never HEAD's, so an edit is not lost
+//   · an untracked, non-ignored set path the run created → removed
+//   · a STAMP_PATHS directory (gitignored, so git does not list it) → removed.
+//     One that is there BEFORE the run is a leftover: the snapshot REFUSES and
+//     names the move that clears it, rather than grading old and new output mixed.
+// 🔴 ANY OTHER PATH THAT CHANGED DURING THE STAMP IS LEFT AS IS (review
+// fc4d5cab finding 1): leg 5 runs for minutes, and a person's editor or another
+// tool may write meanwhile. Restoring "everything that turned dirty" reverted a
+// saved edit to HEAD and deleted a new file, on a green leg. Such a path is
+// named as `changed during the stamp, not by it: <path>` (a ⬜ line, so
+// preflight prints it on a green leg) and never checked out or removed. A stamp
+// output missing from STAMP_WRITES is therefore left on disk and named, and
+// preflight's tree-clean leg fails on it: loud, never a lost edit.
 //
 // Usage (a lane replaying the app_brick job's commands locally):
 //   node tooling/kit/stamp-sandbox.mjs snapshot <file.json> [--root <dir>]
 //   … stamp, analyze, grade …
 //   node tooling/kit/stamp-sandbox.mjs restore <file.json>
 // Keep <file.json> outside the repository (os.tmpdir()). restore puts back the
-// root the snapshot recorded.
+// root the snapshot recorded, after checking it (validateSnapshot): the root is
+// a git top-level, every path stays inside it, and the recorded write set is
+// STAMP_WRITES or part of it. Otherwise it exits 2 and writes nothing.
 //
 // Windows: git is spawned without a shell; every git path is '/'-separated and
 // joined onto the root by splitting on '/'. No shebang or .sh helper is run.
 // Tested by tooling/ci/test/stamp-sandbox.test.mjs against real git repos.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync, rmdirSync, mkdirSync } from 'node:fs';
-import path, { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync, rmdirSync, mkdirSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path, { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /** The gitignored directories a throwaway brick stamp writes (.gitignore,
  *  "Throwaway apps stamped by the brick CI lane"). git does not list them, so
- *  restore removes each by name when the run created it. */
+ *  restore removes each by name. */
 export const STAMP_PATHS = ['apps/probe', 'apps/probeapi', 'services/probe-api', 'services/probeapi-api', 'services/probesvc-api'];
+
+/** EVERY path a throwaway stamp of the probes writes, and the only paths
+ *  restore touches. An entry ending in '/' is a directory (everything under it);
+ *  any other entry is one file. Read off the writers, 2026-10-03:
+ *    · mason + post_gen (tooling/bricks/app/hooks/post_gen.dart): the stamp
+ *      directories (the store folders, brand assets, msix_config and native
+ *      platforms all live under apps/<id>/), and the root pubspec.yaml workspace
+ *      list. pubspec.lock: a root `flutter pub get` (stamp-app.mjs) re-resolves it.
+ *    · the site chain post_gen runs (tooling/sites/regen.mjs ORDER): render
+ *      (catalog/apps.json, the RevenueCat and store-SKU modules), render-privacy
+ *      (sites/nikatru/<id>/privacy.html, the extension listing template),
+ *      apps-data, landing-payload, auth-mail, well-known, personal-site.
+ *      discovery is git-dated and not run in write mode.
+ *    · tooling/kit/stamp-shared.mjs: catalog/bundles.json, the mail transport,
+ *      the e2e leg register. tooling/ci/tag-owner.mjs --write: the two
+ *      tag-triggered release lanes. The channel register: post_gen reads it, and
+ *      the pre-2026-10-03 restore named it, so it stays in the set.
+ *  A writer that joins the stamp and is not listed here is LEFT on disk and
+ *  named by restore; preflight's tree-clean leg then fails on it. Add it here. */
+export const STAMP_WRITES = Object.freeze([
+  ...STAMP_PATHS.map((p) => `${p}/`),
+  'pubspec.yaml',
+  'pubspec.lock',
+  'catalog/apps.json',
+  'catalog/apps-landing.json',
+  'catalog/bundles.json',
+  'sites/_shared/_data/apps.json',
+  'sites/nikatru/probe/',
+  'sites/nikatru/probeapi/',
+  'sites/nikatru/.well-known/',
+  'sites/nikatru/auth-mail/',
+  'sites/rajasekarselvam/index.html',
+  'sites/rajasekarselvam/llms.txt',
+  'sites/rajasekarselvam/sitemap.xml',
+  'services/platform/src/lib/mor/revenuecat-app-ids.ts',
+  'services/platform/src/lib/mor/store-skus.ts',
+  'extensions/templates/tool/publish/STORE-LISTING.md',
+  'tooling/channel-register.json',
+  'tooling/mail-transport.json',
+  'tooling/e2e-leg-register.json',
+  '.github/workflows/build-platforms.yml',
+  '.github/workflows/extensions.yml',
+]);
+
+/** Is git path `rel` in the write set `writes`? */
+export function inWriteSet(rel, writes = STAMP_WRITES) {
+  return writes.some((w) => (w.endsWith('/') ? rel.startsWith(w) : rel === w));
+}
 
 /** A git path ('/'-separated, always) as a path on THIS platform. `p` is
  *  injectable so the suite proves the win32 join on Linux. */
@@ -88,18 +148,90 @@ function bytesOf(file) {
   }
 }
 
+/** A stamp directory left from an earlier run. The snapshot refuses rather than
+ *  let mason `--on-conflict overwrite` into it and grade old and new output
+ *  mixed (review fc4d5cab nit 2). The fix it names MOVES, never deletes. */
+export class StampLeftover extends Error {
+  constructor(root, found) {
+    const dest = path.join(tmpdir(), 'stamped');
+    super(
+      `${found.join(', ')} exists from an earlier stamp, so this run would mix its output with the old one. ` +
+        `Move it out of the repository, then run again:  ` +
+        found.map((p) => `mkdir -p "${dest}" && mv "${abs(root, p)}" "${dest}/"`).join('  ;  '),
+    );
+    this.name = 'StampLeftover';
+    this.found = found;
+  }
+}
+
 /** The tree before a stamp: every dirty or untracked path with its bytes, and
- *  which STAMP_PATHS already existed. Throws when git cannot answer — "could
- *  not look" must never become "nothing to restore". */
+ *  the write set restore may act on. Throws when git cannot answer — "could not
+ *  look" must never become "nothing to restore" — and StampLeftover when a
+ *  stamp directory is already there. */
 export function snapshotTree(root = REPO) {
   const status = porcelain(root);
+  const leftover = STAMP_PATHS.filter((p) => existsSync(abs(root, p)));
+  if (leftover.length) throw new StampLeftover(root, leftover);
   const files = {};
   for (const [rel, xy] of status) {
     const b = bytesOf(abs(root, rel));
     files[rel] = { xy, bytes: b === null ? null : b.toString('base64') };
   }
-  const stamps = STAMP_PATHS.filter((p) => existsSync(abs(root, p)));
-  return { root, files, stamps };
+  return { root, files, writes: [...STAMP_WRITES] };
+}
+
+/** Thrown by restoreTree for a snapshot it will not act on (exit 2 from the CLI). */
+export class SnapshotRefused extends Error {
+  constructor(problems) {
+    super(`the snapshot was refused, nothing was restored: ${problems.join('; ')}`);
+    this.name = 'SnapshotRefused';
+    this.problems = problems;
+  }
+}
+
+const sameDir = (a, b) => {
+  let x = resolve(a);
+  let y = resolve(b);
+  try {
+    x = realpathSync(x);
+    y = realpathSync(y);
+  } catch {
+    return false;
+  }
+  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+};
+
+/** Is git path `rel` a plain relative path that stays under `root`? */
+function contained(root, rel) {
+  if (typeof rel !== 'string' || rel === '' || isAbsolute(rel)) return false;
+  const back = relative(resolve(root), resolve(abs(root, rel)));
+  return back !== '' && !back.startsWith('..') && !isAbsolute(back);
+}
+
+/** Why `snap` must not be restored, or [] (review fc4d5cab nit 3): its root is
+ *  this checkout's git top-level, every path in it stays inside that root, and
+ *  its write set is STAMP_WRITES or a part of it. */
+export function validateSnapshot(snap) {
+  const problems = [];
+  if (!snap || typeof snap !== 'object' || typeof snap.root !== 'string' || !snap.files || typeof snap.files !== 'object' || !Array.isArray(snap.writes)) {
+    return ['it is not a snapshot (root, files and writes are required)'];
+  }
+  const { root } = snap;
+  let top = null;
+  try {
+    top = git(root, ['rev-parse', '--show-toplevel']).trim();
+  } catch (e) {
+    problems.push(`root ${root} is not a git repository (${e.message})`);
+  }
+  if (top !== null && !sameDir(top, root)) problems.push(`root ${root} is not a git top-level (that is ${top})`);
+  for (const w of snap.writes) {
+    if (!STAMP_WRITES.includes(w)) problems.push(`write-set entry ${JSON.stringify(w)} is not in STAMP_WRITES`);
+    else if (!contained(root, w.replace(/\/$/, ''))) problems.push(`write-set entry ${JSON.stringify(w)} leaves the root`);
+  }
+  for (const rel of Object.keys(snap.files)) {
+    if (!contained(root, rel)) problems.push(`path ${JSON.stringify(rel)} leaves the root`);
+  }
+  return problems;
 }
 
 /** Remove a file and every directory above it the removal left empty, up to
@@ -119,16 +251,24 @@ function removeFile(root, rel) {
   }
 }
 
-/** Put the tree back as `snap` found it. Returns what it did; `left` names
- *  what it could not restore (it still restores everything else). */
+/** Put the stamp's write set back as `snap` found it. Returns what it did;
+ *  `left` names what it could not restore (it still restores everything
+ *  else), `foreign` what changed during the stamp OUTSIDE its write set, which
+ *  is never touched. Throws SnapshotRefused for a snapshot validateSnapshot
+ *  rejects. */
 export function restoreTree(snap) {
-  const { root } = snap;
+  const problems = validateSnapshot(snap);
+  if (problems.length) throw new SnapshotRefused(problems);
+  const { root, writes } = snap;
+  const mine = (rel) => inWriteSet(rel, writes);
   const restored = [];
   const removed = [];
   const left = [];
-  // 1 · stamp directories this run created (gitignored: git will not list them).
+  const foreign = [];
+  // 1 · stamp directories (gitignored: git will not list them). The snapshot
+  //     refused to start with one present, so any one here is this run's.
   for (const p of STAMP_PATHS) {
-    if (snap.stamps.includes(p)) continue;
+    if (!writes.includes(`${p}/`)) continue;
     if (!existsSync(abs(root, p))) continue;
     try {
       rmSync(abs(root, p), { recursive: true, force: true });
@@ -137,11 +277,16 @@ export function restoreTree(snap) {
       left.push(`${p}/ (${e.code ?? e.message})`);
     }
   }
-  // 2 · paths git now lists that the snapshot did not: the run's own changes.
+  // 2 · paths git now lists that the snapshot did not: the run's own changes,
+  //     when they are in the write set; anybody's, when they are not.
   const now = porcelain(root);
   const toCheckout = [];
   for (const [rel, xy] of now) {
     if (Object.hasOwn(snap.files, rel)) continue;
+    if (!mine(rel)) {
+      foreign.push(rel);
+      continue;
+    }
     if (xy === '??') {
       try {
         removeFile(root, rel);
@@ -174,24 +319,27 @@ export function restoreTree(snap) {
       }
     }
   }
-  // 3 · paths that were already dirty or untracked: their snapshot bytes, not HEAD's.
+  // 3 · paths that were already dirty or untracked: their snapshot bytes, not
+  //     HEAD's, inside the write set. Outside it, a change is somebody else's.
   for (const [rel, { bytes }] of Object.entries(snap.files)) {
     const file = abs(root, rel);
     const want = bytes === null ? null : Buffer.from(bytes, 'base64');
     const have = bytesOf(file);
+    if (want === null ? have === null : have !== null && have.equals(want)) continue;
+    if (!mine(rel)) {
+      foreign.push(rel);
+      continue;
+    }
     if (want === null) {
       // It was a deletion (or a directory entry); a file there now is the run's.
-      if (have !== null) {
-        try {
-          rmSync(file, { force: true });
-          restored.push(rel);
-        } catch (e) {
-          left.push(`${rel} (${e.code ?? e.message})`);
-        }
+      try {
+        rmSync(file, { force: true });
+        restored.push(rel);
+      } catch (e) {
+        left.push(`${rel} (${e.code ?? e.message})`);
       }
       continue;
     }
-    if (have !== null && have.equals(want)) continue;
     try {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, want);
@@ -200,14 +348,17 @@ export function restoreTree(snap) {
       left.push(`${rel} (${e.code ?? e.message})`);
     }
   }
-  return { restored, removed, left };
+  return { restored, removed, left, foreign };
 }
 
-/** One line for a log: what restore did, and anything it could not. */
-export function describeRestore({ restored, removed, left }) {
+/** What restore did, and anything it could not or would not touch. The first
+ *  line is the summary; each path changed outside the write set gets its own
+ *  ⬜ line, which preflight prints on a green leg too. */
+export function describeRestore({ restored, removed, left, foreign = [] }) {
   const parts = [`restored ${restored.length} file(s), removed ${removed.length} stamp path(s)`];
   if (left.length) parts.push(`🔴 COULD NOT RESTORE ${left.length}: ${left.join(', ')}`);
-  return parts.join('; ');
+  if (foreign.length) parts.push(`left ${foreign.length} path(s) it did not write`);
+  return [parts.join('; '), ...foreign.map((p) => `⬜ changed during the stamp, not by it: ${p} (left as is)`)].join('\n');
 }
 
 // Windows: a drive letter's case is not a path's identity.
@@ -233,7 +384,7 @@ if (isMain) {
       if (r.left.length) process.exit(1);
     }
   } catch (e) {
-    console.error(`stamp-sandbox: ${cmd} failed — ${e.message}`);
-    process.exit(1);
+    console.error(`stamp-sandbox: ${cmd} ${e instanceof StampLeftover ? 'refused' : 'failed'} — ${e.message}`);
+    process.exit(e instanceof SnapshotRefused || e instanceof SyntaxError ? 2 : 1);
   }
 }

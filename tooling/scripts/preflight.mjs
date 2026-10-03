@@ -168,7 +168,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // The ONE workflow parse (tooling/workflow-readers.json): ci-gate's needs, for the NOT CI-GATE line.
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
-import { snapshotTree, restoreTree, describeRestore } from '../kit/stamp-sandbox.mjs';
+import { snapshotTree, restoreTree, describeRestore, StampLeftover } from '../kit/stamp-sandbox.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const FAST = process.argv.includes('--fast');
@@ -566,9 +566,13 @@ export function untrackedLeg({ root = ROOT } = {}) {
  *  a finally, so a throw left the stamp behind, and every file post_gen writes
  *  that the list did not name stayed changed: guards that list apps/ then read
  *  the probe as a real app. The restore is measured by git now
- *  (tooling/kit/stamp-sandbox.mjs): whatever this run changed goes back, a
- *  person's own uncommitted edit is kept as they left it, and a stamp that
- *  cannot be snapshotted is never made. `root` and `runner` are injectable for
+ *  (tooling/kit/stamp-sandbox.mjs) INSIDE the stamp's own write set
+ *  (STAMP_WRITES): what the stamp changed there goes back, a person's own
+ *  uncommitted edit is kept as they left it, a path that changed during the
+ *  stamp OUTSIDE the set is left as is and named on a ⬜ line (review fc4d5cab:
+ *  a file saved while this leg ran was reverted), a leftover apps/probe from an
+ *  earlier run refuses the leg, and a stamp that cannot be snapshotted is never
+ *  made. `root` and `runner` are injectable for
  *  tooling/ci/test/stamp-sandbox.test.mjs, which asserts `git status` is
  *  unchanged afterwards on a real repository. */
 export function stampLeg({ root = ROOT, runner = run } = {}) {
@@ -576,6 +580,7 @@ export function stampLeg({ root = ROOT, runner = run } = {}) {
   try {
     snap = snapshotTree(root);
   } catch (e) {
+    if (e instanceof StampLeftover) return { code: 1, out: `🔴 REFUSED, nothing was stamped — ${e.message}` };
     return { code: 1, out: `🔴 COVERAGE LOST — the tree could not be snapshotted before the stamp (${e.message}), so nothing was stamped: a stamp that cannot be put back is not made.` };
   }
   let verdict;
@@ -588,7 +593,7 @@ export function stampLeg({ root = ROOT, runner = run } = {}) {
     try {
       restore = restoreTree(snap);
     } catch (e) {
-      restore = { restored: [], removed: [], left: [`the whole tree (${e.message})`] };
+      restore = { restored: [], removed: [], left: [`the whole tree (${e.message})`], foreign: [] };
     }
   }
   const line = `stamp-sandbox: ${describeRestore(restore)}`;
