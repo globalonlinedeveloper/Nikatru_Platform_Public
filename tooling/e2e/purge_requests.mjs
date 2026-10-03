@@ -115,6 +115,31 @@ export function purgeClient({ acct, token, supaUrl, serviceKey, fetchImpl = fetc
         retry,
       );
     },
+
+    /** One page of the Supabase admin user list (tooling/e2e/purge_stale.mjs).
+     *  A READ, so a retry is safe. `filter` only narrows what GoTrue returns; the
+     *  caller still holds every row to its own exact shape. Throws on a non-2xx
+     *  answer, an exhausted retry, or a body with no `users` list. */
+    async listAuthUsers({ page, perPage, filter }) {
+      const q = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+      if (filter) q.set('filter', filter);
+      const res = await request(
+        fetchImpl,
+        `${supaUrl}/auth/v1/admin/users?${q}`,
+        { method: 'GET', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+        'auth user list',
+        retry,
+      );
+      if (!res.ok) throw new Error(`auth user list: HTTP ${res.status}`);
+      let json;
+      try {
+        json = JSON.parse(res.text);
+      } catch {
+        throw new Error(`auth user list: HTTP ${res.status}, and the body is not JSON`);
+      }
+      if (!Array.isArray(json?.users)) throw new Error('auth user list: the answer carries no `users` list');
+      return json.users;
+    },
   };
 }
 

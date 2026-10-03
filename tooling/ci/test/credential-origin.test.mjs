@@ -359,7 +359,7 @@ globalThis.fetch = async (url, init) => {
       const r = provision(GOTRUE_SELFHOSTED_ORIGIN, UUID);
       assert.equal(r.code, 0, r.out);
       assert.match(r.written, new RegExp(`^user_id=${UUID}$`, 'm'));
-      assert.deepEqual(r.written.split('\n').filter(Boolean).map((l) => l.split('=')[0]), ['email', 'password', 'user_id', 'token_hash']);
+      assert.deepEqual(r.written.split('\n').filter(Boolean).map((l) => l.split('=')[0]), ['email', 'user_id', 'password', 'token_hash']);
       assert.deepEqual(origins(r.asked), [GOTRUE_SELFHOSTED_ORIGIN]);
     });
     test('RED: a hostile SUPABASE_URL — exit 1, zero requests, nothing written', () => {

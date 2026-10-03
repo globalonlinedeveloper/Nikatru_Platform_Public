@@ -395,6 +395,9 @@
   "e2e-proof-fresh.test.mjs":
     71,
 
+  "e2e-provision-leak.test.mjs":
+    34,
+
   "e2e-purge-retry.test.mjs":
     15,
 
