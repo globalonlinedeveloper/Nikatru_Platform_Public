@@ -193,3 +193,42 @@ declared dry-run-only (parent decision): every run records itself, with its mode
 
 GitHub creates the two `-dry-run` environments the first time a Deployment names them, with no
 protection rules. UNVERIFIED on this repository until the first dry run after the merge.
+
+## ⏱ 2026-10-03 — the upload job, `submit` (release lane apple-ready) {#upload}
+
+**Appended, not rewritten.** Until this date `tooling/release/submit-appstore.mjs --submit` refused
+by design (seven `UNVERIFIED:` lines) and no job uploaded anything: the runbook's path was a Mac with
+Transporter, and there is no Mac. The upload is now a job of this lane, on the free `macos-26` runner.
+
+* **What it does, and what it never does.** It uploads the dry-run job's signed `.ipa` and/or `.pkg`
+  to App Store Connect for **TestFlight processing** and stops. It never creates a version, never
+  attaches a build to one and never submits anything for App Review — that stays the owner's one
+  console act ([ADR 031] class A).
+* **How.** The App Store Connect API's Build Uploads resource (API 4.1), read from
+  developer.apple.com/documentation/appstoreconnectapi/build-uploads on 2026-10-03:
+  `POST /v1/buildUploads` → `POST /v1/buildUploadFiles` (its `uploadOperations` are sent exactly as
+  given, each URL held to https under apple.com) → `PATCH /v1/buildUploadFiles/{id}` `uploaded: true`
+  → `GET /v1/buildUploads/{id}` until `PROCESSING` or `COMPLETE` (20-minute ceiling; `FAILED` is a
+  red run naming Apple's errors). The token is `ascJwt` (tooling/ops/provision-apple.mjs), measured
+  live. `xcrun altool` is not used.
+* **The owner's word, one per store.** `confirm_ios: UPLOAD-IOS-TO-TESTFLIGHT`,
+  `confirm_macos: UPLOAD-MACOS-TO-TESTFLIGHT` (limb 2 of assert-publish-steps-guarded.mjs refuses a
+  shared word), plus `listing_url` (`https://apps.apple.com/app/id<recordId>`, for the [10]D-9 record).
+  The job then waits on the `store-publish` environment's required reviewer; the script reads that
+  environment back (PG-5) because `environment:` alone fails open.
+* **The bytes are the dry run's.** No rebuild: the job downloads `store-<app>-apple-release-signed`,
+  checks both sha256 outputs (`sha256sum --check`, defined over macOS `shasum` when absent), re-runs
+  `apple-signing.mjs` only to export the identity names, and PROVEs both signatures before either
+  upload (PG-4 refuses the order reversed). The two version strings the upload declares are read off
+  the built bundles in the dry-run job with `plutil` and held to `<release_line>.<run_number>`.
+* **Gates, `--real-submission` where they carry it.** Every precondition the dry run runs, here too.
+  `nativeAuth: false` does NOT refuse a TestFlight upload: `APPLE_RELEASE_TARGET=testflight` reaches no
+  public step (submit-preconditions.mjs PUBLIC_REACH), as Play's internal track does not — the
+  attested iOS sign-in can only be proven on a TestFlight build. Any other target refuses, in the gate
+  and in the script. The declaration gate (`declaredOn`) and the screenshot gates DO refuse until the
+  owner's App Store Connect forms are recorded and the sets are captured.
+* **Records.** Each upload records `draft_staged` (staged, not in review; [10]D-6's cadence does not
+  count it) with `--artifact` and the R2 symbols record, conditioned on its own upload step.
+
+Dispatch (after review and merge, on `main` only):
+`gh workflow run submit-appstore.yml --ref main -f app=subscriptiontracker -f confirm_ios=UPLOAD-IOS-TO-TESTFLIGHT -f confirm_macos=UPLOAD-MACOS-TO-TESTFLIGHT -f listing_url=https://apps.apple.com/app/id6814737675`

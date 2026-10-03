@@ -1176,6 +1176,18 @@ jobs:
           [ "$rc" -eq 0 ] || exit 1
           xcrun simctl list devices booted
 
+      # why: ⏱ 2026-10-03 (release lane apple-ready) — the App Store REVIEW screenshot of every
+      # auto-renewable product (register iapReview limb; its reader is assert-iap-review-screenshots.mjs).
+      # App Store Connect holds a subscription in "Missing Metadata" without one, and a version that
+      # references it cannot be sent for review. BEFORE the listing drive and independent of it: it needs
+      # no account and no backend (the real paywall, a one-product fixture rail at the price App Store
+      # Connect accepted — tooling/store/capture-iap-review.mjs says why), so a listing failure does not
+      # cost these frames. The simulator is the iphone set's, booted above.
+      - name: Capture the IAP review screenshots (one per auto-renewable product)
+        run: node tooling/store/capture-iap-review.mjs --app "$APP"
+      - name: The review screenshots satisfy their guard (--for-submission)
+        run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
+
       - name: Provision throwaway confirmed user
         id: user
         env:
@@ -1249,6 +1261,7 @@ jobs:
           path: |
             apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots/
             apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots-ipad/
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/iap-review/
           if-no-files-found: error
 
       # why: the Play job's reason — a dry run's sets under their own name, from the same paths.
@@ -1260,6 +1273,7 @@ jobs:
           path: |
             apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots/
             apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots-ipad/
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/iap-review/
           if-no-files-found: error
 
       # why: PROPOSED, never pushed — a store listing is a sworn filing; a
@@ -1270,7 +1284,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # why: the capture directories, then every derived set the finish step printed.
-          SHOTS: ${{ steps.reg.outputs.dirs }} ${{ steps.finish.outputs.paths }}
+          SHOTS: ${{ steps.reg.outputs.dirs }} ${{ steps.finish.outputs.paths }} apps/${{ needs.gate.outputs.app }}/store/ios-appstore/iap-review
         run: |
           set -euo pipefail
           BRANCH="chore/ios-screenshots-${{ github.run_id }}"
