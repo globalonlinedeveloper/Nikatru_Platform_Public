@@ -80,6 +80,7 @@
 import { readFileSync, existsSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { loadRegister, supportedCodes, arbSuffix } from '../i18n/locales.mjs';
 // The API base rule is the one every release build composes with (flutter-release-build.mjs),
 // so a stamped default and a shipped binary are graded against the same function.
 import { apiBaseUrl } from './flutter-release-build.mjs';
@@ -239,7 +240,10 @@ const jsonAt = (rel) => {
   }
 };
 
-for (const arb of ['app_en.arb', 'app_ta.arb']) {
+// Every ARB the brick stamps: one per supported locale of the LOCALE REGISTER
+// (tooling/i18n/locales.json — the factory's, not the stamp root's), so a
+// language added there is checked here without an edit.
+for (const arb of supportedCodes(loadRegister()).map((c) => `app_${arbSuffix(c)}.arb`)) {
   const rel = join('lib', 'l10n', arb);
   const r = jsonAt(rel);
   if (r.missing) fail(`apps/${appId}/lib/l10n/${arb} is missing.`);

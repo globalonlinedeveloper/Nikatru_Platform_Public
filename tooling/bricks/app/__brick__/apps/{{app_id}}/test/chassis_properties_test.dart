@@ -3531,7 +3531,7 @@ void main() {
       );
       expect(
         ChassisLocalizations.supportedLocales.map((Locale l) => l.languageCode),
-        containsAll(<String>['en', 'ta']),
+        containsAll(kSupportedLocaleCodes),
       );
     });
 

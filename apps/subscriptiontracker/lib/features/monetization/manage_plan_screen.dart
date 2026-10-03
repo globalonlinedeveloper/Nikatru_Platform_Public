@@ -7,7 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../shared/chassis_adapters.dart';

@@ -40,6 +40,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show kTranslationLocaleCodes;
 
 /// Arb keys, minus the `@…` metadata blocks and the `@@locale` header.
 Set<String> _messageKeys(Map<String, dynamic> arb) =>
@@ -171,17 +173,24 @@ Map<String, dynamic> _readArb(String relative) {
 
 /// Every translation the app ships, by locale — the template is `en`.
 ///
-/// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale. Every limb
-/// below that compared en with ta now ranges over THIS map, so a locale added
-/// here is held to exactly what Tamil is held to, and one forgotten here is
+/// Every limb below ranges over THIS list, so each translation is held to
+/// exactly what Tamil is held to. It is the LOCALE REGISTER's
+/// (tooling/i18n/locales.json, rendered into the design system's
+/// `kTranslationLocaleCodes`), never a typed list: a language added to the
+/// register is checked here without an edit, and one whose ARB is missing is
 /// caught by 'the arb directory holds exactly these locales'.
-const List<String> kTranslations = <String>['ta', 'hi'];
+final List<String> kTranslations = kTranslationLocaleCodes;
 
 void main() {
   late Map<String, dynamic> en;
   late Set<String> enKeys;
   late Map<String, Map<String, dynamic>> arbs;
   late Map<String, Set<String>> keys;
+  // What the app SHOWS per locale: the chassis ARB overlaid by the app's own.
+  // Since lane i18n-pipeline the app reads chassis keys through
+  // lib/l10n/chassis_bridge.g.dart instead of re-declaring them, so a limb
+  // about what a screen shows (the update wall, the store copy) reads both.
+  late Map<String, Map<String, dynamic>> shown;
 
   setUpAll(() {
     en = _readArb('lib/l10n/app_en.arb');
@@ -191,6 +200,15 @@ void main() {
     };
     keys = <String, Set<String>>{
       for (final String l in kTranslations) l: _messageKeys(arbs[l]!),
+    };
+    shown = <String, Map<String, dynamic>>{
+      for (final String l in <String>['en', ...kTranslations])
+        l: <String, dynamic>{
+          ..._readArb(
+            '../../packages/design_system/lib/src/l10n/chassis_$l.arb',
+          ),
+          ...(l == 'en' ? en : arbs[l]!),
+        },
     };
   });
 
@@ -260,13 +278,6 @@ void main() {
       'authBrandMark':
           'the letter on the brand tile beside the product name (ST-D10); it '
           'is the initial of the name, which is not translated either',
-      'legalese': 'the copyright mark and the company name',
-      'languageEnglish':
-          'the language picker names each language in itself, so a reader '
-          'looking for English finds "English"',
-      'languageTamil':
-          'the language picker names each language in itself: "தமிழ்" is '
-          'Tamil written in Tamil, in both files',
       'versionFooter':
           'placeholders, a version mark and the copyright mark: no word in it '
           'to translate',
@@ -275,9 +286,6 @@ void main() {
       // ⏱ ST-D3 D3-5: a11yCategoryShare left with the donut; its successor.
       'a11yCategoryRowNoShare':
           'two placeholders and a colon: no word to translate',
-      'languageHindi':
-          'the language picker names each language in itself: "हिन्दी" is '
-          'Hindi written in Hindi, in every file (T20, XP-06)',
       'duplicateName':
           'a placeholder and "(2)": a copy\'s name is its original\'s with a '
           'number, which reads the same in every language (T20, AD-10)',
@@ -333,11 +341,11 @@ void main() {
     test('the force-update wall is translated, and is never on the list', () {
       for (final String key in unrecoverable) {
         expect(
-          enKeys,
+          shown['en']!.keys,
           contains(key),
           reason:
-              'COVERAGE LOST — $key is gone from app_en.arb, so the '
-              'comparison below has nothing to compare.',
+              'COVERAGE LOST — $key is gone from app_en.arb and chassis_en.arb, '
+              'so the comparison below has nothing to compare.',
         );
         expect(
           sameInBothLocales.keys,
@@ -349,15 +357,15 @@ void main() {
         );
         for (final String l in kTranslations) {
           expect(
-            arbs[l]![key],
-            isNot(en[key]),
+            shown[l]![key],
+            isNot(shown['en']![key]),
             reason:
                 '$key is byte-identical in en and $l. On a screen that '
                 'replaces the whole app and cannot be dismissed, that is a '
                 'reader locked out in a language they may not read.',
           );
           expect(
-            (arbs[l]![key] as String).trim(),
+            (shown[l]![key] as String).trim(),
             isNotEmpty,
             reason:
                 '$key is blank in $l — the wall would render nothing at all',
@@ -405,15 +413,15 @@ void main() {
       final List<String> hits = <String>[];
       for (final (String locale, Map<String, dynamic> arb)
           in <(String, Map<String, dynamic>)>[
-            ('en', en),
-            for (final String l in kTranslations) (l, arbs[l]!),
+            ('en', shown['en']!),
+            for (final String l in kTranslations) (l, shown[l]!),
           ]) {
         for (final String key in keys) {
           expect(
             arb.containsKey(key),
             isTrue,
             reason:
-                'COVERAGE LOST — $key is not in the $locale arb, so its '
+                'COVERAGE LOST — $key is in neither $locale arb, so its '
                 'wording was not checked.',
           );
           final RegExpMatch? m = webWording.firstMatch(arb[key] as String);

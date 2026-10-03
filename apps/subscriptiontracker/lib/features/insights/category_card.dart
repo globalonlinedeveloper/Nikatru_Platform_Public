@@ -256,7 +256,9 @@ class _CategoryCardState extends State<CategoryCard> {
     Widget pad(Widget child, {bool end = false}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Align(
-        alignment: end ? Alignment.centerRight : Alignment.centerLeft,
+        alignment: end
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
         child: child,
       ),
     );
@@ -276,7 +278,7 @@ class _CategoryCardState extends State<CategoryCard> {
             pad(Text(l10n.categoryTableCategory, style: head)),
             pad(Text(l10n.categoryTableAmount, style: head), end: true),
             Padding(
-              padding: const EdgeInsets.only(left: AppSpacing.lg),
+              padding: const EdgeInsetsDirectional.only(start: AppSpacing.lg),
               child: pad(Text(l10n.categoryTableShare, style: head), end: true),
             ),
           ],
@@ -287,7 +289,7 @@ class _CategoryCardState extends State<CategoryCard> {
               pad(Text(categoryLabel(l10n, cats[i].name), style: cell)),
               pad(Text(parts[i], style: cell), end: true),
               Padding(
-                padding: const EdgeInsets.only(left: AppSpacing.lg),
+                padding: const EdgeInsetsDirectional.only(start: AppSpacing.lg),
                 child: pad(Text(shareOf(i) ?? '', style: cell), end: true),
               ),
             ],

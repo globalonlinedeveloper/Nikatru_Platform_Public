@@ -50,6 +50,24 @@ Directory _bundledPack() {
       'would prove nothing');
 }
 
+/// The supported codes of tooling/i18n/locales.json (core cannot import the
+/// design system's generated table, so it reads the register itself).
+List<String> _supportedLocales() {
+  for (final String root in <String>['../..', '.']) {
+    final File f = File('$root/tooling/i18n/locales.json');
+    if (!f.existsSync()) continue;
+    final Map<String, dynamic> reg =
+        jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+    return <String>[
+      for (final dynamic row in reg['locales'] as List<dynamic>)
+        if ((row as Map<String, dynamic>)['status'] == 'supported')
+          row['code'] as String,
+    ];
+  }
+  throw StateError('tooling/i18n/locales.json not found from '
+      '${Directory.current.path}');
+}
+
 /// An in-memory pack with a correct content hash, for the refusal cases.
 Future<ContentPack> _memPack(Map<String, Map<String, String>> content) async {
   final List<int> contentBytes = utf8.encode(jsonEncode(content));
@@ -124,7 +142,8 @@ void main() {
       expect(pack.manifest.contentHash, hasLength(64),
           reason: 'a bundled pack MAY omit its hash; this one must not, or '
               'the loader skipped the integrity check');
-      expect(pack.manifest.locales, <String>['en', 'ta']);
+      // One shard per SUPPORTED locale of the locale register, in its order.
+      expect(pack.manifest.locales, _supportedLocales());
     });
 
     test('its signature ALSO verifies against the test key it was built with',
