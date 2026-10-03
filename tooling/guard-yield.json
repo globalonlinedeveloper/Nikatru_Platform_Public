@@ -2051,6 +2051,11 @@
         }
       ]
     },
+    "tooling/ci/assert-paid-calls-metered.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-palette-consistent.mjs": {
       "catches": 3,
       "firstSeen": "2026-08-17",

@@ -218,3 +218,35 @@ String cancelOutcomeMessage(
   CancellationOutcome.inStore => context.chassisL10n.cancelInStore,
   CancellationOutcome.failed => l10n.cancelFailed,
 };
+
+/// refund-finish (MF-7): the plan card's detail line. When the server recorded
+/// why access ended (`revocation_reason`), it SAYS which and when — the
+/// chassis sentence for that reason (picked by the reason's index in the
+/// generated contract list; the chassis test holds the two in one order) and
+/// the end date; the restoring reason is said while the plan is active. Any
+/// other case — no reason, an undeclared code, a reason the state
+/// contradicts — keeps the plain active / inactive line.
+String planDetailOf(
+  BuildContext context,
+  AppLocalizations l10n,
+  core.Entitlements? ent, {
+  required bool isPro,
+}) {
+  final String plain = isPro ? l10n.planActiveDetail : l10n.planInactiveDetail;
+  final core.Entitlement? row = ent?.items
+      .where((core.Entitlement e) => e.revocationReason != null)
+      .firstOrNull;
+  final int i = kRevocationReasons.indexWhere(
+    (EntitlementRevocationReason r) => r.reason == row?.revocationReason,
+  );
+  if (row == null || i < 0 || kRevocationReasons[i].restoresAccess != isPro) {
+    return plain;
+  }
+  final ChassisLocalizations c = context.chassisL10n;
+  final List<String> sentences = revocationReasonSentences(c);
+  if (i >= sentences.length) return plain;
+  final DateTime? on = row.expiresAt;
+  return isPro || on == null
+      ? sentences[i]
+      : '${sentences[i]} ${c.planEndedOn(on)}';
+}

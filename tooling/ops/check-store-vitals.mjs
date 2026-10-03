@@ -84,7 +84,7 @@ export function loadChannels(root) {
 
 const pct = (v) => (v === null ? '-' : `${(v * 100).toFixed(2)}%`);
 
-export async function main(argv, { root = DEFAULT_ROOT, env = process.env, fetchImpl = globalThis.fetch, now = () => Date.now(), log = (s) => console.log(s), error = (s) => console.error(s) } = {}) {
+export async function main(argv, { root = DEFAULT_ROOT, env = process.env, fetchImpl = undefined, now = () => Date.now(), log = (s) => console.log(s), error = (s) => console.error(s) } = {}) {
   const arg = (k) => {
     const i = argv.indexOf(k);
     return i >= 0 ? argv[i + 1] : undefined;

@@ -1,12 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-
-import 'support/width_harness.dart';
 
 /// refund-finish (MF-7) — the plan screen says WHY access ended and WHEN.
 ///
@@ -17,8 +15,8 @@ import 'support/width_harness.dart';
 ///     order, in EVERY chassis locale — a new reason with no sentence, or a
 ///     reordering, fails here (the adapter picks a sentence by the reason's
 ///     index in the generated list);
-///   · one case per reason: its sentence is on the status card, with the date
-///     when the plan is not active.
+///   · where it is SAID (the plan card's detail line) is the app adapter's,
+///     `planDetailOf` in apps/*/lib/features/shared/chassis_adapters.dart.
 void main() {
   final List<String> contractReasons = () {
     // `flutter test` runs from this package's directory.
@@ -82,56 +80,4 @@ void main() {
       }
     },
   );
-
-  Widget view(String? text, {bool isPro = false, DateTime? endedOn}) =>
-      ManagePlanView(
-        title: 'Manage plan',
-        isPro: isPro,
-        planStatusLabel: isPro ? 'Your plan is active' : 'No active plan',
-        restoreHint: 'Restore',
-        cancelLabel: 'Cancel plan',
-        busy: false,
-        onBack: () {},
-        onRestore: () {},
-        onCancel: () {},
-        endedReasonText: text,
-        endedOn: endedOn,
-      );
-
-  for (final MapEntry<String, String> e in english.entries) {
-    testWidgets('the status card says why: ${e.key}', (
-      WidgetTester tester,
-    ) async {
-      final bool restores = e.key == 'chargeback_reversed';
-      await pumpChassis(
-        tester,
-        restores ? kTablet : kPhone,
-        view(e.value, isPro: restores, endedOn: DateTime.utc(2026, 9, 30)),
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(ManagePlanView.statusCard),
-          matching: find.text(e.value),
-        ),
-        findsOneWidget,
-      );
-      // When it ended: only while the plan is not active.
-      expect(
-        find.text('On Sep 30, 2026'),
-        restores ? findsNothing : findsOneWidget,
-      );
-    });
-  }
-
-  testWidgets('no reason, no sentence and no date', (
-    WidgetTester tester,
-  ) async {
-    await pumpChassis(
-      tester,
-      kDesktop,
-      view(null, endedOn: DateTime.utc(2026, 9, 30)),
-    );
-    expect(find.textContaining('Your plan ended'), findsNothing);
-    expect(find.text('On Sep 30, 2026'), findsNothing);
-  });
 }

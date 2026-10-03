@@ -735,9 +735,14 @@ const REQUIRED_COVERAGE = [
     // surfaces and covered, 34 → 35 width files — the chassis DevicesSection
     // at all three classes and 200 % text (test/devices_section_test.dart).
     // Read off the merged tree: `34 surface(s) reachable, 34 measured`, `— 35 file(s)`.
-    surfaces: 34,
-    widthTestFiles: 35,
-    coveredSurfaces: 34,
+    // ⏱ RAISED 2026-10-02 · club-rt-money: 34 → 36 surfaces and covered,
+    // 35 → 38 width files — the chassis AiDisclosureDialog and AiOutputLabel at
+    // all three classes (test/ai_disclosure_test.dart, test/a11y_ai_test.dart),
+    // and test/revocation_reason_test.dart. Read off the tree: `36 surface(s)
+    // reachable, 36 measured`, `— 38 file(s)`.
+    surfaces: 36,
+    widthTestFiles: 38,
+    coveredSurfaces: 36,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

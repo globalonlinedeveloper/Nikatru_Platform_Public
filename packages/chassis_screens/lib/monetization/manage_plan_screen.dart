@@ -84,8 +84,6 @@ class ManagePlanView extends StatelessWidget {
     this.source,
     this.periodEnds,
     this.onManageInStore,
-    this.endedReasonText,
-    this.endedOn,
     super.key,
   }) : assert(
          (upgradeLabel == null) == (onUpgrade == null),
@@ -195,15 +193,6 @@ class ManagePlanView extends StatelessWidget {
   /// which cannot stop a subscription only the store bills.
   final VoidCallback? onManageInStore;
 
-  /// refund-finish (MF-7): WHY access ended (or, for a reversed dispute, why
-  /// it came back), in words — one of [revocationReasonSentences], chosen by
-  /// the adapter from the entitlement's `revocation_reason` — or null.
-  final String? endedReasonText;
-
-  /// When access ended, when the entitlement says (its expiry), or null.
-  /// Said only while the plan is not active.
-  final DateTime? endedOn;
-
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
@@ -271,9 +260,6 @@ class ManagePlanView extends StatelessWidget {
                     },
                   if (isPro && periodEnds != null)
                     l10n.planPeriodEnds(periodEnds!),
-                  ?endedReasonText,
-                  if (endedReasonText != null && !isPro && endedOn != null)
-                    l10n.planEndedOn(endedOn!),
                 ],
               ),
             const SizedBox(height: AppSpacing.lg),

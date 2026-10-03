@@ -30,8 +30,9 @@
 // Plain Node, no shell helper, `node:path` joins only: it runs the same on the
 // Windows laptop the hooks run on.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const REGISTER = join(repoRoot, 'tooling', 'paid-calls.json');
@@ -136,7 +137,7 @@ for (const [i, row] of rows.entries()) {
 function* walk(dir) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return;
   }

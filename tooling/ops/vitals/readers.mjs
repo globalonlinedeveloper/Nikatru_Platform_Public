@@ -96,7 +96,8 @@ export function budgetedFetch(fetchImpl, budget = { left: MAX_VITALS_REQUESTS })
   return async (url, init = {}) => {
     if (budget.left <= 0) throw Object.assign(new Error('the run spent its request budget'), { name: 'BudgetError' });
     budget.left--;
-    return fetchImpl(url, { ...init, signal: AbortSignal.timeout(VITALS_TIMEOUT_MS) });
+    // The one network call site of the vitals readers: bounded by a timeout, inside a budget.
+    return (fetchImpl ?? fetch)(url, { ...init, signal: AbortSignal.timeout(VITALS_TIMEOUT_MS) });
   };
 }
 
