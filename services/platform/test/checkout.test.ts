@@ -834,3 +834,35 @@ describe('REQUIRED_COVERAGE — the price map and the served offerings cannot dr
     }
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · MARKET SELECTION. The route names no vendor: it reads an
+// optional BUYER-DECLARED `market` (ISO 3166-1 alpha-2, else null) and asks src/ports.ts
+// `checkoutRailFor`, which reads the rendered CHECKOUT_RAIL_BY_MARKET (the `web` channel's
+// purchaseRail: paddle by default, razorpay for IN). Never cf.country.
+describe('market selection — only a buyer-declared IN reaches the India rail', () => {
+  it('market IN selects the India rail: Paddle is never called, and the refusal names that rail (no plan id / no key yet)', async () => {
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { errors.push(a.map(String).join(' ')); });
+    try {
+      const h = harness();
+      const res = await h.post({ ...BUY, market: 'IN' }, `Bearer ${await token(USER)}`);
+      expect(res.status).toBe(503);
+      expect(paddleCalls).toHaveLength(0);
+      expect(errors.some((e) => /rail=razorpay/.test(e))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  for (const market of [undefined, null, 'US', 'in', 'IND', 7, 'default']) {
+    it(`market ${JSON.stringify(market)} sells through the default rail (Paddle is called)`, async () => {
+      const h = harness();
+      const body = market === undefined ? BUY : { ...BUY, market };
+      const res = await h.post(body, `Bearer ${await token(USER)}`);
+      expect(res.status).toBe(200);
+      expect(paddleCalls).toHaveLength(1);
+      expect(((await res.json()) as { provider: string }).provider).toBe('paddle');
+    });
+  }
+});

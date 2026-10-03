@@ -20,7 +20,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -351,6 +351,27 @@ describe('owner-gated rows still owe an owner', () => {
     }));
     assert.equal(r.status, 1);
     assert.match(out(r), /is owner-gated and names no `ownerItem`/);
+  });
+
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (business-005): the REAL matrix's India GST-invoice row is
+  // owner-gated on Q13 and PRINTS (green); the same row with its owner deleted FAILS by its id (red).
+  test('business-005: the real india-seller-issues-gst-tax-invoice row prints on Q13; ownerless, it FAILS', () => {
+    const REPO = resolve(CI_DIR, '..', '..');
+    const green = run(REPO);
+    assert.equal(green.status, 0, out(green));
+    assert.match(out(green), /OWNER-GATED \(Q13\) · india-seller-issues-gst-tax-invoice \[K-5\]/);
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'legal', 'duty-matrix.json'), 'utf8'));
+    const row = real.duties.find((d) => d.id === 'india-seller-issues-gst-tax-invoice');
+    assert.equal(row?.status, 'owner-gated');
+    const r = run(fixture((m) => {
+      m.requirements['K-5'] = real.requirements['K-5'];
+      const copy = structuredClone(row);
+      delete copy.ownerItem;
+      m.duties.push(copy);
+      return m;
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /duty "india-seller-issues-gst-tax-invoice" is owner-gated and names no `ownerItem`/);
   });
 });
 

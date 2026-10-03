@@ -72,6 +72,7 @@ import { listDir } from './tree-walk.mjs';
 import { requireAppSet } from './app-set.mjs';
 import { stripInert } from './text-reductions.mjs';
 import { BUNDLES_REGISTER, readBundles } from '../catalog/read.mjs';
+import { inIndiaBook } from '../catalog/render-rail-prices.mjs';
 import {
   planDiscovery,
   APPS_DIR,
@@ -82,6 +83,12 @@ import {
   PRICING_PAGE,
   RAIL_CONFIG,
   REGISTRY,
+  TAX_OPEN,
+  TAX_CLOSE,
+  TAX_PAGES,
+  taxSentences,
+  pricingOpen,
+  pricingClose,
 } from '../sites/generate-discovery.mjs';
 import { isChromePage, CHROME_EXCLUDED, REGIONS, openMarker, closeMarker, isCssRegion } from '../sites/chrome.mjs';
 import { CATALOG_DIR, readCatalogFile } from '../catalog/read.mjs';
@@ -1821,6 +1828,164 @@ let snapshotsChecked = 0;
   }
 }
 
+// ── T · THE TAX SENTENCES AND THE RUPEE BOOK ────────────────────────────────
+// ⏱ 2026-10-01 · fix-india-rail-tax-data (O-TAX-TREATMENT-STATED-TWO-WAYS;
+// business-004, business-017). terms.html said prices were tax-inclusive,
+// pricing.html and the landing said tax is added at checkout, and pricing told
+// every buyer USD while the India rail sells in rupees. Limb A cannot see any of
+// it: it compares a page with a fresh run, and a hand sentence OUTSIDE a pair, or
+// a page that lost its pair, is the same bytes in both. So, on every page of
+// TAX_PAGES and every priced live landing:
+//   · the sentences inside the `TAX:sentences` pair EQUAL the ones generated
+//     from each rail's `taxMode` (render-rail-prices.mjs `railTaxModes`);
+//   · no tax sentence sits OUTSIDE the pair (HAND_TAX: "inclusive of … tax",
+//     "tax … is added", "include(s) … GST");
+//   · in this repository the pair is REQUIRED — deleting it is not a way back.
+// And on pricing.html the `PRICING:india` pair is required, carries every priced
+// offering's `webInrMinor` formatted by Intl `en-IN` (the generator groups by
+// hand, so the two formatters are independent), says the razorpay mode in words,
+// and carries NO dollar: an India block that renders USD is the defect itself.
+const HAND_TAX =
+  /\b(?:inclusive|exclusive) of\b[^.]{0,60}\b(?:tax|taxes|VAT|GST)\b|\b(?:tax|taxes|VAT|GST)\b[^.]{0,60}\b(?:is|are) added\b|\binclud(?:e|es|ed|ing)\b[^.]{0,30}\b(?:tax|taxes|VAT|GST)\b/i;
+let taxPagesChecked = 0;
+let inrPricesChecked = 0;
+{
+  let rail = null;
+  try {
+    rail = JSON.parse(readFileSync(abs(RAIL_CONFIG), 'utf8'));
+  } catch {
+    rail = null; // planDiscovery's complaint, pushed above
+  }
+  const { sentences, modes } = taxSentences(rail, []); // its problems are planDiscovery's, already pushed
+  const unescapeHtml = (s) =>
+    s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const blocksIn = (span) =>
+    [...stripInert(span).matchAll(/<(p|li)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)]
+      .map((m) => unescapeHtml(m[2].replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim())
+      .filter((t) => t !== '');
+  /** The span between one pair, or null with a problem when the pair is half, doubled or reversed. */
+  const pairOf = (html, rel, open, close) => {
+    const opens = html.split(open).length - 1;
+    const closes = html.split(close).length - 1;
+    if (opens === 0 && closes === 0) return undefined;
+    const start = html.indexOf(open);
+    const end = html.indexOf(close);
+    if (opens !== 1 || closes !== 1 || end < start) {
+      problems.push(`limb T: ${rel} carries ${opens} ${open} and ${closes} ${close}; exactly one pair, in order.`);
+      return null;
+    }
+    return { start, end: end + close.length, body: html.slice(start + open.length, end) };
+  };
+  const landings = (pricedLandingSlugs ?? []).map((slug) => `${APPS_DIR}/${slug}.html`);
+  for (const rel of [...TAX_PAGES, ...landings]) {
+    if (!existsSync(abs(rel))) {
+      if (SCANNING_OWN_REPO) problems.push(`limb T: ${rel} does not exist, and it is a page that states the tax.`);
+      continue;
+    }
+    const html = readFileSync(abs(rel), 'utf8');
+    let outside = html;
+    const tax = pairOf(html, rel, TAX_OPEN, TAX_CLOSE);
+    if (tax === undefined && SCANNING_OWN_REPO) {
+      problems.push(
+        `limb T: ${rel} carries no ${TAX_OPEN} … ${TAX_CLOSE} pair. Its tax sentences are generated from each rail's ` +
+          `taxMode in ${RAIL_CONFIG}; without the pair the page states tax by hand again (business-004).`,
+      );
+    }
+    if (tax) {
+      taxPagesChecked++;
+      const published = blocksIn(tax.body);
+      if (sentences === null) {
+        problems.push(`limb T: ${rel} carries the ${TAX_OPEN} pair and ${RAIL_CONFIG} yields no tax sentence (no \`prices\`, or a rail with no single taxMode).`);
+      } else if (JSON.stringify(published) !== JSON.stringify(sentences)) {
+        problems.push(
+          `limb T: ${rel} publishes a tax sentence that differs from the one generated from each rail's taxMode ` +
+            `(${JSON.stringify(modes)}). Published: ${JSON.stringify(published)}. Generated: ${JSON.stringify(sentences)}. ` +
+            'A tax sentence is never hand-written: run node tooling/sites/generate-discovery.mjs.',
+        );
+      }
+      outside = html.slice(0, tax.start) + html.slice(tax.end);
+    }
+    // The India pair is generated and graded below; its "include GST" is not a hand sentence.
+    const inrSpan = pairOf(outside, rel, pricingOpen('india'), pricingClose('india'));
+    if (inrSpan) outside = outside.slice(0, inrSpan.start) + outside.slice(inrSpan.end);
+    for (const b of blocksIn(outside)) {
+      const m = b.match(HAND_TAX);
+      if (m) {
+        problems.push(
+          `limb T: ${rel} states tax by hand OUTSIDE the ${TAX_OPEN} pair ("${m[0]}" in "${b.slice(0, 160)}"). ` +
+            'A second tax sentence is the business-004 defect: two sentences a buyer has to choose between.',
+        );
+      }
+    }
+  }
+
+  const pricing = existsSync(abs(PRICING_PAGE)) ? readFileSync(abs(PRICING_PAGE), 'utf8') : null;
+  const inr = pricing === null ? undefined : pairOf(pricing, PRICING_PAGE, pricingOpen('india'), pricingClose('india'));
+  if (inr === undefined && SCANNING_OWN_REPO) {
+    problems.push(
+      `limb T: ${PRICING_PAGE} carries no ${pricingOpen('india')} pair. The India rail sells in rupees ` +
+        `(\`webInrMinor\` in ${RAIL_CONFIG}); without the pair the price list tells an Indian buyer USD (business-017).`,
+    );
+  }
+  if (inr) {
+    const dollar = inr.body.match(/\$|\bUSD\b|\bUS dollars?\b/);
+    if (dollar) {
+      problems.push(
+        `limb T: the ${pricingOpen('india')} block on ${PRICING_PAGE} renders USD ("${dollar[0]}"). The India rail ` +
+          'sells in rupees, GST as its taxMode says; a dollar there tells an Indian buyer a price the rail does not charge.',
+      );
+    }
+    const words = { inclusive: 'include GST', exclusive: 'GST, which is added at checkout' }[modes.razorpay];
+    if (words === undefined || !blocksIn(inr.body).some((b) => b.includes(words))) {
+      problems.push(
+        `limb T: the ${pricingOpen('india')} block on ${PRICING_PAGE} does not say the razorpay rail's tax mode ` +
+          `(${JSON.stringify(modes.razorpay ?? null)}) in words${words ? ` ("${words}")` : ''}.`,
+      );
+    }
+    const enIN = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const declaredOf = (slug) => (Array.isArray(rail?.apps?.[slug]?.paywall?.offerings) ? rail.apps[slug].paywall.offerings : []);
+    for (const [, slug] of pricing.matchAll(/data-product="([^"]+)"/g)) {
+      for (const o of declaredOf(slug)) {
+        // ⏱ 2026-10-02 · PR #1149 ruling item 5: a one-time offering is out of the India book until the Razorpay
+        // order path exists (render-rail-prices.mjs `inIndiaBook`, limb J); the block must NOT quote it.
+        if (!inIndiaBook(o?.term)) {
+          const minorOut = rail?.prices?.apps?.[slug]?.[o?.product_id]?.webInrMinor;
+          if (Number.isInteger(minorOut) || /Pro One-time/.test(inr.body)) {
+            problems.push(
+              `limb T: the ${pricingOpen('india')} block on ${PRICING_PAGE} quotes ${slug}'s ${o?.product_id}, a one-time offering the ` +
+                'India rail cannot sell (the Razorpay order path is not built, render-rail-prices.mjs limb J).',
+            );
+          }
+          continue;
+        }
+        const bundlePlan = { month: 'bundle-monthly', year: 'bundle-yearly' }[o?.term];
+        const minor =
+          rail?.prices?.apps?.[slug]?.[o?.product_id]?.webInrMinor ??
+          Object.values(rail?.prices?.bundles ?? {}).find((b) => b?.plan === bundlePlan && rail?.prices?.apps?.[slug] === undefined)?.webInrMinor;
+        if (!Number.isInteger(minor)) {
+          problems.push(`limb T: ${slug}'s ${o?.product_id} is priced on ${PRICING_PAGE} and ${RAIL_CONFIG} \`prices\` carries no integer webInrMinor for it.`);
+          continue;
+        }
+        const shown = `₹${enIN.format(minor / 100)}`;
+        if (!new RegExp(`${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9.,])`).test(inr.body)) {
+          problems.push(
+            `limb T: the ${pricingOpen('india')} block on ${PRICING_PAGE} does not carry ${shown}, the India price ` +
+              `${RAIL_CONFIG} declares for ${slug}'s ${o.product_id} (webInrMinor ${minor}).`,
+          );
+          continue;
+        }
+        inrPricesChecked++;
+      }
+    }
+    if (SCANNING_OWN_REPO && inrPricesChecked === 0 && problems.length === 0) {
+      coverageLost([`limb T compared NO rupee price on ${PRICING_PAGE}: no priced product's offering carried a webInrMinor.`]);
+    }
+  }
+  if (SCANNING_OWN_REPO && taxPagesChecked === 0 && problems.length === 0) {
+    coverageLost([`limb T found no ${TAX_OPEN} pair on any page, so no published tax sentence was compared.`]);
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ ${problems.length} discovery-surface problem(s):`);
@@ -1837,6 +2002,8 @@ console.log(
     `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +
     `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares; ` +
     `${pricedSections} priced product(s) each have exactly one section on ${PRICING_PAGE}, carrying its own prices; ` +
+    `${taxPagesChecked} page(s) publish the generated per-rail tax sentences and no hand one; ` +
+    `${inrPricesChecked} rupee price(s) in the India block equal webInrMinor, with no dollar; ` +
     `${chromePagesChecked} page(s) carry shared chrome from tooling/sites/chrome.mjs ` +
     `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert); ` +
     `${a11yChecked} page(s) across ${PAGE_QUALITY_ROOTS.join(' + ')} carry lang + one <main> + a skip link that ` +
