@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart';
@@ -16,45 +19,53 @@ class _Transport implements FeedbackTransport {
 }
 
 void main() {
-  testWidgets('HelpCentrePage meets the tap-target, label and contrast guidelines', (
-    WidgetTester tester,
-  ) async {
-    final SemanticsHandle handle = tester.ensureSemantics();
-    try {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HelpCentrePage(
-            index: helpIndexFor('en'),
-            scopes: const <String>{'subscriptiontracker', 'account'},
-            appId: 'subscriptiontracker',
-            feedbackHost: FeedbackHost(
-              app: const FeedbackAppInfo(
-                appId: 'subscriptiontracker',
-                appVersion: '1.0.0',
-                build: '1',
-                channel: 'web',
-                platform: 'web',
+  testWidgets(
+    'HelpCentrePage meets the tap-target, label and contrast guidelines',
+    (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HelpCentrePage(
+              index: HelpIndex.fromJson(
+                jsonDecode(
+                      File(
+                        '../../sites/nikatru/help/index.en.json',
+                      ).readAsStringSync(),
+                    )
+                    as Map<String, Object?>,
               ),
-              outbox: FeedbackOutbox(
-                store: Future<KeyValueStore>.value(InMemoryKeyValueStore()),
-                transport: _Transport(),
-                accessToken: () async => null,
+              scopes: const <String>{'subscriptiontracker', 'account'},
+              appId: 'subscriptiontracker',
+              feedbackHost: FeedbackHost(
+                app: const FeedbackAppInfo(
+                  appId: 'subscriptiontracker',
+                  appVersion: '1.0.0',
+                  build: '1',
+                  channel: 'web',
+                  platform: 'web',
+                ),
+                outbox: FeedbackOutbox(
+                  store: Future<KeyValueStore>.value(InMemoryKeyValueStore()),
+                  transport: _Transport(),
+                  accessToken: () async => null,
+                ),
+                owner: () => kAnonymousOwner,
+                signedIn: () => false,
+                supportEmail: 'support@example.test',
+                openMail: (Uri u) async {},
+                errorCodes: () => <String>[],
               ),
-              owner: () => kAnonymousOwner,
-              signedIn: () => false,
-              supportEmail: 'support@example.test',
-              openMail: (Uri u) async {},
-              errorCodes: () => <String>[],
+              openUrl: (String u) async {},
             ),
-            openUrl: (String u) async {},
           ),
-        ),
-      );
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
-    } finally {
-      handle.dispose();
-    }
-  });
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    },
+  );
 }

@@ -1955,6 +1955,10 @@
           "Diagnostics"
         ],
         "why": "First-party. \"Report a problem\" (lane feedback-intake): the page, its on-device screenshot redaction and its outbox. It transmits only what the person sends, through packages/api_client DioFeedbackTransport, and declares no plugin."
+      },
+      "nikatru_help": {
+        "introduces": [],
+        "why": "First-party. The help centre (lane help-search): articles searched on the device, from an index the build compiles into the app; no query leaves the device. Its \"Ask us\" opens packages/feedback's page, which declares what a sent report carries. It declares no plugin and makes no request."
       }
     }
   }

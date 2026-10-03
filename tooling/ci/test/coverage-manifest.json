@@ -515,6 +515,9 @@
   "heavy-lock.test.mjs":
     46,
 
+  "help-search.test.mjs":
+    21,
+
   "hook-messages.test.mjs":
     5,
 
@@ -1014,7 +1017,10 @@
     35,
 
   "site-integrity.test.mjs":
-    125,
+    131,
+
+  "site-report-form.test.mjs":
+    6,
 
   "site-set.test.mjs":
     6,
@@ -1081,6 +1087,9 @@
 
   "start-here.test.mjs":
     9,
+
+  "status-page.test.mjs":
+    24,
 
   "stop-copy.test.mjs":
     10,

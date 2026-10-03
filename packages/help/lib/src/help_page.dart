@@ -36,10 +36,15 @@ String helpCentreLabelOf(BuildContext context) =>
 
 /// Opens the help centre over [context] (lane help-search): what Settings'
 /// Help row calls, in every app and in the brick, through the chassis.
+///
+/// [indexTable] and [sourceLocale] are the app's own generated table
+/// (`lib/help/help_index.g.dart`: `kHelpIndexJson`, `kHelpSourceLocale`).
 Future<void> openHelpCentre(
   BuildContext context, {
   required FeedbackHost host,
   required String appId,
+  required Map<String, String> indexTable,
+  required String sourceLocale,
   required Future<void> Function(String url) openUrl,
   Set<String>? scopes,
   HelpChatGate chatGate = HelpChatGate.off,
@@ -49,8 +54,8 @@ Future<void> openHelpCentre(
   return Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
       builder: (_) => HelpCentrePage(
-        index: helpIndexFor(language),
-        translated: helpIndexIsTranslated(language),
+        index: helpIndexFrom(indexTable, language, sourceLocale: sourceLocale),
+        translated: helpIndexIsTranslated(indexTable, language),
         scopes: scopes ?? <String>{appId, 'account'},
         appId: appId,
         feedbackHost: host,

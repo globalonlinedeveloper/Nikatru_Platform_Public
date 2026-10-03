@@ -13,37 +13,51 @@ import 'package:nikatru_help/nikatru_help.dart';
 void main() {
   final Map<String, Object?> fixture =
       jsonDecode(
-            File('../../content/help/_eval/conformance.json').readAsStringSync(),
+            File(
+              '../../content/help/_eval/conformance.json',
+            ).readAsStringSync(),
           )
           as Map<String, Object?>;
   final List<Object?> cases = fixture['cases']! as List<Object?>;
-  final HelpIndex index = helpIndexFor(fixture['locale']! as String);
+  // The full index (every scope) the site serves, which is what the fixture was
+  // ranked over; an app's own table carries a subset of it.
+  final HelpIndex index = HelpIndex.fromJson(
+    jsonDecode(
+          File(
+            '../../sites/nikatru/help/index.${fixture['locale']! as String}.json',
+          ).readAsStringSync(),
+        )
+        as Map<String, Object?>,
+  );
 
   test('the fixture is not empty: a vacuous conformance proves nothing', () {
     expect(cases.length, greaterThanOrEqualTo(50));
   });
 
-  test('every conformance query ranks the same ids, in order, with the same scores', () {
-    var compared = 0;
-    for (final Object? c in cases) {
-      final Map<String, Object?> m = c! as Map<String, Object?>;
-      final String query = m['query']! as String;
-      final List<Object?> want = m['hits']! as List<Object?>;
-      final List<HelpHit> got = index.search(query, limit: 5);
-      expect(
-        got.map((HelpHit h) => h.doc.id).toList(),
-        want.map((Object? w) => (w! as Map<String, Object?>)['id']).toList(),
-        reason: query,
-      );
-      for (var i = 0; i < want.length; i++) {
-        final double score =
-            ((want[i]! as Map<String, Object?>)['score']! as num).toDouble();
-        expect(got[i].score, closeTo(score, 1e-9), reason: '$query #$i');
-        compared++;
+  test(
+    'every conformance query ranks the same ids, in order, with the same scores',
+    () {
+      var compared = 0;
+      for (final Object? c in cases) {
+        final Map<String, Object?> m = c! as Map<String, Object?>;
+        final String query = m['query']! as String;
+        final List<Object?> want = m['hits']! as List<Object?>;
+        final List<HelpHit> got = index.search(query, limit: 5);
+        expect(
+          got.map((HelpHit h) => h.doc.id).toList(),
+          want.map((Object? w) => (w! as Map<String, Object?>)['id']).toList(),
+          reason: query,
+        );
+        for (var i = 0; i < want.length; i++) {
+          final double score =
+              ((want[i]! as Map<String, Object?>)['score']! as num).toDouble();
+          expect(got[i].score, closeTo(score, 1e-9), reason: '$query #$i');
+          compared++;
+        }
       }
-    }
-    expect(compared, greaterThan(100));
-  });
+      expect(compared, greaterThan(100));
+    },
+  );
 
   test('the tokenizer folds plurals and suffixes exactly as search.mjs', () {
     expect(helpTokenize('Reminders renewing cancelled categories'), <String>[

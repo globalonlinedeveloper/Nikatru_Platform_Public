@@ -22,6 +22,7 @@ export 'package:nikatru_help/nikatru_help.dart' show helpCentreLabelOf;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
+import '../../help/help_index.g.dart';
 import '../analytics_providers.dart' show keyValueStoreProvider;
 import 'auth.dart' show authTokenProvider, authUserProvider;
 import 'links.dart' show externalLinks;
@@ -53,5 +54,7 @@ Future<void> openHelp(BuildContext context, WidgetRef ref) => openHelpCentre(
   context,
   host: ref.read(feedbackHostProvider),
   appId: AppConfig.appId,
+  indexTable: kHelpIndexJson,
+  sourceLocale: kHelpSourceLocale,
   openUrl: (String url) => externalLinks.open(Uri.parse(url)),
 );

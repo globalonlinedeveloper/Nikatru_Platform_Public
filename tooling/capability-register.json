@@ -740,6 +740,13 @@
         "buildFile": "packages/feedback/l10n.yaml"
       },
       "detail": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT). A build step, not a name: the package's strings are its OWN ARB set (packages/feedback/lib/l10n/feedback_<code>.arb, one per SUPPORTED code of tooling/i18n/locales.json), compiled into lib/src/l10n/feedback_strings.g.dart by `node tooling/i18n/locales.mjs --write`; tooling/ci/assert-locale-register.mjs finds the set through l10n.yaml (L2: a supported code with no ARB is red) and fails a table the ARBs do not render. It cannot be gen-l10n, because gen-l10n would make the package declare `intl`, which assert-package-boundaries reads as an adapter seam (packages/design_system/l10n.yaml). It is a package rather than chassis_screens code because every app, the brick, and lane help-search's \"still stuck? ask us\" open the same sheet, and its capture and outbox are testable without any app."
+    },
+    "packages/help": {
+      "reason": "codegen",
+      "evidence": {
+        "buildFile": "packages/help/l10n.yaml"
+      },
+      "detail": "⏱ 2026-10-03 · lane help-search (O-HELP-CENTRE-UNBUILT). A build step, not a name: its strings are its OWN ARB set (packages/help/lib/l10n/help_<code>.arb), compiled into lib/src/l10n/help_strings.g.dart by `node tooling/i18n/locales.mjs --write` (PACKAGE_STRING_TABLES), for the reason packages/feedback gives. It is a package rather than chassis_screens code because the page, its ranker and the conformance test with the JavaScript twin are testable without any app, and every app, the brick and the extensions' search must rank alike."
     }
   },
   "demandGatedModules": {
@@ -1336,6 +1343,18 @@
         "apps/subscriptiontracker"
       ],
       "noSeamReason": "A page and its wiring, not a contract: the one seam it sends through, FeedbackTransport, is core's (packages/core/lib/src/feedback_transport.dart, beside ContentReportTransport), implemented by packages/api_client's DioFeedbackTransport; this package can see no provider container and no plugin, so there is nothing here for a second seam to abstract."
+    },
+    {
+      "id": "help",
+      "capability": "The help centre (lane help-search): the articles of content/help/ searched ON THE DEVICE by the Dart twin of tooling/help/search.mjs (BM25 with stemming, synonyms and one-edit typos; content/help/_eval/conformance.json holds the two runtimes to one ranking), the published known issues, a link to the accessibility statement, \"Still stuck? Ask us\" into packages/feedback's sheet with category question and the query, and the HelpAssistant seam (SearchOnlyAssistant; a chat slot shown only with the flag AND Pro AND AI credits). Opened from the chassis Help card. The index is NOT in this package: tooling/help/build-index.mjs generates it into each app (lib/help/help_index.g.dart), so shared code carries no app's articles. Its strings are its own ARB set, compiled by tooling/i18n/locales.mjs.",
+      "owner": "packages/help",
+      "package": "nikatru_help",
+      "seams": [],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "apps/subscriptiontracker"
+      ],
+      "noSeamReason": "A page and a pure ranker, not a contract: the index arrives as data from the app, the one action that leaves the page (Ask us) goes through packages/feedback's sheet, and the HelpAssistant interface is the seam a future chat plugs into — this package reaches no plugin and no network."
     }
   ],
   "cloneTells": {

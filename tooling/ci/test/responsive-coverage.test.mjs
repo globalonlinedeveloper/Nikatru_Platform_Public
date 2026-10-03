@@ -206,7 +206,7 @@ describe('the guard says YES on the tree as it is', () => {
     // roots in it.
     // FOUR since [ADR 071] added packages/chassis_screens — the one root here
     // that ENFORCES rather than reports.
-    assert.match(out, /5 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 feedback-intake: 4 -> 5, packages/feedback
+    assert.match(out, /6 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 feedback-intake: 4 -> 5, packages/feedback; help-search: 5 -> 6, packages/help
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
     assert.match(
       out,

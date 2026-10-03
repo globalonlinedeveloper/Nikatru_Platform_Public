@@ -1,25 +1,29 @@
 import 'dart:convert';
 
-import 'help_index.g.dart';
 import 'search.dart';
 
-/// The help index for [languageCode]: its own when the build wrote one, else
-/// the source locale's (the articles are then in English, and the page says
-/// so). Parsed once per language.
-HelpIndex helpIndexFor(String languageCode) => _cache.putIfAbsent(
-  kHelpIndexJson.containsKey(languageCode) ? languageCode : kHelpSourceLocale,
-  () => HelpIndex.fromJson(
-    jsonDecode(
-          kHelpIndexJson[kHelpIndexJson.containsKey(languageCode)
-              ? languageCode
-              : kHelpSourceLocale]!,
-        )
-        as Map<String, Object?>,
-  ),
-);
+/// An app's help index for [languageCode], from the table
+/// tooling/help/build-index.mjs generates INTO the app
+/// (`lib/help/help_index.g.dart`: its own articles and the platform's — never
+/// in this package, which carries no app's articles). The language's own index
+/// when the table has one, else [sourceLocale]'s; [helpIndexIsTranslated] says
+/// which, so the page can say the articles are in English. Parsed once per table
+/// and language.
+HelpIndex helpIndexFrom(
+  Map<String, String> table,
+  String languageCode, {
+  required String sourceLocale,
+}) {
+  final code = table.containsKey(languageCode) ? languageCode : sourceLocale;
+  final byCode = _cache[table] ??= <String, HelpIndex>{};
+  return byCode.putIfAbsent(
+    code,
+    () => HelpIndex.fromJson(jsonDecode(table[code]!) as Map<String, Object?>),
+  );
+}
 
-/// Whether [languageCode] has articles of its own.
-bool helpIndexIsTranslated(String languageCode) =>
-    kHelpIndexJson.containsKey(languageCode);
+/// Whether [table] has articles of [languageCode]'s own.
+bool helpIndexIsTranslated(Map<String, String> table, String languageCode) =>
+    table.containsKey(languageCode);
 
-final Map<String, HelpIndex> _cache = <String, HelpIndex>{};
+final Expando<Map<String, HelpIndex>> _cache = Expando<Map<String, HelpIndex>>();

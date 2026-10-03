@@ -13,6 +13,7 @@ import 'package:nikatru_help/nikatru_help.dart'
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 import '../../core/app_config.dart';
+import '../../help/help_index.g.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../auth/captcha.dart';
@@ -133,6 +134,8 @@ class SettingsScreen extends ConsumerWidget {
         context,
         host: ref.read(feedbackHostProvider),
         appId: AppConfig.appId,
+        indexTable: kHelpIndexJson,
+        sourceLocale: kHelpSourceLocale,
         openUrl: _openUrl,
       ),
       helpLabel: helpCentreLabelOf(context),

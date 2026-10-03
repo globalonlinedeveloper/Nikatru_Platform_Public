@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   CONFORMANCE,
-  DART_INDEX,
+  DART_INDEX_REL,
   EXTENSION_BUNDLES,
   PRICE,
   articlesFor,
@@ -120,7 +120,7 @@ test('🔴 an index over its budget is refused', () => {
 test('🔴 a hand edit of a committed index fails --check', () => {
   const tmp = mkdtempSync(path.join(tmpdir(), 'help-check-'));
   try {
-    for (const rel of ['content', 'tooling/i18n/locales.json', 'services/platform/src/app-config-data.json', 'apps/subscriptiontracker/dod.json', 'apps/subscriptiontracker/lib/l10n/app_en.arb', 'packages/design_system/lib/src/l10n/chassis_en.arb', 'extensions/Extension/Full_Screen_Shot/_locales/en/messages.json', 'sites/nikatru', 'sites/status', 'packages/help/lib/src', 'extensions/Extension/Full_Screen_Shot/pages', 'extensions/templates/tool/lib']) {
+    for (const rel of ['content', 'tooling/i18n/locales.json', 'services/platform/src/app-config-data.json', 'apps/subscriptiontracker/dod.json', 'apps/subscriptiontracker/lib/l10n/app_en.arb', 'packages/design_system/lib/src/l10n/chassis_en.arb', 'extensions/Extension/Full_Screen_Shot/_locales/en/messages.json', 'sites/nikatru', 'sites/status', 'apps/subscriptiontracker/pubspec.yaml', 'apps/subscriptiontracker/lib/help', 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/help', 'extensions/Extension/Full_Screen_Shot/pages', 'extensions/templates/tool/lib']) {
       cpSync(path.join(ROOT, rel), path.join(tmp, rel), { recursive: true });
     }
     const quiet = () => {};
@@ -198,10 +198,19 @@ test('🔴 a mutated JS ranker fails the conformance fixture', async () => {
   }
 });
 
-test('the Dart table and the site index carry the same JSON', () => {
-  const dart = read(DART_INDEX);
-  const site = read('sites/nikatru/help/index.en.json').trimEnd();
-  assert.ok(dart.includes(`'en': r'''${site}'''`));
+test('each app gets its own Dart table — its scope and the platform — and the brick the platform only', () => {
+  const tableOf = (rel) => {
+    const m = /'en': r'''(.*)''',/.exec(read(rel));
+    assert.ok(m, `${rel} carries no en table`);
+    return JSON.parse(m[1]);
+  };
+  const app = tableOf('apps/subscriptiontracker/lib/help/help_index.g.dart');
+  assert.ok(app.docs.length > 0);
+  assert.deepEqual([...new Set(app.docs.map((d) => d.scope))].sort(), ['platform', 'subscriptiontracker']);
+  const brick = tableOf('tooling/bricks/app/__brick__/apps/{{app_id}}/lib/help/help_index.g.dart');
+  assert.ok(brick.docs.length > 0 && brick.docs.every((d) => d.scope === 'platform'));
+  // 🔴 shared code never carries an app's articles: packages/help has no table of its own.
+  assert.throws(() => read('packages/help/lib/src/help_index.g.dart'));
 });
 
 // ── Do 5: everywhere, and every path POSIX ──────────────────────────────────
