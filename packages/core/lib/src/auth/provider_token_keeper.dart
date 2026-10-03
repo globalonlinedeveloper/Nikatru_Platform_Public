@@ -66,9 +66,19 @@ import 'auth_repository.dart';
 /// A repository that signs in with Google must name `google` on that session;
 /// otherwise its token is offered to the server as Apple's, which the server
 /// refuses (400) for an account that never linked Apple.
+///
+/// ⏱ 2026-10-02 · review of #1155, finding 1 — AND THE NATIVE APPLE SHEET'S
+/// AUTHORIZATION CODE. A session from Apple's own sheet (`signInWithIdToken`)
+/// carries no provider refresh token at all, only
+/// [AuthSession.providerAuthorizationCode]; [sendAuthorizationCode] posts that
+/// to the server that exchanges it for the token the deletion revokes with.
+/// Same round, same retries, same once-per-accepted-value rule. Without
+/// [sendAuthorizationCode] a code is never offered, as before.
 StreamSubscription<AuthUser?> keepProviderRefreshToken({
   required AuthRepository auth,
   required Future<void> Function(String provider, String refreshToken) send,
+  Future<void> Function(String provider, String authorizationCode)?
+      sendAuthorizationCode,
   void Function(Object error)? onError,
   List<Duration> retryDelays = providerTokenRetryDelays,
 }) {
@@ -90,12 +100,21 @@ StreamSubscription<AuthUser?> keepProviderRefreshToken({
     while (!round.abandoned) {
       try {
         final AuthSession? session = await auth.currentSession();
-        final String? token = session?.providerRefreshToken;
+        final String? refresh = session?.providerRefreshToken;
+        final String? code = sendAuthorizationCode == null
+            ? null
+            : session?.providerAuthorizationCode;
+        final bool isCode = refresh == null || refresh.isEmpty;
+        final String? token = isCode ? code : refresh;
         if (token == null || token.isEmpty || token == lastSent) break;
         final String provider = session?.oauthProvider ?? legacyTokenProvider;
         tried = token;
         triedFor = provider;
-        await send(provider, token);
+        if (isCode) {
+          await sendAuthorizationCode!(provider, token);
+        } else {
+          await send(provider, token);
+        }
         lastSent = token;
         failures = 0;
         // Loop once more: a newer token may have landed while this one was on

@@ -2601,6 +2601,17 @@
       "storefrontKey": "appstore",
       "served": false,
       "nativeAuth": false,
+      "privacyManifest": {
+        "approvedReasonCodes": {
+          "1C8F.1": {
+            "category": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "meaning": "Read and write user defaults that only apps, app extensions and App Clips in the same App Group as the app can reach; not the global domain, and nothing outside the group.",
+            "source": "https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitypereasons",
+            "fetched": "2026-10-01",
+            "why": "T16 XP-04: home_widget 0.10.0 opens UserDefaults(suiteName:) on the app group the WidgetKit extension shares, and ships no manifest of its own, so the app target declares it. Read from the page's JSON (developer.apple.com/tutorials/data/documentation/BundleResources/App-Privacy-Configuration/NSPrivacyAccessedAPITypes/NSPrivacyAccessedAPITypeReasons.json) on the fetched date."
+          }
+        }
+      },
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
