@@ -636,7 +636,7 @@
     81,
 
   "main-rows.test.mjs":
-    21,
+    22,
 
   "measure-frame-ink.test.mjs":
     22,
@@ -735,7 +735,7 @@
     116,
 
   "ops-refund.test.mjs":
-    8,
+    15,
 
   "ops-register.test.mjs":
     462,
@@ -765,7 +765,7 @@
     26,
 
   "paid-calls-metered.test.mjs":
-    11,
+    15,
 
   "palette-consistent.test.mjs":
     56,
