@@ -83,7 +83,7 @@ import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
     show SetupStepsView;
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
