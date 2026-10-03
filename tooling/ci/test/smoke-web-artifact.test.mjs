@@ -773,6 +773,9 @@ describe('ci.yml web-artifacts — the PR smoke probes the list --emit-listed pr
     assert.match(r.out, /\d+ probe request\(s\) were NOT paused by the interception/);
   });
 
+  // Not reachable from the PR job as wired (#1170 review ff591fd7 nit 2): --emit-listed reads the same _headers the bundle
+  // ships, so there the list and the CSP cannot disagree. The case pins the smoke's own refusal, which is what would catch a
+  // build that ships a different _headers from the one the list was read from.
   test('🔴 RED CONTROL — a bundle whose CSP lacks a listed origin is exit 1, naming it', { timeout: 90000 }, async (t) => {
     if (!needChrome(t)) return;
     const r = await smokeInChrome(cspBundle(appHeadersWith(` ${API}`, '')), prLaneConnect());
