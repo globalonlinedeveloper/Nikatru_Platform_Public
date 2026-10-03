@@ -40,8 +40,16 @@
 // process on Windows. `process.exitCode` is set instead.
 //
 // Usage:  node tooling/ops/check-worker-versions.mjs [--root DIR] [--fixture FILE]
+//           [--cloudflare-read-pending-until YYYY-MM-DD]
 // Env:    GITHUB_TOKEN | GH_TOKEN (ledger read), GITHUB_REPOSITORY,
-//         CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (the shield's fallback read)
+//         CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (the shield's fallback read;
+//         ops-watch maps CLOUDFLARE_READ_TOKEN ONLY into it, never the deploy token)
+// ⏱ 2026-10-03 (#1165 review bd5d50ac nit, club-nits-b B14): the step fell back to
+// the deploy token for a read. It now gets the read token alone, and
+// `--cloudflare-read-pending-until` is the deferral check-cloudflare-usage.mjs and
+// check-edge-zone.mjs already carry for the same unminted token: until that date a
+// shield whose header carried no commit PRINTS "deferred" and is not graded; after
+// it, with still no token, the shield is COVERAGE LOST as before.
 // `--fixture` answers every read from a file (`{ ledger, health, shieldHeader,
 // cloudflare }`, keyed by unit) and touches no network: the red control.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +61,7 @@ import { parseWorkflow } from '../ci/workflow-scan.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { CouldNotLook, transientLook, isTransientStatus, readWithBoundedRetry, classifyThrown } from './bounded-retry.mjs';
 import { SHIELD_HEADER, PROBES as SHIELD_PROBES, EDGE_CONFIG_REL } from './check-edge-shield.mjs';
+import { pendingDecision } from './check-cloudflare-usage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -289,8 +298,10 @@ export function fixtureReaders(fx) {
   };
 }
 
-/** Grade every derived unit. Returns `{ code, lines }`. */
-export async function run({ root, readers, matrix } = {}) {
+/** Grade every derived unit. Returns `{ code, lines }`. `shieldDeferredUntil`
+ *  (a date) is set only while the read token is unminted and the deferral holds:
+ *  the shield's Cloudflare read is then skipped and printed, never graded. */
+export async function run({ root, readers, matrix, shieldDeferredUntil } = {}) {
   const lines = [];
   const { units, problems } = deriveUnits(root, matrix ? { matrix } : {});
   const results = problems.map((p) => ({ code: 2, line: `?   ${p}` }));
@@ -312,7 +323,16 @@ export async function run({ root, readers, matrix } = {}) {
       } else {
         const header = await readers.shieldHeader();
         if (typeof header === 'string' && FULL_SHA.test(header.trim().toLowerCase())) live = { build: header.trim() };
-        else live = { versionId: await readers.cloudflare(u.script) };
+        else if (shieldDeferredUntil) {
+          results.push({
+            code: 0,
+            deferred: true,
+            line:
+              `--  ${u.unit} — NOT GRADED: its header carried no commit, and its Cloudflare read is deferred until ${shieldDeferredUntil} ` +
+              '(no CLOUDFLARE_READ_TOKEN in this step; the deploy token is never used for a read).',
+          });
+          continue;
+        } else live = { versionId: await readers.cloudflare(u.script) };
       }
       results.push(judgeUnit(u, ledger, live));
     } catch (e) {
@@ -321,9 +341,10 @@ export async function run({ root, readers, matrix } = {}) {
   }
   for (const r of results) lines.push(r.line);
   const code = fold(results);
+  const deferred = results.filter((r) => r.deferred).length;
   lines.push(
     code === 0
-      ? `ok  ${units.length} Worker unit(s) each serve the ledger's newest record.`
+      ? `ok  ${units.length - deferred} Worker unit(s) each serve the ledger's newest record${deferred ? `; ${deferred} deferred, not graded (above)` : ''}.`
       : code === 1
         ? '✗   a live Worker serves a build its ledger does not name as newest (above).'
         : '?   COVERAGE LOST — at least one Worker was not graded (above). That is never a pass.',
@@ -351,9 +372,15 @@ async function main() {
   } else {
     readers = liveReaders();
   }
-  const { code, lines } = await run({ root, readers });
+  const pending = opt('--cloudflare-read-pending-until');
+  const decision = pendingDecision(pending, { tokenPresent: Boolean(process.env.CLOUDFLARE_API_TOKEN), fixture: fixture !== undefined });
+  if (decision.note) console.log(decision.note);
+  // A malformed or EXPIRED deferral is printed, and the shield is then read as it
+  // always was: with no token that read is COULD NOT LOOK, so the run is 2.
+  if (decision.lost) console.log(`?   ${decision.lost}`);
+  const { code, lines } = await run({ root, readers, shieldDeferredUntil: decision.deferred ? pending : undefined });
   for (const l of lines) console.log(l);
-  process.exitCode = code;
+  process.exitCode = decision.lost ? 2 : code;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
