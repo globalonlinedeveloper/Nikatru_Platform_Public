@@ -45,7 +45,8 @@ import {
   providerOfRevokeStep,
   revokeProviderToken,
 } from './lib/provider-revoke';
-import { pageFlaggedRows, pageOnConsecutiveMiss, type PageRow } from './lib/owner-page';
+import { pageFlaggedRows, pageOnConsecutiveMiss, sendOwnerPage, type PageRow } from './lib/owner-page';
+import { executeQueuedCancels } from './lib/mor/cancel-executor';
 import {
   runOpsWatchdogChecks,
   scanStuckRuns,
@@ -3157,6 +3158,10 @@ async function runNightly(env: Env): Promise<void> {
   // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
   // retention.d1.platform_db.cancellation_requests) that the sweep never
   // touches.
+  // ⏱ 2026-10-02 · refund-finish (O-CANCEL-EXECUTOR-UNBUILT): the executor runs
+  // FIRST and the census counts what it left. Bounded (MAX_CANCEL_RETRIES_PER_RUN,
+  // one SELECT and one UPDATE each), inside the census job's statement budget.
+  await executeQueuedCancels(env, new Date().toISOString(), (subject, lines) => sendOwnerPage(env, subject, lines));
   await cancellationDrainCensus(env);
   // ⏱ 2026-10-01 · reminderMail, moneyRederive, erasureRetry, eventsRollup and
   // retentionSweep LEFT this firing for SPLIT_FIRINGS. The rollup still runs

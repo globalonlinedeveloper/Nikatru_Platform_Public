@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "productData": [
+    {
+      "platform": "IOS",
+      "metricCategories": [
+        {
+          "identifier": "HANG",
+          "metrics": [
+            {
+              "identifier": "hangRate",
+              "unit": {
+                "identifier": "s/hr",
+                "displayName": "seconds per hour"
+              },
+              "goalKeys": [],
+              "datasets": [
+                {
+                  "filterCriteria": {
+                    "device": "all_iphones",
+                    "deviceMarketingName": "All iPhones",
+                    "percentile": "percentile.fifty"
+                  },
+                  "points": [
+                    {
+                      "version": "1.0.0",
+                      "value": 0.8,
+                      "errorMargin": 0.1
+                    },
+                    {
+                      "version": "1.1.0",
+                      "value": 0.5,
+                      "errorMargin": 0.1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "identifier": "LAUNCH",
+          "metrics": [
+            {
+              "identifier": "launchTime",
+              "unit": {
+                "identifier": "ms",
+                "displayName": "milliseconds"
+              },
+              "datasets": [
+                {
+                  "filterCriteria": {
+                    "device": "all_iphones",
+                    "percentile": "percentile.fifty"
+                  },
+                  "points": [
+                    {
+                      "version": "1.1.0",
+                      "value": 420
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
