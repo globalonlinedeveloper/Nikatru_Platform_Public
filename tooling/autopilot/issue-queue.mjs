@@ -296,6 +296,8 @@ const msOf = (t) => (t === null || t === undefined ? NaN : Date.parse(t));
  *     so two concurrent reclaims of one holder resolve lowest-id-wins, like claims.
  *   · RELEASE by the holder's runner id empties the window; anyone else's is ignored.
  *   · PROGRESS is activity (and, after the holder, its launch record); YIELD is neither.
+ *   · A CLAIM (or an invalid RECLAIM) is activity only when its runner is the holder's:
+ *     another claimant's losing line says nothing about whether the holder is alive.
  * The lane PR's `updated_at` is only known as it is NOW, so it counts toward `fresh`
  * (read at `now`) but never toward a RECLAIM's validity, which every reader must judge
  * the same way forever.
@@ -325,8 +327,11 @@ export function claimState(comments, { owner, prUpdatedAt = null, now = Date.now
       continue;
     }
     // CLAIM, or a RECLAIM that was not valid: a plain claim inside the current window.
+    // Only the HOLDER's own claims are activity (review of #1163, minor 1): a losing
+    // CLAIM or an invalid RECLAIM — posted by a claimant whose local clock judged the
+    // holder stale early — must not keep a dead, never-launched holder fresh.
     if (!w.holder) w.holder = e;
-    w.activity.push(e.createdAt);
+    if (e.runner === w.holder.runner) w.activity.push(e.createdAt);
   }
   if (!w.holder) return { holder: null, fresh: false, launched: false, reclaimable: false };
   const times = w.activity.map(msOf).filter(Number.isFinite);
