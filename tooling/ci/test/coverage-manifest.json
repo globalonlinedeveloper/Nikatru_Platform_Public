@@ -708,7 +708,7 @@
     7,
 
   "package-boundaries.test.mjs":
-    33,
+    35,
 
   "package-earned.test.mjs":
     25,
@@ -759,10 +759,10 @@
     16,
 
   "port-switch.test.mjs":
-    37,
+    46,
 
   "ports.test.mjs":
-    73,
+    79,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -946,6 +946,9 @@
 
   "self-host-fallback-fonts.test.mjs":
     25,
+
+  "self-review.test.mjs":
+    37,
 
   "session-revocation.test.mjs":
     22,
