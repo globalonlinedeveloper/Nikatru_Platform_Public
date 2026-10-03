@@ -5101,6 +5101,19 @@ describe('assert-channel-register --for-submission — a build that cannot sign 
     }
   });
 
+  // ⏱ 2026-10-03 (release lane apple-ready): submit-appstore.mjs --submit uploads for TestFlight and stops.
+  // TestFlight is the Apple twin of Play's internal track, so it stays open; any other target is refused.
+  test('ios-appstore / macos-appstore: a TestFlight upload (unset or `testflight`) stays open; any other target is refused', () => {
+    const root = submissionTree((rows) => [...rows, nativeRow('ios-appstore', false), nativeRow('macos-appstore', false)]);
+    for (const id of ['ios-appstore', 'macos-appstore']) {
+      for (const [env, want] of [[{ APPLE_RELEASE_TARGET: '' }, 0], [{ APPLE_RELEASE_TARGET: 'testflight' }, 0], [{ APPLE_RELEASE_TARGET: 'app-review' }, 1]]) {
+        const { code, out } = gate(root, [`--for-submission=${id}`, '--real-submission'], env);
+        assert.equal(code, want, `${id} ${JSON.stringify(env)}\n${out}`);
+        if (want === 1) assert.match(out, /a submission for App Review \(the owner's console act/, out);
+      }
+    }
+  });
+
   test('linux-snap: edge (the script default) and beta stay open; candidate and stable are refused', () => {
     for (const [env, want] of [[{}, 0], [{ SNAP_CHANNEL: 'latest/beta' }, 0], [{ SNAP_CHANNEL: 'latest/candidate' }, 1], [{ SNAP_CHANNEL: 'latest/edge,stable' }, 1]]) {
       const { code, out } = gate(submissionTree(), ['--for-submission=linux-snap', '--real-submission'], env);
