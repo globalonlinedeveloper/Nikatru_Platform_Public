@@ -153,6 +153,10 @@ export interface Subscription {
   notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
   // ── added by 0009_tags.sql (AD-12) ──
   tags?: string | null; // JSON text of a list of labels; NULL = none. Optional: a DB 0007 has not reached has no such key
+  // ── added by 0010_trial_price_still_using.sql (train T11) ──
+  price_after_trial_minor: number | null; // the row's currency's minor units; NULL = converts at `price`
+  still_using: 'yes' | 'no' | null; // the user's "Still using?" answer; NULL = not answered
+  still_using_at: string | null; // ISO-8601 instant the SERVER stamped the answer
 }
 
 /** A payment_history row.

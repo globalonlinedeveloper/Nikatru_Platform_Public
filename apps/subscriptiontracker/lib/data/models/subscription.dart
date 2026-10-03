@@ -77,6 +77,26 @@ enum PaymentRail {
       this == PaymentRail.nach;
 }
 
+/// The user's answer to Insights' "Still using?" (0010's `still_using`).
+///
+/// ⏱ 2026-10-01 · train T11 (IN-08). The answer used to live on ONE device
+/// (`LocalSubscriptionStore.writeStillUsing`), so every other device asked
+/// again. It is a field of the row now, written by PATCH; the device store is a
+/// cache of it.
+enum StillUsing {
+  yes,
+  no;
+
+  /// The wire value, or null for anything else — "not answered", which is
+  /// what every row written before 0010 is.
+  static StillUsing? parse(Object? raw) {
+    for (final StillUsing a in StillUsing.values) {
+      if (a.name == raw) return a;
+    }
+    return null;
+  }
+}
+
 /// A single tracked subscription. JSON is snake_case to match the Worker/D1 API.
 ///
 /// Subly-domain model — lives in the app, not the shared spine (de-Subly-fy
@@ -112,6 +132,8 @@ class Subscription {
     this.priceAfterTrial,
     this.priceAfterTrialSupported = false,
     this.tags = const <String>[],
+    this.stillUsing,
+    this.stillUsingAt,
   });
 
   /// The catalogue service this row was picked from (ST-T9, AD-03) — the
@@ -136,6 +158,9 @@ class Subscription {
 
   /// What a trial turns into (ST-T9, AD-08): the API's
   /// `price_after_trial_minor`, in [price]'s currency. Null when unknown.
+  ///
+  /// ⏱ 2026-10-01 · train T11. The platform Worker's nightly trial-end step
+  /// moves [price] to it on [trialEndsOn] and clears it.
   final Money? priceAfterTrial;
 
   /// Whether the wire CARRIED `price_after_trial_minor` (train T11's column):
@@ -287,6 +312,13 @@ class Subscription {
   /// value.
   final int? noticeDays;
 
+  /// The user's answer to "Still using?", or null when not answered.
+  final StillUsing? stillUsing;
+
+  /// When the answer was given — the SERVER's clock (the API never stores the
+  /// client's), so two devices agree on it.
+  final DateTime? stillUsingAt;
+
   /// Whether the wire CARRIED `notice_days` at all. The detail screen offers
   /// the field only then: an API that predates 0004 would drop the value and
   /// answer with a row that no longer has it. Deploy order is the API first.
@@ -419,25 +451,37 @@ class Subscription {
     categoryId: _textOrNull(j['category_id']),
     rail: PaymentRail.tryParse(j['rail']),
     railHolder: _textOrNull(j['rail_holder']),
-    priceAfterTrial: j['price_after_trial_minor'] is int
-        ? Money(
-            j['price_after_trial_minor'] as int,
-            readPrice(
-              j,
-              fallbackCurrencyCode: fallbackCurrencyCode,
-            ).currencyCode,
-          )
-        : null,
+    priceAfterTrial: readPriceAfterTrial(
+      j,
+      fallbackCurrencyCode: fallbackCurrencyCode,
+    ),
     priceAfterTrialSupported: j.containsKey('price_after_trial_minor'),
     previousPrice: readPreviousPrice(
       j['price_history'],
       fallbackCurrencyCode: fallbackCurrencyCode,
     ),
     tags: normaliseTags(j['tags']),
+    stillUsing: StillUsing.parse(j['still_using']),
+    stillUsingAt: _instantOrNull(j['still_using_at']),
   );
 
   static String? _textOrNull(Object? raw) =>
       raw is String && raw.isNotEmpty ? raw : null;
+
+  /// `price_after_trial_minor` off the wire, in the row's own currency (the
+  /// one [readPrice] reads). `is int` for [readPrice]'s reason; anything else,
+  /// or a negative, is "none".
+  static Money? readPriceAfterTrial(
+    Map<String, dynamic> j, {
+    String fallbackCurrencyCode = Money.fallbackCurrencyCode,
+  }) {
+    final Object? minor = j['price_after_trial_minor'];
+    if (minor is! int || minor < 0) return null;
+    return Money(
+      minor,
+      readPrice(j, fallbackCurrencyCode: fallbackCurrencyCode).currencyCode,
+    );
+  }
 
   /// The OLD price of the newest entry in a `price_history` list, or null for
   /// no history or a shape this cannot read — never a guess.
@@ -580,6 +624,12 @@ class Subscription {
     // ST-AD12 (0009_tags.sql). Always sent: an API before 0009 ignores a key
     // its validator does not name, and `[]` is how a PATCH clears them.
     'tags': tags,
+    // Train T11 (IN-08). Always sent, null included, so [changesFrom] can send
+    // a clear; an API before 0010 ignores a key its validator does not name.
+    'still_using': stillUsing?.name,
+    // Kept so the cache round-trips it; the API checks its shape and stamps
+    // its own time, so a value sent here is never stored.
+    'still_using_at': stillUsingAt?.toUtc().toIso8601String(),
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -633,7 +683,10 @@ class Subscription {
   ///   · a `price` or `currency` without `price_minor` drops the stored exact
   ///     amount — [readPrice] prefers `price_minor`, so a stale one would
   ///     outrank the new decimal;
-  ///   · a legacy `cycle` without the pair re-derives the pair from it.
+  ///   · a legacy `cycle` without the pair re-derives the pair from it;
+  ///   · (0010) a currency that MOVES without `price_after_trial_minor` drops
+  ///     the post-trial amount, and an answer to "Still using?" is stamped
+  ///     now unless it repeats the stored one.
   Subscription patched(Map<String, dynamic> changes) {
     final Map<String, dynamic> merged = <String, dynamic>{
       ...toJson(),
@@ -642,6 +695,25 @@ class Subscription {
     if (!changes.containsKey('price_minor') &&
         (changes.containsKey('price') || changes.containsKey('currency'))) {
       merged.remove('price_minor');
+    }
+    if (!changes.containsKey('price_after_trial_minor') &&
+        changes.containsKey('currency') &&
+        changes['currency'] != price.currencyCode &&
+        merged.containsKey('price_after_trial_minor')) {
+      // Nulled, never removed: a missing key reads as "this API has no such
+      // column" ([priceAfterTrialSupported]).
+      merged['price_after_trial_minor'] = null;
+    }
+    if (changes.containsKey('still_using')) {
+      final StillUsing? answer = StillUsing.parse(changes['still_using']);
+      merged['still_using_at'] = answer == null
+          ? null
+          : (answer == stillUsing && stillUsingAt != null
+                ? stillUsingAt!.toUtc().toIso8601String()
+                : DateTime.now().toUtc().toIso8601String());
+    } else {
+      // Never the caller's: the twin keeps what it had, as the API does.
+      merged['still_using_at'] = toJson()['still_using_at'];
     }
     if (changes.containsKey('cycle') && !changes.containsKey('cycle_unit')) {
       final Cadence? legacy = Cadence.fromLegacy(changes['cycle']);
@@ -671,6 +743,13 @@ class Subscription {
     final Map<String, dynamic> out = <String, dynamic>{};
     for (final String k in b.keys) {
       if (k == 'id') continue;
+      // The server stamps `still_using_at`; a PATCH never carries it.
+      if (k == 'still_using_at') continue;
+      // An edit never CLEARS a "Still using?" answer. A draft that does not
+      // know it (the add sheet, an import row) holds null, and sending that
+      // would wipe what another device answered. An answer is written by
+      // `StillUsingController.answer` as its own PATCH.
+      if (k == 'still_using' && b[k] == null) continue;
       if (!_sameWireValue(a[k], b[k])) out[k] = b[k];
     }
     for (final List<String> group in _togetherKeys) {
@@ -698,6 +777,11 @@ class Subscription {
   }
 
   static const List<List<String>> _togetherKeys = <List<String>>[
+    // NOT `price_after_trial_minor`: an edit of the price alone sends only the
+    // price keys (truth pass AD-01/AD-02). The post-trial amount is sent when
+    // IT changes — alone, in the stored currency, which the API accepts — and
+    // a move to another currency changes it to null ([_with]), so the clear
+    // is sent explicitly with the money.
     <String>['price', 'price_minor', 'currency'],
     <String>['cycle', 'cycle_every', 'cycle_unit'],
   ];
@@ -743,9 +827,16 @@ class Subscription {
         : null,
     rail: rail,
     railHolder: railHolder,
-    priceAfterTrial: priceAfterTrial,
+    // A new amount in another currency cannot keep a post-trial amount that
+    // was counted in the old one ([patched] mirrors the API on the same rule).
+    priceAfterTrial:
+        price == null || priceAfterTrial?.currencyCode == price.currencyCode
+        ? priceAfterTrial
+        : null,
     priceAfterTrialSupported: priceAfterTrialSupported,
     tags: tags ?? this.tags,
+    stillUsing: stillUsing,
+    stillUsingAt: stillUsingAt,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

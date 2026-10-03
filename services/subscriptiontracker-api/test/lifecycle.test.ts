@@ -8,14 +8,18 @@
 // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
 // ─────────────────────────────────────────────────────────────────────────────
 import renewalsSrc from '../src/routes/renewals.ts?raw';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
 import renewals from '../src/routes/renewals';
-import subscriptions, {
-  CHARGING_STATUSES,
-  MAX_BATCH_STATEMENTS,
+import subscriptions, { CHARGING_STATUSES, MAX_BATCH_STATEMENTS } from '../src/routes/subscriptions';
+// ⏱ 2026-10-01 · train T11 (SV-01): the 30-day purge is the platform Worker's
+// nightly limb now, so the window and the purge are imported from there, as the
+// fan-out above is.
+import {
   SOFT_DELETE_PURGE_DAYS,
-} from '../src/routes/subscriptions';
+  probeHousekeepingSchema,
+  purgeSoftDeleted,
+} from '../../platform/src/subscription-housekeeping';
 import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -99,7 +103,10 @@ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being 
 });
 
 describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/ceilings.json)', () => {
-  it('the purge and a price-moving PATCH send at most that many statements, and the purge sends exactly it', async () => {
+  // ⏱ 2026-10-01 · train T11 (SV-01): the list used to send the purge's batch
+  // of three. It sends none now (test/list-read.test.ts counts its one SELECT),
+  // and a price-moving PATCH's two is the largest batch this router sends.
+  it('the list sends no batch, and a price-moving PATCH sends exactly that many statements', async () => {
     const sizes: number[] = [];
     const real = db.batch.bind(db);
     db.batch = async (statements) => {
@@ -108,8 +115,9 @@ describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/cei
     };
     const id = await create();
     await subs(U, '/v1/subscriptions');
+    expect(sizes, 'the list sent a batch').toEqual([]);
     await patch(id, { price: 999 });
-    expect(sizes, 'the list must purge and the price edit must log').toHaveLength(2);
+    expect(sizes, 'the price edit must log').toHaveLength(1);
     expect(Math.max(...sizes)).toBe(MAX_BATCH_STATEMENTS);
   });
 });
@@ -231,7 +239,10 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
     expect(db.rows('SELECT deleted_at FROM subscriptions')[0]?.deleted_at).toBe(first);
   });
 
-  it(`past ${SOFT_DELETE_PURGE_DAYS} days the next list removes the row AND its history — no orphan`, async () => {
+  // ⏱ 2026-10-01 · train T11 (SV-01): this was "the next LIST removes the row".
+  // The list no longer writes; the platform Worker's nightly purge does, for
+  // every user at once, so another user's expired row goes too.
+  it(`past ${SOFT_DELETE_PURGE_DAYS} days the nightly purge removes the row AND its history — no orphan`, async () => {
     const old = await create();
     const recent = await create();
     const other = await create();
@@ -241,14 +252,17 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
     // an old stamp can only be one the server wrote a month ago.
     db.db.exec(`UPDATE subscriptions SET deleted_at = '${longAgo}' WHERE id = '${old}'`);
     await patch(recent, { deleted_at: new Date().toISOString() });
-    // Another user's expired row is not this user's list's to purge.
+    // Another user's expired row: the nightly purge is not per user.
     db.db.exec(
       `INSERT INTO subscriptions (id, user_id, name, deleted_at) VALUES ('theirs', 'user-b', 'Y', '${longAgo}')`,
     );
 
     expect(await listIds()).toEqual([other]);
+    expect(db.rows('SELECT id FROM subscriptions'), 'the list purged: it must only read').toHaveLength(4);
+    const out = await purgeSoftDeleted(db as never, await probeHousekeepingSchema(db as never));
+    expect(out).toEqual({ ok: true, detail: 'purged=2' });
     expect(db.rows('SELECT id FROM subscriptions ORDER BY id').map((r) => r.id).sort()).toEqual(
-      [other, recent, 'theirs'].sort(),
+      [other, recent].sort(),
     );
     expect(
       db.rows('SELECT subscription_id FROM payment_history').map((r) => r.subscription_id).sort(),
@@ -256,7 +270,10 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
     ).toEqual([other, recent].sort());
   });
 
-  it('a purge that fails does not take the list down (best-effort, finding 2)', async () => {
+  // Since train T11 the list sends no batch at all, so a D1 refusing every
+  // batch cannot reach it; kept as the regression for "housekeeping never
+  // takes the list down".
+  it('a D1 that refuses every batch does not take the list down (finding 2)', async () => {
     const id = await create();
     db.batch = async () => {
       throw new Error('D1_ERROR: simulated purge failure');
@@ -394,46 +411,16 @@ describe('minor 2 — the cancel date is set on the TRANSITION into cancelled, a
   });
 });
 
-describe('minor 3 — a failed purge reaches the error sink, not only the log', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  // Red control: delete the `reportWorkerError` call from GET /'s catch (the
-  // `console.error` alone, as #1063 shipped it) — nothing is sent.
-  it('the list still loads, and ONE envelope naming this Worker and the route goes to GlitchTip', async () => {
-    const sent: Array<{ url: string; body: string }> = [];
-    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
-      sent.push({ url: String(url), body: String(init.body) });
-      return new Response('', { status: 200 });
-    });
-    const reporting = asUser(subscriptions, '/v1/subscriptions', {
-      APP_DB: db as never,
-      GLITCHTIP_DSN: 'https://abc123@glitchtip.example.test/7',
-      RELEASE: 'sha-purge',
-    });
-    const id = await create();
-    db.batch = async () => {
-      throw new Error('D1_ERROR: simulated purge failure');
-    };
-
-    const res = await reporting(U, '/v1/subscriptions?email=a@b.test');
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as Row[]).map((r) => r.id)).toEqual([id]);
-    expect(sent, 'the purge failure reached console.error and nothing else').toHaveLength(1);
-    expect(sent[0]?.url).toBe('https://glitchtip.example.test/api/7/envelope/');
-    expect(sent[0]?.body).toContain('"server_name":"subscriptiontracker-api"');
-    expect(sent[0]?.body).toContain('"release":"sha-purge"');
-    expect(sent[0]?.body).toContain('"transaction":"GET /v1/subscriptions"');
-    expect(sent[0]?.body).toContain('simulated purge failure');
-    expect(sent[0]?.body, 'the query string reached the sink').not.toContain('email=');
-  });
-});
+// ⏱ 2026-10-01 · train T11 (SV-01): "minor 3 — a failed purge reaches the error
+// sink" and "#1089 nit 5 — the purge report is handed to waitUntil" stood here
+// and below. Both graded the catch around GET /'s purge, and the purge left the
+// list read with this train. Its failure is now an ok=0 `renewals` heartbeat row
+// on the platform Worker — services/platform/test/subscription-housekeeping.test.ts
+// "a failed purge is an ok=0 heartbeat row" — which check-heartbeats.mjs reads.
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Independent review of #1089 — finding 1 (a repeated removal is idempotent),
-// finding 2 (a date cleared alone) and nit 5 (the `waitUntil` hand-off). Each
-// block names its red control.
+// Independent review of #1089 — finding 1 (a repeated removal is idempotent)
+// and finding 2 (a date cleared alone). Each block names its red control.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The production transient, verbatim (services/_shared/test/d1-retry.test.ts). */
@@ -624,46 +611,5 @@ describe('review of #1089, finding 2 — clearing the cancel date alone cannot l
     await patch(id, { status: 'cancelled', cancelled_on: '2026-09-01' });
     const out = (await (await patch(id, { status: 'active', cancelled_on: null })).json()) as Row;
     expect(out).toMatchObject({ status: 'active', cancelled_on: null });
-  });
-});
-
-describe('review of #1089, nit 5 — the purge report is handed to waitUntil', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  // Red control: delete `c.executionCtx.waitUntil(report)` from GET /'s catch.
-  // The report is still sent (fetch runs before its first await), so minor 3's
-  // test stays green, but nothing keeps the Worker alive to finish it.
-  it('the report promise goes to the execution context, and resolves as delivered', async () => {
-    let sent = 0;
-    vi.stubGlobal('fetch', async () => {
-      sent++;
-      return new Response('', { status: 200 });
-    });
-    const handed: Promise<unknown>[] = [];
-    const ctx = {
-      waitUntil: (p: Promise<unknown>) => {
-        handed.push(p);
-      },
-      passThroughOnException: () => {},
-      props: {},
-    } as unknown as ExecutionContext;
-    const reporting = asUser(
-      subscriptions,
-      '/v1/subscriptions',
-      { APP_DB: db as never, GLITCHTIP_DSN: 'https://abc123@glitchtip.example.test/7', RELEASE: 'sha-wait' },
-      ctx,
-    );
-    await create();
-    db.batch = async () => {
-      throw new Error('D1_ERROR: simulated purge failure');
-    };
-
-    const res = await reporting(U, '/v1/subscriptions');
-    expect(res.status).toBe(200);
-    expect(handed, 'the report was never handed to waitUntil').toHaveLength(1);
-    expect(await handed[0]).toBe(true);
-    expect(sent).toBe(1);
   });
 });

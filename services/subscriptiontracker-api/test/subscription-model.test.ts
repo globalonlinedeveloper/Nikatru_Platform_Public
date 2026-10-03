@@ -73,6 +73,9 @@ const INR_WEEKLY_TRIAL = {
   shared_with: 'Family',
   share_numerator: 1,
   share_denominator: 4,
+  // 0010 (train T11): what the trial converts to, and a "Still using?" answer.
+  price_after_trial_minor: 89900,
+  still_using: 'yes',
 } as const;
 
 /** What the model's keys must read back as — `cycle` is DERIVED, never sent. */
@@ -97,10 +100,16 @@ const EXPECTED_MODEL_KEYS = {
   shared_with: 'Family',
   share_numerator: 1,
   share_denominator: 4,
+  price_after_trial_minor: 89900,
+  still_using: 'yes',
+  // Stamped by the SERVER, never sent: any instant, checked by its own test.
+  still_using_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
 };
 
-async function create(body: unknown): Promise<Row> {
-  const res = await post(body);
+/** A body that names no subscription is given one: a name is required since
+ *  train T11 (AD-01), and these tests are about the other keys. */
+async function create(body: Row): Promise<Row> {
+  const res = await post({ name: 'A subscription', ...body });
   expect(res.status).toBe(201);
   return (await res.json()) as Row;
 }
@@ -162,7 +171,11 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
     // rolled — by seven days. What stays pinned is the route's half: `cycle`
     // is NULL for a weekly row, so a Worker that predates the pair still
     // cannot roll it a month and invent a payment.
-    const weekly = await create({ ...INR_WEEKLY_TRIAL, next_renewal: inDays(-3) });
+    // ⏱ 2026-10-01 · train T11 (AD-13): ACTIVE and with no trial. The fixture
+    // is a trial ending in three days, and a charge dated inside a trial is no
+    // charge — the fan-out writes no payment for it
+    // (services/platform/test/subscription-housekeeping.test.ts).
+    const weekly = await create({ ...INR_WEEKLY_TRIAL, status: 'active', trial_ends_on: null, next_renewal: inDays(-3) });
     const monthly = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly', next_renewal: inDays(-3) });
     expect(db.rows('SELECT cycle FROM subscriptions WHERE id = ?', weekly.id as string)[0].cycle).toBeNull();
     await recomputeRenewals(db as never, 'subscriptiontracker');
@@ -322,8 +335,10 @@ describe('the write rules that span keys', () => {
       { cancel_url: 'http://example.com/cancel' },
       { status: 'active', cancelled_on: '2026-09-28' },
       { rail: 'unknown', service_id: 'x.y_z-1' },
+      { price_after_trial_minor: 10_000_000_000_000, currency: 'KWD' },
+      { price_after_trial_minor: 0, currency: 'INR', still_using: 'no' },
     ]) {
-      expect((await post(body)).status, JSON.stringify(body)).toBe(201);
+      expect((await post({ name: 'Boundary', ...body })).status, JSON.stringify(body)).toBe(201);
     }
   });
 });

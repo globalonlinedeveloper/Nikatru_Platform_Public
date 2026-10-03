@@ -553,7 +553,7 @@
       {
         "file": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "boundedBy": "MAX_BATCH_STATEMENTS",
-        "note": "⏱ 2026-09-29 (ST-E3, ST-I4). Two FIXED-size batches: `purgeExpired` (3 — payment_history, price_change, subscriptions) and a price-moving PATCH (2 — the UPDATE and its price_change row). Neither grows with input; test/lifecycle.test.ts counts them."
+        "note": "⏱ 2026-09-29 (ST-E3, ST-I4). Two FIXED-size batches: `purgeExpired` (3 — payment_history, price_change, subscriptions) and a price-moving PATCH (2 — the UPDATE and its price_change row). Neither grows with input; test/lifecycle.test.ts counts them. ⏱ 2026-10-01 · train T11 (SV-01): `purgeExpired` left this router — GET / ran it before every list — for the platform Worker's nightly limb (services/platform/src/subscription-housekeeping.ts, its own row below). One batch remains, the PATCH's 2, and MAX_BATCH_STATEMENTS is 2."
       },
       {
         "file": "services/subscriptiontracker-api/src/routes/categories.ts",
@@ -563,6 +563,11 @@
       {
         "file": "services/platform/src/scheduled.ts",
         "unboundedReason": "The heartbeat writes ONE row per cron TARGET, and the target list is `appTargets()` — a compiled-in array in this repo, not caller input, so its size is a source edit and is visible in review. It is nonetheless unbounded in the arithmetic sense: at 50 apps this batch is 50 statements and crosses the Free ceiling under the worst-case reading. [4]B-11 (increment 9) is where the job/target set stops being a hardcoded array, and the chunking belongs with it rather than here, where it would be a second uncoordinated fan-out policy. ⏱ 2026-09-24 · THE BACKUP FIRING SPENDS THIS BATCH INSIDE A BUDGET. On `30 2 * * *` the export runs alone and this batch writes one row per outcome of `runBackup` — 8 statements — in the same invocation as the export's D1 pool, so MAX_D1_QUERIES_PER_RUN (services/platform/src/backup/index.ts) is 50 - 8 = 42 and the two together stay inside d1.queriesPerInvocation's recorded 50 under the worst-case reading. services/platform/test/backup-export.test.ts counts that whole invocation on the databases and fails when the sum passes the ceiling."
+      },
+      {
+        "file": "services/platform/src/subscription-housekeeping.ts",
+        "boundedBy": "HOUSEKEEPING_STATEMENTS_PER_APP",
+        "note": "⏱ 2026-10-01 · train T11 (AD-13, SV-01). Two FIXED-size, SET-BASED batches per app per night, inside the renewals fan-out: `endTrials` (2 — a price_change INSERT … SELECT and one UPDATE for every trial ending tonight) and `purgeSoftDeleted` (3 — payment_history, price_change, subscriptions). With the one-statement column probe that is HOUSEKEEPING_STATEMENTS_PER_APP = 6, whatever the data: the rows each step touches are capped by MAX_TRIAL_ENDS_PER_RUN and MAX_PURGE_PER_RUN, never the statement count. services/platform/test/subscription-housekeeping.test.ts counts them on an empty night and a busy one."
       },
       {
         "file": "services/platform/src/renewals.ts",

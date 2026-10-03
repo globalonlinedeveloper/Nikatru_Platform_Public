@@ -10,7 +10,6 @@ import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempo
 import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
-import { reportWorkerError, requestSinkContext } from '../lib/error-sink';
 import {
   isBoundedString,
   isCalendarDate,
@@ -88,6 +87,11 @@ export function serializeSubscription(row: Subscription) {
     // the list; NULL, a DB 0007 has not reached, or text edited outside this
     // Worker is served as [] ("no tags"), never a 500.
     tags: parseTags(row.tags),
+    // 0010_trial_price_still_using.sql (train T11). `?? null` for 0004's reason.
+    // The post-trial price is in the row's `currency`, like `price_minor`.
+    price_after_trial_minor: row.price_after_trial_minor ?? null,
+    still_using: row.still_using ?? null,
+    still_using_at: row.still_using_at ?? null,
   };
 }
 
@@ -250,22 +254,20 @@ const CANCEL_DATED_ON_TRANSITION =
   "cancelled_on = CASE WHEN status = 'cancelled' AND cancelled_on IS NOT NULL THEN cancelled_on ELSE ? END";
 
 /**
- * How long a soft-deleted row stays restorable before `purgeExpired` removes it
- * with its history. The app's Undo is a snackbar, so the window only has to
- * outlast a mis-tap noticed later; 30 days is the recovery window the data
- * inventory declares for it (tooling/legal/data-inventory.json).
+ * The most statements any `.batch()` on this router sends: a price-moving
+ * PATCH's two (the price_change row and the UPDATE). FIXED BY THE CODE, not
+ * sized by input, and test/lifecycle.test.ts counts every batch against it.
  *
- * @ceiling none — a retention PERIOD in days, not a platform resource.
- */
-export const SOFT_DELETE_PURGE_DAYS = 30;
-/**
- * The most statements any `.batch()` on this router sends: `purgeExpired`'s
- * three (PATCH's price-change batch is two). FIXED BY THE CODE, not sized by
- * input, and test/lifecycle.test.ts counts every batch against it.
+ * ⏱ 2026-10-01 · train T11 (SV-01): this was three, for `purgeExpired`, the
+ * 3-statement DELETE batch GET / ran ahead of EVERY list read — four statements
+ * per list, on the path every app open takes. The purge is a nightly platform
+ * limb now (services/platform/src/subscription-housekeeping.ts
+ * `purgeSoftDeleted`, which owns SOFT_DELETE_PURGE_DAYS), and GET / is one
+ * SELECT.
  *
  * @ceiling d1.queriesPerInvocation lte
  */
-export const MAX_BATCH_STATEMENTS = 3;
+export const MAX_BATCH_STATEMENTS = 2;
 /** @ceiling none — column width; an ISO-8601 instant is 24 characters. */
 const MAX_INSTANT = 40;
 /** An ISO-8601 instant with an explicit zone: what `toISOString()` writes. */
@@ -281,6 +283,9 @@ const RAILS = [
   'unknown',
 ] as const;
 const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
+/** The "Still using?" answers (0010). The one closed set 0010 DID put in a
+ *  CHECK: the question is yes/no, so a third member is a different question. */
+const STILL_USING = ['yes', 'no'] as const;
 
 /** ISO 4217 is three letters; stored upper case, as the client reads it.
  *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
@@ -321,7 +326,10 @@ type Column =
   | 'share_denominator'
   | 'category_id'
   | 'notice_days'
-  | 'tags';
+  | 'tags'
+  | 'price_after_trial_minor'
+  | 'still_using'
+  | 'still_using_at';
 
 /** Only the keys the body actually carried — PATCH must not touch the others. */
 type Fields = Partial<Record<Column, string | number | null>>;
@@ -523,13 +531,15 @@ function validate(body: unknown): ValidatedSubscription {
     // ⏱ 2026-09-29 · ST-E3 (round-2 F03): SOFT DELETE, WRITABLE. A row with
     // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
     // `null` brings it back (the app's Undo). It is kept, history and all, for
-    // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
+    // SOFT_DELETE_PURGE_DAYS, then the platform Worker's nightly
+    // `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts)
+    // removes the two together.
     //
     // 🔴 THE CLIENT'S INSTANT IS CHECKED FOR SHAPE AND THEN NOT TRUSTED. It is
     // the device clock: one a month behind (or any past instant) would make
-    // the next GET / purge the row AND its history at once, with no Undo, and
-    // a future one would hide the row forever. So a non-null value means
-    // "delete now" and PATCH stamps the SERVER's time, keeping an existing
+    // the next nightly purge take the row AND its history at once, with no
+    // Undo, and a future one would hide the row forever. So a non-null value
+    // means "delete now" and PATCH stamps the SERVER's time, keeping an existing
     // stamp exactly as DELETE /:id does (review of #1063, finding 1).
     if (deletedAt === null) {
       fields.deleted_at = null;
@@ -603,6 +613,49 @@ function validate(body: unknown): ValidatedSubscription {
       // [] is stored as NULL: "no tags" has one spelling in the table.
       fields.tags = tags.length === 0 ? null : JSON.stringify(tags);
     }
+  }
+
+  // ── 0010: the price after the trial (AD-08) and "Still using?" (IN-08) ──────
+  // The post-trial price is an exact amount in the ROW's currency, bounded as
+  // `price_minor` is. Whether that currency exists is the route's to check
+  // (`afterTrialCurrency`): on PATCH it may be the stored row's.
+  const afterTrial = body.price_after_trial_minor;
+  if (afterTrial !== undefined) {
+    if (afterTrial === null) {
+      fields.price_after_trial_minor = null;
+    } else if (!isWholeNumber(afterTrial, 0, MAX_PRICE_MINOR)) {
+      return invalid(`price_after_trial_minor must be a whole number between 0 and ${MAX_PRICE_MINOR}, or null`);
+    } else {
+      fields.price_after_trial_minor = afterTrial;
+    }
+  }
+
+  const stillUsing = body.still_using;
+  if (stillUsing !== undefined) {
+    if (stillUsing === null) {
+      // NULL = not answered: the question comes back on every device.
+      fields.still_using = null;
+    } else if (!isOneOf(stillUsing, STILL_USING)) {
+      return invalid(`still_using must be one of ${STILL_USING.join(', ')}, or null`);
+    } else {
+      fields.still_using = stillUsing;
+    }
+  }
+
+  // 🔴 `still_using_at` IS CHECKED FOR SHAPE AND THEN NOT TRUSTED, for
+  // `deleted_at`'s reason: it is the device clock. The route stamps the SERVER's
+  // time when an answer is written (and keeps the stamp when the same answer is
+  // re-sent), so a body that echoes the row back is not refused and cannot
+  // back-date an answer either. Never written to `fields`.
+  const stillUsingAt = body.still_using_at;
+  if (
+    stillUsingAt !== undefined &&
+    stillUsingAt !== null &&
+    (!isBoundedString(stillUsingAt, MAX_INSTANT) ||
+      !INSTANT.test(stillUsingAt) ||
+      Number.isNaN(Date.parse(stillUsingAt)))
+  ) {
+    return invalid('still_using_at must be an ISO-8601 instant with a zone, or null; the server stamps it');
   }
 
   // ── 0003: rules that span two keys ─────────────────────────────────────────
@@ -799,59 +852,54 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
 }
 
 /**
- * Remove THIS user's rows that were soft-deleted more than
- * SOFT_DELETE_PURGE_DAYS ago, with the history that belongs to them, in ONE
- * batch (one implicit transaction): a row never goes without its history or
- * the history without its row.
+ * NAMES ARE REQUIRED (train T11, AD-01 server half). `isBoundedString` checks a
+ * length and nothing else, so `{name: "  "}` was stored and every list showed a
+ * row with no name — a subscription the user could not tell from any other.
  *
- * 🔴 THIS IS THE ONE PLACE A SUBSCRIPTION IS EVER HARD-DELETED outside account
- * erasure. It runs on the user's own list read, so it needs no cron and touches
- * no one else's rows; a user who never opens the app again keeps their removed
- * rows until they do, or until erasure takes everything.
+ *   · POST: a name must be sent, and must hold something other than whitespace;
+ *   · PATCH: a body that OMITS `name` is a partial edit and is fine; one that
+ *     sends it null or blank is refused, because that is clearing the name.
+ *
+ * Its own error code, not `invalid_body`, so a client can put the message on
+ * the name field. Checked after `validate`, so a non-string name is still the
+ * `invalid_body` it always was.
  */
-async function purgeExpired(db: D1Database, userId: string): Promise<void> {
-  const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
-  const expired =
-    'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';
-  await db.batch([
-    db
-      .prepare(`DELETE FROM payment_history WHERE user_id = ? AND subscription_id IN (${expired})`)
-      .bind(userId, userId, cutoff),
-    db
-      .prepare(`DELETE FROM price_change WHERE user_id = ? AND subscription_id IN (${expired})`)
-      .bind(userId, userId, cutoff),
-    db
-      .prepare('DELETE FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?')
-      .bind(userId, cutoff),
-  ]);
+function nameMissing(f: Fields, create: boolean): boolean {
+  if (f.name === undefined) return create;
+  return f.name === null || String(f.name).trim() === '';
+}
+
+const NAME_REQUIRED = {
+  error: 'name_required',
+  detail: 'name must hold at least one character that is not a space',
+} as const;
+
+/**
+ * THE POST-TRIAL PRICE IS IN THE ROW'S CURRENCY (train T11, AD-08), so a
+ * non-null one needs a currency to be in: the body's, or on PATCH a stored one.
+ * `storedCurrency` is undefined on POST (there is no row yet).
+ */
+function afterTrialCurrency(f: Fields, storedCurrency?: string | null): Invalid | null {
+  if (f.price_after_trial_minor === undefined || f.price_after_trial_minor === null) return null;
+  const currency = f.currency !== undefined ? f.currency : storedCurrency;
+  if (currency === undefined || currency === null) {
+    return invalid('price_after_trial_minor needs a currency: send `currency`, or set one on the row first');
+  }
+  return null;
 }
 
 // GET / — list, most expensive first. A soft-deleted row is not listed; a
 // paused or cancelled one is (it stays, with its history — ST-E3).
+//
+// ⏱ 2026-10-01 · train T11 (SV-01): ONE STATEMENT. This handler ran
+// `purgeExpired` — a 3-statement DELETE batch — ahead of its SELECT on every
+// list read, so the read every app open makes cost four statements and three
+// of them were writes. The 30-day purge of soft-deleted rows, with their
+// payment_history and price_change, is the platform Worker's nightly limb now
+// (services/platform/src/subscription-housekeeping.ts `purgeSoftDeleted`).
+// test/list-read.test.ts counts the statements.
 app.get('/', async (c) => {
   const userId = c.get('userId');
-  // BEST-EFFORT: housekeeping must never take the user's list down. A purge
-  // that fails is retried on the next list; the rows it would have removed stay
-  // soft-deleted, which is the safe side of the failure.
-  //
-  // 🔴 …AND IT IS REPORTED, NOT ONLY LOGGED (review of #1063, minor 3). The
-  // catch answers around the failure, so `app.onError` never sees it, and a
-  // `console.error` alone is a `wrangler tail` nobody watches: a purge failing
-  // on every list for a month looked exactly like one that worked. It goes to
-  // the Worker's one error sink with the context `app.onError` sends — built by
-  // the same `requestSinkContext`, not a copy of it — under `waitUntil` so the
-  // list is not held open behind it.
-  try {
-    await purgeExpired(c.env.APP_DB, userId);
-  } catch (err) {
-    console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
-    const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
-    try {
-      c.executionCtx.waitUntil(report);
-    } catch {
-      void report;
-    }
-  }
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
       'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
@@ -896,9 +944,12 @@ app.post('/', async (c) => {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
   const f = checked.fields;
+  if (nameMissing(f, true)) return c.json(NAME_REQUIRED, 400);
   if (f.deleted_at !== undefined && f.deleted_at !== null) {
     return c.json({ error: 'invalid_body', detail: 'deleted_at cannot be set on create' }, 400);
   }
+  const afterTrial = afterTrialCurrency(f);
+  if (afterTrial) return c.json({ error: 'invalid_body', detail: afterTrial.detail }, 400);
   const category = await resolveCategory(c.env.APP_DB, userId, f);
   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
   // A row created cancelled with no date was cancelled today: the detail screen
@@ -919,10 +970,11 @@ app.post('/', async (c) => {
           currency, price_minor, cycle_every, cycle_unit, first_charge_on,
           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
           cancel_url, rail, rail_holder, reminder_days, shared_with,
-          share_numerator, share_denominator, category_id, notice_days, tags)
+          share_numerator, share_denominator, category_id, notice_days, tags,
+          price_after_trial_minor, still_using, still_using_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?, ?)`,
+               ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       userId,
@@ -959,6 +1011,10 @@ app.post('/', async (c) => {
       f.category_id ?? null,
       f.notice_days ?? null,
       f.tags ?? null,
+      f.price_after_trial_minor ?? null,
+      f.still_using ?? null,
+      // An answer is stamped with the SERVER's time — see `validate`.
+      f.still_using === undefined || f.still_using === null ? null : ts,
     ),
   );
 
@@ -1192,6 +1248,7 @@ app.patch('/:id', async (c) => {
   if (!checked.ok) {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
+  if (nameMissing(checked.fields, false)) return c.json(NAME_REQUIRED, 400);
 
   // ── OWNERSHIP, AND A REMOVED ROW IS NOT THERE (review of #1063, minor 1) ───
   // A soft-deleted row answers a PATCH exactly as GET /:id and POST /:id/payments
@@ -1225,6 +1282,18 @@ app.patch('/:id', async (c) => {
     return c.json({ error: 'not_found' }, 404);
   }
   if (removing && existing.deleted_at !== null) return answerRow(c, id);
+  // A post-trial price sent WITHOUT a currency is in the stored one: read only
+  // then, so every other PATCH keeps the one ownership read it had.
+  const storedCurrency =
+    f.price_after_trial_minor != null && f.currency === undefined
+      ? ((
+          await firstRow<Pick<Subscription, 'currency'>>(
+            c.env.APP_DB.prepare('SELECT currency FROM subscriptions WHERE id = ? AND user_id = ?').bind(id, userId),
+          )
+        )?.currency ?? null)
+      : undefined;
+  const afterTrial = afterTrialCurrency(f, storedCurrency);
+  if (afterTrial) return c.json({ error: 'invalid_body', detail: afterTrial.detail }, 400);
   const category = await resolveCategory(c.env.APP_DB, userId, f);
   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
 
@@ -1270,6 +1339,29 @@ app.patch('/:id', async (c) => {
   if (dateClearedAlone) {
     sets.push("cancelled_on = CASE WHEN status = 'cancelled' THEN COALESCE(cancelled_on, ?) ELSE NULL END");
     values.push(todayYmd());
+  }
+  // ── 0010 (train T11) ───────────────────────────────────────────────────────
+  // An answer to "Still using?" is stamped with the server's time, and a body
+  // that re-sends the SAME answer (a full-body edit, an outbox replay) keeps the
+  // stamp it had: SET reads the row as it was, so the comparison is against the
+  // stored answer, decided inside the write.
+  if (f.still_using !== undefined) {
+    if (f.still_using === null) {
+      put('still_using_at', null);
+    } else {
+      sets.push('still_using_at = CASE WHEN still_using IS ? THEN COALESCE(still_using_at, ?) ELSE ? END');
+      values.push(f.still_using, ts, ts);
+    }
+  }
+  // A currency that MOVES takes the post-trial price with it unless the body
+  // sends a new one, for `checkExactAmount`'s reason: an amount in minor units
+  // read in another currency is ₹649.00 relabelled ¥64,900. Unlike
+  // `price_minor` it is kept when the SAME currency is re-sent, because every
+  // client before 0010 sends `currency` on every edit and none sends this
+  // column, and wiping a trial's real price would convert it at the trial's.
+  if (f.currency !== undefined && f.price_after_trial_minor === undefined) {
+    sets.push('price_after_trial_minor = CASE WHEN currency IS ? THEN price_after_trial_minor ELSE NULL END');
+    values.push(f.currency);
   }
 
   if (removing) {
@@ -1364,7 +1456,8 @@ async function answerRow(c: Context<AppEnv>, id: string) {
 // has no foreign key, so nothing cascaded) — history no screen could reach and
 // only erasure would ever remove. Now it sets `deleted_at` exactly as
 // PATCH {deleted_at} does, so an older client's DELETE is restorable too, and
-// `purgeExpired` removes the row WITH its history once the window has passed.
+// the nightly `purgeSoftDeleted` (services/platform/src/subscription-housekeeping.ts)
+// removes the row WITH its history once the window has passed.
 // Idempotent: a second DELETE keeps the first instant.
 app.delete('/:id', async (c) => {
   const userId = c.get('userId');

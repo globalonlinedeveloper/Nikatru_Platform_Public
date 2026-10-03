@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
+import { endTrials, housekeepingDetail, probeHousekeepingSchema, purgeSoftDeleted } from './subscription-housekeeping';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
 import { inboundFor } from './ports';
@@ -605,10 +606,42 @@ export async function renewalsFanOut(env: Env): Promise<void> {
       rows.push({ target: t.appId, ok: false, detail: 'no database binding for this app' });
       continue;
     }
-    const outcome = await recomputeRenewals(t.db, t.appId);
-    rows.push({ target: t.appId, ok: outcome.ok, detail: outcome.detail });
+    rows.push({ target: t.appId, ...(await appRenewalsPass(t.db, t.appId)) });
   }
   await recordHeartbeat(env, rows, RENEWALS_JOB);
+}
+
+/**
+ * ⏱ 2026-10-01 · train T11 — ONE APP'S NIGHT: trials end (AD-13), renewals
+ * roll, soft-deleted rows past their window are purged (SV-01; until now the
+ * API ran that purge on every list read). In that order, for the reasons in
+ * src/subscription-housekeeping.ts's header, each containing its own errors so
+ * one step's failure never skips the next. The three outcomes are ONE heartbeat
+ * row, ok only when all three were.
+ *
+ * A failed schema probe fails both housekeeping steps (their row says so) and
+ * still lets the renewals pass, which probes for itself, run.
+ */
+export async function appRenewalsPass(
+  db: D1Database,
+  appId: string,
+  nowMs: number = Date.now(),
+): Promise<{ ok: boolean; detail: string }> {
+  let schema: Awaited<ReturnType<typeof probeHousekeepingSchema>> | null = null;
+  let probeError = '';
+  try {
+    schema = await probeHousekeepingSchema(db);
+  } catch (err) {
+    probeError = String(err);
+  }
+  const trials = schema
+    ? await endTrials(db, schema, nowMs)
+    : { ok: false, detail: `trials failed: schema probe: ${probeError}` };
+  const renewals = await recomputeRenewals(db, appId);
+  const purge = schema
+    ? await purgeSoftDeleted(db, schema, nowMs)
+    : { ok: false, detail: 'purge failed: schema probe' };
+  return housekeepingDetail(trials, renewals, purge);
 }
 
 /**

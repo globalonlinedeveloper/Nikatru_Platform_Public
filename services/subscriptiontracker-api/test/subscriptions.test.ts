@@ -175,18 +175,22 @@ describe('the valid shapes the first-party client sends still work', () => {
     expect(res.status).toBe(201);
   });
 
-  it('accepts a create with no body fields at all', async () => {
-    const res = await post({});
+  // ⏱ 2026-10-01 · train T11 (AD-01): this was "accepts a create with no body
+  // fields at all", asserting a stored NULL name. A name is required now
+  // (test/names-required.test.ts); the defaults below are what it still holds.
+  it('accepts a create with a name and nothing else, and defaults the rest', async () => {
+    const res = await post({ name: 'Only a name' });
     expect(res.status).toBe(201);
     const [row] = db.rows('SELECT * FROM subscriptions');
     expect(row.used_pct).toBe(0);
     expect(row.unused).toBe(0);
-    expect(row.name).toBeNull();
+    expect(row.name).toBe('Only a name');
+    expect(row.category).toBeNull();
   });
 
   it('accepts the range boundaries: price 0, used_pct 0 and 100', async () => {
-    expect((await post({ price: 0, used_pct: 0 })).status).toBe(201);
-    expect((await post({ price: 1_000_000_000, used_pct: 100 })).status).toBe(201);
+    expect((await post({ name: 'Low', price: 0, used_pct: 0 })).status).toBe(201);
+    expect((await post({ name: 'High', price: 1_000_000_000, used_pct: 100 })).status).toBe(201);
   });
 
   it('accepts a real price in a low-denomination currency', async () => {
@@ -198,12 +202,13 @@ describe('the valid shapes the first-party client sends still work', () => {
   });
 
   it('explicit null clears EVERY nullable column, including unused', async () => {
-    // One rule for null, not a per-column table nobody can remember.
+    // One rule for null, not a per-column table nobody can remember. `name` is
+    // not in the list since train T11: it is required, and a null name is the
+    // 400 `name_required` (test/names-required.test.ts).
     const id = await seed();
     const res = await subs(U, `/v1/subscriptions/${id}`, {
       method: 'PATCH',
       body: {
-        name: null,
         category: null,
         price: null,
         cycle: null,
@@ -218,7 +223,6 @@ describe('the valid shapes the first-party client sends still work', () => {
     expect(res.status).toBe(200);
     const [row] = db.rows('SELECT * FROM subscriptions WHERE id = ?', id);
     for (const col of [
-      'name',
       'category',
       'price',
       'cycle',
@@ -234,8 +238,8 @@ describe('the valid shapes the first-party client sends still work', () => {
   });
 
   it('accepts a leap day and rejects the same date in a non-leap year', async () => {
-    expect((await post({ next_renewal: '2028-02-29' })).status).toBe(201);
-    expect((await post({ next_renewal: '2027-02-29' })).status).toBe(400);
+    expect((await post({ name: 'Leap', next_renewal: '2028-02-29' })).status).toBe(201);
+    expect((await post({ name: 'Leap', next_renewal: '2027-02-29' })).status).toBe(400);
   });
 
   it('PATCH updates only the keys present, and explicit null clears a column', async () => {
@@ -267,7 +271,7 @@ describe('the valid shapes the first-party client sends still work', () => {
   });
 
   it('a float used_pct is truncated into the INTEGER column', async () => {
-    await post({ used_pct: 33.7 });
+    await post({ name: 'Float', used_pct: 33.7 });
     expect(db.rows('SELECT used_pct FROM subscriptions')[0].used_pct).toBe(33);
   });
 });

@@ -197,6 +197,10 @@ void main() {
       'cancel_url',
       // ⏱ 2026-10-01 · T20 (AD-12): the tags cell — kept and listed too.
       'tags',
+      // ⏱ 2026-10-01 · train T11: 0010's three, kept and listed the same way.
+      'price_after_trial_minor',
+      'still_using',
+      'still_using_at',
     ], reason: 'kept and listed, never dropped');
     final core.ImportPlan plan = core.ImportPlan.build(
       table,
@@ -212,11 +216,49 @@ void main() {
     expect(plan.accountedFor, plan.rowCount);
   });
 
+  test('the header main already ships keeps its order: new columns are '
+      'appended, never inserted', () {
+    expect(
+      kSubscriptionCsvHeader.take(22),
+      <String>[
+        'id',
+        'name',
+        'category',
+        'price',
+        'currency',
+        'cycle',
+        'next_renewal',
+        'plan',
+        'glyph',
+        'used_pct',
+        'usage_note',
+        'unused',
+        'cycle_every',
+        'cycle_unit',
+        'status',
+        'first_charge_on',
+        'trial_ends_on',
+        'cancelled_on',
+        'deleted_at',
+        'notes',
+        'cancel_url',
+        'tags',
+      ],
+      reason:
+          'a column an earlier export had never moves; new columns are '
+          'appended',
+    );
+  });
+
   test('the column map covers every field of Subscription', () {
     // `price_minor` is the same amount as `price`; the file carries it once,
     // as major units beside its currency code.
-    final Set<String> fields = _subs.first.toJson().keys.toSet()
-      ..remove('price_minor');
+    // A row from an API that serves `price_after_trial_minor` (0010): T9's
+    // capability gate leaves the key off `toJson` for one that does not.
+    final Set<String> fields = Subscription.fromJson(<String, dynamic>{
+      ..._subs.first.toJson(),
+      'price_after_trial_minor': null,
+    }).toJson().keys.toSet()..remove('price_minor');
     expect(kSubscriptionCsvHeader.toSet(), fields);
     expect(kSubscriptionCsvHeader, hasLength(fields.length));
   });

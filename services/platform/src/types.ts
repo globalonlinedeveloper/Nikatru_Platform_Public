@@ -1107,6 +1107,9 @@ export interface Subscription {
   cycle_every?: number | null;
   cycle_unit?: string | null;
   currency?: string | null;
+  // 0003's `trial_ends_on`: a crossing dated before it is inside the trial, and
+  // the pass writes no assumed payment for it (train T11, AD-13).
+  trial_ends_on?: string | null;
 }
 
 /** One app the nightly scheduler fans out to. */
