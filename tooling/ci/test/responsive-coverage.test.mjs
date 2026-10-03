@@ -208,7 +208,7 @@ describe('the guard says YES on the tree as it is', () => {
     // that ENFORCES rather than reports.
     // FIVE since 2026-10-01 (T16): packages/app_lock declares flutter_test and a
     // public widget (the lock screen), and measures both of its surfaces.
-    assert.match(out, /7 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 feedback-intake: packages/feedback; help-search: packages/help; merged over T16: 7
+    assert.match(out, /8 root\(s\) DERIVED, never listed/); // ⏱ 2026-10-03 feedback-intake: packages/feedback; help-search: packages/help; merged over T16: 7; ⏱ 2026-10-03 growth-codes: 8, packages/purchases (RedeemCodeEntry, its first public widget)
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
     assert.match(
       out,
