@@ -54,17 +54,20 @@ id = "GHSA-86w9-cpqp-85rv"
 ignoreUntil = 2026-10-15T00:00:00Z
 reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive devDependency of web-ext in tooling/web-ext (CI-only Firefox lint and AMO signer); in no shipped package"
 
-# ⏱ 2026-10-02 23:10Z (club held-apps r2): the PR's security-scan went red on GHSA-vfj7-8cjw-p6xm (CI run 37074900134).
-# braces <= 3.0.3, stack-exhaustion denial of service through deeply nested patterns.
-# NO PATCHED RELEASE EXISTS (3.0.3 is the newest on npm; the advisory's range is last_affected 3.0.3).
-# Exposure: a TRANSITIVE devDependency in sites/_shared ONLY (@11ty/eleventy -> chokidar 3.6.0 -> braces), the
-# file-watcher of the static-site build. It is in no app, Worker or extension, and it expands no user-supplied pattern.
-# Fix when braces publishes one (or chokidar drops it): `npm update braces --prefix sites/_shared`, and delete this
-# entry in the same commit. scan-dependencies.mjs warns 14 days before the expiry, and the expiry reddens the lane.
+# ⏱ 2026-10-03 00:40Z (lead 7185eb): every pull request's security lane went red from ~23:00Z on 2026-10-02 (first: #1166,
+# run 37075211542) when OSV began reporting GHSA-vfj7-8cjw-p6xm. Main's last CI (fe659651, 22:13Z) ran before it, so main is
+# exposed on its next push and at the 07:30 UTC heartbeat. No pull request caused it.
+# braces <= 3.0.3, stack exhaustion (denial of service) on deeply nested brace patterns (high).
+# NO PATCHED RELEASE EXISTS (3.0.3 is the newest on npm; the advisory names no fixed version), so it cannot be moved today.
+# Exposure: a TRANSITIVE devDependency in sites/_shared ONLY: @11ty/eleventy and @11ty/eleventy-dev-server require
+# chokidar ^3.6.0, which requires braces ~3.0.2. It expands the build's own watch globs from the Eleventy config; no
+# user-supplied pattern reaches it, and it is in no shipped output (the sites deploy static HTML).
+# Fix when braces publishes one: `npm update braces --prefix sites/_shared` (or an Eleventy release on chokidar 4, which
+# has no braces), and delete this entry in the same commit. The expiry re-reddens the lane if that has not happened.
 [[IgnoredVulns]]
 id = "GHSA-vfj7-8cjw-p6xm"
-ignoreUntil = 2026-11-02T00:00:00Z
-reason = "braces <=3.0.3 has no patched release (2026-10-02); transitive devDependency of @11ty/eleventy via chokidar in sites/_shared (build-time file-watcher); in no shipped package"
+ignoreUntil = 2026-10-17T00:00:00Z
+reason = "braces <=3.0.3 has no patched release (2026-10-03); transitive devDependency (eleventy -> chokidar 3) in sites/_shared, expands the build's own globs only; in no shipped output"
 
 # ── 2026-10-01 · THE GRADLE BUILD CLASSPATH, NOW VISIBLE [rv2-security-003 stage (b)] ──
 # apps/subscriptiontracker/android/gradle/verification-metadata.xml (Gradle dependency
