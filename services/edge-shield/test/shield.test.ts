@@ -288,6 +288,21 @@ describe('refused with Retry-After, per class', () => {
     });
   }
 
+  // ⏱ 2026-10-02 · review of #1115, finding 1. The deploy and rollback smoke probe
+  // Box B with a POST to the intake envelope, which is counted against the intake
+  // cap; in a crash storm the probe is REFUSED, and a refusal marked `1` read as an
+  // older shield in path, so the smoke went red while this release was serving.
+  it('🔴 a refusal carries the deployed RELEASE too, so a refused deploy-smoke probe still names this commit', async () => {
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    for (const [cls, make] of cases) {
+      const env = { ...fullEnv(0), RELEASE: sha };
+      const res = await worker.fetch(make(), env, ctx());
+      expect(res.status).toBe(CLASSES[cls].refusal);
+      expect(res.headers.get('x-nikatru-shield')).toBe(sha);
+    }
+    expect(originCalls).toHaveLength(0);
+  });
+
   it('🔴 reads NO client-address header and NO Origin, admitted or refused (LEAD RULING SHIELD-R3, rv-c21 SHIELD-F2)', async () => {
     // ADR no.011 / ADR no.020: no Worker reads a client-IP header. The request
     // still CARRIES one to the origin (the pass-through test holds that); the

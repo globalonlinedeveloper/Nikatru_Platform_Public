@@ -66,10 +66,15 @@ const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts',
 // URL. Found in services/platform, whose handler test probed live Box B hosts;
 // the same file runs in both Workers so neither can grow the defect. See
 // ../_shared/test/no-network.ts.
+// ⏱ 2026-10-01 · time travel: the second setup file moves `Date` to the instant
+// in NIKATRU_TEST_NOW and does nothing when it is unset, so the weekly
+// .github/workflows/time-travel.yml can run this suite ~400 days ahead and at
+// the year boundary, and a date fuse (#1101: fx.test.ts, red on every PR at
+// 2026-10-01 00:00Z) fires there first. See ../_shared/test/test-clock.ts.
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "../_shared/test/**/*.test.ts"],
-    setupFiles: ["../_shared/test/no-network.ts"],
+    setupFiles: ["../_shared/test/no-network.ts", "../_shared/test/test-clock.ts"],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],

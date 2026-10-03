@@ -417,7 +417,7 @@ void main() {
   //
   // See the file header for why these two cases pump their own repository.
   group('selecting a day narrows the detail column', () {
-    final DateTime now = DateTime.now();
+    final DateTime now = wallClock();
     Subscription on(String id, String name, int day) => Subscription(
       id: id,
       name: name,

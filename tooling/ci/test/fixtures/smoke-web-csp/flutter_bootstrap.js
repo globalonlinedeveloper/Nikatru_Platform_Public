@@ -24,4 +24,16 @@
     // refused: see above
   }
   window.dispatchEvent(new Event('flutter-first-frame'));
+  // The installed-version read, the way package_info_plus makes it on web (it fetches
+  // version.json) and the app publishes it (core publishVersionRead): the version string,
+  // or null when the read fails. Published AFTER the first frame, as the app's is.
+  let version = null;
+  try {
+    const r = await fetch('version.json', { cache: 'no-store' });
+    const body = await r.json();
+    version = typeof body.version === 'string' ? body.version : null;
+  } catch (e) {
+    // a failed read publishes null
+  }
+  window.__nikatruPackageVersion = version;
 })();

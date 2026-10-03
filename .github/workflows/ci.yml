@@ -237,6 +237,14 @@ jobs:
           PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node tooling/ci/assert-pr-rows.mjs
+      # why: the other half of the line above. The register's reader reads `Rows:` from
+      # main's SQUASH MESSAGES, which GitHub's squash default writes without the PR body,
+      # so a green body says nothing about main. Main only (a push, or its dispatch — land-next P2) — a PR's merge does not
+      # exist yet — and a step-level `if:` for the same A6 reason. fetch-depth: 0 above
+      # gives it the first-parent history it walks back to the newest PR merge.
+      - name: Main's newest merge carries its Rows line in the squash message
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        run: node tooling/ci/assert-main-rows.mjs --ref "$GITHUB_SHA"
       - name: The CI docs match the workflows (gen-ci-map --check)
         run: node tooling/ci/gen-ci-map.mjs --check
       - name: The release runbook's arming lines match the register (channel-arming --check)
@@ -1644,12 +1652,13 @@ jobs:
         run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
       # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
       # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
-      # reads services/, so the Worker lanes below see the tree they saw before.
+      # reads services/, so the Worker lanes below see the tree they saw before: by an EXIT trap, so a red plan
+      # check removes it too (fix-brick-stamp-outside-repo), and gitignored in case the shell itself dies.
       - name: A scratch service stamps from the Worker template, and the plan reads it as a service
         run: |
+          trap 'rm -rf services/probesvc-api' EXIT
           node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
           node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
-          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
@@ -2479,9 +2488,11 @@ jobs:
       # why: the bundle boots under its own _headers CSP, must reach flutter-first-frame, and
       # fetches each connect-src origin from the page with its service worker bypassed, exactly
       # as deploy-web.yml's smoke does; the smoke answers each probe itself, so nothing is sent.
+      # Its installed-version read must equal the build name (O-FORCE-UPDATE-VERSION-READ-UNPROVEN).
       - name: Launch the built bundle once
         run: >
           node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+          --build-name ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           ${{ steps.connect.outputs.connect }}
       # why: SYN-X1 C-16. Every a11y test runs on the Dart VM, where enableWebSemantics() is
       # dead code (kIsWeb is false), so nothing else loads the SHIPPED bundle and reads the

@@ -126,6 +126,11 @@ const REQUIRED_COVERAGE = [
     // cleared a floor meant to need several and vacuity-b's "packages/ thinned
     // to core" case went green. 80 is above any single package (core 61) and
     // below the tree less its largest-but-one (174 - design_system 27 = 147).
+    // ⏱ 2026-10-02 · club apply-platform (update_exit + web_page*): 80 -> 100.
+    // Measured by `git ls-tree` on the branch: packages/core/lib 78 -> 82 .dart, so
+    // core alone cleared 80 and vacuity-b's "thinned to core" case went red again.
+    // 100 is above any single package (core 82) and below the tree less its
+    // largest-but-one (250 - design_system 53 = 197).
     // ⏱ 2026-10-02 · club-st-singles: 80 -> 100. packages/core/lib grew 77 -> 81
     // .dart (sha256_hex, email_code, sign_in_methods, legal_change_notes), so
     // core alone cleared 80 again and vacuity-b's "thinned to core" case went
@@ -138,6 +143,8 @@ const REQUIRED_COVERAGE = [
     // in CI run 37092405549). Measured: core 80, design_system 53, api_client 27,
     // tree 259. 100 is above any single package and below the tree less its
     // largest-but-one (259 - 53 = 206).
+    // ⏱ 2026-10-03 · the merged tree (club apply-platform + main): core 88, tree 284;
+    // 100 still clears core alone and sits below 284 - 53 = 231. Unchanged.
     floor: 100,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },

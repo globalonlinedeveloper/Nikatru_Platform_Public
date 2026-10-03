@@ -351,6 +351,11 @@
       "reads": "every `uses:` of each workflow and local composite action, to find the remote actions whose `runs.using` a vendor retirement would reach"
     },
     {
+      "path": "tooling/ops/check-worker-versions.mjs",
+      "property": "workflow-scan",
+      "reads": "every `record-deployment.mjs <unit> <url>` call in deploy-workers.yml, to derive the Worker units whose live version is compared with their newest ledger record (PB-06)"
+    },
+    {
       "path": "tooling/ops/land-rules.mjs",
       "property": "path-compare",
       "reads": "nothing: MAIN_WORKFLOW_PATH (.github/workflows/ci.yml) is compared with a workflow run object path field, because a run name is ci.yml run-name. The module imports nothing from the filesystem (R6)."

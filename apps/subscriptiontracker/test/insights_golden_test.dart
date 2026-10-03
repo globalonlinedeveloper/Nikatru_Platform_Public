@@ -6,11 +6,18 @@
 // medium 700, expanded 1024, large 1440 — in light and dark: sixteen goldens
 // under test/goldens/. Then one case per data state, which runs everywhere.
 //
-// 🔴 THE FIXTURE IS TIME-STABLE ON PURPOSE. The screen reads `DateTime.now()`,
-// so every renewal is placed RELATIVE to now, no plan is yearly (an "annual in
-// N days" row would print a weekday and a month that change the width of the
-// line), and the Pro forecast is LOCKED (its unlocked form prints month
-// names). What is photographed does not drift with the calendar.
+// 🔴 THE FIXTURE IS TIME-STABLE ON PURPOSE. Every renewal is placed RELATIVE to
+// now, no plan is yearly (an "annual in N days" row would print a weekday and a
+// month that change the width of the line), and the Pro forecast is LOCKED (its
+// unlocked form prints month names). What is photographed does not drift with
+// the calendar.
+//
+// ⏱ 2026-10-01 · AND "NOW" IS PINNED, through `nowProvider` ([_kNow]). The
+// screen used to read `DateTime.now()` three times and this fixture a fourth,
+// so the rows and the screen's "today" were two reads of the wall clock: a run
+// straddling midnight placed a row a day off, and a time-travel run (which
+// moves the clock behind `nowProvider`, never `DateTime.now()`) would move the
+// screen and leave the fixture behind. One pinned instant feeds both.
 //
 // Regenerate, after a DELIBERATE visual change only, on Linux:
 //   flutter test --update-goldens test/insights_golden_test.dart
@@ -50,8 +57,11 @@ const Map<String, Size> _classes = <String, Size>{
   'large': Size(1440, 900),
 };
 
+/// The one "now" the fixture and the screen both read (see the header).
+final DateTime _kNow = DateTime(2026, 9, 10, 10);
+
 List<Subscription> _subs() {
-  final DateTime now = DateTime.now();
+  final DateTime now = _kNow;
   Subscription s(String id, String name, String cat, int minor, int days) =>
       Subscription(
         id: id,
@@ -159,7 +169,8 @@ Future<void> _pump(
       subscriptionRepositoryProvider.overrideWithValue(repo ?? _Repo()),
       currencyCodeProvider.overrideWithValue(currency),
       paywallLockedProvider.overrideWithValue(locked),
-      if (now != null) nowProvider.overrideWithValue(now),
+      // ⏱ 2026-10-02 · unpinned cases read the pinned [_kNow], never the wall clock.
+      nowProvider.overrideWithValue(now ?? () => _kNow),
       ...extra,
     ],
   );
@@ -278,7 +289,9 @@ void main() {
     testWidgets('Insights · converted · compact · ${b.name}', (
       WidgetTester tester,
     ) async {
-      final DateTime now = DateTime.now();
+      // The screen reads the pinned [_kNow] (header); so must these rows, or
+      // "in 5 days" is a month away from the screen's today.
+      final DateTime now = _kNow;
       await _pump(
         tester,
         _classes['compact']!,

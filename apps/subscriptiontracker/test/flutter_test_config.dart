@@ -1,7 +1,18 @@
+// Runs around EVERY test file under apps/subscriptiontracker/test (Flutter
+// picks up the nearest flutter_test_config.dart and calls [testExecutable]).
+//
+// With `NIKATRU_TEST_NOW` unset — every pull request, every local run — the
+// clock is untouched. With it set, `wallClock` (the seam behind
+// `nowProvider`) starts at that instant, so the weekly time-travel run executes
+// this suite on another day. See test/support/test_clock.dart.
+
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/test_clock.dart';
 
 /// ⏱ 2026-10-02 · review of #1155, finding 5 — THE KEYCHAIN ANSWERS IN TESTS.
 ///
@@ -15,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// fresh install, which is what those tests describe. A test that needs another
 /// store still overrides `secureStoreProvider`, as before.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  installTestClock(Platform.environment);
   TestWidgetsFlutterBinding.ensureInitialized();
   final Map<String, String> keychain = <String, String>{};
   setUp(keychain.clear);

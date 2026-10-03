@@ -35,15 +35,9 @@ class SublyApp extends ConsumerWidget {
     // at launch too; it fails open while config/version load (never blocks the UI).
     final bool mustUpdate = ref.watch(mustForceUpdateProvider);
 
-    // [pipeline C-8] RUNTIME first, compiled-in default as the fallback. The
-    // wall's destination must be repointable without a release: it is the
-    // emergency exit, and an emergency exit you can only move by shipping a new
-    // build is not one. `valueOrNull` and the `??` are both load-bearing —
-    // while the config resolves, or with no network at all, the compiled-in
-    // default still gives the button somewhere to go.
-    // Indentation here matches `dart format`'s output exactly. The template is
-    // mustache, so nothing can format it — only a real stamp can, and the
-    // app_brick lane runs `dart format --set-exit-if-changed` on that stamp.
+    // [pipeline C-8] RUNTIME first, the compiled-in define as the fallback: an
+    // exit movable only by shipping a build is not one. `.value` and `??` are
+    // load-bearing; the per-channel EXIT (reload, listing, URL) is core's.
     final String updateUrl =
         ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;
     return MaterialApp.router(
@@ -194,19 +188,22 @@ class SublyApp extends ConsumerWidget {
           // `Localizations` widget the MaterialApp installs — the same reason
           // the wall can be themed from here at all. Reading it above the
           // MaterialApp would throw.
-          child: ForceUpdateGate(
-            mustUpdate: mustUpdate,
-            onUpdate: () => _openUpdate(updateUrl),
-            title: AppLocalizations.of(context).updateRequiredTitle,
-            message: AppLocalizations.of(context).updateRequiredMessage,
-            buttonLabel: AppLocalizations.of(context).updateRequiredAction,
-            // ⏱ 2026-10-01 · T16 — the app lock covers everything below it,
-            // and the glance, shortcuts and share-in are installed here.
-            child: DeviceSurfacesHost(
-              child: AnalyticsGate(
-                child: _NotificationTapGate(
-                  child: _OfflineBanner(
-                    child: child ?? const SizedBox.shrink(),
+          child: refreshConfigWhileMounted(
+            onRefresh: () => ref.invalidate(appConfigProvider),
+            child: ForceUpdateGate(
+              mustUpdate: mustUpdate,
+              onUpdate: () => _openUpdate(ref, updateUrl),
+              title: AppLocalizations.of(context).updateRequiredTitle,
+              message: AppLocalizations.of(context).updateRequiredMessage,
+              buttonLabel: AppLocalizations.of(context).updateRequiredAction,
+              // ⏱ 2026-10-01 · T16 — the app lock covers everything below it,
+              // and the glance, shortcuts and share-in are installed here.
+              child: DeviceSurfacesHost(
+                child: AnalyticsGate(
+                  child: _NotificationTapGate(
+                    child: _OfflineBanner(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   ),
                 ),
               ),
@@ -217,12 +214,13 @@ class SublyApp extends ConsumerWidget {
     );
   }
 
-  Future<void> _openUpdate(String url) async {
-    // The wall's own launcher: the app's link policy plus the ONE destination
-    // the config resolved (`updateLinkLauncher`). Best-effort — a refusal or a
-    // missing handler reads as not opened and never crashes the update screen.
-    await updateLinkLauncher(url).openUrl(url);
-  }
+  Future<void> _openUpdate(WidgetRef ref, String url) => core.openUpdateExit(
+    url,
+    ref.read(appConfigProvider).value?.updateUrl,
+    channel: AppConfig.releaseChannel,
+    listing: ref.read(reviewPrompterProvider).openStoreListing,
+    open: updateLinkLauncher(url).openUrl,
+  );
 }
 
 /// 🔴 [pipeline C-13] `OfflineNotice`'s ONLY CALL SITE — and until 2026-08-06
