@@ -428,10 +428,70 @@ if (archived.size === 0) {
     );
   }
   const current = archived.get(published) ?? new Map();
-  const missing = locales.filter((l) => !current.has(l));
+  // ⏱ 2026-10-02 (O-TAMIL-NOTICE-REVIEW) — the first translated notice landed (ta, 2026-09-26),
+  // so a translation is now held to more than its declared version:
+  //   · LAG. A locale that has EVER had a notice and has none at the version in force means
+  //     the English moved on and the translation did not. PRINTED, NOT FAILED, for now: failing
+  //     it makes every English bump wait on a reviewed translation, and whether to do that is
+  //     the lead's call (PR #1173) — the next English bump (DPDP E1/E2) is already queued.
+  //   · STRUCTURE. Only `en` is text-compared (limb 1), so a translation is held to the English
+  //     snapshot of the same version on what does not translate: the count of each block
+  //     element, the link targets, and how often the age floor 18 is stated. A dropped
+  //     section, list item, emphasised claim or contact link reds here.
+  const everNoticed = (locale) => [...archived.values()].some((m) => m.has(locale));
+  const missing = locales.filter((l) => !current.has(l) && !everNoticed(l));
+  for (const locale of locales) {
+    if (!current.has(locale) && everNoticed(locale)) {
+      const had = [...archived].filter(([, m]) => m.has(locale)).map(([v]) => v).sort();
+      prints.push(
+        `TRANSLATION BEHIND: ${ARCHIVE_ROOT}/${published}/${locale}/${DOC} is missing, but ${locale} has had a notice ` +
+          `before (${had.join(', ')}). The English notice moved to ${published} and the ${locale} translation did not: ` +
+          'its readers are left with a superseded document. Translate the new version; turning this print into a ' +
+          "build failure is the lead's call.",
+      );
+    }
+  }
+  const STRUCTURE = [
+    ['<h2>', /<h2\b/gi],
+    ['<li>', /<li\b/gi],
+    ['<p>', /<p\b/gi],
+    ['<b>', /<b\b/gi],
+    ['age floor 18', null],
+  ];
+  const shapeOf = (html) => {
+    const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main\s*>/i)?.[1];
+    if (main === undefined) return null;
+    const counts = STRUCTURE.map(([, re]) =>
+      re ? (main.match(re) ?? []).length : (visibleText(main).match(/(?<!\d)18(?!\d)/g) ?? []).length,
+    );
+    const hrefs = [...main.matchAll(/\bhref=["']([^"']*)["']/gi)].map((m) => m[1]).sort();
+    return { counts, hrefs };
+  };
+  const enSnap = current.get('en');
+  const enShape = enSnap ? shapeOf(enSnap.src) : null;
   for (const locale of locales) {
     const snap = current.get(locale);
     if (!snap) continue;
+    if (locale !== 'en' && enShape) {
+      const shape = shapeOf(snap.src);
+      if (shape === null) {
+        problems.push(`${rel(snap.file)} has no <main> element, so it cannot be compared with the English notice.`);
+      } else {
+        const drift = STRUCTURE.flatMap(([name], i) =>
+          shape.counts[i] === enShape.counts[i] ? [] : [`${name} ${shape.counts[i]} vs en ${enShape.counts[i]}`],
+        );
+        if (shape.hrefs.join('\n') !== enShape.hrefs.join('\n')) {
+          drift.push(`links [${shape.hrefs.join(', ')}] vs en [${enShape.hrefs.join(', ')}]`);
+        }
+        if (drift.length) {
+          problems.push(
+            `${rel(snap.file)} does not have the structure of the English notice it translates (${drift.join('; ')}). ` +
+              'A translation that lost a section, an item, an emphasised claim or a contact link is a different ' +
+              'notice wearing the same version number.',
+          );
+        }
+      }
+    }
     if (snap.declared !== published) {
       problems.push(
         `${ARCHIVE_ROOT}/${published}/${locale}/${DOC} declares version ${snap.declared ?? '(none)'} while the ` +
