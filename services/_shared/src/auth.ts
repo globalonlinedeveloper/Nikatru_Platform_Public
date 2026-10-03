@@ -41,7 +41,8 @@
 // that keeps the build — services/_shared became a package declaring `jose`,
 // installed into services/_shared/node_modules by each Worker's postinstall, so
 // it resolves through its own `exports`. It lives in auth-middleware.ts; THIS
-// file still imports nothing (shared-home.test.ts holds the split).
+// file still imports no package (shared-home.test.ts holds the split) — only
+// the rendered issuer table beside it (⏱ 2026-10-03 · port-auth).
 //
 // ── 🔴 A CARRIER'S SECRET EXPOSURE IS NOW A PROPERTY OF ITS IMPORTS ──────────
 // THIS FILE NAMES NO SECRET. `SUPABASE_JWT_SECRET` appears nowhere in it and
@@ -51,6 +52,8 @@
 // each Worker's `middleware/auth.ts` imports, which is what
 // `tooling/ci/assert-erasure-reach.mjs` limb 3 walks.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { AUTH_ISSUERS, type AuthIssuerRow } from './generated/ports';
 
 /** The KV key both carriers cache the JWKS document under. ONE identity project
  *  portfolio-wide, so one key. */
@@ -121,11 +124,65 @@ export const JWKS_LKG_KV_KEY = 'supabase_jwks_lkg';
  * token whose header says `alg: none` or a symmetric algorithm is decided by the
  * token itself — the caller choosing how they are verified.
  */
-export const verifyOptions = (supabaseUrl: string) => ({
-  issuer: `${supabaseUrl}/auth/v1`,
-  audience: 'authenticated',
-  algorithms: ['ES256'],
-});
+export const verifyOptions = (from: string | TrustedIssuer) => {
+  const i = typeof from === 'string' ? issuerAt(from) : from;
+  return { issuer: i.issuer, audience: i.audience, algorithms: [...i.algorithms] };
+};
+
+/**
+ * ⏱ 2026-10-03 · port-auth · ISSUERS ARE CONFIG. One issuer a Worker trusts,
+ * resolved: its `iss` claim, where its key set is published, and how its tokens
+ * are verified. The rows are tooling/ports/auth.json `issuers`, rendered into
+ * ./generated/ports.ts (AUTH_ISSUERS); nothing types an issuer URL.
+ */
+export interface TrustedIssuer {
+  readonly id: string;
+  readonly issuer: string;
+  readonly jwksUrl: string;
+  readonly algorithms: readonly string[];
+  readonly audience: string;
+}
+
+/** A row resolved at `origin`. */
+export function resolveIssuer(row: AuthIssuerRow, origin: string): TrustedIssuer {
+  return {
+    id: row.id,
+    issuer: `${origin}${row.issuerPath}`,
+    jwksUrl: `${origin}${row.jwksPath}`,
+    algorithms: row.algorithms,
+    audience: row.audience,
+  };
+}
+
+/** The PRIMARY issuer (the first row) at `origin` — what a caller holding only
+ *  `SUPABASE_URL` verified against before the list existed, byte for byte. */
+export function issuerAt(origin: string, rows: readonly AuthIssuerRow[] = AUTH_ISSUERS): TrustedIssuer {
+  const primary = rows[0];
+  if (primary === undefined) throw new Error('AUTH_ISSUERS is empty: no issuer is trusted');
+  return resolveIssuer(primary, origin);
+}
+
+/**
+ * Every issuer this Worker trusts, in order: each row whose origin variable is
+ * SET in `env` (a row naming an unset variable is not trusted — a dual-issuer
+ * window opens by setting it). The first is the primary.
+ */
+export function trustedIssuers(env: object, rows: readonly AuthIssuerRow[] = AUTH_ISSUERS): TrustedIssuer[] {
+  const vars = env as Readonly<Record<string, unknown>>;
+  const out: TrustedIssuer[] = [];
+  for (const row of rows) {
+    const origin = vars[row.originEnv];
+    if (typeof origin === 'string' && origin !== '') out.push(resolveIssuer(row, origin));
+  }
+  return out;
+}
+
+/** The trusted issuer whose `iss` is exactly `iss`, or null. An exact match: no
+ *  prefix, no case folding, no trailing-slash leniency. */
+export function issuerNamed(iss: unknown, issuers: readonly TrustedIssuer[]): TrustedIssuer | null {
+  if (typeof iss !== 'string') return null;
+  return issuers.find((i) => i.issuer === iss) ?? null;
+}
 
 /**
  * Could the KEY SET not be obtained, as distinct from the token being bad?

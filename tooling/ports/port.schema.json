@@ -79,6 +79,25 @@
       "additionalProperties": { "$ref": "#/$defs/feature" },
       "description": "Required for a port selected per call (selection.by: per-call): each FEATURE that may call the port, the adapter and the model it runs on (null until measured), the candidate models, and the tokens one call takes. Read by assert-ports limb 1 and by the AI dry run (port-switch C15–C17)."
     },
+    "issuers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "originEnv", "issuerPath", "jwksPath", "algorithms", "audience", "why"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "originEnv": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "description": "The Worker variable holding this issuer's origin — never the origin itself, which differs per environment." },
+          "issuerPath": { "type": "string", "pattern": "^/[A-Za-z0-9/_.-]*$" },
+          "jwksPath": { "type": "string", "pattern": "^/[A-Za-z0-9/_.-]*$" },
+          "algorithms": { "type": "array", "minItems": 1, "items": { "enum": ["ES256", "RS256", "EdDSA"] } },
+          "audience": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 20 }
+        }
+      },
+      "description": "Optional, auth only (port-auth): the identity issuers a Worker trusts, in order — the FIRST is the primary, whose key set is the one cached in KV. Rendered by tooling/ports/render.mjs into services/_shared/src/generated/ports.ts (AUTH_ISSUERS), which services/_shared/src/auth.ts resolves against a Worker's environment. A cutover's dual-issuer window is a second row."
+    },
     "generated": { "type": "boolean", "description": "true once code reads a rendered table instead of a hand array. No port may claim it before the render tool exists." },
     "handTables": {
       "type": "array",

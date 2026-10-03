@@ -47,6 +47,14 @@
 //               `generated: false`, a file the port's handTables names. A walk
 //               of the import graph of services/*/src (tests are not modules of
 //               a Worker bundle). Dart is C-5's (assert-package-boundaries.mjs).
+//               ⏱ 2026-10-03 · port-auth · ITS URL HALF: no module under
+//               services/*/src builds an identity-provider URL (`/auth/v1`,
+//               `/rest/v1`, comment-stripped, strings kept) except the auth
+//               port's ts adapters and src/generated/; every such call is a
+//               verb of IdentityAdmin. Declared exceptions
+//               (IDENTITY_URL_EXCEPTIONS) print, and one that stops matching is
+//               a stale row. The adapter is the positive control: not matched
+//               is COVERAGE LOST.
 //   5 secrets   every `secrets` NAME is a tooling/worker-secrets.json row when
 //               that file exists, else an `interface Env` member of some
 //               services/*/src/types.ts — printed `manifest absent, read
@@ -201,6 +209,21 @@ export function workerSourceShapes(text) {
   const cf = CF_READ_RE.exec(bare) ?? CF_BRACKET_RE.exec(code);
   return { binding: binding ? binding[0] : null, cf: cf ? cf[0].trim() : null };
 }
+/** Limb 4's URL half (port-auth): a path of the identity provider's HTTP API —
+ *  GoTrue's `/auth/v1` or PostgREST's `/rest/v1` — as a module building a request
+ *  spells it (comments stripped, strings kept: the path IS a string). */
+export const IDENTITY_URL_RE = /\/(?:auth|rest)\/v1(?![\w-])/;
+/** The port whose ts adapters may build it. */
+export const IDENTITY_PORT = 'auth';
+/** Modules that name the path without building a call — DECLARED, printed on every
+ *  run, and each must still match (a stale row fails). */
+export const IDENTITY_URL_EXCEPTIONS = Object.freeze([
+  {
+    file: 'services/edge-shield/src/classify.ts',
+    why: 'the shield stands IN FRONT of the identity host and classifies the paths requests ARRIVE on (which limiter, which cache); it builds no request and calls nothing',
+    until: 'nonPort',
+  },
+]);
 /** Limb 13's one permitted reader. */
 export const GEO_HOME = 'services/_shared/src/geo.ts';
 /** Limb 12's permitted homes under services/_shared. */
@@ -665,6 +688,36 @@ export function evaluate(root) {
       }
     }
     notes.push(`limb 4 walked ${tsFiles.length} TS module(s), ${edges} relative import(s)`);
+
+    // The URL half (port-auth): only the identity port's ts adapters build an identity-provider URL.
+    const identityDoc = ports.find(({ doc }) => doc?.port === IDENTITY_PORT)?.doc;
+    if (identityDoc?.interface?.ts) {
+      const homes = new Set((identityDoc.adapters ?? []).map((a) => a?.impl?.file).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
+      const declared = new Map(IDENTITY_URL_EXCEPTIONS.map((e) => [e.file, e]));
+      let homeMatched = 0;
+      for (const f of tsFiles) {
+        if (/\/src\/generated\//.test(f)) continue;
+        const m = IDENTITY_URL_RE.exec(stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts'));
+        if (homes.has(f)) {
+          if (m) homeMatched++;
+          continue;
+        }
+        const ex = declared.get(f);
+        if (ex) {
+          if (m) waivers.push(`identity URL: ${f} names \`${m[0]}\` — ${ex.why} — ${ex.until === 'nonPort' ? 'not a call, never ported' : `until ${ex.until}`}`);
+          else find(4, `${f} is a declared identity-URL exception and no longer names an identity-provider path. Remove its IDENTITY_URL_EXCEPTIONS row.`);
+          continue;
+        }
+        if (m) {
+          find(4, `tooling/ports/${IDENTITY_PORT}.json: \`${f}\` builds an identity-provider URL (\`${m[0]}\`). Every call a Worker makes to the identity provider is a verb of IdentityAdmin (services/_shared/src/ports/identity.ts), built by its adapter and reached through the composition root (identityFor).`);
+          limb4Clean.set(IDENTITY_PORT, false);
+        }
+      }
+      if (!homeMatched) {
+        lost(4, `no ${IDENTITY_PORT} ts adapter (${[...homes].join(', ') || 'none declared'}) matches the identity-URL pattern, so "nobody else builds one" is evidence of nothing.`);
+        limb4Clean.set(IDENTITY_PORT, false);
+      } else notes.push(`limb 4 (URL half): identity-provider URLs built only in ${homeMatched} ${IDENTITY_PORT} adapter(s) and src/generated/`);
+    }
   }
 
   // ── limbs 12 and 13 · Cloudflare binding types and `.cf`, over the same walk ──

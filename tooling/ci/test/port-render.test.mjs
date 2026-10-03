@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART } from '../../ports/render.mjs';
+import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, renderIssuersTs, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS } from '../../ports/render.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ports', 'render.mjs');
@@ -23,7 +23,7 @@ describe('render.mjs — the payments table', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -80,7 +80,7 @@ describe('render.mjs — the payments table', () => {
   it('COVERAGE LOST: a generated path that exists but cannot be read is exit 2 in both modes, never a crash', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-dir-'));
     try {
-      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
         mkdirSync(dirname(join(scratch, rel)), { recursive: true });
         cpSync(join(REPO, rel), join(scratch, rel));
       }
@@ -95,7 +95,7 @@ describe('render.mjs — the payments table', () => {
   it('green control: an ABSENT generated file is written (ENOENT is absence, not an error)', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-new-'));
     try {
-      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER]) {
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, AUTH_REGISTRY]) {
         mkdirSync(dirname(join(scratch, rel)), { recursive: true });
         cpSync(join(REPO, rel), join(scratch, rel));
       }
@@ -103,6 +103,7 @@ describe('render.mjs — the payments table', () => {
       assert.equal(r.code, 0, r.out);
       assert.match(r.out, /^ok {3}render — wrote services\/platform\/src\/generated\/ports\.ts/);
       assert.match(r.out, /^ok {3}render — wrote packages\/purchases\/lib\/src\/generated\/rails\.dart/m);
+      assert.match(r.out, /^ok {3}render — wrote services\/_shared\/src\/generated\/ports\.ts/m);
       assert.equal(run(['--check', '--root', scratch]).code, 0);
     } finally { rmSync(scratch, { recursive: true, force: true }); }
   });
@@ -117,7 +118,7 @@ describe('render.mjs — the Dart rail map', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-dart-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -195,5 +196,56 @@ describe('render.mjs — what the table derives', () => {
     assert.match(ts, /export const CHECKOUT_RAIL_ID: PaymentsAdapterId \| null = 'paddle';/);
     const two = { ...doc, adapters: doc.adapters.map((a) => (a.id === 'razorpay' ? { ...a, capabilities: [...a.capabilities, 'checkout'] } : a)) };
     assert.match(renderPortsTs(two), /CHECKOUT_RAIL_ID: PaymentsAdapterId \| null = null;/, 'two sellers render null: the route refuses rather than guesses');
+  });
+});
+
+// ⏱ 2026-10-03 · port-auth: the TRUSTED ISSUERS, rendered from tooling/ports/auth.json `issuers`
+// into services/_shared/src/generated/ports.ts, which services/_shared/src/auth.ts resolves.
+describe('render.mjs — the trusted issuers', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-render-issuers-'));
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART, AUTH_REGISTRY, RENDERED_ISSUERS]) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      cpSync(join(REPO, rel), join(root, rel));
+    }
+  });
+  it('green control: the committed module is the render of the committed rows', () => {
+    const r = run(['--check', '--root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /services\/_shared\/src\/generated\/ports\.ts matches tooling\/ports\/auth\.json/);
+    assert.match(renderIssuersTs({ issuers: [{ id: 'x', originEnv: 'X_URL', issuerPath: '/i', jwksPath: '/i/k', algorithms: ['ES256'], audience: 'a' }] }), /\{ id: 'x', originEnv: 'X_URL', issuerPath: '\/i', jwksPath: '\/i\/k', algorithms: \['ES256'\], audience: 'a' \}/);
+  });
+  it('red: a hand edit of the issuer module (a second issuer typed in) exits 1', () => {
+    const rel = join(root, RENDERED_ISSUERS);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace('];', "  { id: 'typed', originEnv: 'X', issuerPath: '/auth/v1', jwksPath: '/auth/v1/k', algorithms: ['ES256'], audience: 'authenticated' },\n];"));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /services\/_shared\/src\/generated\/ports\.ts differs from its render/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a second issuer row in the registry, not re-rendered, exits 1', () => {
+    const rel = join(root, AUTH_REGISTRY);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.issuers.push({ ...doc.issuers[0], id: 'next', originEnv: 'AUTH_ISSUER_NEXT_URL' });
+      writeFileSync(rel, JSON.stringify(doc));
+      assert.equal(run(['--check', '--root', root]).code, 1);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('COVERAGE LOST: a registry with no issuer row (a module that trusts nobody) is exit 2', () => {
+    const rel = join(root, AUTH_REGISTRY);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.issuers = [];
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /lists no issuer/);
+    } finally { writeFileSync(rel, before); }
   });
 });

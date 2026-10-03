@@ -41,6 +41,7 @@ import type { KvStore } from '../../../_shared/src/ports/kv';
 import { REVOCATION_TTL_SECONDS, revocationKey, withRevokedBefore, withRevokedSessions } from '../../../_shared/src/auth';
 import { withinRateLimit } from '../lib/edge-ceiling';
 import { raiseLinkFloor } from '../lib/ext-links';
+import { identityFor } from '../ports';
 
 const sessions = new Hono<AppEnv>();
 
@@ -109,29 +110,23 @@ export function isoUtc(value: unknown): string | null {
 type Rpc = { ok: true; rows: unknown[] } | { ok: false; why: string };
 
 /**
- * One PostgREST RPC with the service-role key. The key is read here, in the route
- * module, and nowhere below it; it is never echoed. Any failure — no key, the
+ * One PostgREST RPC with the service-role key. The key is checked here, in the
+ * route module, and sent only by the identity port's adapter
+ * (src/adapters/identity/gotrue.ts); it is never echoed. Any failure — no key, the
  * function not installed (404 / PGRST202), a non-2xx, a timeout, a body that is
  * not an array — is a `why` for ONE log line and a 503 to the caller.
  */
 async function rpc(c: Context<AppEnv>, fn: string, args: Record<string, string>): Promise<Rpc> {
   const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) return { ok: false, why: 'SUPABASE_SERVICE_ROLE_KEY is not set' };
-  let res: Response;
-  try {
-    res = await fetch(`${c.env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-      method: 'POST',
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(args),
-      signal: AbortSignal.timeout(SESSIONS_RPC_TIMEOUT_MS),
-    });
-  } catch (err) {
-    return { ok: false, why: `${fn} unreachable (${err instanceof Error ? err.name : typeof err})` };
+  // ⏱ 2026-10-03 · port-auth: the request is the identity port's (`sessions`,
+  // built by its adapter from identityFor, src/ports.ts); the answer is read here.
+  const answer = await identityFor(c.env).sessions(fn, args, { signal: AbortSignal.timeout(SESSIONS_RPC_TIMEOUT_MS) });
+  if (!answer.ok) {
+    const err = answer.cause;
+    return { ok: false, why: `${fn} unreachable (${err instanceof Error ? err.name : answer.detail})` };
   }
+  const res = answer.res;
   const text = await res.text().catch(() => '');
   if (!res.ok) {
     const missing = res.status === 404 || text.includes('PGRST202');

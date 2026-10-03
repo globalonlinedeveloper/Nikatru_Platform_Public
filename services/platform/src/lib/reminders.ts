@@ -41,7 +41,8 @@ import { parseReminderDays } from '../../../_shared/src/reminder-days';
 import { minorUnitDigits } from '../../../../contracts/currency/iso4217.js';
 import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
 import { MAIL_FROM } from '../generated/entity';
-import { mailFor } from '../ports';
+import { identityFor, mailFor } from '../ports';
+import type { IdentityAdmin } from '../../../_shared/src/ports/identity';
 
 /**
  * [ADR 029] §2 — everything a machine sends leaves from mail.nikatru.com, typed
@@ -645,8 +646,7 @@ async function remindApp(
   target: AppTarget,
   state: RunState,
   mail: MailTransport,
-  serviceKey: string,
-  fetchImpl: typeof fetch,
+  identity: IdentityAdmin,
 ): Promise<ReminderRow> {
   if (!target.db) return { target: target.appId, ok: false, detail: 'no database binding for this app' };
   try {
@@ -670,7 +670,7 @@ async function remindApp(
         continue;
       }
       state.readsLeft--;
-      const account = await readAccount(env.SUPABASE_URL, serviceKey, p.userId, fetchImpl);
+      const account = await readAccount(identity, p.userId);
       if (account.kind === 'transient' || account.kind === 'failed') {
         fail(`address read: ${account.why}`);
         continue;
@@ -784,7 +784,7 @@ export async function runReminderMail(
   }
   const rows: ReminderRow[] = [];
   for (const t of targets) {
-    rows.push(await remindApp(env, t, state, mail, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
+    rows.push(await remindApp(env, t, state, mail, identityFor(env, { fetchImpl })));
   }
   return rows;
 }

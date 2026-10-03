@@ -646,7 +646,9 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // the channels port: the contract, its submitters and the conformance file that calls the runner
       'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs',
       // the boxes port: the declarations and the module that reads them (port-boxes)
-      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
+      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs',
+      // port-auth: the Dart half's two conformance tests (the fake and the GoTrue adapter)
+      'packages/core/test/fake_auth_repository_conformance_test.dart', 'packages/auth_supabase/test/supabase_auth_conformance_test.dart']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
   it('green control: payments, mail and ai claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
@@ -656,6 +658,10 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
     for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
     assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
+    assert.match(r.out, /^auth\.dart\s+L3\s+L3\s+L3/m); // port-auth: the suite passes for the fake and the GoTrue adapter
+    assert.match(r.out, /^auth\.ts\s+L2\s+L2\s+L3/m); // port-auth: IdentityAdmin, one built adapter and a fake
+    assert.match(r.out, /limb 4 \(URL half\): identity-provider URLs built only in 1 auth adapter/);
+    assert.match(r.out, /identity URL: services\/edge-shield\/src\/classify\.ts names `\/auth\/v1`/);
     for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L2`, 'm')); // port-storage
     assert.match(r.out, /^sql\s+L2\s+L2\s+L3/m); // port-sql
     assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit, sql; what is left \(Workers, Pages, the nikatru\.com zone\)/);
@@ -750,6 +756,26 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     mutate('tooling/ports/ai.json', (s) => { const d = JSON.parse(s); d.selection.default.live = 'stub'; return JSON.stringify(d); }, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/ai\.json selection\.default\.live is the fake `stub`/);
+    });
+  });
+  it('🔴 red: a route that builds an identity-provider URL itself reddens limb 4, and auth falls to L1 (port-auth)', () => {
+    mutate('services/platform/src/routes/sessions.ts', (s) => `${s}\nexport const probe = (base: string) => fetch(\`\${base}/auth/v1/user\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\): tooling\/ports\/auth\.json: `services\/platform\/src\/routes\/sessions\.ts` builds an identity-provider URL \(`\/auth\/v1`\)/);
+      assert.match(r.out, /^auth\.ts\s+L2\s+L1/m);
+    });
+    mutate('services/platform/src/lib/reminders.ts', (s) => `${s}\nexport const rpc = (base: string) => \`\${base}/rest/v1/rpc/x\`;\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /`services\/platform\/src\/lib\/reminders\.ts` builds an identity-provider URL \(`\/rest\/v1`\)/);
+    });
+  });
+  it('limb 4 URL half: a URL in a COMMENT is not a call; the adapter no longer matching is COVERAGE LOST', () => {
+    mutate('services/platform/src/routes/sessions.ts', (s) => `${s}\n// the old call was \`\${base}/auth/v1/user\`\n`, (r) => assert.equal(r.code, 0, r.out));
+    mutate('services/platform/src/adapters/identity/gotrue.ts', (s) => s.replaceAll('/auth/v1', '/auth/vX').replaceAll('/rest/v1', '/rest/vX'), (r) => {
+      // As with an import walk that read nothing: the loss is printed AND the port cannot earn its claim.
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /FAIL limb 4 \(imports\) COVERAGE LOST — no auth ts adapter .* matches the identity-URL pattern/);
+      assert.match(r.out, /^auth\.ts\s+L2\s+L1/m);
     });
   });
   it('red: a route importing the Anthropic adapter reddens limb 4', () => {

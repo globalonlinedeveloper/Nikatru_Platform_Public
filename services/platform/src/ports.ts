@@ -52,6 +52,13 @@
 //     the adapter checks BEFORE the wire and the meter settles with
 //     (ports/ai.ts reserveOrRefuse, settle). All mirror ai.json.
 // The stub (services/_shared/src/ports/fakes/ai.ts) is never selected here.
+//
+// AUTH (tooling/ports/auth.json) · ⏱ 2026-10-03 · port-auth, the Worker half:
+//   · `identityFor(env)` — the `gotrue` IdentityAdmin (adapters/identity/gotrue.ts)
+//     on SUPABASE_URL and the service key: the native sign-in relay, the desktop
+//     hand-off, the session list and revoke, the account read and delete, and the
+//     keep-alive. No other module builds an identity-provider URL (assert-ports
+//     limb 4). The fake (ports/fakes/identity.ts) is never selected here.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiLimits, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
 import { AI_MODEL_MAX_OUTPUT_TOKENS } from '../../_shared/src/ports/ai';
@@ -75,6 +82,8 @@ import { sentryEnvelopeSink } from '../../_shared/src/adapters/telemetry/sentry-
 import { ntfyNotifier } from '../../_shared/src/adapters/telemetry/notify-ntfy';
 import { webhookNotifier } from '../../_shared/src/adapters/telemetry/notify-webhook';
 import { mailNotifier } from '../../_shared/src/adapters/telemetry/notify-mail';
+import type { IdentityAdmin } from '../../_shared/src/ports/identity';
+import { gotrueIdentityAdmin } from './adapters/identity/gotrue';
 
 type MailSecret = 'RESEND_API_KEY' | 'RESEND_REMINDERS_API_KEY';
 
@@ -189,6 +198,24 @@ export function notifierAdapter(id: NotifierId, env: Env): Notifier {
     case 'mail':
       return mailNotifier();
   }
+}
+
+/**
+ * ⏱ 2026-10-03 · port-auth. The identity provider, on this Worker's credentials
+ * (tooling/ports/auth.json, the `IdentityAdmin` half): GoTrue at `SUPABASE_URL`,
+ * or at `base` for a call that names another origin (a keep-alive target).
+ * `fetchImpl` is the injection a caller already had (lib/reminders.ts).
+ */
+export function identityFor(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SERVICE_ROLE_KEY' | 'SUPABASE_ANON_KEY'>,
+  opts: { base?: string; fetchImpl?: typeof fetch } = {},
+): IdentityAdmin {
+  return gotrueIdentityAdmin({
+    base: opts.base ?? env.SUPABASE_URL,
+    serviceKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    publicKey: env.SUPABASE_ANON_KEY,
+    fetchImpl: opts.fetchImpl,
+  });
 }
 
 /** The owner-alert channel for `severity`: its primary, then its fallback once. */

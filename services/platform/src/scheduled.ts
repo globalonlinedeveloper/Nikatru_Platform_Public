@@ -37,7 +37,7 @@ import {
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { reminderMailStatementBudget, runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
-import { notifierFor } from './ports';
+import { identityFor, notifierFor } from './ports';
 import {
   MAX_TOKEN_BACKFILL_PER_RUN,
   backfillProviderTokens,
@@ -363,11 +363,13 @@ export async function keepAliveSupabase(env: Env): Promise<void> {
       // on the service, and this endpoint should not be the place we find out
       // which. Absent key ⇒ the call still goes out (some activity is better
       // than none) but the row says so loudly.
+      // ⏱ 2026-10-03 · port-auth: the request is the identity port's `health`
+      // (identityFor, src/ports.ts), on this target's origin; its failure is
+      // thrown into the catch below exactly as the bare fetch's was.
       const key = env.SUPABASE_ANON_KEY;
-      const res = await fetch(`${target}/auth/v1/health`, {
-        signal: controller.signal,
-        headers: key ? { apikey: key, Authorization: `Bearer ${key}` } : {},
-      });
+      const answer = await identityFor(env, { base: target }).health({ signal: controller.signal });
+      if (!answer.ok) throw answer.cause ?? new Error(answer.detail);
+      const res = answer.res;
       console.log(`[cron] supabase keep-alive ${target}: ${res.status}`);
       // 🔴 `ok` MEANS 2xx. It used to mean `res.status < 500`, which recorded a
       // 401 as SUCCESS — and 401 is exactly what this call returned every night
@@ -1215,7 +1217,7 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
         if (!env.SUPABASE_SERVICE_ROLE_KEY) {
           error = 'SUPABASE_SERVICE_ROLE_KEY is not set, so the account address cannot be confirmed';
         } else {
-          const purge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, order.subject_ref);
+          const purge = await purgeVerifiedSignups(env.PLATFORM_DB, identityFor(env), order.subject_ref);
           if (purge.kind === 'transient' || purge.kind === 'failed') error = `signup purge: ${purge.why}`;
         }
       } else if (binding === null) {
@@ -1257,12 +1259,12 @@ export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promis
       // [ADR 087]: the launch-list purge runs again, BEFORE the identity goes, for the
       // same reason the walk above runs again — an address confirmed or a signup made
       // between the 202 and now. Not known → the identity stays for the next night.
-      const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, env.SUPABASE_URL, serviceRoleKey, subject);
+      const signupPurge = await purgeVerifiedSignups(env.PLATFORM_DB, identityFor(env), subject);
       if (signupPurge.kind === 'transient' || signupPurge.kind === 'failed') {
         identityFailed++;
         continue;
       }
-      const identity = await deleteIdentity(env.SUPABASE_URL, serviceRoleKey, subject);
+      const identity = await deleteIdentity(identityFor(env), subject);
       if (!identity.ok) {
         identityFailed++;
         continue;
