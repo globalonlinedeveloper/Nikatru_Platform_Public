@@ -84,10 +84,20 @@ jobs:
       contents: read
       actions: read
       issues: read
+      # why: check-heartbeats.mjs reads the platform Worker's deploy ledger
+      # (GET .../deployments?environment=platform) to judge each slot by the
+      # schedule of the release that was live when it fell due.
+      deployments: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # why: fetch-depth 0 IS LOAD-BEARING for check-heartbeats.mjs. It reads
+          # `git show <release sha>:tooling/ops/register.json` for each release in
+          # the deploy ledger; a shallow clone answers none of them, and every slot
+          # falls back to main's schedule — the 2026-10-03 transition red
+          # (ops-watch 37137496614) again, at every cron change.
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
@@ -105,6 +115,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # why: the deploy ledger read (deployments: read above). Without it every
+          # slot is judged by main's schedule and the step log says so.
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         # why: set +e, or exit 2 (COVERAGE LOST) fails this step exactly like
         # exit 1 and the distinction check-heartbeats.mjs draws is lost here.
         run: |
