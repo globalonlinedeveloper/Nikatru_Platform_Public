@@ -5,7 +5,8 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { allRows, batchIdempotent, firstRow, nowIso, uuid } from '../lib/d1';
-import { CURRENCY, MAX_PRICE } from './subscriptions';
+import { MAX_PRICE, currencyCode } from './subscriptions';
+import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
 
 const app = new Hono<AppEnv>();
 
@@ -58,6 +59,19 @@ const MAX_NAME_LENGTH = 120;
  *  headroom is for the hex ids 0002_schema_debt.sql backfilled legacy rows with.
  *  An input shape, not a platform resource. */
 const MAX_ID_LENGTH = 64;
+/**
+ * The most bytes a PUT / body may be (rv2-services-025), DERIVED from the bounds
+ * above: MAX_CATEGORIES entries, each a name at its cap in the widest UTF-8 (4
+ * bytes a character), an `id` and a `category_id` at theirs, and 64 bytes for a
+ * cap and the keys and punctuation; plus 1 KB for the budget and its currency.
+ * ≈ 132 KB for a full 200-category budget. Anything larger cannot validate, so
+ * it is refused (413 body_too_large) before it is read whole.
+ *
+ * @ceiling none — a request-size bound derived from the shape bounds above; the
+ * memory it protects is the isolate's, and 132 KB is far inside it.
+ */
+export const BUDGET_BODY_MAX_BYTES =
+  MAX_CATEGORIES * (UTF8_MAX_BYTES_PER_CHAR * MAX_NAME_LENGTH + 2 * MAX_ID_LENGTH + 64) + 1024;
 
 type ValidatedCategory = { id: string | null; name: string; cap: number; categoryId: string | null };
 /** `currency` as the body sent it: ABSENT leaves the stored code alone, `null`
@@ -95,11 +109,10 @@ function validate(body: unknown): Validated {
   }
 
   // ── THE BUDGET'S CURRENCY (0007) ──────────────────────────────────────────
-  // ⚠️ THE MINIMAL VALID-CODE CHECK, NOT THE ISO 4217 SET: three letters,
-  // stored upper case — the rule subscriptions.ts `CURRENCY` applies to a
-  // subscription's currency, imported so the two cannot disagree. Checking
-  // membership of the assigned set is lane fix-st-api-bounds' contracts table;
-  // when it lands, both routes move to it together.
+  // ✅ A CODE IN THE ISO 4217 TABLE (contracts/currency/iso4217.js), stored
+  // upper case — subscriptions.ts `currencyCode`, the rule a subscription's
+  // currency meets, imported so the two cannot disagree. ⏱ 2026-10-01 · lane
+  // fix-st-api-bounds (rv2-services-030): it was three letters, so `ZZZ` passed.
   //
   // ABSENT IS NOT NULL. The app's BudgetInfo.toJson sends `currency` only when
   // it KNOWS the budget's unit, and omits it for a figure that arrived bare —
@@ -110,10 +123,10 @@ function validate(body: unknown): Validated {
   if (raw.currency !== undefined) {
     if (raw.currency === null) {
       currency = { set: true, value: null };
-    } else if (typeof raw.currency !== 'string' || !CURRENCY.test(raw.currency)) {
-      return { ok: false, detail: 'currency must be a three-letter ISO 4217 code, e.g. INR, or null' };
     } else {
-      currency = { set: true, value: raw.currency.toUpperCase() };
+      const code = currencyCode(raw.currency);
+      if (code === null) return { ok: false, detail: 'currency must be an ISO 4217 currency code, e.g. INR, or null' };
+      currency = { set: true, value: code };
     }
   }
 
@@ -245,15 +258,11 @@ app.get('/', async (c) => {
   });
 });
 
-// PUT / — upsert monthly_budget and replace the category set.
-app.put('/', async (c) => {
+// PUT / — upsert monthly_budget and replace the category set. The body is read
+// BOUNDED (lib/json-body.ts): over BUDGET_BODY_MAX_BYTES is a 413 and nothing runs.
+app.put('/', boundedJson(BUDGET_BODY_MAX_BYTES), async (c) => {
   const userId = c.get('userId');
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
 
   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
   const checked = validate(body);
@@ -291,20 +300,37 @@ app.put('/', async (c) => {
   //     so a cap keyed by id survives a rename that changed the name;
   //   · a cap that sends only a name — the shipped app — is matched by name,
   //     a built-in first; a name no category has keeps no id, as before.
-  const existing = await allRows<CategoryRow & { kind: 'cap' | 'category'; builtin: number | null }>(
+  //
+  // ── …AND IT FINDS THE SENT ids ANOTHER ACCOUNT HOLDS (rv2-services-026) ────
+  // `idx_budget_categories_id` (0002_schema_debt.sql) is UNIQUE across EVERY
+  // user, so a caller who sent an id another account's cap already has failed
+  // the INSERT inside the batch: a rolled-back 500, on every save, for as long
+  // as the client kept round-tripping that id. A third arm reads which of the
+  // sent ids someone else holds (`json_each`, so the id list binds no
+  // placeholders); each is treated as ABSENT — resolved by name, else a new
+  // uuid — and the other account's row is never touched. Still ONE statement.
+  const sentIds = categories.flatMap((cat) => (cat.id === null ? [] : [cat.id]));
+  const existing = await allRows<CategoryRow & { kind: 'cap' | 'category' | 'foreign'; builtin: number | null }>(
     c.env.APP_DB.prepare(
       `SELECT 'cap' AS kind, id, name, cap, category_id, NULL AS builtin
          FROM budget_categories WHERE user_id = ?
        UNION ALL
        SELECT 'category' AS kind, id, name, NULL AS cap, NULL AS category_id, builtin
-         FROM categories WHERE user_id IS NULL OR user_id = ?`,
-    ).bind(userId, userId),
+         FROM categories WHERE user_id IS NULL OR user_id = ?
+       UNION ALL
+       SELECT 'foreign' AS kind, id, NULL AS name, NULL AS cap, NULL AS category_id, NULL AS builtin
+         FROM budget_categories
+        WHERE user_id IS NOT ? AND id IN (SELECT value FROM json_each(?))`,
+    ).bind(userId, userId, userId, JSON.stringify(sentIds)),
   );
+  const foreignIds = new Set<string>();
   const idByName = new Map<string, string>();
   const nameByCategory = new Map<string, string>();
   const categoryByName = new Map<string, string>();
   for (const row of existing) {
-    if (row.kind === 'cap') {
+    if (row.kind === 'foreign') {
+      if (row.id) foreignIds.add(row.id);
+    } else if (row.kind === 'cap') {
       if (row.id) idByName.set(row.name, row.id);
     } else {
       nameByCategory.set(row.id as string, row.name);
@@ -336,7 +362,8 @@ app.put('/', async (c) => {
       return c.json({ error: 'invalid_body', detail: `two caps resolve to the category "${name}"` }, 400);
     }
     names.add(name);
-    resolved.push({ id: cat.id ?? idByName.get(name) ?? uuid(), name, cap: cat.cap, category_id: categoryId });
+    const sent = cat.id !== null && !foreignIds.has(cat.id) ? cat.id : null;
+    resolved.push({ id: sent ?? idByName.get(name) ?? uuid(), name, cap: cat.cap, category_id: categoryId });
   }
 
   // ── ONE BATCH = ONE IMPLICIT TRANSACTION ───────────────────────────────────

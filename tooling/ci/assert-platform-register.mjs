@@ -1093,6 +1093,165 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     edgeChecked++;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ── LIMB 8 · every ENVIRONMENT twins every top-level binding, or says why not ──
+  //
+  // ⏱ 2026-10-01 · rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS.
+  // Wrangler does NOT inherit a binding into an environment: `vars`, `d1_databases`,
+  // `kv_namespaces`, `r2_buckets`, `services` and `ratelimits` each start empty in an
+  // `env.<name>` block. So a binding the top level declares and an environment omits
+  // is simply ABSENT in that deploy, and every binding here is optional in code, so
+  // the absence fails open with no error. That is how the platform's sandbox ran with
+  // no SESSION_REVOKED, no SIGNUPS, no BACKUPS_R2, no app database, no erasure binding
+  // and no APP_ERASURE_ENDPOINTS — a sandbox in which an E2E could catch neither a
+  // revocation defect nor an erasure defect — and subscriptiontracker-api's sandbox
+  // with no SESSION_REVOKED, every guard green.
+  //
+  // THE RULE: for every config in `bindingSources.configs` and every block under its
+  // `env`, every top-level binding NAME (the BINDING_KEYS sections, `services` and
+  // each `vars` key) appears in that block's same section, or the register's
+  // `envBindingParity.exempt` names it with a reason. An exemption must stay TRUE:
+  // one naming a binding the block DOES declare, or one the top level does not, is
+  // itself a finding. And in a DEPLOYABLE config (under services/) an environment's
+  // D1 or KV id may not be the all-zeros placeholder: a twin in name only binds
+  // nothing, and `wrangler deploy --dry-run` passes on it. The brick template's
+  // placeholders are correct (tooling/scripts/provision-backend.mjs step [5s] writes
+  // them), so it is held to the names and not the ids.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const parity = register.envBindingParity ?? null;
+  const parityExempt = new Map();
+  for (const row of Array.isArray(parity?.exempt) ? parity.exempt : []) {
+    if (typeof row?.config !== 'string' || typeof row?.env !== 'string' || typeof row?.section !== 'string' ||
+        typeof row?.name !== 'string' || typeof row?.why !== 'string' || row.why.trim().length < 20) {
+      problems.push(
+        `envBindingParity.exempt row ${JSON.stringify(row)} needs \`config\`, \`env\`, \`section\`, \`name\` and a \`why\` of a sentence. ` +
+          '[limb 8] An exemption without a reason is a waiver, and this register does not take waivers.',
+      );
+      continue;
+    }
+    parityExempt.set(`${rel(row.config)}\u0000${row.env}\u0000${row.section}\u0000${row.name}`, { row, used: false });
+  }
+  const PARITY_SECTIONS = [...BINDING_KEYS, ['services', 'binding']];
+  const bindingNamesOf = (block) => {
+    const out = [];
+    for (const [section, field] of PARITY_SECTIONS) {
+      for (const item of Array.isArray(block?.[section]) ? block[section] : []) {
+        if (typeof item?.[field] === 'string' && item[field]) out.push({ section, name: item[field] });
+      }
+    }
+    const vars = block?.vars;
+    if (vars && typeof vars === 'object' && !Array.isArray(vars)) for (const name of Object.keys(vars)) out.push({ section: 'vars', name });
+    return out;
+  };
+  const isZeroId = (id) => typeof id === 'string' && id !== '' && /^0+$/.test(id.replace(/-/g, ''));
+  // ⏱ 2026-10-02 · A PLACEHOLDER THAT WAITS ON A VAULT STEP IS DECLARED, NOT HIDDEN. Creating a
+  // sandbox twin needs the Cloudflare token, which no CI job and no cloud lane holds, so the twins
+  // tooling/scripts/provision-sandbox-twins.mjs owns land in the configs with the all-zeros id and
+  // one `envBindingParity.pendingTwins` row each ({config, env, section, binding, why}). Such a
+  // placeholder is PRINTED on every run instead of refused. The row must stay TRUE: one naming a
+  // binding that no longer carries the placeholder (the script wrote its id) is itself a finding,
+  // so the row is deleted in the same change that records the id. A placeholder no row names is
+  // still refused below, and the brick template is never named here (its placeholders are correct).
+  const pendingTwins = new Map();
+  for (const row of Array.isArray(parity?.pendingTwins) ? parity.pendingTwins : []) {
+    if (typeof row?.config !== 'string' || !row.config.startsWith('services/') || typeof row?.env !== 'string' ||
+        (row?.section !== 'kv_namespaces' && row?.section !== 'd1_databases') || typeof row?.binding !== 'string' ||
+        typeof row?.why !== 'string' || row.why.trim().length < 20) {
+      problems.push(
+        `envBindingParity.pendingTwins row ${JSON.stringify(row)} needs a \`config\` under services/, \`env\`, a \`section\` of ` +
+          'kv_namespaces or d1_databases, \`binding\` and a \`why\` of a sentence. [limb 8]',
+      );
+      continue;
+    }
+    pendingTwins.set(`${rel(row.config)}\u0000${row.env}\u0000${row.section}\u0000${row.binding}`, { row, used: false });
+  }
+  /** A placeholder a pendingTwins row names: printed, and the row marked as still true. */
+  const pendingPlaceholder = (cfgRel, envName, section, binding) => {
+    const hit = pendingTwins.get(`${cfgRel}\u0000${envName}\u0000${section}\u0000${binding}`);
+    if (!hit) return false;
+    hit.used = true;
+    printed.push(`⚠  ${cfgRel} env.${envName} — \`${section}\` ${binding} is a PLACEHOLDER, PENDING. ${hit.row.why}`);
+    return true;
+  };
+  let envBlocks = 0;
+  let twinsChecked = 0;
+  for (const cfgRel of onDiskConfigs) {
+    const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
+    const envs = cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env) ? Object.entries(cfg.env) : [];
+    const top = bindingNamesOf(cfg);
+    for (const [envName, block] of envs) {
+      envBlocks++;
+      const have = new Set(bindingNamesOf(block).map((b) => `${b.section}\u0000${b.name}`));
+      for (const b of top) {
+        const key = `${cfgRel}\u0000${envName}\u0000${b.section}\u0000${b.name}`;
+        const ex = parityExempt.get(key);
+        if (have.has(`${b.section}\u0000${b.name}`)) {
+          twinsChecked++;
+          if (ex) {
+            ex.used = true;
+            problems.push(
+              `${cfgRel} env.${envName} — \`${b.section}\` ${b.name} is declared there, and envBindingParity.exempt says it is not. ` +
+                '[limb 8] An exemption that outlived the state it described hides the next omission behind its name.',
+            );
+          }
+          continue;
+        }
+        if (ex) {
+          ex.used = true;
+          printed.push(`⚠  ${cfgRel} env.${envName} — \`${b.section}\` ${b.name} NOT TWINNED. ${ex.row.why}`);
+          continue;
+        }
+        problems.push(
+          `${cfgRel} env.${envName} — declares no \`${b.section}\` ${b.name}, which the top level binds. Wrangler does not inherit ` +
+            'a binding into an environment, and every binding fails open when absent, so this deploy runs without it and nothing ' +
+            'says so. [limb 8] Twin it on a resource of that environment, or add an envBindingParity.exempt row with the reason.',
+        );
+      }
+      if (cfgRel.startsWith('services/')) {
+        for (const d of Array.isArray(block?.d1_databases) ? block.d1_databases : []) {
+          if (isZeroId(d?.database_id) && !pendingPlaceholder(cfgRel, envName, 'd1_databases', d.binding)) {
+            problems.push(
+              `${cfgRel} env.${envName} — D1 ${d.binding} still carries the all-zeros placeholder. [limb 8] A twin in name only binds ` +
+                'nothing, and a dry run passes on it. tooling/scripts/provision-backend.mjs writes a stamped Worker\'s sandbox database id.',
+            );
+          }
+        }
+        for (const k of Array.isArray(block?.kv_namespaces) ? block.kv_namespaces : []) {
+          if (isZeroId(k?.id) && !pendingPlaceholder(cfgRel, envName, 'kv_namespaces', k.binding)) {
+            problems.push(
+              `${cfgRel} env.${envName} — KV ${k.binding} still carries the all-zeros placeholder. [limb 8] A twin in name only binds ` +
+                'nothing. Run `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent): it creates the ' +
+                'sandbox namespace and writes its id here.',
+            );
+          }
+        }
+      }
+    }
+  }
+  for (const { row, used } of pendingTwins.values()) {
+    if (!used) {
+      problems.push(
+        `envBindingParity.pendingTwins names ${row.config} env.${row.env} \`${row.section}\` ${row.binding}, and that entry carries no ` +
+          'all-zeros placeholder (its id was recorded, or the binding is gone). [limb 8] Delete the row in the change that recorded the id: ' +
+          'a pending row that outlived its placeholder would excuse the next one.',
+      );
+    }
+  }
+  for (const { row, used } of parityExempt.values()) {
+    if (!used) {
+      problems.push(
+        `envBindingParity.exempt names ${row.config} env.${row.env} \`${row.section}\` ${row.name}, and that config's top level does not ` +
+          'bind it (or the environment does not exist). [limb 8] Delete the row: it exempts nothing.',
+      );
+    }
+  }
+  if (parity !== null && envBlocks === 0) {
+    coverageLost([
+      `✗ COVERAGE LOST — the register declares envBindingParity, and none of the ${onDiskConfigs.length} wrangler config(s) declares an \`env\` block.`,
+      '  Limb 8 ranges over zero environments and cannot fail.',
+    ]);
+  }
+
   if (problems.length) {
     console.error(`✗ platform register — ${problems.length} problem(s):`);
     for (const p of problems) console.error(`    ${p}`);
@@ -1117,6 +1276,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       `; ${declaredBindings.size} binding(s) across ${onDiskConfigs.length} wrangler config(s), ` +
       `each with a resolved reader; ${sharedValues.length} shared value(s) compared ${sharedComparisons} ` +
       `time(s) across those configs, all agreeing; ${edgeChecked} edge Worker(s) held to limb 7; ` +
+      `${envBlocks} environment block(s) twinning ${twinsChecked} top-level binding(s) (limb 8); ` +
       `${printed.length} declared gap(s) printed above`,
   );
   if (brickRow) {

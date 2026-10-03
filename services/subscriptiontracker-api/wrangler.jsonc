@@ -89,6 +89,30 @@
     { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }
   ],
 
+  // ⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). THE PER-ACCOUNT
+  // WRITE LIMITER. Until this block nothing bounded how fast one signed-in
+  // account could write. Read by src/middleware/write-limit.ts, mounted after
+  // `supabaseAuth` on every non-GET, keyed `st:<verified sub>` — never a header,
+  // never the body. Over the limit is a 429 with Retry-After: 60.
+  //
+  // 120 writes a minute per account: a person saves a few edits a minute, and
+  // an offline outbox replaying a backlog, or a CSV import, is ~2 a second — it
+  // meets the limit only on a very large import, and the outbox retries a 429.
+  // `period` is 60, one of tooling/ceilings.json's ratelimit.allowedPeriods.
+  // FAILS OPEN (the kit's withinRateLimit): the per-user row cap in
+  // src/routes/subscriptions.ts holds without it.
+  //
+  // namespace_id 1031: a namespace_id is ACCOUNT-WIDE, and services/platform
+  // holds 1001-1030 (top level and its env.sandbox); env.sandbox below is 1032.
+  // test/wrangler-config.test.ts asserts this block in both environments.
+  "ratelimits": [
+    {
+      "name": "WRITE_LIMITER",
+      "namespace_id": "1031",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
+
   // ───────────────────────────────────────────────────────────────────────────
   // [pipeline B-15] THE ROUTE THIS WORKER HAS ANSWERED ON SINCE LAUNCH, FINALLY
   // WRITTEN DOWN.
@@ -184,7 +208,9 @@
   //
   // No secrets: auth is ES256 through the project's JWKS
   // (services/_shared/src/auth.ts); SUPABASE_JWT_SECRET and GLITCHTIP_DSN are
-  // optional. No ratelimits, services or R2: the top level binds none.
+  // optional. No services or R2: the top level binds none. `ratelimits` IS
+  // declared below, because wrangler does not inherit it and an absent limiter
+  // fails open.
   "env": {
     "sandbox": {
       "routes": [],
@@ -225,10 +251,27 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:17 (the kit's warmJwksCache checks for it since
-        // 2026-10-01, _shared/src/auth-middleware.ts:109). Its own namespace: production's holds
+        // 2026-10-01, _shared/src/auth-middleware.ts:119). Its own namespace: production's holds
         // the same public keys and would work, but a production id in a
         // sandbox block is the shape this block exists to keep out.
-        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
+        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
+        // why: src/middleware/auth.ts reads the revocation list (`rev:<sub>`) the
+        // platform's sandbox Worker writes on sign-out-everywhere. ⏱ 2026-10-01
+        // (rv2-services-022): absent until today, so a sandbox E2E could not see a
+        // revoked session refused here — the read fails OPEN without it. The
+        // SAME sandbox namespace services/platform's env.sandbox binds
+        // (`session-revoked-sandbox`, tooling/scripts/provision-sandbox-twins.mjs).
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
+      ],
+      // why: src/middleware/write-limit.ts reads it on every write, as at the top
+      // level. Its OWN namespace_id (1032), so a capture's writes never spend
+      // production's per-account budget; same limit and period.
+      "ratelimits": [
+        {
+          "name": "WRITE_LIMITER",
+          "namespace_id": "1032",
+          "simple": { "limit": 120, "period": 60 }
+        }
       ]
     }
   }

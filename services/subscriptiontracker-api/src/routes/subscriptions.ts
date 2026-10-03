@@ -7,6 +7,7 @@
 // The Idempotency-Key half of POST / (AB-O2-02) and of POST /:id/payments; see
 // lib/idempotency.ts.
 import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempotency';
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
@@ -20,6 +21,8 @@ import {
   type Invalid,
 } from '../lib/validate';
 import { visibleCategory } from './categories';
+import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
+import { isIso4217, toMinorUnits } from '../../../../contracts/currency/iso4217.js';
 import {
   MAX_REMINDERS,
   MAX_REMINDER_DAY,
@@ -32,8 +35,10 @@ const app = new Hono<AppEnv>();
 /**
  * DB row -> API JSON (0/1 `unused` becomes a real boolean).
  *
- * Exported because /v1/renewals serves the same rows: two serializers for one
- * row is how the 0003 columns would have reached one endpoint and not the other.
+ * Exported for the tests that read a row the way the wire does. (GET
+ * /v1/renewals served the same rows through it until that route was removed,
+ * rv2-services-023: one serializer per row is how the 0003 columns reached
+ * every endpoint at once.)
  *
  * 🔴 EVERY KEY BELOW `updated_at` IS ADDITIVE. A client that predates 0003
  * ignores them (Subscription.fromJson reads named keys), and `price` and `cycle`
@@ -141,7 +146,7 @@ function isTagList(v: unknown): v is string[] {
 //   · `{"cycle":"weekly"}` — violates the `CHECK (cycle IN ('monthly','yearly'))`
 //     in 0001_init.sql, so the DATABASE rejected it as a 500 rather than the
 //     route rejecting it as a 400.
-//   · `{"next_renewal":"soon"}` — accepted and stored. /v1/renewals compares
+//   · `{"next_renewal":"soon"}` — accepted and stored. The renewal readers compare
 //     next_renewal as a STRING, so the row silently never appears in any renewal
 //     window: a subscription the user is still paying for, invisible forever.
 //   · unbounded strings — a megabyte `usage_note` per row, per user.
@@ -218,6 +223,63 @@ const MAX_TAG = 32;
 /** @ceiling none — a VALUE bound: "your share of N", N people at most. */
 const MAX_SHARE_DENOMINATOR = 100;
 
+/**
+ * The most bytes a POST / or PATCH /:id body may be (rv2-services-025),
+ * DERIVED from the column widths above: every free-text column at its cap in
+ * the widest UTF-8 (4 bytes a character), plus 8 KB for the keys, numbers,
+ * dates, enums, the reminder list and JSON's punctuation. ≈ 32 KB. A larger body
+ * cannot be a valid subscription, so it is refused before it is read whole.
+ *
+ * @ceiling none — a request-size bound derived from column widths; the memory
+ * it protects is the isolate's, and 32 KB is far inside it.
+ */
+export const SUBSCRIPTION_BODY_MAX_BYTES =
+  UTF8_MAX_BYTES_PER_CHAR *
+    (MAX_NAME + MAX_CATEGORY + MAX_PLAN + MAX_GLYPH + MAX_NOTE + MAX_NOTES + MAX_RAIL_HOLDER +
+      MAX_SHARED_WITH + MAX_SERVICE_ID + MAX_CANCEL_URL + MAX_CATEGORY_ID) +
+  8 * 1024;
+/**
+ * The most bytes a POST /:id/payments body may be: `{amount, paid_on, currency}`
+ * is under 100 bytes, so 1 KB is generous.
+ *
+ * @ceiling none — a request-size bound; see SUBSCRIPTION_BODY_MAX_BYTES.
+ */
+export const PAYMENT_BODY_MAX_BYTES = 1024;
+
+/**
+ * THE PER-USER ROW CAP (rv2-services-008). How many subscriptions rows — live
+ * AND soft-deleted, because a removed row holds its storage until
+ * `purgeExpired` — one account may have.
+ *
+ * 🔴 WHY ANY CAP. Nothing bounded what one signed-in account could write:
+ * a script with one valid token could fill subscriptiontracker_db toward D1's
+ * per-database size ceiling and break every user's writes and the nightly
+ * fan-out. The rate limiter (middleware/write-limit.ts) bounds the BURST; this
+ * bounds the TOTAL.
+ *
+ * WHY 500 (a product call, delegated to the lead of fix-st-api-bounds): a person
+ * tracks tens of subscriptions — the app's own seed has a handful, and a heavy
+ * user well under a hundred. 500 is five times a generous 100, so no real user
+ * meets it, and at the ~8 KB worst-case row (the widths above) it holds one
+ * account to ≈ 4 MB. The live per-user maximum is to be MEASURED before merge
+ * (`SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM subscriptions GROUP BY
+ * user_id)`) and this re-based if it is within 5× of it.
+ *
+ * It also bounds GET /: the unpaged list's LIMIT is this number, so it can
+ * never truncate a list the cap admitted.
+ *
+ * @ceiling none — a per-user row count, a product bound; each request writes
+ * at most one row.
+ */
+export const MAX_SUBSCRIPTIONS_PER_USER = 500;
+/**
+ * The largest page GET /?limit= serves (keyset paging). The client pages with
+ * its own smaller `limit`; this only refuses an absurd one.
+ *
+ * @ceiling none — rows per response, bounded by MAX_SUBSCRIPTIONS_PER_USER.
+ */
+export const MAX_PAGE = MAX_SUBSCRIPTIONS_PER_USER;
+
 /** The closed sets 0003 deliberately did NOT put in a CHECK (see its header):
  *  a new member here is a code change, where in SQL it would be a rebuild. */
 const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
@@ -229,7 +291,9 @@ const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
  * The readers that must skip them, and do:
  *   · the platform fan-out (services/platform/src/renewals.ts) charges only
  *     these two statuses and `deleted_at IS NULL` (#1045);
- *   · /v1/renewals (./renewals.ts) filters on the same two, from here.
+ *   · the platform's reminder read (services/platform/src/lib/reminders.ts
+ *     `isLive`) keeps the same two. (GET /v1/renewals did too, until it was
+ *     removed with no caller, rv2-services-023.)
  * GET / still LISTS a paused or cancelled row — it stays, with its history —
  * and hides only a deleted one.
  */
@@ -282,9 +346,21 @@ const RAILS = [
 ] as const;
 const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
 
-/** ISO 4217 is three letters; stored upper case, as the client reads it.
- *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
-export const CURRENCY = /^[A-Za-z]{3}$/;
+/**
+ * A currency as a body may send it: an ISO 4217 code in the ONE table,
+ * contracts/currency/iso4217.js, in either case. Answers the code upper case —
+ * stored so, because Subscription.readPrice upper-cases what it reads and 'inr'
+ * would be a second spelling of one currency — or null for anything else.
+ *
+ * ⏱ 2026-10-01 · rv2-services-030. This was `/^[A-Za-z]{3}$/`, so `ZZZ` was
+ * stored as a currency and every reader had to guess its decimals. Exported so
+ * routes/budget.ts and POST /:id/payments check a currency by the same rule.
+ */
+export function currencyCode(v: unknown): string | null {
+  if (typeof v !== 'string' || !/^[A-Za-z]{3}$/.test(v)) return null;
+  const code = v.toUpperCase();
+  return isIso4217(code) ? code : null;
+}
 /** A catalogue key: lower-case, no spaces, nothing a URL or a file path would
  *  need to escape. */
 const SERVICE_ID = /^[a-z0-9][a-z0-9._-]*$/;
@@ -349,6 +425,21 @@ const DATE_COLUMNS: ReadonlyArray<Column> = [
   'trial_ends_on',
   'cancelled_on',
 ];
+/**
+ * The window every DATE_COLUMNS value must fall in, inclusive.
+ *
+ * ⏱ 2026-10-01 · rv2-services-031. A real calendar date was the whole rule, so
+ * 0000-01-01 to 9999-12-31 were all accepted, and the nightly fan-out
+ * (services/platform/src/renewals.ts) rolls a past-due `next_renewal` forward to
+ * today writing one payment row per crossing: a `0206-05-01` typed for
+ * `2026-05-01` back-filled history from the year 206. No subscription the app
+ * tracks started before the Unix epoch or renews after this century.
+ *
+ * @ceiling none — a VALUE bound on a date column, not a platform resource.
+ */
+export const EARLIEST_DATE = '1970-01-01';
+/** @ceiling none — see EARLIEST_DATE. */
+export const LATEST_DATE = '2100-12-31';
 
 /**
  * The legacy `cycle` a cadence means: 'monthly' for every 1 month, 'yearly' for
@@ -423,8 +514,8 @@ function validate(body: unknown): ValidatedSubscription {
     if (v === undefined) continue;
     if (v === null) {
       fields[col] = null;
-    } else if (!isCalendarDate(v)) {
-      return invalid(`${col} must be a real calendar date as YYYY-MM-DD`);
+    } else if (!isCalendarDateBetween(v, EARLIEST_DATE, LATEST_DATE)) {
+      return invalid(`${col} must be a real calendar date as YYYY-MM-DD, ${EARLIEST_DATE} to ${LATEST_DATE}`);
     } else {
       fields[col] = v;
     }
@@ -462,12 +553,10 @@ function validate(body: unknown): ValidatedSubscription {
   if (currency !== undefined) {
     if (currency === null) {
       fields.currency = null;
-    } else if (typeof currency !== 'string' || !CURRENCY.test(currency)) {
-      return invalid('currency must be a three-letter ISO 4217 code, e.g. INR');
     } else {
-      // Upper-cased because Subscription.readPrice upper-cases what it reads;
-      // storing 'inr' would make two spellings of one currency.
-      fields.currency = currency.toUpperCase();
+      const code = currencyCode(currency);
+      if (code === null) return invalid('currency must be an ISO 4217 currency code, e.g. INR');
+      fields.currency = code;
     }
   }
 
@@ -521,7 +610,7 @@ function validate(body: unknown): ValidatedSubscription {
   const deletedAt = body.deleted_at;
   if (deletedAt !== undefined) {
     // ⏱ 2026-09-29 · ST-E3 (round-2 F03): SOFT DELETE, WRITABLE. A row with
-    // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
+    // `deleted_at` set leaves GET /, the reminders and the platform fan-out, and
     // `null` brings it back (the app's Undo). It is kept, history and all, for
     // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
     //
@@ -630,7 +719,7 @@ function validate(body: unknown): ValidatedSubscription {
  *     free text it always was, with no id;
  *   · null clears both.
  */
-async function resolveCategory(db: D1Database, userId: string, f: Fields): Promise<Invalid | null> {
+async function resolveCategory(db: SqlDb, userId: string, f: Fields): Promise<Invalid | null> {
   if (f.category_id !== undefined) {
     if (f.category_id === null) {
       f.category = null;
@@ -794,6 +883,16 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
   ) {
     return invalid('price_minor must be sent with a price and a currency: the three describe one amount');
   }
+  // ⏱ 2026-10-01 · rv2-services-030: the three must describe ONE amount. It was
+  // never checked, so `{price: 6.49, currency: 'JPY', price_minor: 649}` was
+  // stored, and Subscription.readPrice (which prefers the exact form) showed
+  // ¥649 for a ¥6 plan. The rule is the shared table's: round(price × 10^digits).
+  const expected = toMinorUnits(fields.price as number, fields.currency as string);
+  if (expected !== minor) {
+    return invalid(
+      `price_minor must be price in ${String(fields.currency)}'s minor units: ${String(fields.price)} is ${String(expected)}, not ${minor}`,
+    );
+  }
   fields.price_minor = minor;
   return null;
 }
@@ -809,7 +908,7 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
  * no one else's rows; a user who never opens the app again keeps their removed
  * rows until they do, or until erasure takes everything.
  */
-async function purgeExpired(db: D1Database, userId: string): Promise<void> {
+async function purgeExpired(db: SqlDb, userId: string): Promise<void> {
   const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
   const expired =
     'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';
@@ -828,8 +927,34 @@ async function purgeExpired(db: D1Database, userId: string): Promise<void> {
 
 // GET / — list, most expensive first. A soft-deleted row is not listed; a
 // paused or cancelled one is (it stays, with its history — ST-E3).
+//
+// ⏱ 2026-10-01 · rv2-services-008 — BOUNDED, IN TWO SHAPES.
+//   · NO `limit` (every client before this change): the bare array it always
+//     was, LIMIT MAX_SUBSCRIPTIONS_PER_USER. The row cap admits no more rows than
+//     that per user (live and removed together), so this LIMIT can never cut a
+//     list short — a bare LIMIT below the cap would have truncated silently.
+//   · `?limit=N[&after=<cursor>]`: KEYSET paging, `{ items, next }`. `next` is
+//     the opaque cursor of the last row served, or null on the last page. The
+//     order is the list's own — price DESC (NULL last), then id — and the cursor
+//     carries both, so a row inserted or edited between two pages is neither
+//     served twice nor skipped by an OFFSET that moved under it.
 app.get('/', async (c) => {
   const userId = c.get('userId');
+  const limitRaw = c.req.query('limit');
+  const afterRaw = c.req.query('after');
+  let page: { limit: number; after: Cursor | null } | null = null;
+  if (limitRaw !== undefined) {
+    const limit = Number(limitRaw);
+    if (!/^[0-9]+$/.test(limitRaw) || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE) {
+      return c.json({ error: 'invalid_query', detail: `limit must be a whole number, 1 to ${MAX_PAGE}` }, 400);
+    }
+    const after = afterRaw === undefined || afterRaw === '' ? null : decodeCursor(afterRaw);
+    if (after === undefined) return c.json({ error: 'invalid_query', detail: 'after is not a cursor this API issued' }, 400);
+    page = { limit, after };
+  } else if (afterRaw !== undefined) {
+    return c.json({ error: 'invalid_query', detail: 'after needs a limit' }, 400);
+  }
+
   // BEST-EFFORT: housekeeping must never take the user's list down. A purge
   // that fails is retried on the next list; the rows it would have removed stay
   // soft-deleted, which is the safe side of the failure.
@@ -840,25 +965,92 @@ app.get('/', async (c) => {
   // on every list for a month looked exactly like one that worked. It goes to
   // the Worker's one error sink with the context `app.onError` sends — built by
   // the same `requestSinkContext`, not a copy of it — under `waitUntil` so the
-  // list is not held open behind it.
-  try {
-    await purgeExpired(c.env.APP_DB, userId);
-  } catch (err) {
-    console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
-    const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
+  // list is not held open behind it. Only the FIRST page purges: a later page
+  // is the same list read further.
+  if (page === null || page.after === null) {
     try {
-      c.executionCtx.waitUntil(report);
-    } catch {
-      void report;
+      await purgeExpired(c.env.APP_DB, userId);
+    } catch (err) {
+      console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
+      const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
+      try {
+        c.executionCtx.waitUntil(report);
+      } catch {
+        void report;
+      }
     }
   }
+
+  if (page === null) {
+    const rows = await allRows<Subscription>(
+      c.env.APP_DB.prepare(
+        `SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL
+          ORDER BY price DESC LIMIT ${MAX_SUBSCRIPTIONS_PER_USER}`,
+      ).bind(userId),
+    );
+    return c.json(rows.map(serializeSubscription));
+  }
+
+  // `price IS NULL` sorts LAST (as ORDER BY price DESC already did), so the key
+  // is (has a price, price, id): a NULL-price row's first part is 0, after every 1.
+  const SORT = 'CASE WHEN price IS NULL THEN 0 ELSE 1 END';
+  const where = page.after === null
+    ? ''
+    : page.after.p === null
+      ? `AND price IS NULL AND id > ?`
+      : `AND (price IS NULL OR price < ? OR (price = ? AND id > ?))`;
+  const binds: unknown[] =
+    page.after === null ? [] : page.after.p === null ? [page.after.id] : [page.after.p, page.after.p, page.after.id];
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
-      'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
-    ).bind(userId),
+      `SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ${where}
+        ORDER BY ${SORT} DESC, price DESC, id ASC LIMIT ?`,
+    ).bind(userId, ...binds, page.limit + 1),
   );
-  return c.json(rows.map(serializeSubscription));
+  const more = rows.length > page.limit;
+  const items = more ? rows.slice(0, page.limit) : rows;
+  const last = items[items.length - 1];
+  return c.json({
+    items: items.map(serializeSubscription),
+    next: more && last ? encodeCursor({ p: last.price, id: last.id }) : null,
+  });
 });
+
+/** A keyset position: the last row's price (NULL sorts last) and id. */
+interface Cursor {
+  p: number | null;
+  id: string;
+}
+
+/** base64url of `[price, id]` — opaque to the client, which only echoes it. */
+function encodeCursor(c: Cursor): string {
+  const bytes = new TextEncoder().encode(JSON.stringify([c.p, c.id]));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** The cursor [raw] encodes, or undefined for anything this API did not issue. */
+function decodeCursor(raw: string): Cursor | undefined {
+  if (raw.length > 512 || !/^[A-Za-z0-9_-]+$/.test(raw)) return undefined;
+  try {
+    const bin = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
+    const v: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
+    if (!Array.isArray(v) || v.length !== 2) return undefined;
+    const [p, id] = v as [unknown, unknown];
+    if (!(p === null || isFiniteNumber(p)) || !isBoundedString(id, 64) || id === '') return undefined;
+    return { p, id };
+  } catch {
+    return undefined;
+  }
+}
+
+// Every body this router reads is read BOUNDED, once, ahead of the
+// Idempotency-Key claim that hashes it (rv2-services-025, lib/json-body.ts). A body
+// over the cap is a 413 `body_too_large` and nothing below runs.
+app.post('/', boundedJson(SUBSCRIPTION_BODY_MAX_BYTES));
+app.patch('/:id', boundedJson(SUBSCRIPTION_BODY_MAX_BYTES));
+app.post('/:id/payments', boundedJson(PAYMENT_BODY_MAX_BYTES));
 
 // POST / with an Idempotency-Key: a repeat is answered with the row the first
 // attempt made (AB-O2-02). See lib/idempotency.ts.
@@ -883,12 +1075,7 @@ app.post(
 // POST / — create.
 app.post('/', async (c) => {
   const userId = c.get('userId');
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
 
   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
   const checked = validate(body);
@@ -911,7 +1098,12 @@ app.post('/', async (c) => {
   // `status` and the share pair are NOT NULL DEFAULT in 0003; they are bound
   // with those same defaults because a named column bound to NULL is a
   // constraint failure, not a default.
-  await run(
+  //
+  // 🔴 THE ROW CAP IS IN THE INSERT, NOT A READ BEFORE IT (rv2-services-008).
+  // `INSERT … SELECT … WHERE (SELECT COUNT(*) …) < cap` is ONE statement, so two
+  // creates racing at cap − 1 cannot both pass a count read ahead of them. It
+  // writes no row at the cap (`changes = 0`), which is the 409 below.
+  const inserted = await run(
     c.env.APP_DB.prepare(
       `INSERT INTO subscriptions
          (id, user_id, name, category, price, cycle, next_renewal, plan, glyph,
@@ -920,9 +1112,10 @@ app.post('/', async (c) => {
           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
           cancel_url, rail, rail_holder, reminder_days, shared_with,
           share_numerator, share_denominator, category_id, notice_days, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?
+        WHERE (SELECT COUNT(*) FROM subscriptions WHERE user_id = ?) < ?`,
     ).bind(
       id,
       userId,
@@ -959,13 +1152,37 @@ app.post('/', async (c) => {
       f.category_id ?? null,
       f.notice_days ?? null,
       f.tags ?? null,
+      userId,
+      MAX_SUBSCRIPTIONS_PER_USER,
     ),
   );
 
+  // ── THE READ-BACK IS THE CALLER'S ROW, OR THE CREATE FAILED (rv2-services-029)
+  // It selected by id alone, so the tenancy of the answer rested on nobody else
+  // ever holding that id. Now it is `AND user_id = ?`, like every other read.
   const row = await firstRow<Subscription>(
-    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id),
+    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?').bind(id, userId),
   );
-  return c.json(row ? serializeSubscription(row) : { error: 'not_found' }, 201);
+  const meta = inserted.meta as { changes?: number; duplicate_of_committed_attempt?: boolean };
+  if (!row) {
+    // No row: the cap held it back (`changes = 0` and NOT `run`'s "a retry met
+    // the row the first attempt committed"), or the read-back missed a row this
+    // request did write — never a 201 carrying `{error}`.
+    if ((meta.changes ?? 0) === 0 && meta.duplicate_of_committed_attempt !== true) {
+      return c.json(
+        {
+          error: 'limit_reached',
+          detail: `at most ${MAX_SUBSCRIPTIONS_PER_USER} subscriptions per account, removed ones included until they are purged`,
+          limit: MAX_SUBSCRIPTIONS_PER_USER,
+        },
+        409,
+      );
+    }
+    throw new Error('POST /v1/subscriptions: the read-back found no row for the id this request inserted');
+  }
+  // A row with `changes = 0` is the first attempt's, committed before a reset
+  // whose retry then met the cap or the key: the create DID happen.
+  return c.json(serializeSubscription(row), 201);
 });
 
 // GET /:id — one subscription (must be owned, and not removed) + its history.
@@ -1101,12 +1318,7 @@ app.post(
 app.post('/:id/payments', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
   if (!isPlainObject(body)) {
     return c.json({ error: 'invalid_body', detail: 'body must be a JSON object' }, 400);
   }
@@ -1130,8 +1342,9 @@ app.post('/:id/payments', async (c) => {
       400,
     );
   }
-  if (currency !== undefined && currency !== null && (typeof currency !== 'string' || !CURRENCY.test(currency))) {
-    return c.json({ error: 'invalid_body', detail: 'currency must be a three-letter ISO 4217 code, e.g. INR' }, 400);
+  const code = currency === undefined || currency === null ? null : currencyCode(currency);
+  if (currency !== undefined && currency !== null && code === null) {
+    return c.json({ error: 'invalid_body', detail: 'currency must be an ISO 4217 currency code, e.g. INR' }, 400);
   }
 
   // A payment against a row that is not yours, or that you removed, is a 404:
@@ -1150,7 +1363,7 @@ app.post('/:id/payments', async (c) => {
     amount,
     paid_at: `${paidOn}T00:00:00Z`,
     updated_at: nowIso(),
-    currency: typeof currency === 'string' ? currency.toUpperCase() : sub.currency,
+    currency: code ?? sub.currency,
     source: MANUAL_SOURCE,
   };
   await run(
@@ -1176,13 +1389,7 @@ app.post('/:id/payments', async (c) => {
 app.patch('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'invalid_json' }, 400);
-  }
+  const body = jsonBody(c);
 
   // ── VALIDATE BEFORE THE OWNERSHIP READ ─────────────────────────────────────
   // Order matters for the CALLER, not for safety: a bad value that only failed

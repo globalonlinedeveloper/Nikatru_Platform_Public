@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "PB-27 — the VENDORED hash of every box config file a box reports (tooling/ops/boxes/post-config-manifest.sh),",
+    "read by tooling/ops/check-box-config-drift.mjs in ops-watch against platform_db.box_config_manifest.",
+    "`vendored` is the file's path inside the private corpus checkout; `sha256` is that file's hash, written ONLY by",
+    "`node tooling/ops/check-box-config-drift.mjs --refresh-vendored <corpus dir>` — never typed. A null `sha256` is",
+    "COVERAGE LOST (exit 2), never a pass. The logical names are the first column of each box's",
+    "/etc/nikatru/box-manifest.files; a file a box posts that is not declared here is a finding (UNDECLARED).",
+    "`maxPostAgeHours`: the box cron runs daily, so two missed runs plus slack."
+  ],
+  "maxPostAgeHours": 50,
+  "boxes": {
+    "boxb": {
+      "files": {
+        "compose": { "vendored": null, "sha256": null },
+        "override": { "vendored": null, "sha256": null },
+        "tunnel": { "vendored": null, "sha256": null }
+      }
+    },
+    "boxc": {
+      "files": {
+        "compose": { "vendored": null, "sha256": null },
+        "override": { "vendored": null, "sha256": null },
+        "tunnel": { "vendored": null, "sha256": null }
+      }
+    }
+  }
+}

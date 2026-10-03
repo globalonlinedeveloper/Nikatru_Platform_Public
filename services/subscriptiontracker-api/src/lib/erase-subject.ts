@@ -21,6 +21,7 @@
 // after the first attempt actually landed (the response was lost) must not read
 // as a failure, or the ledger would retry it forever.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type EraseSubjectResult =
@@ -30,7 +31,7 @@ export type EraseSubjectResult =
 // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the walk is `erasureTargets` (two
 // round trips) and the write is `eraseTargets` (one batch, one transaction), both
 // from the shared home. This file keeps its envelope, its refusals and its words.
-export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
+export async function eraseSubjectRows(db: SqlDb, userId: string): Promise<EraseSubjectResult> {
   if (typeof userId !== 'string' || userId.length === 0) {
     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
   }

@@ -78,6 +78,7 @@ import nativeAuth from './routes/native-auth';
 import nativeHandoff from './routes/native-handoff';
 import reminders from './routes/reminders';
 import calendar from './routes/calendar';
+import boxManifest from './routes/box-manifest';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -378,6 +379,11 @@ app.use('/v1/reminders/prefs', platformAuth);
 app.route('/v1', reminders);
 app.use('/v1/calendar/feed', platformAuth);
 app.route('/v1', calendar);
+// ⏱ 2026-10-01 · PB-27 — A BOX REPORTS ITS LIVE CONFIG HASHES (routes/box-manifest.ts).
+// 🔴 NO `platformAuth` HERE, DELIBERATELY: the caller is a box's cron, not a
+// user. The route authenticates the bearer against the secret of the ONE box the
+// body names, and middleware/cors.ts refuses `Origin` on `/v1/ops/`.
+app.route('/v1', boxManifest);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.

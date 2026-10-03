@@ -37,6 +37,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../types';
+import type { KvStore } from '../../../_shared/src/ports/kv';
 import { REVOCATION_TTL_SECONDS, revocationKey, withRevokedBefore, withRevokedSessions } from '../../../_shared/src/auth';
 import { withinRateLimit } from '../lib/edge-ceiling';
 import { raiseLinkFloor } from '../lib/ext-links';
@@ -161,7 +162,7 @@ const rowId = (row: unknown): string | null => {
  * KV failure — each caller decides what a failed write means for its route.
  */
 async function writeRevocation(
-  kv: KVNamespace | undefined,
+  kv: KvStore | undefined,
   sub: string,
   next: (record: unknown, nowSeconds: number) => unknown,
 ): Promise<void> {
