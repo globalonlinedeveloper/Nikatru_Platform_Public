@@ -1150,7 +1150,23 @@ jobs:
         # lockfile per tracked format and reads every `git ls-files` lockfile
         # (exit 2 otherwise) before a clean result is believed; ops-watch.yml's
         # dependency-advisories job runs the same script over main daily.
-        run: node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner"
+        # why: [rv2-security-004] a PULL REQUEST fails only on an advisory in a
+        # lockfile it changed (merge-base..head); one in a lockfile it did not
+        # change is printed and left to that daily scan of main, which owns it —
+        # a new advisory on main no longer reddens the next unrelated PR (#1063,
+        # 2026-09-30). A PR that changes osv-scanner.toml is graded in full, and
+        # the canary and the floor run in full on every event. A push is graded
+        # in full. The range reaches the shell through `env:`, as above.
+        env:
+          SCAN_BASE: ${{ github.event.pull_request.base.sha }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha }}
+          SCAN_KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
+        run: |
+          if [ "$SCAN_KIND" = pr ]; then
+            node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner" --pr-range "${SCAN_BASE}..${SCAN_HEAD}"
+          else
+            node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner"
+          fi
       - name: Install Trivy (version and digest from tooling/versions.json)
         run: |
           set -euo pipefail

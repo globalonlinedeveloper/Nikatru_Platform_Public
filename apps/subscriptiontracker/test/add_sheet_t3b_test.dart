@@ -13,6 +13,7 @@ import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
+import 'package:subscriptiontracker/data/models/spend_history.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -76,6 +77,8 @@ class _Api implements ApiClient {
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       const <PaymentRecord>[];
+  @override
+  Future<SpendHistory> getSpendHistory() async => SpendHistory.empty;
   @override
   Future<BudgetInfo> getBudget() async => const BudgetInfo(
     monthlyBudget: Money(1, 'USD'),

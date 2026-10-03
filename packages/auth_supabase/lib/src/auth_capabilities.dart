@@ -102,7 +102,11 @@ class AuthCapabilities {
             'and they break in embedded webviews and standalone PWAs). The '
             'token arrives in the URL FRAGMENT — query parsing fails silently. '
             'No OS keychain exists for a page, so the session is in ordinary '
-            'web storage; short token lifetimes carry the risk instead.',
+            'web storage, and no short lifetime offsets that: the access '
+            'token lives 1 h, the refresh token is single-use (rotated, with '
+            'reuse detection), and the session never expires by the owner\'s '
+            'rule — it ends at a password reset or a sign-out from all '
+            'devices (tooling/mail-transport.json).',
       );
     }
     return switch (platform) {

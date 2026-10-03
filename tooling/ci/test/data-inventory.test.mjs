@@ -809,3 +809,63 @@ describe('purge-by-verified-email — an address-keyed table reached by confirme
     assert.match(out(r), /purge-by-verified-email` and no `blockedBy`/);
   });
 });
+
+// ⏱ 2026-10-01 · consent enforced at ingest (full review r2, services-005). A row whose `holds`
+// says "only after consent" owes a `consentGate`: the server file that refuses
+// what was not consented to, and the anchors that prove it still does.
+// REAL-TREE MUTATIONS, same day: deleting the `consentGate` block from
+// `table:platform_db.events` -> exit 1 ("names no `consentGate`"); renaming
+// `'consent_withdrawn'` to `'consent_revoked'` in
+// services/platform/src/routes/events.ts -> exit 1 ("never mentions
+// \"consent_withdrawn\""). Both restored, guard re-verified exit 0.
+const GATE_FILE = 'services/api/src/routes/ingest.ts';
+const GATE_SRC = `// the gate
+export const A = 'consent_not_recorded';
+const sql = \`SELECT granted FROM consent_artifacts\`;
+`;
+const withConsentClaim = (gate) =>
+  structuredClone(DEFAULT_STORES).map((s) =>
+    s.id === 'table:main_db.people'
+      ? { ...s, holds: 'Profile rows, collected only after consent.', ...(gate === undefined ? {} : { consentGate: gate }) }
+      : s,
+  );
+const GATE = { enforcedBy: GATE_FILE, anchors: ['consent_artifacts', 'consent_not_recorded'] };
+
+describe('a consent claim names the server code that enforces it', () => {
+  test('passes when the named file carries every anchor in code', () => {
+    const r = run(fixture({ stores: withConsentClaim(GATE), extraFiles: { [GATE_FILE]: GATE_SRC } }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 consent gate\(s\) checked/);
+  });
+
+  test('FAILS when a row claims "only after consent" and names no gate', () => {
+    const r = run(fixture({ stores: withConsentClaim(undefined), extraFiles: { [GATE_FILE]: GATE_SRC } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /names no `consentGate`/);
+  });
+
+  test('FAILS when the gate file does not exist', () => {
+    const r = run(fixture({ stores: withConsentClaim({ ...GATE, enforcedBy: 'services/api/src/routes/gone.ts' }) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /as its consent gate, and that file does not exist/);
+  });
+
+  test('FAILS when the gate file no longer carries an anchor', () => {
+    const r = run(
+      fixture({ stores: withConsentClaim({ ...GATE, anchors: [...GATE.anchors, 'consent_withdrawn'] }), extraFiles: { [GATE_FILE]: GATE_SRC } }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /never mentions "consent_withdrawn"/);
+  });
+
+  test('an anchor that appears only in a COMMENT does not count', () => {
+    const r = run(
+      fixture({
+        stores: withConsentClaim(GATE),
+        extraFiles: { [GATE_FILE]: `// consent_artifacts consent_not_recorded — removed\nexport default {};\n` },
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /never mentions "consent_artifacts"/);
+  });
+});
