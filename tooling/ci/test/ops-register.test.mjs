@@ -202,6 +202,12 @@ import {
   postGateUnit,
   checkNamedLanes,
   NAMED_LANE,
+  recordWindowStartMs,
+  deeperUnitPage,
+  olderUnitPage,
+  olderUnitPagePath,
+  probeUnitFreshness,
+  UNIT_WINDOW_PAGES,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -7068,5 +7074,222 @@ describe('checkNamedLanes — a guard that names a scheduled lane owes one (A-2)
     assert.match(prints.join('\n'), /mutation-proofs\.yml/);
     const wf = real.find((w) => w.rel.endsWith('/mutation-proofs.yml'));
     assert.ok(wf.lines.some((l) => /node tooling\/ci\/assert-mutation-proofs\.mjs \. --execute/.test(l.text)), 'the scheduled lane passes --execute');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-10-03 · OPS-WATCH 37080147071 — a unit read covers the row's WINDOW,
+// not the newest 100 runs. The run failed on duty.failure-ledger "NO success …
+// in the newest 39 completed `schedule` run(s) on main, back to run 36587820199
+// at 2026-09-29T15:10:30Z [window 7d x 1.5 = 252.0h]": one page of ops-watch.yml
+// is ~81h of runs of every event, so a Monday-only job's success fell off it
+// four days after its slot. The scan now pages back (keyset on created_at) to
+// the window start, checked at every seam. assert-ops-register.mjs, file end.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('a unit read covers the row\'s window, not a fixed number of runs (ops-watch 37080147071)', () => {
+  const REPO_ROOT = resolve(CI_DIR, '..', '..');
+  const OPS_WF = () => parseWorkflow(REPO_ROOT, '.github/workflows/ops-watch.yml');
+  const LEDGER = { reader: 'github-run-history', workflow: 'ops-watch.yml', event: 'schedule', headBranch: 'main', unit: { jobs: ['failure-ledger'] } };
+  const H = 3_600_000;
+  const iso = (ms) => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z');
+  const run = (id, createdMs, over = {}) => ({ id, event: 'schedule', status: 'completed', conclusion: 'success', head_branch: 'main', created_at: iso(createdMs), updated_at: iso(createdMs + 120_000), ...over });
+
+  test('recordWindowStartMs is the window classifyRunRecord grades: cadence x (base + the row\'s own budget)', () => {
+    const now = Date.parse('2026-10-03T00:00:00Z');
+    assert.equal(recordWindowStartMs({ cadence: '7d' }, 1.5, now), now - 252 * H);
+    assert.equal(recordWindowStartMs({ cadence: '1d', mechanism: { recordQuery: { missedRunsTolerated: 1 } } }, 1.5, now), now - 60 * H);
+    assert.equal(recordWindowStartMs({ cadence: 'trigger' }, 1.5, now), null, 'a row not on a clock has no window');
+    assert.equal(recordWindowStartMs({ cadence: '7d' }, undefined, now), null, 'no usable base, no deeper read — never a guessed window');
+    assert.equal(recordWindowStartMs({ cadence: '7d' }, 0.5, now), null);
+  });
+
+  test('deeperUnitPage reads on ONLY while the page was full, no gap stands below it, and its oldest run is inside the window', () => {
+    const since = Date.parse('2026-09-22T12:00:00Z');
+    const page = [run(3, Date.parse('2026-10-02T00:00:00Z')), run(2, Date.parse('2026-09-29T15:07:49Z'))];
+    const base = { pageFull: true, gapBelow: null, all: page, sinceMs: since, pages: 1, listing: true };
+    const go = deeperUnitPage(base);
+    assert.equal(go.read, true);
+    assert.equal(go.boundary.id, 2, 'the next page is anchored on the run created FIRST, not on the newest-updated order of the page');
+    assert.deepEqual(deeperUnitPage({ ...base, sinceMs: null }), { read: false, short: null }, 'no window, one page — the read as it was');
+    assert.deepEqual(deeperUnitPage({ ...base, pageFull: false }), { read: false, short: null }, 'a page that is not full is the whole history');
+    assert.deepEqual(deeperUnitPage({ ...base, gapBelow: { floorId: 9, why: 'x' } }), { read: false, short: null }, 'a stale-page gap is the StaleGap path, unchanged');
+    assert.deepEqual(deeperUnitPage({ ...base, sinceMs: Date.parse('2026-09-30T00:00:00Z') }), { read: false, short: null }, 'the page already reaches past the window start');
+    assert.match(deeperUnitPage({ ...base, pages: UNIT_WINDOW_PAGES }).short, /ceiling of 6 pages \(UNIT_WINDOW_PAGES\) was reached at run 2/);
+    assert.match(deeperUnitPage({ ...base, listing: false }).short, /targeted query with no listing to continue/);
+    assert.match(deeperUnitPage({ ...base, all: [{ id: 1, created_at: 'yesterday' }] }).short, /no run on the page carries a created_at/);
+  });
+
+  test('olderUnitPagePath is a KEYSET on created_at, built only from a created_at to the second', () => {
+    const p = olderUnitPagePath('o/r', 'ops-watch.yml', 'main', { id: 36587820199, created_at: '2026-09-29T15:07:49Z' });
+    assert.equal(p, '/repos/o/r/actions/workflows/ops-watch.yml/runs?branch=main&created=%3C%3D2026-09-29T15%3A07%3A49Z&per_page=100');
+    assert.throws(() => olderUnitPagePath('o/r', 'ops-watch.yml', 'main', { id: 1, created_at: '2026-09-29T15:07:49Z&per_page=1' }), /no created_at to the second/);
+  });
+
+  test('olderUnitPage — the branch filter, the created filter and the OVERLAP are checked; each one that does not hold THROWS', () => {
+    const boundary = run(100, Date.parse('2026-09-29T15:07:49Z'));
+    const older = [boundary, run(99, Date.parse('2026-09-29T14:10:47Z')), run(98, Date.parse('2026-09-29T12:00:43Z'))];
+    const got = olderUnitPage({ workflow_runs: older }, { branch: 'main', boundary });
+    assert.deepEqual(got.runs.map((r) => r.id), [100, 99, 98]);
+    assert.equal(got.full, false, 'three runs is the end of the listing');
+    assert.equal(olderUnitPage({ workflow_runs: Array.from({ length: 100 }, (_, i) => (i === 0 ? boundary : run(99 - i, Date.parse('2026-09-28T00:00:00Z') - i * H))) }, { branch: 'main', boundary }).full, true);
+    // RED CONTROLS — one per check.
+    assert.throws(() => olderUnitPage({ workflow_runs: [boundary, run(97, Date.parse('2026-09-29T00:00:00Z'), { head_branch: 'feature' })] }, { branch: 'main', boundary }), /the branch filter did not hold on the older page/);
+    assert.throws(() => olderUnitPage({ workflow_runs: [run(200, Date.parse('2026-10-02T00:00:00Z')), boundary] }, { branch: 'main', boundary }), /the created filter did not hold on the older page/, 'a page that ignored `created=` is the newest page again');
+    assert.throws(() => olderUnitPage({ workflow_runs: older.slice(1) }, { branch: 'main', boundary }), /does not hold run 100 .* so it does not overlap the page above it/);
+    assert.throws(() => olderUnitPage({}, { branch: 'main', boundary }), /without a workflow_runs array/);
+  });
+
+  test('decideUnitFreshness: a read that STOPPED SHORT of the window is UNREAD; one that covered it measures the silence to where it reached', () => {
+    const e = (id, at, verdict) => ({ run: { id, updated_at: at }, c: { verdict, detail: `run ${id}` } });
+    const entries = [e(3, '2026-10-02T21:00:00Z', 'neutral'), e(2, '2026-09-28T16:02:00Z', 'failure')];
+    const since = Date.parse('2026-09-22T12:00:00Z');
+    const short = decideUnitFreshness(LEDGER, entries, true, 'o/r', { pages: 6, sinceMs: since, short: 'the ceiling of 6 pages (UNIT_WINDOW_PAGES) was reached at run 1', backToMs: Date.parse('2026-09-24T00:00:00Z') });
+    assert.equal(short.unreadable, true);
+    assert.match(short.why, /stopped SHORT of this row's window start 2026-09-22T12:00:00\.000Z: the ceiling of 6 pages/);
+    assert.match(short.why, /UNREAD \(INV6\) — never a finding, never a pass/);
+    const covered = decideUnitFreshness(LEDGER, entries, true, 'o/r', { pages: 4, sinceMs: since, short: null, backToMs: Date.parse('2026-09-21T03:00:00Z') });
+    assert.equal(covered.noSuccessSinceMs, Date.parse('2026-09-21T03:00:00Z'), 'every schedule run created since the listing\'s oldest run was considered');
+    assert.match(covered.detail, /read 4 page\(s\) deep, to a run created 2026-09-21T03:00:00\.000Z, past this row's window start 2026-09-22T12:00:00\.000Z/);
+    // and with no reach at all, exactly as before
+    assert.equal(decideUnitFreshness(LEDGER, entries, true, 'o/r').noSuccessSinceMs, Date.parse('2026-09-28T16:02:00Z'));
+  });
+
+  describe('classifyRunRecord — the firstDue gate covers a read that reached the window start, on the same bounds', () => {
+    const NOWC = Date.parse('2026-10-03T00:00:00Z');
+    const row = (firstDue) => ({ id: 'duty.failure-ledger', cadence: '7d', mechanism: { recordQuery: { ...LEDGER, ...(firstDue ? { firstDue } : {}) } } });
+    const deep = { lastSuccessMs: NaN, noSuccessSinceMs: NOWC - 260 * H, detail: 'o/r: NO success of job(s) failure-ledger of ops-watch.yml in the newest 120 completed `schedule` run(s) on main.' };
+
+    test('NOT YET DUE: no success back past the window, firstDue ahead → FAILING, printed, not blocking', () => {
+      const c = classifyRunRecord(row('2026-10-08T00:00:00Z'), deep, NOWC, 1.5);
+      assert.equal(c.verdict, 'fail');
+      assert.equal(c.gated, true, c.line);
+      assert.match(c.line, /NOT YET DUE: `recordQuery\.firstDue` is 2026-10-08T00:00:00Z, 120\.0h from now/);
+    });
+
+    test('🔴 it BLOCKS the moment firstDue passes, and says to delete the field', () => {
+      const c = classifyRunRecord(row('2026-10-02T23:59:59Z'), deep, NOWC, 1.5);
+      assert.notEqual(c.gated, true);
+      assert.match(c.line, /older than every run it read, which reach back 260\.0h — outside its own window \[7d x 1\.5 = 252\.0h\]/);
+      assert.match(c.line, /`recordQuery\.firstDue` \(2026-10-02T23:59:59Z\) has PASSED, so it gates nothing: delete the field/);
+      const none = classifyRunRecord(row(null), deep, NOWC, 1.5);
+      assert.notEqual(none.gated, true, 'no firstDue, no gate');
+      assert.doesNotMatch(none.line, /firstDue/);
+    });
+
+    test('🔴 it still NEVER gates a success that WAS found and is stale', () => {
+      const c = classifyRunRecord(row('2026-10-08T00:00:00Z'), { lastSuccessMs: NOWC - 300 * H, detail: 'run 1 succeeded.' }, NOWC, 1.5);
+      assert.notEqual(c.gated, true);
+      assert.match(c.line, /the newest SUCCESSFUL run is 300\.0h old, outside its own window/);
+    });
+  });
+
+  // ── the read itself, end to end, against a stubbed GitHub ─────────────────
+  // 600 runs of ops-watch.yml on main, one every 30 minutes (every third one a
+  // schedule run, the rest dispatches — the mix that made one page ~81h), the
+  // newest a few minutes old so no stale-page anchor fires. The ledger job
+  // succeeded once, on the newest Monday slot at least 51h back: past the first
+  // page (50h), always inside the 252h window.
+  const world = (nowMs, { successAt = 'monday', dropBoundary = false } = {}) => {
+    const runs = [];
+    for (let k = 0; k < 600; k++) {
+      const created = nowMs - 5 * 60_000 - k * 30 * 60_000;
+      runs.push(run(1_000_000 - k, created, { event: k % 3 === 0 ? 'schedule' : 'workflow_dispatch', conclusion: 'failure' }));
+    }
+    let hit = null;
+    if (successAt === 'monday') {
+      hit = runs.find((r) => nowMs - Date.parse(r.created_at) >= 51 * H && new Date(Date.parse(r.created_at)).getUTCDay() === 1 && new Date(Date.parse(r.created_at)).getUTCHours() >= 8);
+      hit.event = 'schedule';
+    }
+    const calls = { pages: 0, keyset: 0, jobs: 0 };
+    const ledgerName = OPS_WF().jobs.get('failure-ledger').displayName;
+    const answer = (url) => {
+      const u = new URL(url);
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts[parts.length - 1] === 'jobs') {
+        calls.jobs += 1;
+        const id = Number(parts[parts.length - 2]);
+        return { total_count: 1, jobs: [{ id, name: ledgerName, status: 'completed', conclusion: hit && id === hit.id ? 'success' : 'skipped' }] };
+      }
+      if (parts.includes('workflows') && parts[parts.length - 1] === 'runs') {
+        calls.pages += 1;
+        const created = u.searchParams.get('created');
+        let rows = runs.filter((r) => !u.searchParams.get('branch') || r.head_branch === u.searchParams.get('branch'));
+        if (created) {
+          calls.keyset += 1;
+          const t = Date.parse(created.slice(2));
+          rows = rows.filter((r) => Date.parse(r.created_at) <= t && !(dropBoundary && Date.parse(r.created_at) === t));
+        }
+        return { total_count: rows.length, workflow_runs: rows.slice(0, Number(u.searchParams.get('per_page') || 30)) };
+      }
+      throw new Error(`the stub has no answer for ${url}`);
+    };
+    return { runs, hit, calls, answer };
+  };
+  let seqRepo = 0;
+  const withStub = async (w, fn) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => new Response(JSON.stringify(w.answer(String(url))), { status: 200, headers: { 'content-type': 'application/json' } });
+    try {
+      return await fn(`test-owner/deep-read-${seqRepo++}`);
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+
+  test('GREEN: a weekly job\'s success two or more pages down is FOUND, and the read stops there', async () => {
+    const now = Date.now();
+    const w = world(now);
+    const probe = await withStub(w, (repo) => probeUnitFreshness(LEDGER, repo, OPS_WF(), new Map(), now - 252 * H));
+    assert.equal(probe.lastSuccessMs, Date.parse(w.hit.updated_at), probe.detail);
+    assert.ok(w.calls.keyset >= 1, 'premise: the success was NOT on the first page');
+    assert.ok(w.calls.keyset <= UNIT_WINDOW_PAGES - 1, `at most ${UNIT_WINDOW_PAGES} pages in all: ${JSON.stringify(w.calls)}`);
+    const c = classifyRunRecord({ id: 'duty.failure-ledger', cadence: '7d', mechanism: { recordQuery: LEDGER } }, probe, now, 1.5);
+    assert.equal(c.verdict, 'pass', c.line);
+  });
+
+  test('🔴 RED CONTROL — the SAME history read one page deep (no window handed in) is the 37080147071 red', async () => {
+    const now = Date.now();
+    const w = world(now);
+    const probe = await withStub(w, (repo) => probeUnitFreshness(LEDGER, repo, OPS_WF(), new Map()));
+    assert.ok(Number.isNaN(probe.lastSuccessMs));
+    assert.match(probe.detail, /NO success of job\(s\) failure-ledger of ops-watch\.yml in the newest \d+ completed `schedule` run\(s\) on main, back to run/);
+    assert.equal(w.calls.keyset, 0);
+    const c = classifyRunRecord({ id: 'duty.failure-ledger', cadence: '7d', mechanism: { recordQuery: { ...LEDGER, firstDue: '2026-10-03T00:00:00Z' } } }, probe, now, 1.5);
+    assert.match(c.line, /holds NO SUCCESSFUL RUN AT ALL\. .* `recordQuery\.firstDue` \(2026-10-03T00:00:00Z\) has PASSED/);
+  });
+
+  test('a history with NO success in the window reads to the window start and is STALE — not "no success at all"', async () => {
+    const now = Date.now();
+    const w = world(now, { successAt: null });
+    const since = now - 252 * H;
+    const probe = await withStub(w, (repo) => probeUnitFreshness(LEDGER, repo, OPS_WF(), new Map(), since));
+    assert.ok(probe.noSuccessSinceMs <= since, probe.detail);
+    assert.match(probe.detail, /past this row's window start/);
+    const c = classifyRunRecord({ id: 'duty.failure-ledger', cadence: '7d', mechanism: { recordQuery: LEDGER } }, probe, now, 1.5);
+    assert.equal(c.verdict, 'fail');
+    assert.match(c.line, /older than every run it read, which reach back \d+\.\dh — outside its own window \[7d x 1\.5 = 252\.0h\]/);
+  });
+
+  test('🔴 a deeper page that does not overlap the one above it THROWS (unreadable at the call site), never a red', async () => {
+    const now = Date.now();
+    const w = world(now, { dropBoundary: true });
+    await assert.rejects(withStub(w, (repo) => probeUnitFreshness(LEDGER, repo, OPS_WF(), new Map(), now - 252 * H)), /does not overlap the page above it/);
+  });
+
+  test('a window deeper than UNIT_WINDOW_PAGES can reach is UNREAD, and the read spends exactly the ceiling', async () => {
+    const now = Date.now();
+    const w = world(now, { successAt: null });
+    const probe = await withStub(w, (repo) => probeUnitFreshness(LEDGER, repo, OPS_WF(), new Map(), now - 2000 * H));
+    assert.equal(probe.unreadable, true, JSON.stringify(probe));
+    assert.match(probe.why, /stopped SHORT of this row's window start .*: the ceiling of 6 pages/);
+    assert.equal(w.calls.keyset, UNIT_WINDOW_PAGES - 1);
+  });
+
+  test('the committed register: every weekly unit row gets a window, so its read reaches its slot', () => {
+    const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const base = real._recordReaders._windowMultiplier;
+    const weekly = real.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history' && r.cadence === '7d' && unitOf(r.mechanism.recordQuery).kind === 'jobs');
+    assert.ok(weekly.length >= 5, `failure-ledger, edge-shield and the three freshness rows; found ${weekly.map((r) => r.id).join(', ')}`);
+    for (const r of weekly) assert.equal(recordWindowStartMs(r, base, 0), -252 * H, r.id);
   });
 });
