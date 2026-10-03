@@ -41,7 +41,7 @@
 //      1 = a finding (the drive failed, a frame is missing or the wrong size, a price unread).
 //      2 = COVERAGE LOST (a register limb, the product file or the app is absent).
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -59,10 +59,15 @@ class CoverageLost extends Error {}
 class Finding extends Error {}
 
 const readJson = (root, rel) => {
-  const p = join(root, rel);
-  if (!existsSync(p)) throw new CoverageLost(`${rel} does not exist.`);
+  let text;
   try {
-    return JSON.parse(readFileSync(p, 'utf8'));
+    text = readFileSync(join(root, rel), 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') throw new CoverageLost(`${rel} does not exist.`);
+    throw e;
+  }
+  try {
+    return JSON.parse(text);
   } catch (e) {
     throw new CoverageLost(`${rel} is not valid JSON (${e.message}).`);
   }
@@ -183,11 +188,15 @@ function main(argv) {
   const problems = [];
   for (const p of plan.products) {
     const file = join(outDir, `${p.productId}.png`);
-    if (!existsSync(file)) {
+    // One read, no existsSync first (CodeQL js/file-system-race): ENOENT is the only "absent".
+    let bytes;
+    try {
+      bytes = readFileSync(file);
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
       problems.push(`${plan.outDir}/${p.productId}.png was not written by the drive`);
       continue;
     }
-    let bytes = readFileSync(file);
     try {
       const flat = flattenIfAlpha(bytes);
       if (flat) {

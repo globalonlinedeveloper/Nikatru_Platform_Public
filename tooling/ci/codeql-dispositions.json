@@ -688,6 +688,14 @@
       "disposition": "by-design",
       "host": "api.cloudflare.com",
       "reason": "A SELECT-only read of box_config_manifest through the Cloudflare D1 HTTP API with the Cloudflare token is intended. The host is a literal; services/platform/wrangler.jsonc supplies only the database id, and d1QueryUrl() refuses (CouldNotLook) any database_id that is not a UUID before it enters the URL (tooling/ci/test/box-config-drift.test.mjs feeds x/../../user and sees no fetch made)."
+    },
+    {
+      "alert": 612,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/release/submit-appstore.mjs",
+      "disposition": "by-design",
+      "host": ["api.appstoreconnect.apple.com", "apple.com"],
+      "reason": "submit-appstore.mjs --submit (uploadBuild) sends the signed .ipa/.pkg read from disk to the upload operations App Store Connect's Build Uploads API returns: uploading the build for TestFlight processing is the script's purpose (2026-10-03, release lane apple-ready). The API origin is pinned by ascApiBase (https://api.appstoreconnect.apple.com, or a loopback test seam), and every operation URL is refused before any byte is sent unless it is https on a host under apple.com (uploadUrlProblem); the parts must tile the file exactly."
     }
   ]
 }
