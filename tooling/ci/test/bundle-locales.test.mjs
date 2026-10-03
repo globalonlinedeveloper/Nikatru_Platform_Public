@@ -48,7 +48,7 @@ const manifest = ({ label = 'Demo', localeConfig = '@xml/locales_config' } = {})
 const localesXml = (locs) =>
   `<locale-config xmlns:android="http://schemas.android.com/apk/res/android">\n${locs.map((l) => `    <locale android:name="${l}" />\n`).join('')}</locale-config>\n`;
 const CHANNELS = ['android-play', 'windows-store'];
-const exemption = (channel, over = {}) => ({ channel, locale: 'ta', since: '2026-10-01', row: 'O-DEMO-ROW', why: 'awaiting native review', ...over });
+const exemption = (channel, over = {}) => ({ channel, locale: 'ta', since: '2026-10-01', row: 'O-DEMO-ROW', why: 'awaiting native review', ...over }); // fixture row id O-DEMO-ROW (does not exist)
 
 /** A compliant one-app workspace. Every key is one surface; `null` omits it. */
 function tree(over = {}) {
@@ -160,7 +160,7 @@ describe('assert-bundle-locales', () => {
     test('an exempt channel PRINTS an owner line and passes', () => {
       const { code, out } = run(tree());
       assert.equal(code, 0, out);
-      assert.match(out, /👤 OWNER apps\/demo\/store\/android-play: no ta listing, exempt since 2026-10-01 pending O-DEMO-ROW/);
+      assert.match(out, /👤 OWNER apps\/demo\/store\/android-play: no ta listing, exempt since 2026-10-01 pending O-DEMO-ROW/); // fixture row id O-DEMO-ROW (does not exist)
     });
 
     test('FAILS on a missing listing with no exemption', () => {
