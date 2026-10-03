@@ -1208,6 +1208,15 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      # why: the recurring CodeQL shapes (file-system-race, missing-regexp-anchor, incomplete-sanitization and its
+      # multi-character, url-substring and hostname variants, insecure-temporary-file, an unused import) on this PR's
+      # changed lines, in about a second, before the CodeQL rule below waits minutes to say the same (lane codeql-lite).
+      # Lanes run it before the push through affected-guards.mjs; here it is the same check, against the PR's own base.
+      - name: This pull request's changed lines carry none of the recurring CodeQL shapes (codeql-lite)
+        if: ${{ !cancelled() }}
+        env:
+          CODEQL_LITE_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
+        run: node tooling/ci/assert-codeql-lite.mjs
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
       # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
       # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json

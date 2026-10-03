@@ -767,6 +767,16 @@
       ".github/workflows/ci.yml#security-scan"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-codeql-lite.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#security-scan"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-codeql-pr-no-new-high.mjs",
     "references": [],
     "state": "WIRED"
