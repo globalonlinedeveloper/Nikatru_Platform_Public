@@ -17,13 +17,13 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { artifactRecord, symbolsRecord } from '../record-deployment.mjs';
-import { readStore, symbolsKey, pendingOpen, r2Endpoint } from '../r2-durable-copy.mjs';
+import { readStore, symbolsKey, pendingOpen, r2Endpoint, packDeterministic } from '../r2-durable-copy.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const COPY = join(CI_DIR, 'r2-durable-copy.mjs');
@@ -45,11 +45,12 @@ const dir = () => {
 /** A fake `aws s3api` that keeps each object as <store>/<key> plus <key>.sha256. */
 function fakeAws() {
   const store = dir();
-  const cli = join(dir(), 'aws');
+  const cli = join(dir(), 'aws.cjs');
   writeFileSync(
     cli,
     `#!/usr/bin/env node
 const fs = require('node:fs'); const path = require('node:path');
+fs.appendFileSync(${JSON.stringify(join(store, 'calls.log'))}, process.argv[3] + '\\n');
 const a = process.argv.slice(2); const v = (k) => a[a.indexOf(k) + 1];
 const at = path.join(${JSON.stringify(store)}, v('--key'));
 if (a[1] === 'head-object') {
@@ -143,7 +144,7 @@ describe('r2-durable-copy.mjs — the symbols are stored and read back, or the j
   });
 
   test('a read-back that disagrees with the bytes hashed is refused', () => {
-    const lying = join(dir(), 'aws');
+    const lying = join(dir(), 'aws.cjs');
     writeFileSync(lying, `#!/usr/bin/env node\nconst a=process.argv.slice(2);\nif(a[1]==='head-object'){if(!require('fs').existsSync(${JSON.stringify(join(TMP, 'put-done'))})){process.stderr.write('Not Found');process.exit(254);}process.stdout.write(JSON.stringify({ContentLength:1,Metadata:{sha256:'0'.repeat(64)}}));}\nelse{require('fs').writeFileSync(${JSON.stringify(join(TMP, 'put-done'))},'');process.stdout.write('{}');}\n`);
     chmodSync(lying, 0o755);
     const r = copy({ symbols: symbolsDir(), env: CREDS, cli: lying });
@@ -164,6 +165,56 @@ describe('r2-durable-copy.mjs — the symbols are stored and read back, or the j
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /releaseStore\.pendingUntil \(2026-11-30\) has passed \(today 2026-12-01\)/);
     assert.equal(r.record, null);
+  });
+
+  // ⏱ 2026-10-03 (review of #1187, finding 1): a re-run re-downloads the symbols, so every file time
+  // is new. The archive must not record them, or the kept branch below could never fire.
+  test('REPRODUCIBLE — the same files with new times and another creation order pack to the same sha256', () => {
+    const a = symbolsDir();
+    const b = dir();
+    writeFileSync(join(b, 'z-last-created-first.symbols'), 'z');
+    mkdirSync(join(b, 'nested'));
+    writeFileSync(join(b, 'nested', 'x.symbols'), 'more');
+    writeFileSync(join(b, 'app.android-arm64.symbols'), 'mapping bytes');
+    writeFileSync(join(a, 'z-last-created-first.symbols'), 'z');
+    utimesSync(join(b, 'nested', 'x.symbols'), new Date('2001-01-01'), new Date('2001-01-01'));
+    utimesSync(join(a, 'app.android-arm64.symbols'), new Date('2030-06-01'), new Date('2030-06-01'));
+    const pending = { ...UNSET, CHANNEL_REGISTER_TODAY: '2026-10-01' };
+    const ra = copy({ symbols: a, env: pending });
+    const rb = copy({ symbols: b, env: pending });
+    assert.equal(ra.code, 0, ra.out);
+    assert.equal(rb.code, 0, rb.out);
+    assert.equal(ra.record.sha256, rb.record.sha256, 'the archive recorded something other than paths and bytes');
+  });
+
+  test('REPRODUCIBLE, pure — packDeterministic ignores input order and changes with one byte', () => {
+    const files = [{ rel: 'b/x', bytes: Buffer.from('1') }, { rel: 'a', bytes: Buffer.from('2') }];
+    const sha = (r) => createHash('sha256').update(r.bytes).digest('hex');
+    assert.equal(sha(packDeterministic(files)), sha(packDeterministic([...files].reverse())));
+    assert.notEqual(sha(packDeterministic(files)), sha(packDeterministic([files[0], { rel: 'a', bytes: Buffer.from('3') }])));
+    assert.match(packDeterministic([{ rel: 'x'.repeat(120), bytes: Buffer.from('') }]).refusal, /too long for a ustar entry/);
+  });
+
+  test('the archive is a real .tar.gz: the system tar lists every member', () => {
+    const work = dir();
+    const { bytes } = packDeterministic([{ rel: 'nested/x.symbols', bytes: Buffer.from('more') }, { rel: 'app.symbols', bytes: Buffer.from('m') }]);
+    writeFileSync(join(work, 'a.tar.gz'), bytes);
+    const r = spawnSync('tar', ['-tzf', 'a.tar.gz'], { cwd: work, encoding: 'utf8' });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(r.stdout.split(/\r?\n/).filter(Boolean), ['app.symbols', 'nested/x.symbols']);
+  });
+
+  test('IDEMPOTENT — a re-run of the same build against the object it stored is kept, exit 0, and puts nothing', () => {
+    const { cli, store } = fakeAws();
+    const symbols = symbolsDir();
+    const first = copy({ symbols, env: CREDS, cli });
+    assert.equal(first.code, 0, first.out);
+    for (const f of ['app.android-arm64.symbols', join('nested', 'x.symbols')]) utimesSync(join(symbols, f), new Date(), new Date('2031-01-01'));
+    const again = copy({ symbols, env: CREDS, cli });
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.out, /already holds these bytes \(a re-run of this build\); kept/);
+    assert.equal(again.record.sha256, first.record.sha256);
+    assert.equal(readFileSync(join(store, 'calls.log'), 'utf8').split('\n').filter((c) => c === 'put-object').length, 1, 'the re-run wrote the object again');
   });
 
   test('an empty symbols directory is refused: a checksum over nothing is not a mapping', () => {

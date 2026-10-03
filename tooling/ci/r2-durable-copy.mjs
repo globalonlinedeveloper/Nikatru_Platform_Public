@@ -16,7 +16,13 @@
 //
 // WHAT IT DOES, in order — every step reads back what the one before it wrote:
 //   1. packs `--dir` into one .tar.gz (refused when the directory holds no file:
-//      an empty mapping archived is a lie with a checksum);
+//      an empty mapping archived is a lie with a checksum). ⏱ 2026-10-03 (review of
+//      #1187, finding 1): the archive is REPRODUCIBLE — written here, not by `tar`:
+//      entries sorted by path, mtime 0, uid/gid 0, mode 0644, no owner names, and a
+//      gzip header with mtime 0 and a fixed OS byte. Every caller re-materialises the
+//      files (download-artifact) before it packs, so an archive that recorded file
+//      times would hash differently on a re-run of the SAME build, and step 3 would
+//      refuse it as another build;
 //   2. hashes it (sha256) and measures it (bytes);
 //   3. HEADs the key: absent → PUT; present with the same sha256 → kept (a
 //      re-run of the same build is idempotent); present with ANOTHER sha256 →
@@ -44,7 +50,8 @@
 // The transport is the S3 API R2 speaks, through the AWS CLI every GitHub-hosted
 // runner image carries. The endpoint is COMPOSED from the account id, never read
 // from the environment, so the credential cannot be pointed at another host.
-// `--aws-cli <path>` is the one seam, for the tests' fake CLI.
+// `--aws-cli <path>` is the one seam, for the tests' fake CLI; a path ending in
+// .mjs/.cjs/.js is run with this node, so the fake runs on every OS.
 //
 // Usage:
 //   node tooling/ci/r2-durable-copy.mjs --kind symbols --app <app> --channel <channel> \
@@ -57,10 +64,11 @@
 //          bucket to name and no date to hold the pending step to.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { gzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 
@@ -102,15 +110,67 @@ export const r2Endpoint = (accountId) => `https://${accountId}.r2.cloudflarestor
 function filesUnder(dir) {
   const out = [];
   const walk = (d) => {
-    for (const e of listDir(d)) {
-      const p = join(d, e);
-      const st = statSync(p);
-      if (st.isDirectory()) walk(p);
-      else if (st.isFile()) out.push(p);
+    // Directory entries carry their own type: no stat of a path that is read again later.
+    for (const e of listDir(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) out.push(p);
     }
   };
   walk(dir);
   return out;
+}
+
+const BLOCK = 512;
+/** One ustar header field: `value` in octal, zero-padded to `width - 1` digits, then NUL. */
+const octal = (value, width) => `${value.toString(8).padStart(width - 1, '0')}\0`;
+
+/** The ustar (name, prefix) split of a relative POSIX path, or null when it cannot be represented. */
+function ustarName(rel) {
+  if (Buffer.byteLength(rel) <= 100) return { name: rel, prefix: '' };
+  for (let i = rel.indexOf('/'); i !== -1; i = rel.indexOf('/', i + 1)) {
+    const prefix = rel.slice(0, i);
+    const name = rel.slice(i + 1);
+    if (Buffer.byteLength(prefix) <= 155 && Buffer.byteLength(name) <= 100 && name !== '') return { name, prefix };
+  }
+  return null;
+}
+
+/**
+ * PURE in its output: the same files with the same bytes under the same relative paths give the
+ * same archive, byte for byte, whatever their times, owners, modes or the order the OS lists them.
+ * `files` is [{ rel, bytes }]. Returns { bytes } (the .tar.gz) or { refusal }.
+ */
+export function packDeterministic(files) {
+  const blocks = [];
+  for (const f of [...files].sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))) {
+    const split = ustarName(f.rel);
+    if (split === null) return { refusal: `${f.rel} is too long for a ustar entry (name 100, prefix 155 bytes).` };
+    const h = Buffer.alloc(BLOCK);
+    h.write(split.name, 0, 100, 'utf8');
+    h.write(octal(0o644, 8), 100, 8, 'ascii');
+    h.write(octal(0, 8), 108, 8, 'ascii');
+    h.write(octal(0, 8), 116, 8, 'ascii');
+    h.write(octal(f.bytes.length, 12), 124, 12, 'ascii');
+    h.write(octal(0, 12), 136, 12, 'ascii');
+    h.fill(0x20, 148, 156);
+    h.write('0', 156, 1, 'ascii');
+    h.write('ustar\0', 257, 6, 'ascii');
+    h.write('00', 263, 2, 'ascii');
+    h.write(split.prefix, 345, 155, 'utf8');
+    let sum = 0;
+    for (const b of h) sum += b;
+    h.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148, 8, 'ascii');
+    blocks.push(h, f.bytes, Buffer.alloc((BLOCK - (f.bytes.length % BLOCK)) % BLOCK));
+  }
+  blocks.push(Buffer.alloc(BLOCK * 2));
+  let tar = Buffer.concat(blocks);
+  const record = BLOCK * 20;
+  if (tar.length % record) tar = Buffer.concat([tar, Buffer.alloc(record - (tar.length % record))]);
+  const gz = gzipSync(tar, { level: 9 });
+  gz.writeUInt32LE(0, 4);
+  gz[9] = 0xff; // OS "unknown": zlib writes the build platform's code, which would differ between runners
+  return { bytes: gz };
 }
 
 /** The sha256 and size of one file. */
@@ -170,10 +230,10 @@ function main(argv) {
   const work = mkdtempSync(join(tmpdir(), 'r2-durable-'));
   try {
     const tarball = join(work, 'symbols.tar.gz');
-    // why the bare name, run from `work`: GNU tar reads an archive name with a colon as host:path, so an
-    // absolute Windows path (C:\...) is a remote archive there. `-C` moves only the member walk.
-    const tar = spawnSync('tar', ['-czf', 'symbols.tar.gz', '-C', resolve(dir), '.'], { cwd: work, encoding: 'utf8' });
-    if (tar.status !== 0) return deny(`tar exited ${tar.status}: ${(tar.stderr ?? '').trim()}`);
+    const base = resolve(dir);
+    const packed = packDeterministic(files.map((f) => ({ rel: relative(base, f).split(sep).join('/'), bytes: readFileSync(f) })));
+    if (packed.refusal) return deny(packed.refusal);
+    writeFileSync(tarball, packed.bytes);
     const { sha256, size } = digestOf(tarball);
     say(`→    ${files.length} file(s) under ${dir} packed: ${size} bytes, sha256 ${sha256}`);
     const record = { kind, bucket: store.bucket, r2Key: key, sha256, size, stored: false };
@@ -203,7 +263,11 @@ function main(argv) {
         AWS_EC2_METADATA_DISABLED: 'true',
       };
       const endpoint = r2Endpoint(env[names.accountId].trim());
-      const aws = (...a) => spawnSync(cli, ['s3api', ...a, '--bucket', store.bucket, '--key', key, '--endpoint-url', endpoint, '--output', 'json'], { encoding: 'utf8', env: awsEnv });
+      const awsArgs = (a) => ['s3api', ...a, '--bucket', store.bucket, '--key', key, '--endpoint-url', endpoint, '--output', 'json'];
+      const aws = (...a) =>
+        /\.(?:mjs|cjs|js)$/.test(cli)
+          ? spawnSync(process.execPath, [cli, ...awsArgs(a)], { encoding: 'utf8', env: awsEnv })
+          : spawnSync(cli, awsArgs(a), { encoding: 'utf8', env: awsEnv });
       const head = () => {
         const r = aws('head-object');
         if (r.status !== 0) return /\b(404|Not Found|NoSuchKey)\b/.test(`${r.stderr}${r.stdout}`) ? { absent: true } : { error: `head-object exited ${r.status}` };
