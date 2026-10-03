@@ -17,32 +17,32 @@
   },
   "shots": [
     {
-      "file": "sites/nikatru/apps/shots/subscriptiontracker-1-v2.webp",
-      "sha256": "022556125843cb4162b37198cf373a78a029abadda8a79f3a4745da3a8d4609b",
-      "bytes": 19920,
+      "file": "sites/nikatru/apps/shots/subscriptiontracker-1-v3.webp",
+      "sha256": "0d3fe6218994bca16602fca35b8f174c243dfec0dacc1cadbecbd7a4c523a0d3",
+      "bytes": 16768,
       "from": "apps/subscriptiontracker/store/android-play/screenshots/01-home.png",
-      "sourceSha256": "964a8bba25049c47a3cdeeb45742955022d3f9f7b45c49b3f159809a0317edcb"
+      "sourceSha256": "6eaa549834f6ead874e79904d7afb8b79e0d30acddf59e8f8603e04c1d1f2155"
     },
     {
-      "file": "sites/nikatru/apps/shots/subscriptiontracker-2-v2.webp",
-      "sha256": "6d74fc7942a54814e00fa3c37f96a6a899de3ddcaac21931a947c11a2433f10b",
-      "bytes": 14068,
+      "file": "sites/nikatru/apps/shots/subscriptiontracker-2-v3.webp",
+      "sha256": "22ae4bd2f70ec38882681b2a4fbca756050730a53154a6017e9c37c3fd344fa6",
+      "bytes": 15160,
       "from": "apps/subscriptiontracker/store/android-play/screenshots/02-calendar.png",
-      "sourceSha256": "d4034001c70b01ea036efad89ec3ec61a6ed5da5aeb62088659e2f42a5872527"
+      "sourceSha256": "d4581dd9a0436e918716ffc1593d7f0a1cb4452f7fcfde4fa26fe4901b31a0f4"
     },
     {
-      "file": "sites/nikatru/apps/shots/subscriptiontracker-3-v2.webp",
-      "sha256": "d63dc3a995d86dc4f616a906bfd83ef88607af04d3e618bea5610bf73007d1b3",
-      "bytes": 13746,
+      "file": "sites/nikatru/apps/shots/subscriptiontracker-3-v3.webp",
+      "sha256": "3cc8d7d6ff8dd9df2f37eebba22a7c13fee868c8e1a1c4f11ce1ab131d62e96e",
+      "bytes": 20856,
       "from": "apps/subscriptiontracker/store/android-play/screenshots/03-insights.png",
-      "sourceSha256": "b87620942a048745b1ff2a0038e8bfb98f10869758b2901ccfc8653e082a2189"
+      "sourceSha256": "0b18307d0bd85b2f5edcb77c91b97febcc7ea2a6fda9c0c9be52c4c39a5f89cd"
     },
     {
-      "file": "sites/nikatru/apps/shots/subscriptiontracker-4-v2.webp",
-      "sha256": "686f986990cce4b0ac8fd920ee48983f3de6b0eed5ee6809f5812206d359da41",
-      "bytes": 12358,
+      "file": "sites/nikatru/apps/shots/subscriptiontracker-4-v3.webp",
+      "sha256": "1cdd52a652d431c2845e1b375ed0840e379dcc83f717762c7fa667b06a3f32d7",
+      "bytes": 18278,
       "from": "apps/subscriptiontracker/store/android-play/screenshots/04-budget.png",
-      "sourceSha256": "65dbb4e6cb6b1685c8297444cb853e9ded7247b97c0ca5cee1a35f3ffbc0c9ba"
+      "sourceSha256": "e7c3dfb1741fab333c775a5a422a4fb0c723b0c8bb5e13da050e0658729781b8"
     }
   ]
 }

@@ -9,6 +9,9 @@
   ],
   "posture": "live",
   "_postureWhy": "Inherited from the Play set's CAPTURE.json, which the derivation refuses unless it says \"live\".",
+  "capturedSha": "53536add814fee79d2389d74c1d1fd491d89a10e",
+  "capturedAt": "2026-10-03T12:41:32Z",
+  "_capturedWhy": "Inherited from the Play set's CAPTURE.json: nothing photographed this set, it shows the commit its source did.",
   "derivation": {
     "method": "pad-to-aspect-then-area-average",
     "command": "node tooling/ci/assert-apps-gov-in-media.mjs --write --app subscriptiontracker",
@@ -21,19 +24,19 @@
     "sources": [
       {
         "file": "apps/subscriptiontracker/store/android-play/screenshots/01-home.png",
-        "sha256": "964a8bba25049c47a3cdeeb45742955022d3f9f7b45c49b3f159809a0317edcb"
+        "sha256": "6eaa549834f6ead874e79904d7afb8b79e0d30acddf59e8f8603e04c1d1f2155"
       },
       {
         "file": "apps/subscriptiontracker/store/android-play/screenshots/02-calendar.png",
-        "sha256": "d4034001c70b01ea036efad89ec3ec61a6ed5da5aeb62088659e2f42a5872527"
+        "sha256": "d4581dd9a0436e918716ffc1593d7f0a1cb4452f7fcfde4fa26fe4901b31a0f4"
       },
       {
         "file": "apps/subscriptiontracker/store/android-play/screenshots/03-insights.png",
-        "sha256": "b87620942a048745b1ff2a0038e8bfb98f10869758b2901ccfc8653e082a2189"
+        "sha256": "0b18307d0bd85b2f5edcb77c91b97febcc7ea2a6fda9c0c9be52c4c39a5f89cd"
       },
       {
         "file": "apps/subscriptiontracker/store/android-play/screenshots/04-budget.png",
-        "sha256": "65dbb4e6cb6b1685c8297444cb853e9ded7247b97c0ca5cee1a35f3ffbc0c9ba"
+        "sha256": "e7c3dfb1741fab333c775a5a422a4fb0c723b0c8bb5e13da050e0658729781b8"
       },
       {
         "file": "apps/subscriptiontracker/store/android-play/store-icon-512.png",
@@ -48,34 +51,34 @@
     {
       "name": "01-home.png",
       "from": "apps/subscriptiontracker/store/android-play/screenshots/01-home.png",
-      "sourceSha256": "964a8bba25049c47a3cdeeb45742955022d3f9f7b45c49b3f159809a0317edcb",
+      "sourceSha256": "6eaa549834f6ead874e79904d7afb8b79e0d30acddf59e8f8603e04c1d1f2155",
       "sourcePixels": "1080x1920",
-      "sha256": "eb6882cc324d66184857f530251d48d6b0c4b4d28c9a972db4b7902c8ff7e845",
-      "bytes": 23657
+      "sha256": "050c2e0843dc5fd5fd1e06ec3a93f1edddf55b8b1daca2e53fa0032bae008670",
+      "bytes": 13254
     },
     {
       "name": "02-calendar.png",
       "from": "apps/subscriptiontracker/store/android-play/screenshots/02-calendar.png",
-      "sourceSha256": "d4034001c70b01ea036efad89ec3ec61a6ed5da5aeb62088659e2f42a5872527",
+      "sourceSha256": "d4581dd9a0436e918716ffc1593d7f0a1cb4452f7fcfde4fa26fe4901b31a0f4",
       "sourcePixels": "1080x1920",
-      "sha256": "dd0becbec156b1ecfdaa88abdca57279821cafcfee399d4b5e7f3a4e722e3f9e",
-      "bytes": 12472
+      "sha256": "a57577814fd6abb0a006c3a30740f113dc6bc07c796db6b1538901554a6e8c5a",
+      "bytes": 12054
     },
     {
       "name": "03-insights.png",
       "from": "apps/subscriptiontracker/store/android-play/screenshots/03-insights.png",
-      "sourceSha256": "b87620942a048745b1ff2a0038e8bfb98f10869758b2901ccfc8653e082a2189",
+      "sourceSha256": "0b18307d0bd85b2f5edcb77c91b97febcc7ea2a6fda9c0c9be52c4c39a5f89cd",
       "sourcePixels": "1080x1920",
-      "sha256": "492abb786ce511d1703c01e9095daed55c4a1ca78612dc54d1acf3b7bd4b79e4",
-      "bytes": 12262
+      "sha256": "259b6ce10c8958a23524967734d6991169b43073b15c4534e27be660a298fb3e",
+      "bytes": 15061
     },
     {
       "name": "04-budget.png",
       "from": "apps/subscriptiontracker/store/android-play/screenshots/04-budget.png",
-      "sourceSha256": "65dbb4e6cb6b1685c8297444cb853e9ded7247b97c0ca5cee1a35f3ffbc0c9ba",
+      "sourceSha256": "e7c3dfb1741fab333c775a5a422a4fb0c723b0c8bb5e13da050e0658729781b8",
       "sourcePixels": "1080x1920",
-      "sha256": "539efbf7d634024ed5733c502b4ebdab36e87f9b462d762585e265a1a4e60212",
-      "bytes": 12680
+      "sha256": "36b31498c99d35418a02c8849c5947fd5eb7d2db2eca69fcc339529a8dbc1ebe",
+      "bytes": 13759
     }
   ],
   "icon": {
