@@ -352,14 +352,16 @@ export function unreproducible(built, onDisk, en) {
    still serve English for every key its memory lacks: that is how 51 locales
    shipped the same 15 keys in English (i18n audit 2026-10-02, O-FULLSHOT-
    LOCALES-MISS-15-KEYS) while --check exited 0 and printed "765 missing entries"
-   as a statistic. So --check reads the file Chrome loads, not the build, and
-   fails on three things:
+   as a statistic. So --check grades more than drift, and each limb reads its own
+   source: DRIFT and the first two limbs below read the file Chrome loads; the
+   third reads the translation MEMORY (the build's notes.missing / notes.stale),
+   not the file. It fails on three things:
      MISSING       a key English accounts for is absent from the shipped file
      PLACEHOLDERS  an entry's placeholders block is not byte-identical to English
                    (it is copied, never translated, so any difference is a hand edit)
-     UNTRANSLATED  the entry is English fallback — no translation, or a STALE one —
-                   and the key is not declared AWAITING-TRANSLATION in its English
-                   description. That marker is the one sanctioned way to land an
+     UNTRANSLATED  the memory holds no translation for the key, or a STALE one —
+                   so the build serves English fallback — and the key is not
+                   declared AWAITING-TRANSLATION in its English description. That marker is the one sanctioned way to land an
                    English string before its translations; test/i18n-sim.node.js
                    fails the marker the moment any memory translates the key.
    A pending plural base excuses every category form it expands into, read
