@@ -55,6 +55,7 @@ AnalyticsRecorder _recorder(
   anonId: 'install-1',
   transport: transport,
   consent: consent,
+  consentTransport: const DiscardingConsentTransport(),
   queueStore: store,
   batchSize: 2,
   // Timer off: every send in these tests is one the test can count.

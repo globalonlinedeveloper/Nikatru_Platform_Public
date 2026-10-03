@@ -530,6 +530,13 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       priceAfterTrialSupported:
           was?.priceAfterTrialSupported ?? _afterTrialSupported,
       tags: _typedTags,
+      // ST-P4: the sheet has no share field, so an edit keeps the row's own
+      // share. Left to the constructor's 1/1, [Subscription.changesFrom] reads
+      // the missing keys as "undo the share" and every edit of a shared plan
+      // un-shared it on the server.
+      sharedWith: was?.sharedWith,
+      shareNumerator: was?.shareNumerator ?? 1,
+      shareDenominator: was?.shareDenominator ?? 1,
     );
   }
 
