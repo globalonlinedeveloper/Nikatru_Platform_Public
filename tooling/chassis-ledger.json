@@ -47,6 +47,18 @@
       "why": "Per-app manifest or generated-code config."
     },
     {
+      "path": "aso/custom-listings.json",
+      "lines": 8,
+      "verdict": "STAYS",
+      "why": "Per-app ASO data (lane aso-listings): the app's own Play custom store listings / Apple custom product pages and its promotional-text calendar, graded by assert-store-listings.mjs limb A. Empty in the template; each app fills its own, so it cannot move to a shared package."
+    },
+    {
+      "path": "aso/promo-calendar.json",
+      "lines": 7,
+      "verdict": "STAYS",
+      "why": "Per-app ASO data (lane aso-listings): the app's own Play custom store listings / Apple custom product pages and its promotional-text calendar, graded by assert-store-listings.mjs limb A. Empty in the template; each app fills its own, so it cannot move to a shared package."
+    },
+    {
       "path": "assets/icon/README.md",
       "lines": 39,
       "verdict": "STAYS",

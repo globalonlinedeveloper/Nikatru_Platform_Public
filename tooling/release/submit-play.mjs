@@ -1033,7 +1033,14 @@ if (DRY_RUN) {
   // its owner row lifts the exemption, and its screenshots are its OWN set, never the English one.
   console.log('');
   console.log('   ── listing languages (tooling/store/listing-locales.mjs) ──');
-  for (const l of listingPlan(ROOT, app.slug).filter((x) => x.channel === CHANNEL_ID)) {
+  let plan = null;
+  try {
+    plan = listingPlan(ROOT, app.slug).filter((x) => x.channel === CHANNEL_ID);
+  } catch (e) {
+    // A report, not a gate: a --repo-root without the locale register (a test fixture) says so and moves on.
+    console.log(`   ⬜ NOT READ — ${e.message}`);
+  }
+  for (const l of plan ?? []) {
     console.log(`   ${l.source ? '→' : '⬜'} ${l.locale} as ${l.storeCode ?? 'skip'}: text ${l.text}, review ${l.review}, screenshots ${l.screenshots}${l.source ? ' (sent by --sync-listing)' : ' (not sent)'}`);
   }
   console.log('');

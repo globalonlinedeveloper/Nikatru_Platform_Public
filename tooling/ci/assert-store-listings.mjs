@@ -60,10 +60,11 @@
 // Usage: node tooling/ci/assert-store-listings.mjs [repoRoot]
 // Exit:  0 clean · 1 findings · 2 COVERAGE LOST
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRICE } from './price-figure.mjs';
+import { listDir } from './tree-walk.mjs';
 import { LANGUAGES, listingPlan, readSheet, registerLocales, storeChannels } from '../store/listing-locales.mjs';
 
 const ROOT_DEFAULT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -184,7 +185,7 @@ export function gradeLiterals(root) {
   const problems = [];
   const dir = join(root, 'tooling', 'release');
   if (!existsSync(dir)) return { lost: ['tooling/release/ does not exist, so no submit tool was read for a language literal'], problems };
-  const files = readdirSync(dir).filter((f) => /^submit-.*\.mjs$/.test(f));
+  const files = listDir(dir).filter((f) => /^submit-.*\.mjs$/.test(f));
   if (files.length === 0) return { lost: ['tooling/release/ holds no submit-*.mjs, so no submit tool was read for a language literal'], problems };
   for (const f of files) {
     const lines = read(root, `tooling/release/${f}`).split('\n');
@@ -207,7 +208,7 @@ export function listingTexts(root, app) {
     for (const locale of codes) {
       const folder = locale === sourceLocale ? flat : `${flat}/${locale}`;
       if (!existsSync(join(root, folder, 'title.txt'))) continue;
-      for (const f of readdirSync(join(root, folder)).filter((n) => n.endsWith('.txt') && !NOT_COPY.has(n))) {
+      for (const f of listDir(join(root, folder)).filter((n) => n.endsWith('.txt') && !NOT_COPY.has(n))) {
         out.push({ app, channel, locale, origin: locale === sourceLocale ? 'flat' : 'folder', file: f, rel: `${folder}/${f}`, text: read(root, `${folder}/${f}`) });
       }
     }
@@ -328,7 +329,7 @@ export function gradeAsoData(root, app, { codes }) {
     }
   }
   const asoDir = join(root, 'apps', app, 'aso');
-  const research = existsSync(asoDir) ? readdirSync(asoDir).filter((f) => /^research-\d{4}-\d{2}-\d{2}\.md$/.test(f)) : [];
+  const research = existsSync(asoDir) ? listDir(asoDir).filter((f) => /^research-\d{4}-\d{2}-\d{2}\.md$/.test(f)) : [];
   if (research.length === 0) prints.push(`NO ASO RESEARCH: apps/${app}/aso/research-<date>.md does not exist. Keywords and titles are then chosen without a cited pass.`);
   return { problems, prints, texts, research };
 }
@@ -342,7 +343,7 @@ export function competitorsOf(root, app) {
 export function storeApps(root) {
   const dir = join(root, 'apps');
   if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true })
+  return listDir(dir, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(join(dir, d.name, 'store')))
     .map((d) => d.name)
     .sort();

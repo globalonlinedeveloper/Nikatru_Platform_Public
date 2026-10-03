@@ -44,7 +44,7 @@ import {
   listingTexts,
   proveMatchers,
 } from '../assert-store-listings.mjs';
-import { SHEET_HEAD, listingPlan, readSheet, storeLanguage } from '../../store/listing-locales.mjs';
+import { SHEET_HEAD, listingPlan, readSheet, registerLocales, storeLanguage } from '../../store/listing-locales.mjs';
 import { listingQa, sheetText } from '../../store/listing-qa.mjs';
 import { buildPayloads } from '../../store/custom-listings.mjs';
 
@@ -238,7 +238,7 @@ describe('T6 · A: custom listings and the promotional calendar are data, and pu
   test('missing files and unknown channel or locale are findings', () => {
     const root = fixture();
     try {
-      const codes = ['en', 'ta', 'hi'];
+      const { codes } = registerLocales(ROOT);
       assert.deepEqual(gradeAsoData(root, APP, { codes }).problems, []);
       put(root, `apps/${APP}/aso/custom-listings.json`, JSON.stringify({ listings: [{ id: 'x', channel: 'linux-snap', locale: 'fr', audience: 'somebody in particular', fields: {} }] }));
       const r = gradeAsoData(root, APP, { codes }).problems;
