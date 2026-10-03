@@ -49,7 +49,19 @@ GITHUB_TOKEN="$(gh auth token)" node tooling/scripts/guard-sweep.mjs
 
 # everything ci-gate would run, on the machine that will not be a runner
 GITHUB_TOKEN="$(gh auth token)" node tooling/scripts/preflight.mjs
+
+# the recurring CodeQL shapes, on this branch's changed lines only (~1 s)
+node tooling/ci/assert-codeql-lite.mjs
 ```
+
+<!-- CODEQL BEFORE THE PUSH (lane codeql-lite, 2026-10-03). Lanes run
+     `node tooling/ci/assert-codeql-lite.mjs` before every push — the pre-push hook's
+     affected-guards.mjs selects it for any touched .js/.mjs/.ts file — so the shapes
+     CodeQL keeps alerting on here (exists-then-read, an unanchored or unescaped host
+     regex, a URL substring check, a first-occurrence-only replace, a predictable temp
+     file, an unused import) are fixed in the lane, not found by the security job ~40
+     CI jobs later. A line where CodeQL would be wrong carries
+     `// codeql-lite: allow <rule> — <reason>` and a codeql-dispositions.json entry. -->
 
 - [ ] `git diff --name-only origin/main..HEAD` matches what this body claims.
 - [ ] Any `<file>:NNN` citation to a file this change touched was **re-measured**

@@ -2348,8 +2348,9 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  2026-10-02: +1, ONE read: the laptop heartbeat (`beat.json` on ref
    *  lead/heartbeat, the contents API), made only when a duty.laptop.* row is
    *  failing, so the outage rule can grade it DEGRADED during a proven outage
-   *  (O-LAPTOP-OUTAGE-READS-AS-RED); 30 → 31 on its own branch. A healthy run
-   *  makes none. Merged 2026-10-03: the two raises together, 33. */
+   *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read on
+   *  main, before the time-travel row; a healthy run makes none.
+   *  2026-10-03: the merge of both; the replay measured 33 on the merged tree. */
   const OPS_GITHUB_REQUEST_CEILING = 33;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;

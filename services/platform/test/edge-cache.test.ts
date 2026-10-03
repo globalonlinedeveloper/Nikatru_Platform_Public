@@ -141,27 +141,70 @@ describe('GET /config/:app', () => {
     ]);
   });
 
-  // ⏱ 2026-10-03 · merge of main's `?market=` (O-WEB-INR-PRICE-BOOK) over this
-  // cache. Red control: key on ['channel'] alone in routes/config.ts and the
-  // no-market GET below is a HIT on the India answer, served in INR.
-  it('🔴 `?market=` is part of the key: an India answer is never served to a buyer who declared no market', async () => {
+  // 🔴 ⏱ 2026-10-03 · PR #1165 ruling (MONEY). The key was `['channel']` alone, so the
+  // first market to warm an entry was served to every buyer after it. RED CONTROL:
+  // key src/routes/config.ts on `edgeCacheKey(c.req.url, ['channel'])` again and
+  // these cases fail on the currency served to the second and third callers.
+  describe('keyed on the market: one channel, two price books', () => {
     type Offering = { currency_code: string };
     const currencies = async (res: Response) =>
-      ((await res.json()) as { paywall: { offerings: Offering[] } }).paywall.offerings.map((o) => o.currency_code);
-    const kv = new FakeKv();
-    const india = await get(kv, '/config/subscriptiontracker?market=IN');
-    expect(india.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
-    expect(new Set(await currencies(india))).toEqual(new Set(['INR']));
-    const none = await get(kv, '/config/subscriptiontracker?cb=1');
-    expect(none.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
-    expect(new Set(await currencies(none))).toEqual(new Set(['USD']));
-    const indiaAgain = await get(kv, '/config/subscriptiontracker?cb=2&market=IN');
-    expect(indiaAgain.headers.get(EDGE_CACHE_HEADER)).toBe('HIT');
-    expect(new Set(await currencies(indiaAgain))).toEqual(new Set(['INR']));
-    expect(cache.puts).toEqual([
-      'https://platform.nikatru.com/config/subscriptiontracker?market=IN',
-      'https://platform.nikatru.com/config/subscriptiontracker',
-    ]);
+      [...new Set(((await res.json()) as { paywall: { offerings: Offering[] } }).paywall.offerings.map((o) => o.currency_code))];
+
+    it('🔴 A, then B, then A against a warm cache: each caller gets its own book', async () => {
+      const kv = new FakeKv();
+      const a1 = await get(kv, '/config/subscriptiontracker?market=IN');
+      expect(a1.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+      expect(await currencies(a1)).toEqual(['INR']);
+      const b1 = await get(kv, '/config/subscriptiontracker?market=US');
+      expect(b1.headers.get(EDGE_CACHE_HEADER)).toBe('MISS');
+      expect(await currencies(b1)).toEqual(['USD']);
+      const a2 = await get(kv, '/config/subscriptiontracker?market=IN&cb=1');
+      expect(a2.headers.get(EDGE_CACHE_HEADER)).toBe('HIT');
+      expect(await currencies(a2)).toEqual(['INR']);
+      const b2 = await get(kv, '/config/subscriptiontracker?cb=2&market=US');
+      expect(b2.headers.get(EDGE_CACHE_HEADER)).toBe('HIT');
+      expect(await currencies(b2)).toEqual(['USD']);
+      expect(kv.reads).toHaveLength(2);
+    });
+
+    it('🔴 the default book warmed first is never served to an India buyer', async () => {
+      const kv = new FakeKv();
+      expect(await currencies(await get(kv, '/config/subscriptiontracker'))).toEqual(['USD']);
+      expect(await currencies(await get(kv, '/config/subscriptiontracker?market=IN'))).toEqual(['INR']);
+      expect(await currencies(await get(kv, '/config/subscriptiontracker'))).toEqual(['USD']);
+    });
+
+    it('each input is keyed by the answer it selects, not its spelling', async () => {
+      const kv = new FakeKv();
+      const channel = [...RELEASE_CHANNELS][0];
+      await get(kv, '/config/subscriptiontracker');
+      await get(kv, '/config/subscriptiontracker?market=US'); // a market with no book of its own: the default book
+      await get(kv, `/config/subscriptiontracker?market=IN&channel=${channel}`);
+      await get(kv, `/config/subscriptiontracker?channel=${channel}&cb=3&market=IN`); // order and noise do not split it
+      expect(cache.puts).toEqual([
+        'https://platform.nikatru.com/config/subscriptiontracker',
+        `https://platform.nikatru.com/config/subscriptiontracker?channel=${channel}&market=IN`,
+      ]);
+      expect(kv.reads).toHaveLength(2);
+      // Case and empty spellings are refused, never keyed: no third entry.
+      for (const q of ['?market=in', '?market=', '?channel=', '?channel=default']) {
+        expect((await get(kv, `/config/subscriptiontracker${q}`)).status).toBe(400);
+      }
+      expect(cache.puts).toHaveLength(2);
+    });
+
+    it('an invalid market neither writes an entry nor overwrites a valid one', async () => {
+      const kv = new FakeKv();
+      expect(await currencies(await get(kv, '/config/subscriptiontracker?market=IN'))).toEqual(['INR']);
+      for (const bad of ['in', 'IND', '', 'I1']) {
+        expect((await get(kv, `/config/subscriptiontracker?market=${bad}`)).status).toBe(400);
+      }
+      expect(cache.puts).toEqual(['https://platform.nikatru.com/config/subscriptiontracker?market=IN']);
+      const again = await get(kv, '/config/subscriptiontracker?market=IN');
+      expect(again.headers.get(EDGE_CACHE_HEADER)).toBe('HIT');
+      expect(await currencies(again)).toEqual(['INR']);
+      expect(kv.reads).toHaveLength(1);
+    });
   });
 
   it('an unknown app or channel is answered before the cache is even asked', async () => {

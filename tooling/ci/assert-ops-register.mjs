@@ -3574,13 +3574,11 @@ function jobsOfRun(repo, runId, cache) {
  *  job-list read — injected so a test can COUNT the reads: a run that predates every
  *  call of the unit must cost none (⏱ 2026-10-02, review of #1115, finding 2: the skip
  *  had no red control, and dropping it re-reads 30 runs' job lists and times the step
- *  out on a new call unit). `olderThanMs`, when set, skips a run created before it:
- *  a deeper page's run older than the row's window cannot make it fresh. */
-export async function scanUnitRuns(q, runs, all, wf, jobsFor, olderThanMs = null) {
+ *  out on a new call unit). */
+export async function scanUnitRuns(q, runs, all, wf, jobsFor) {
   const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
-    if (Number.isFinite(olderThanMs) && Date.parse(run.created_at) < olderThanMs) continue; // older than the window: cannot make it fresh
     if (runOutsideScheduleDays(run, days)) {
       entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
       continue;
@@ -3607,9 +3605,11 @@ async function scanUnit(q, repo, wf, cache, filters, what, sinceMs = null) {
   let pages = 1;
   let short = null;
   for (;;) {
-    const page = await scanUnitRuns(q, runs, all, wf, (runId) => jobsOfRun(repo, runId, cache), pages > 1 ? sinceMs : null);
-    entries.push(...page);
-    if (page.at(-1)?.c.verdict === 'success') break;
+    // older than the window: cannot make it fresh, so a deeper page's run before `sinceMs` is not read
+    const page = pages > 1 && Number.isFinite(sinceMs) ? runs.filter((run) => !(Date.parse(run.created_at) < sinceMs)) : runs;
+    const found = await scanUnitRuns(q, page, all, wf, (runId) => jobsOfRun(repo, runId, cache));
+    entries.push(...found);
+    if (found.at(-1)?.c.verdict === 'success') break;
     const next = deeperUnitPage({ pageFull, gapBelow, all: all ?? runs, sinceMs, pages, listing: Array.isArray(all) });
     if (!next.read) { short = next.short; break; }
     const older = olderUnitPage(await ghJson(olderUnitPagePath(repo, q.workflow, q.headBranch, next.boundary)), { branch: q.headBranch, boundary: next.boundary, what });

@@ -30,7 +30,7 @@ describe("the shield's limiter is the rate-limiter port", () => {
     const limiter = memoryRateLimiter({ budget: 2 });
     const env: Env = { AUTH_PASSWORD_GLOBAL_LIMITER: limiter };
     // `mark` is required since review 1 of #1115 (src/limit.ts): the release the refusal names.
-    const mark = '1';
+    const mark = 'test-release';
     expect(await admit('auth-password', env, mark)).toBeNull();
     expect(await admit('auth-password', env, mark)).toBeNull();
     const refused = await admit('auth-password', env, mark);

@@ -32,6 +32,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { appendHostRow, expectedMonitors, replaceHostRow } from '../../ops/monitor-register.mjs';
+import { clockEnv } from '../../scripts/test-clock.mjs';
 import { serveFakeMonitorApi, statefulMonitors } from '../../ops/monitor-api/fake.mjs';
 import { clockEnv } from '../../scripts/test-clock.mjs';
 
