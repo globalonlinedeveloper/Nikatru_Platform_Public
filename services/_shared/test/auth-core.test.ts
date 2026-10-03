@@ -219,7 +219,9 @@ describe('lastKnownGoodNeedsWrite — a fetched set always replaces the LKG', ()
 // ─────────────────────────────────────────────────────────────────────────────
 describe('deletionRecencyRefusal — the recent-sign-in rule for account deletion', () => {
   const NOW = 1_800_000_000;
-  const apple = (lastAuthenticatedAt: number | null) => ({ passwordless: true, lastAuthenticatedAt });
+  const apple = (lastAuthenticatedAt: number | null) => ({ passwordless: true, linked: true, lastAuthenticatedAt });
+  // ⏱ 2026-10-02 · #1142 review item 3: email + Apple/Google — has a password, re-proves at its provider.
+  const linked = (lastAuthenticatedAt: number | null) => ({ passwordless: false, linked: true, lastAuthenticatedAt });
 
   it('a FRESH password-less sign-in proceeds', () => {
     expect(deletionRecencyRefusal(apple(NOW - 30), NOW)).toBeNull();
@@ -239,9 +241,15 @@ describe('deletionRecencyRefusal — the recent-sign-in rule for account deletio
     expect(deletionRecencyRefusal(apple(NOW + CLOCK_SKEW_SECONDS), NOW)).toBeNull();
   });
 
-  it('a PASSWORD account is not held to it, however old its sign-in (the recorded decision)', () => {
-    expect(deletionRecencyRefusal({ passwordless: false, lastAuthenticatedAt: NOW - 5 * 3600 }, NOW)).toBeNull();
-    expect(deletionRecencyRefusal({ passwordless: false, lastAuthenticatedAt: null }, NOW)).toBeNull();
+  it('a PASSWORD-ONLY account is not held to it, however old its sign-in (the recorded decision)', () => {
+    expect(deletionRecencyRefusal({ passwordless: false, linked: false, lastAuthenticatedAt: NOW - 5 * 3600 }, NOW)).toBeNull();
+    expect(deletionRecencyRefusal({ passwordless: false, linked: false, lastAuthenticatedAt: null }, NOW)).toBeNull();
+  });
+
+  it('🔴 a LINKED account is held to it: stale and amr-less are refused, fresh proceeds', () => {
+    expect(deletionRecencyRefusal(linked(NOW - 30), NOW)).toBeNull();
+    expect(deletionRecencyRefusal(linked(NOW - RECENT_AUTH_SECONDS - 1), NOW)).toMatch(/linked account without a sign-in/);
+    expect(deletionRecencyRefusal(linked(null), NOW)).toMatch(/linked account whose token carries no amr/);
   });
 
   it('🔴 NO recency at all (the middleware did not set it) is a refusal, not a pass', () => {
@@ -261,10 +269,15 @@ describe('deletionRecencyRefusal — the recent-sign-in rule for account deletio
 
 describe('authRecencyOf — WHEN the person last authenticated, from `amr`', () => {
   it('reads only a POSITIVE password-less claim, and the newest amr entry', () => {
-    expect(authRecencyOf({})).toEqual({ passwordless: false, lastAuthenticatedAt: null });
+    expect(authRecencyOf({})).toEqual({ passwordless: false, linked: false, lastAuthenticatedAt: null });
     expect(authRecencyOf({ app_metadata: { providers: 'apple' } }).passwordless).toBe(false);
     expect(authRecencyOf({ app_metadata: { providers: ['apple'] } }).passwordless).toBe(true);
     expect(authRecencyOf({ app_metadata: { providers: ['email', 'apple'] } }).passwordless).toBe(false);
+    // ⏱ 2026-10-02 (#1142 item 3): an Apple or Google identity is `linked`; email alone, or a non-array, is not.
+    expect(authRecencyOf({ app_metadata: { providers: ['email', 'apple'] } }).linked).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email', 'google'] } }).linked).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email'] } }).linked).toBe(false);
+    expect(authRecencyOf({ app_metadata: { providers: 'google' } }).linked).toBe(false);
     expect(
       authRecencyOf({ amr: [{ method: 'oauth', timestamp: 100 }, { method: 'otp', timestamp: 250 }, { timestamp: 'x' }] })
         .lastAuthenticatedAt,

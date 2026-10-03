@@ -38,6 +38,9 @@ const E2E_HARNESS = 'tooling/e2e';
 const WORKSPACE = 'pubspec.yaml';
 const CHANNELS = 'tooling/channel-register.json';
 const NATIVE_SUITE = 'apps/subscriptiontracker/integration_test/native_auth_proof_test.dart';
+// limb OAUTH-RETURN (AB-A1-02): the workflow that runs the leg, and its suite.
+const OAUTH_WORKFLOW = '.github/workflows/native-auth-proof.yml';
+const OAUTH_SUITE = 'apps/subscriptiontracker/integration_test/native_oauth_return_test.dart';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -56,6 +59,8 @@ function realTree() {
   // limb NATIVE (AB-E2E-02): the target catalog and the native suite.
   cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
   cpSync(join(REPO, NATIVE_SUITE), join(root, NATIVE_SUITE));
+  cpSync(join(REPO, OAUTH_WORKFLOW), join(root, OAUTH_WORKFLOW));
+  cpSync(join(REPO, OAUTH_SUITE), join(root, OAUTH_SUITE));
   // limb FLOWS (st-e2e-parity): the suites' imported step files, where the flow anchors live.
   cpSync(join(REPO, 'apps/subscriptiontracker/integration_test'), join(root, 'apps/subscriptiontracker/integration_test'), { recursive: true });
   // limb FLOWS, the park (lead ruling on #1143): the dispatch-only proof workflow
@@ -895,5 +900,94 @@ describe('per app — a stamped app is graded against its OWN suite', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ⏱ 2026-10-01 · AB-A1-02 — limb OAUTH-RETURN. Every case was run red against
+// the guard: each is a way the OAuth return could stop being proven on a target
+// while the register still said it was.
+describe('limb OAUTH-RETURN — the return is a leg on every native target, or a named wait', () => {
+  const reg = (root, fn) => {
+    const p = join(root, REGISTER);
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    fn(j);
+    writeFileSync(p, JSON.stringify(j, null, 2));
+  };
+  const edit = (root, rel, from, to) => {
+    const p = join(root, rel);
+    const before = readFileSync(p, 'utf8');
+    const after = before.replace(from, to);
+    assert.notEqual(after, before, `the mutation of ${rel} did not apply — a test that mutates nothing proves nothing`);
+    writeFileSync(p, after);
+  };
+
+  test('the real tree prints every target\'s leg and the run ids it still awaits', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /OAuth return per native target: 5 leg\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 a job that stops running the leg', () => {
+    withTree(
+      (root) => edit(root, OAUTH_WORKFLOW, '--target macos --device macos --log native-oauth-return.log --oauth-return', '--target macos --device macos --log native-oauth-return.log'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /job `macos-oauth-return` does not run `node tooling\/e2e\/native_auth_proof\.mjs … --target macos … --oauth-return`/);
+      },
+    );
+  });
+
+  test('🔴 a job that runs the leg for the WRONG target', () => {
+    withTree(
+      (root) => edit(root, OAUTH_WORKFLOW, '--target windows --device windows --log native-oauth-return.log --oauth-return', '--target linux --device windows --log native-oauth-return.log --oauth-return'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /job `windows-oauth-return` does not run/);
+      },
+    );
+  });
+
+  test('🔴 the suite stops waiting for the return', () => {
+    withTree(
+      (root) => edit(root, OAUTH_SUITE, 'debugPrint(kOAuthReturnOkLine);', "debugPrint('done');"),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /nativeTargets\.oauthReturn: "debugPrint\(kOAuthReturnOkLine\)" no longer resolve/);
+      },
+    );
+  });
+
+  test('🔴 a native target with no grade is COVERAGE LOST', () => {
+    withTree(
+      (root) => reg(root, (j) => delete j.nativeTargets.oauthReturn.targets.ios),
+      (r) => {
+        assert.equal(r.status, 2, r.stdout + r.stderr);
+        assert.match(r.stderr, /no OAuth-return grade .*: ios/);
+      },
+    );
+  });
+
+  test('🔴 a wait that names nothing', () => {
+    withTree(
+      (root) => reg(root, (j) => { j.nativeTargets.oauthReturn.targets.windows = { status: 'waits' }; }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /oauthReturn windows waits, and names no `waitsFor`/);
+      },
+    );
+  });
+
+  test('a named wait is graded, and printed as waiting', () => {
+    withTree(
+      (root) => reg(root, (j) => { j.nativeTargets.oauthReturn.targets.windows = { status: 'waits', waitsFor: 'the MSIX on a device' }; }),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /4 leg\(s\) .*, 1 waiting/);
+      },
+    );
   });
 });

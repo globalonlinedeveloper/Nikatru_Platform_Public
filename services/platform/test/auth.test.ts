@@ -1038,7 +1038,23 @@ describe('DELETE /v1/account — a password-less account must have signed in rec
     expect(await res.json()).toEqual({ error: 'reauth_required' });
   });
 
-  it('a PASSWORD account keeps its path: an old amr still deletes (the app re-authenticates it by password)', async () => {
+  it('a PASSWORD-ONLY account keeps its path: an old amr still deletes (the app re-authenticates it by password)', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const t = await token({
+      sub: 'user-a',
+      app_metadata: { provider: 'email', providers: ['email'] },
+      amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
+    });
+    const res = await h.del('/v1/account', `Bearer ${t}`);
+    expect(res.status).toBe(200);
+    expect(identityCalls).toHaveLength(1);
+  });
+
+  // ⏱ 2026-10-02 · #1142 review item 3 — a LINKED account (a password AND Apple or
+  // Google) no longer types its password by default, and the app skips its re-auth
+  // inside its freshness window, so the server holds it to the same amr window.
+  it('🔴 a LINKED account (email + apple) with a STALE sign-in is refused 403 reauth_required, nothing destroyed', async () => {
     const h = harness();
     seedEntitlement(h.db, 'user-a');
     const t = await token({
@@ -1047,12 +1063,34 @@ describe('DELETE /v1/account — a password-less account must have signed in rec
       amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
     });
     const res = await h.del('/v1/account', `Bearer ${t}`);
-    expect(res.status).toBe(200);
-    expect(identityCalls).toHaveLength(1);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
+    expect(h.db.count('entitlements', 'user_id = ?', 'user-a')).toBe(1);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('a LINKED account (email + google) that just re-proved — by provider OR by password — deletes', async () => {
+    for (const method of ['oauth', 'password']) {
+      const h = harness();
+      seedEntitlement(h.db, 'user-a');
+      identityCalls.length = 0;
+      const t = await token({
+        sub: 'user-a',
+        app_metadata: { provider: 'email', providers: ['email', 'google'] },
+        amr: [{ method, timestamp: nowS() - 30 }],
+      });
+      const res = await h.del('/v1/account', `Bearer ${t}`);
+      expect(res.status, method).toBe(200);
+      expect(identityCalls, method).toHaveLength(1);
+    }
   });
 
   it('authRecencyOf reads only a POSITIVE password-less claim, and the newest amr entry', () => {
-    expect(authRecencyOf({})).toEqual({ passwordless: false, lastAuthenticatedAt: null });
+    expect(authRecencyOf({})).toEqual({ passwordless: false, linked: false, lastAuthenticatedAt: null });
+    expect(authRecencyOf({ app_metadata: { providers: ['email', 'apple'] } }).linked).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email', 'google'] } }).linked).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email'] } }).linked).toBe(false);
+    expect(authRecencyOf({ app_metadata: { providers: 'apple' } }).linked).toBe(false);
     expect(authRecencyOf({ app_metadata: { providers: 'apple' } }).passwordless).toBe(false);
     expect(authRecencyOf({ app_metadata: { providers: ['apple'] } }).passwordless).toBe(true);
     expect(authRecencyOf({ app_metadata: { providers: ['email'] } }).passwordless).toBe(false);

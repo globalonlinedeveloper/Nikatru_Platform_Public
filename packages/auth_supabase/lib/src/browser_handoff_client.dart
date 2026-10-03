@@ -36,7 +36,14 @@ abstract interface class HandoffReturn {
   /// The exact `redirect_uri` this return listens on.
   String get redirectUri;
 
-  /// Completes with the first callback URL that arrives.
+  /// Arms the return for THIS hand-off's `state`, before the browser opens.
+  /// Unarmed, nothing completes the wait; armed, only an arrival carrying
+  /// [state] does, and any other is answered 404 while the wait goes on
+  /// (⏱ 2026-10-02, review of #1133, finding 6: a local process or a page
+  /// probing loopback that hit the path first used to end the sign-in).
+  void expectState(String state);
+
+  /// Completes with the first callback URL that carries the armed `state`.
   Future<Uri> get callback;
 
   Future<void> close();
@@ -105,6 +112,7 @@ Future<HandoffTokens> signInThroughBrowser({
   try {
     final core.HandoffRequest request =
         core.newHandoffRequest(appId: appId, redirectUri: ret.redirectUri);
+    ret.expectState(request.state);
     if (!await open(request.connectUrl)) {
       throw core.AuthFailure('The browser could not be opened.');
     }

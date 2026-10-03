@@ -272,6 +272,23 @@ export async function redeemNonce(env: Env, app: string, nonce: string, expMs: n
 }
 
 /**
+ * ⏱ 2026-10-02 — gives a redeemed nonce BACK, for the one caller that spends it
+ * before the work it pays for: the hand-off exchange (routes/native-auth.ts), when
+ * GoTrue fails after the code was redeemed (review of #1133, finding 3). Without
+ * it a transient 5xx burned the code and the app's retry read "used". Only after
+ * a fault that minted no session; a race still has exactly one winner, because
+ * the loser was refused before this runs. Throws nothing: a failed delete leaves
+ * the code spent, which is the behaviour before.
+ */
+export async function releaseNonce(env: Env, app: string, nonce: string): Promise<void> {
+  try {
+    await env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE nonce = ? AND app_id = ?').bind(nonce, app).run();
+  } catch {
+    // the code stays spent
+  }
+}
+
+/**
  * Adds one to today's counter for `scope` and answers the new total. Every call
  * first deletes the previous days' rows, so the table holds one UTC day.
  */
