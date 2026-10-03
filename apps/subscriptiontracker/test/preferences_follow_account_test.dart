@@ -130,6 +130,26 @@ void main() {
     expect(b.c.read(settingsControllerProvider).reminderLeadDays, 7);
   });
 
+  // ⏱ 2026-10-03 · club-nits-b (#1161 nit 5). RED before: the sync sent
+  // languageCode, so a region-tagged choice reached the account as `pt` and
+  // came back to device B as a bare Locale('pt').
+  test('a region-tagged language follows the account whole', () async {
+    const Locale ptBr = Locale.fromSubtags(
+      languageCode: 'pt',
+      countryCode: 'BR',
+    );
+    final _Server server = _Server();
+    final _Device a = _Device(server);
+    await _settle();
+    await setLocaleByUserWith(a.c.read, ptBr);
+    await _settle();
+    expect(server.values['locale'], 'pt-BR');
+
+    final _Device b = _Device(server);
+    await _settle();
+    expect(b.c.read(localeProvider), ptBr);
+  });
+
   test("🔴 finding 4: device B's untouched defaults are NEVER sent", () async {
     final _Server server = _Server()
       ..elsewhere('currencyCode', 'INR')

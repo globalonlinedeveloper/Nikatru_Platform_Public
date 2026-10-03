@@ -89,10 +89,10 @@ class SettingsScreen extends ConsumerWidget {
       themeMode: mode,
       onThemeModeChanged: (ThemeMode m) =>
           ref.read(themeModeProvider.notifier).set(m),
-      languageCode: ref.watch(localeProvider)?.languageCode ?? '',
+      languageCode: ref.watch(localeProvider)?.toLanguageTag() ?? '',
       onLanguageChanged: (String code) => ref
           .read(localeProvider.notifier)
-          .set(code.isEmpty ? null : Locale(code)),
+          .set(code.isEmpty ? null : localeOfCode(code)),
       remindersAvailable: caps.canSchedule,
       remindersEnabled: ref.watch(remindersEnabledProvider),
       onRemindersChanged: (bool on) =>

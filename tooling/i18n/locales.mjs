@@ -156,18 +156,21 @@ class RegisteredLocale {
   final bool pseudo;
 
   /// The [Locale] this row selects.
-  Locale get locale {
-    final List<String> parts = code.split('-');
-    return parts.length == 1
-        ? Locale(parts[0])
-        : Locale.fromSubtags(
-            languageCode: parts[0],
-            countryCode: parts.length > 1 && parts.last.length != 4
-                ? parts.last
-                : null,
-            scriptCode: parts[1].length == 4 ? parts[1] : null,
-          );
-  }
+  Locale get locale => localeOfTag(code);
+}
+
+/// The [Locale] a tag names (\`ll\`, \`ll-RR\`, \`ll-Ssss\`, \`ll-Ssss-RR\`; \`_\`
+/// is read as \`-\`): the inverse of [Locale.toLanguageTag], which is what a
+/// stored or synced language choice holds, so \`pt-BR\` comes back as pt_BR
+/// and never as a bare \`pt\` (#1161 nit 5).
+Locale localeOfTag(String tag) {
+  final List<String> parts = tag.split(RegExp('[-_]'));
+  final bool scripted = parts.length > 1 && parts[1].length == 4;
+  return Locale.fromSubtags(
+    languageCode: parts.first,
+    scriptCode: scripted ? parts[1] : null,
+    countryCode: parts.length > (scripted ? 2 : 1) ? parts.last : null,
+  );
 }
 
 /// Every row of the register, supported first, then pending, then pseudo.

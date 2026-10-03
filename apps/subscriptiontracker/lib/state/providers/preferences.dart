@@ -6,7 +6,7 @@ import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show PersistedValue;
+    show PersistedValue, localeOfTag;
 
 import '../analytics_providers.dart';
 import 'auth.dart' show authUserProvider;
@@ -83,7 +83,7 @@ class LocaleController extends Notifier<Locale?> {
         read: (kv) => kv.read(_localeKey),
         write: (kv, raw) => kv.write(_localeKey, raw),
         decode: _decode,
-        encode: (locale) => locale?.languageCode ?? '',
+        encode: (locale) => locale?.toLanguageTag() ?? '',
         apply: (locale) => state = locale,
         mounted: () => ref.mounted,
       );
@@ -98,7 +98,7 @@ class LocaleController extends Notifier<Locale?> {
   Future<void> set(Locale? locale) => _stored.set(locale);
 
   static Locale? _decode(String? raw) =>
-      (raw == null || raw.isEmpty) ? null : Locale(raw);
+      (raw == null || raw.isEmpty) ? null : localeOfTag(raw);
 }
 
 final NotifierProvider<LocaleController, Locale?> localeProvider =
