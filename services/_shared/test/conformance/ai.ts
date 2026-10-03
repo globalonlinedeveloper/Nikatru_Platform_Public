@@ -30,7 +30,11 @@
 //                       and nothing reaches the carrier (CUSTOMER-PAYS)
 //   key-not-logged      the adapter's key never appears in a console line, an
 //                       outcome, or the error-sink envelope built from one,
-//                       across success and every failure
+//                       across success and every failure; and the request's
+//                       CONTENT (a sentinel input) never appears in a console
+//                       line — run with ANTHROPIC_LOG=debug in the environment,
+//                       so an adapter that stops pinning its SDK's log level
+//                       falls back to a level that prints the request body
 //   rate-limited        a 429 is `retryable`
 //   server-error        a 5xx is `retryable`
 //   bad-request         a 400 is `invalid`, not retryable
@@ -115,6 +119,11 @@ export const CONFORMANCE_SCHEMA = {
 export const CONFORMANCE_ROWS_TEXT = JSON.stringify({ rows: [{ name: 'Fixture streaming', amount: 9.99 }] });
 /** A truncated answer: what a `max_tokens` stop leaves behind. Never rows. */
 export const CONFORMANCE_TRUNCATED_TEXT = '{"rows":[{"name":"Fixture str';
+
+/** The user content key-not-logged sends: an SDK's debug log prints the request
+ *  BODY (its header redaction covers the key, never the content), so this string
+ *  in a console line is user content in a log (review of #1136, LOGDEBUG). */
+export const CONFORMANCE_CONTENT_SENTINEL = 'content-sentinel-user-text-never-logged';
 
 export const conformanceRequest = (model: AiModelId = 'claude-haiku-4-5'): AiRequest => ({
   feature: 'import',
@@ -238,13 +247,22 @@ export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret
           lines.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a) ?? String(a))).join(' '));
         };
       }
+      // The most verbose environment an SDK reads: an adapter that drops its own
+      // log-level pin falls back to this, and debug prints the request body.
+      const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+      const savedLog = env?.ANTHROPIC_LOG;
+      if (env) env.ANTHROPIC_LOG = 'debug';
       const outcomes: AiOutcome[] = [];
       try {
-        for (let i = 0; i < 5; i++) outcomes.push(await p.complete(conformanceRequest()));
+        for (let i = 0; i < 5; i++) outcomes.push(await p.complete({ ...conformanceRequest(), input: CONFORMANCE_CONTENT_SENTINEL }));
       } finally {
         methods.forEach((m, i) => {
           console[m] = saved[i];
         });
+        if (env) {
+          if (savedLog === undefined) delete env.ANTHROPIC_LOG;
+          else env.ANTHROPIC_LOG = savedLog;
+        }
       }
       const failures = outcomes.filter((o) => !o.ok);
       if (failures.length < 3) fail(scenario, `the harness produced ${failures.length} failure(s); the scenario needs a success and at least three failures to examine`);
@@ -255,6 +273,9 @@ export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret
       for (const text of [...lines, ...outcomes.map((o) => JSON.stringify(o)), ...envelopes]) {
         // "match" / "no match" only: the key is never printed by a test either.
         if (text.includes(secret)) fail(scenario, 'the key appears in a log line, an outcome or an error-sink envelope: match');
+      }
+      for (const line of lines) {
+        if (line.includes(CONFORMANCE_CONTENT_SENTINEL)) fail(scenario, 'the request content appears in a log line: match');
       }
       return;
     }

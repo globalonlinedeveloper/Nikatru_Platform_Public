@@ -144,6 +144,8 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
           apiKey: deps.apiKey,
           maxRetries: 0,
           timeout: deps.timeoutMs ?? ANTHROPIC_CALL_TIMEOUT_MS,
+          // The SDK's debug level prints the request BODY (user content); 'off' also
+          // overrides ANTHROPIC_LOG, so the environment cannot turn it back on.
           logLevel: 'off',
           ...(deps.fetchImpl ? { fetch: deps.fetchImpl } : {}),
         });

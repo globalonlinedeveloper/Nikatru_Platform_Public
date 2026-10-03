@@ -100,6 +100,37 @@ describe('the ai conformance suite reddens', () => {
     await expect(checkAiScenario('key-not-logged', over(chatty, stub), SENTINEL)).rejects.toThrow(/: match/);
   });
 
+  it('🔴 an adapter whose SDK logs the request BODY fails `key-not-logged`, even with the key redacted (LOGDEBUG)', async () => {
+    const stub = createStubAi({ beforeCall: GRANT, limits: CONFORMANCE_LIMITS, defaultText: CONFORMANCE_ROWS_TEXT });
+    for (const status of [429, 400, 503, 500]) stub.answer({ kind: 'status', status });
+    const debugLogging: AiProvider = {
+      id: 'stub',
+      capabilities: stub.capabilities,
+      async complete(req, o) {
+        // What the Anthropic SDK prints at logLevel 'debug': headers redacted, the body verbatim.
+        console.debug('sending request', { headers: { 'x-api-key': '***' }, body: { messages: [{ role: 'user', content: req.input }] } });
+        return stub.complete(req, o);
+      },
+    };
+    await expect(checkAiScenario('key-not-logged', over(debugLogging, stub), SENTINEL)).rejects.toThrow(/the request content appears in a log line: match/);
+  });
+
+  it('🔴 an adapter that logs at the level ANTHROPIC_LOG asks for fails `key-not-logged` (the scenario runs with it at debug)', async () => {
+    const stub = createStubAi({ beforeCall: GRANT, limits: CONFORMANCE_LIMITS, defaultText: CONFORMANCE_ROWS_TEXT });
+    for (const status of [429, 400, 503, 500]) stub.answer({ kind: 'status', status });
+    const envLogging: AiProvider = {
+      id: 'stub',
+      capabilities: stub.capabilities,
+      async complete(req, o) {
+        if (process.env.ANTHROPIC_LOG === 'debug') console.debug('sending request', { body: req.input });
+        return stub.complete(req, o);
+      },
+    };
+    const before = process.env.ANTHROPIC_LOG;
+    await expect(checkAiScenario('key-not-logged', over(envLogging, stub), SENTINEL)).rejects.toThrow(/the request content appears in a log line: match/);
+    expect(process.env.ANTHROPIC_LOG).toBe(before); // the scenario restores the environment
+  });
+
   it('🔴 an adapter that pins its own model fails `model-from-config`', async () => {
     const stub = createStubAi({ beforeCall: GRANT, limits: CONFORMANCE_LIMITS, defaultText: CONFORMANCE_ROWS_TEXT });
     const pinned: AiProvider = { id: 'stub', capabilities: stub.capabilities, complete: (req, o) => stub.complete({ ...req, model: 'claude-opus-5-5' }, o) };
