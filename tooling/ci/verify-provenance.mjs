@@ -31,10 +31,11 @@
 // to verify with).
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 export const VERIFY_DOC = 'docs/release/verify-a-download.md';
 export const SLSA_PROVENANCE = 'https://slsa.dev/provenance/v1';
@@ -85,7 +86,7 @@ export function gradeVerify({ name, sha256, status, stdout, stderr }) {
 
 /** Every file of the flat release directory, hashed: [{ name, path, sha256 }]. */
 export function releaseFiles(dir) {
-  return readdirSync(dir)
+  return listDir(dir)
     .sort()
     .map((name) => ({ name, path: join(dir, name) }))
     .filter((f) => statSync(f.path).isFile())
