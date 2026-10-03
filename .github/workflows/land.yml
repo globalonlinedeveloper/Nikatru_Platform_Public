@@ -6,7 +6,10 @@ name: Land
 # the measurement behind it and the cut-over are in docs/ci/land.md. Only `# why:`
 # lines live here, and docs/ci/README.md carries the rules every workflow obeys.
 
-run-name: "Land (${{ github.event_name }})"
+# why: a CI completion wakes this run, and its own green says only that it ran, so
+# the title names the verdict that woke it (assert-workflow-hardening.mjs limb 16).
+# Path and conclusion only: no expression here reads the run's head.
+run-name: "Land (${{ github.event_name }}${{ github.event_name == 'workflow_run' && format(' after {0} {1}', github.event.workflow_run.path, github.event.workflow_run.conclusion) || '' }})"
 
 on:
   # why: the clock is the floor. Every other trigger below only makes a decision
@@ -15,9 +18,10 @@ on:
     - cron: '*/10 * * * *'
   # zizmor: ignore[dangerous-triggers]
   # why: a CI or E2E run finishing is what turns a PR (or main) from pending into
-  # a verdict, so it wakes the lander. Safe here: no expression reads the
-  # triggering run, the checkout is main, and the only code run is land-next.mjs
-  # from main.
+  # a verdict, so it wakes the lander. Safe here: the one expression that reads
+  # the triggering run is `run-name:`'s path and conclusion (display only, never a
+  # shell, never its head), the checkout is main, and the only code run is
+  # land-next.mjs from main.
   workflow_run:
     workflows: [CI, E2E live]
     types: [completed]
