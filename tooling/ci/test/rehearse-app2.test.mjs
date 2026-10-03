@@ -22,7 +22,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -123,6 +123,13 @@ describe('T4 · the kit\'s readout becomes manual steps', () => {
     assert.deepEqual(s.unmappedManualSteps, ['readout: name clearance']);
     assert.equal(exitCode(s), 1);
   });
+  test('a readout step a scheduled lane already does is automated, not manual', () => {
+    const steps = readoutSteps(text, {}, {}, { 'name clearance': '.github/workflows/name-clearance.yml' });
+    const nc = steps.find((s) => s.name === 'readout: name clearance');
+    assert.deepEqual([nc.result, nc.manual], ['lane', false]);
+    assert.match(nc.why, /done by \.github\/workflows\/name-clearance\.yml/);
+    assert.ok(!summarize(steps, { asOf: '2026-10-03', id: 'x' }).unmappedManualSteps.includes('readout: name clearance'));
+  });
   test('the real new-product readout parses (subscriptiontracker: two OWNER steps)', () => {
     const r = spawnRun(['node', 'tooling/kit/new-product.mjs', 'plan', 'subscriptiontracker'], { cwd: ROOT, env: process.env });
     assert.equal(r.status, 0, r.out);
@@ -195,6 +202,10 @@ describe('T8 · the real step register', () => {
       else assert.ok(Array.isArray(s.argv) || Array.isArray(s.argvs), `${s.name} names no command`);
     }
     for (const row of Object.values(decl.readoutRows)) assert.match(row, /^O-[A-Z0-9-]+$/);
+    for (const [name, lane] of Object.entries(decl.readoutLanes ?? {})) {
+      if (name.startsWith('_')) continue;
+      assert.ok(existsSync(join(ROOT, lane)), `readoutLanes["${name}"] names ${lane}, which does not exist`);
+    }
   });
   test('all seven targets and the extension template are exercised or listed with a reason', () => {
     const covered = new Set(decl.steps.flatMap((s) => s.targets ?? []));

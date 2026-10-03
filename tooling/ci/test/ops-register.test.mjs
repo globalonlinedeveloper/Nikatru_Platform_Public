@@ -6227,7 +6227,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
     const { world, derivedRuns } = replayWorld(f, register);
     // ⏱ 2026-09-29 (A-2): mutation-proofs.yml is the second scheduled workflow added after the freeze.
-    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml'], 'only the scheduled workflows added after the freeze are derived');
+    // ⏱ 2026-10-03 (app2-dryrun): rehearse-app2.yml is the third.
+    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml'], 'only the scheduled workflows added after the freeze are derived');
     assert.equal(world.runs['mutation-proofs.yml'].length, 1);
     assert.equal(world.runs['mutation-proofs.yml'][0][1], 'schedule');
     assert.equal(world.runs['name-clearance.yml'].length, 1);
@@ -6240,7 +6241,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
     const pure = replayWorld({ ...f, runs: rest }, register);
     assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
-    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml']);
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'rehearse-app2.yml']);
   });
 
   test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {
@@ -6359,7 +6360,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
       // 11 → 12 on 2026-09-29: so is duty.workflow.mutation-proofs.yml (A-2), a workflow on a clock.
       // 12 → 13 on 2026-10-01: so is duty.workflow.migrate-platform-db.yml (PB-03), a post-gate lane.
-      assert.match(r.out, /every one of the 13 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 13 → 14 on 2026-10-03: so is duty.workflow.rehearse-app2.yml (app2-dryrun), a workflow on a clock.
+      assert.match(r.out, /every one of the 14 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 

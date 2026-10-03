@@ -143,14 +143,20 @@ export function runSteps(steps, { tree, id, vars, run = spawnRun, has = onPath, 
   return results;
 }
 
-/** The kit's readout lines `OWNER|NEXT|UNREAD <step> — <why>` as manual steps, mapped through `rows`. */
-export function readoutSteps(text, rows = {}, estimates = {}) {
+/** The kit's readout lines `OWNER|NEXT|UNREAD <step> — <why>` as steps: manual, mapped through `rows`,
+ *  unless `lanes` names the scheduled workflow that already does it for every declared app. */
+export function readoutSteps(text, rows = {}, estimates = {}, lanes = {}) {
   const out = [];
   for (const line of String(text).split('\n')) {
     const m = line.match(/^(OWNER|NEXT|UNREAD|LOST) (.+?) — (.*)$/);
     if (!m) continue;
     const name = m[2].trim();
-    out.push({ name: `readout: ${name}`, targets: [], seconds: 0, result: 'manual', manual: true, why: `${m[1]} in new-product.mjs plan — ${m[3].trim()}`, row: rows[name] ?? null, estimateMinutes: estimates[name] ?? null });
+    const said = `${m[1]} in new-product.mjs plan — ${m[3].trim()}`;
+    if (typeof lanes[name] === 'string') {
+      out.push({ name: `readout: ${name}`, targets: [], seconds: 0, result: 'lane', manual: false, row: null, why: `done by ${lanes[name]} on its own schedule, for every declared app; ${said}` });
+      continue;
+    }
+    out.push({ name: `readout: ${name}`, targets: [], seconds: 0, result: 'manual', manual: true, why: said, row: rows[name] ?? null, estimateMinutes: estimates[name] ?? null });
   }
   return out;
 }
@@ -252,7 +258,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     results = runSteps(steps, { tree, id, vars });
     // The kit's readout names every step still OWNER, NEXT or UNREAD for the new id: each is manual.
     for (const r of results.filter((x) => typeof x.readout === 'string')) {
-      results.push(...readoutSteps(r.readout, decl.readoutRows ?? {}, decl.readoutEstimates ?? {}));
+      results.push(...readoutSteps(r.readout, decl.readoutRows ?? {}, decl.readoutEstimates ?? {}, decl.readoutLanes ?? {}));
       delete r.readout;
     }
   } finally {

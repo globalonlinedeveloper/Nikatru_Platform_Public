@@ -571,6 +571,17 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'Classified 2026-09-24, the round the workflow landed.',
   ],
   [
+    'rehearse-app2.yml',
+    'stamps a THROWAWAY app #2 from the brick in a temporary git worktree weekly and runs every lane dry ' +
+      'against it, to measure time-to-ship. It ships no app and names no workspace app: its one app id is ' +
+      'generated per run (rehearsal<yyyymmdd>) and never committed, so R-1, which quantifies over the ' +
+      'workspace APP set, has nothing to compare and would hold a permanent empty-set pass. It is, if ' +
+      'anything, the opposite check: a lane that hard-codes app #1 shows up in its output as a failed or ' +
+      'manual step for app #2. The owning stage is the kit (O-TIME-TO-SHIP-UNMEASURED), through the duty ' +
+      'row `duty.workflow.rehearse-app2.yml` in tooling/ops/register.json; what holds its machinery ' +
+      'correct is tooling/ci/test/rehearse-app2.test.mjs. Classified 2026-10-03, the round the workflow landed.',
+  ],
+  [
     'mutation-proofs.yml',
     'runs the EXECUTED half of tooling/ci/assert-mutation-proofs.mjs weekly: it applies each recorded ' +
       'mutation of every tracked dod.json row that carries one to the tree, runs the named test green-control-' +

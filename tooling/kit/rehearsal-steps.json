@@ -635,7 +635,12 @@
     "monitor row": "O-NEW-APP-ROWS-ARE-HAND-TYPED",
     "backend": "O-SERVICE-KIT-UNBUILT",
     "product row": "O-PRODUCT-RECORD-UNBUILT",
-    "pages origin": "O-PRODUCT-RECORD-UNBUILT"
+    "pages origin": "O-PRODUCT-RECORD-UNBUILT",
+    "crash sink": "O-SERVICE-KIT-UNBUILT"
+  },
+  "readoutLanes": {
+    "_why": "A readout step a scheduled workflow already does for every declared app is automated, not manual: name-clearance.yml re-derives apps/<app>/name-clearance.json weekly for every app in catalog/apps.json and lands it by pull request.",
+    "name clearance": ".github/workflows/name-clearance.yml"
   },
   "readoutEstimates": {
     "store records": 180,
