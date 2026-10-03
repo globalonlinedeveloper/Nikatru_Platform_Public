@@ -564,6 +564,11 @@
         "note": "⏱ 2026-09-29 (ST-E3, ST-I4). Two FIXED-size batches: `purgeExpired` (3 — payment_history, price_change, subscriptions) and a price-moving PATCH (2 — the UPDATE and its price_change row). Neither grows with input; test/lifecycle.test.ts counts them."
       },
       {
+        "file": "services/platform/src/lib/ai/meter.ts",
+        "boundedBy": "AI_METER_BATCH_STATEMENTS",
+        "note": "⏱ 2026-10-02 (T17). Three FIXED-size batches: a pack grant (4 — the grant row, the account row, the credit, the grant flip; one transaction since 2026-10-03, so a failed batch leaves no pending row), a released call (2 — the ledger row and the credit back) and a revoked pack (2). None grows with input; test/ai-routes.test.ts drives each."
+      },
+      {
         "file": "services/subscriptiontracker-api/src/routes/categories.ts",
         "boundedBy": "MAX_CATEGORY_BATCH_STATEMENTS",
         "note": "⏱ 2026-09-29 (ST-X8). A rename and a delete each batch exactly 3 statements (the category, its subscriptions, its cap). Fixed; test/categories.test.ts counts them."

@@ -236,6 +236,78 @@
       }
     },
     {
+      "id": "table:platform_db.ai_accounts",
+      "kind": "d1-table",
+      "name": "ai_accounts",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays). One row per (account, app) that used or bought paid AI: the paid pack credits left, the monthly allowance used and its month, and the version and time of the AI disclosure the user acknowledged. No content: no prompt, image, e-mail or model answer is ever stored.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A credit balance is what the customer paid for and the opt-in is the record that they agreed to the AI disclosure; both are needed for as long as the account exists. ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`, and the shared erasure route derives the tables it empties from the schema."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row is the person's: their balance and their consent. Erasing the account leaves nothing for it to describe."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_ai_meter.sql",
+        "services/platform/src/lib/ai/meter.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.ai_ledger",
+      "kind": "d1-table",
+      "name": "ai_ledger",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays). One row per paid AI call (the feature, the model, the credit source, tokens in and out and the USD it cost at the model's own prices) and one per verified pack purchase (the rail and its purchase reference, credits granted, revoked on refund). No content: the request body is never persisted.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The ledger explains a customer's balance and is what the global daily spend circuit-breaker sums; it is kept for the life of the account. ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "Every row names the person's account. When the account is erased the ledger has nobody left to explain a balance to."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0027_ai_meter.sql",
+        "services/platform/src/lib/ai/meter.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.refund_requests",
+      "kind": "d1-table",
+      "personalData": true,
+      "name": "refund_requests",
+      "holds": "⏱ 2026-10-02 · refund-finish (MF-5). One row per in-window refund a signed-in user asked for: our account id, the app, the rail and its purchase reference, the request's idempotency key, when the charge happened (the rail's own clock), when it was asked, and the rail's refund reference once carried out — or why it was not. References only: no card, UPI or bank detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A refund is a money event a dispute, a chargeback or an audit can ask about for as long as the account exists, and the row is what stops one payment being refunded twice. ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row is the person's request. When the account is erased the request has nobody left to answer to."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0028_refund_requests.sql",
+        "services/platform/src/routes/refund.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.provider_payment_links",
       "kind": "d1-table",
       "name": "provider_payment_links",
