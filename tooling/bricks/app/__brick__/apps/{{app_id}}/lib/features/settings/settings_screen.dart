@@ -139,8 +139,7 @@ class SettingsScreen extends ConsumerWidget {
         openUrl: _openUrl,
       ),
       helpLabel: helpCentreLabelOf(context),
-      // Lane dpdp-rights: packages/feedback's rights screen; its erasure opens
-      // this adapter's own account deletion below.
+      // Lane dpdp-rights: packages/feedback's rights screen; erasure opens the deletion below.
       onOpenPrivacyRights: () => openPrivacyRightsScreen(
         context,
         ref,

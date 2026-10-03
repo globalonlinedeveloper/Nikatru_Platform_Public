@@ -637,10 +637,8 @@ final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
   ),
 );
 
-/// Settings › Privacy › "Your privacy rights" (lane dpdp-rights):
-/// packages/feedback's rights screen over the intake host above, the
-/// platform's export and nominee routes, the file seam the export uses and the
-/// Settings adapter's own account deletion ([onDeleteAccount]).
+/// Settings › Privacy › "Your privacy rights" (lane dpdp-rights): packages/feedback's
+/// screen over this app's intake, export/nominee routes, file seam and [onDeleteAccount].
 Future<void> openPrivacyRightsScreen(
   BuildContext context,
   WidgetRef ref, {
@@ -810,9 +808,7 @@ final Provider<bool> consentDecidedProvider = Provider<bool>((ref) {
   );
   if (!c.hasValue) return true; // still loading — do NOT prompt yet
   final core.ConsentController controller = c.requireValue;
-  // ⏱ 2026-10-03 · lane dpdp-rights, Do 6 (F-05): an answer given under a notice
-  // version a later one MATERIALLY changed for this purpose is asked again, once
-  // (core's register says which bumps are material); the same prompt, never a gate.
+  // Lane dpdp-rights (F-05): a materially changed notice asks again, once (core's register).
   return controller.statusOf(core.ConsentPurpose.analytics) !=
           core.ConsentStatus.unknown &&
       !core.needsConsentReprompt(
