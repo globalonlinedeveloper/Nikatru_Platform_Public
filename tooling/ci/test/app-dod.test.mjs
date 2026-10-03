@@ -477,95 +477,129 @@ describe('assert-app-dod', () => {
   });
 });
 
-// ── MERGE MODE (⏱ 2026-09-30) ────────────────────────────────────────────────
-// #1066: PR commits dated 2026-09-29, the record dated 2026-09-29, PR CI green;
-// the squash merge landed 2026-09-30 UTC and main went red. Every date below is
-// PINNED, so no case depends on the clock except the one that says it does.
+// ── A MERGE IS NOT A CHANGE (⏱ 2026-10-03, lead 7185eb) ─────────────────────
+// #1172: code commit 2026-10-02, record 2026-10-02, and the PR went red at
+// 2026-10-03 00:00Z with no new commit, because the old merge mode dated every
+// file a PR touched on UTC today. #1066 was the same date read off main's
+// squash. The ruling: the record must be no older than the newest commit, on
+// the PR head or main, that CHANGED THE CODE BYTES. Every date below is PINNED.
 const SETTINGS_REL = `${BRICK}/lib/features/settings/settings_screen.dart`;
-const RECORD_DAY = '2026-09-29';
+const RECORD_DAY = '2026-10-02';
 
-/** A tree shaped like actions/checkout's pull_request checkout: `main` (and
- *  `origin/main`) at the base commit, HEAD detached at a two-parent merge of a
- *  PR branch whose one commit applies `edit` to the tree. Every commit is dated
- *  RECORD_DAY in UTC, like #1066's. */
-function prFixture(edit) {
+/** A history shaped like the real one: `main` at a base commit (2026-10-01), a
+ *  PR branch whose one commit applies `edit` at `codeDay`, and HEAD detached at
+ *  the two-parent merge actions/checkout builds for a pull_request run, dated
+ *  `mergeDay`. The record's first row (probing SETTINGS_REL) is RECORD_DAY. */
+function prFixture(edit, { codeDay = RECORD_DAY, mergeDay = '2026-10-03' } = {}) {
   const rec = JSON.parse(record('{{app_id}}'));
   rec.features[0].mutation.date = RECORD_DAY;
   const dir = build({ brickRecord: JSON.stringify(rec, null, 2) });
-  const at = (hh) => ({ ...process.env, GIT_COMMITTER_DATE: `${RECORD_DAY}T${hh}:00:00Z`, GIT_AUTHOR_DATE: `${RECORD_DAY}T${hh}:00:00Z` });
-  const git = (env, ...args) => {
-    const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env });
+  const on = (day) => ({ ...process.env, GIT_COMMITTER_DATE: `${day}T12:00:00Z`, GIT_AUTHOR_DATE: `${day}T12:00:00Z` });
+  const git = (day, ...args) => {
+    const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: on(day) });
     assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout.trim();
   };
-  git(at('10'), 'commit', '-q', '--amend', '--no-edit', '--no-gpg-sign', '--reset-author');
-  git(at('10'), 'checkout', '-q', '-B', 'main');
-  git(at('10'), 'update-ref', 'refs/remotes/origin/main', 'HEAD');
-  git(at('10'), 'checkout', '-q', '-b', 'pr');
+  git('2026-10-01', 'commit', '-q', '--amend', '--no-edit', '--no-gpg-sign', '--reset-author');
+  git('2026-10-01', 'checkout', '-q', '-B', 'main');
+  git('2026-10-01', 'checkout', '-q', '-b', 'pr');
   edit(dir);
-  git(at('11'), 'add', '-A');
-  git(at('11'), 'commit', '-q', '-m', 'the PR', '--no-gpg-sign');
-  git(at('12'), 'checkout', '-q', '--detach', 'main');
-  git(at('12'), 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', 'Merge pr into main', 'pr');
-  return { dir, prEnv: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_BASE_REF: 'main', GITHUB_SHA: git(at('12'), 'rev-parse', 'HEAD') } };
+  git(codeDay, 'add', '-A');
+  git(codeDay, 'commit', '-q', '-m', 'the PR', '--no-gpg-sign');
+  const prHead = git(codeDay, 'rev-parse', 'HEAD');
+  git(mergeDay, 'checkout', '-q', '--detach', 'main');
+  git(mergeDay, 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', 'Merge pr into main', 'pr');
+  return { dir, git, prHead };
+}
+
+/** main after land-next.mjs squashes PR #7: one parent, subject `… (#7)`, dated `day`. */
+function squashOnMain(git, day, { publishHead = null } = {}) {
+  git(day, 'checkout', '-q', 'main');
+  git(day, 'merge', '-q', '--squash', 'pr');
+  git(day, 'commit', '-q', '--no-gpg-sign', '-m', 'the PR (#7)');
+  if (publishHead) git(day, 'update-ref', 'refs/pull/7/head', publishHead);
 }
 
 const editCode = (dir) => writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int changedByThePr = 1;\n`);
+const PR_ENV = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_BASE_REF: 'main' };
 
-describe('assert-app-dod · a pull request is graded against the date it will MERGE', () => {
-  test('a PR that edits a probed file FAILS in PR mode and PASSES in main mode on the same tree', () => {
-    const { dir, prEnv } = prFixture(editCode);
-
-    // RED CONTROL: main mode reads the commit dates, which equal the record's.
-    const asMain = run(dir);
-    assert.equal(asMain.code, 0, asMain.out);
-
-    // Clock-dependent on purpose, and one-sided: today (UTC) is after RECORD_DAY forever.
-    const asPr = run(dir, [], prEnv);
-    assert.equal(asPr.code, 1, asPr.out);
-    assert.match(asPr.out, /The record now describes code that is no longer there/, 'the message main would give');
-    assert.match(asPr.out, /re-run AS PART OF THIS PR/);
-    assert.match(asPr.out, /merge mode \(pull_request\): the 1 file\(s\)/);
-
-    // The merge day, not the event, decides: merging on the record's own day is in date.
-    const sameDay = run(dir, ['--merge-date', RECORD_DAY], prEnv);
-    assert.equal(sameDay.code, 0, sameDay.out);
-    const nextDay = run(dir, ['--merge-date', '2026-09-30'], prEnv);
-    assert.equal(nextDay.code, 1, nextDay.out);
-    assert.match(nextDay.out, /last changed 2026-09-30/);
-  });
-
-  test('a PR that does not touch the probed file passes in PR mode', () => {
-    const { dir, prEnv } = prFixture((d) => writeFileSync(join(d, 'README.md'), 'unrelated\n'));
-    const r = run(dir, ['--merge-date', '2026-09-30'], prEnv);
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /the 1 file\(s\) this change touches/);
-  });
-
-  test('a COMMENT-ONLY edit to a probed file passes in PR mode, as main will grade its squash', () => {
-    const { dir, prEnv } = prFixture((d) => writeFileSync(join(d, SETTINGS_REL), `// reworded prose only\n${SETTINGS_DART}`));
-    const r = run(dir, ['--merge-date', '2026-09-30'], prEnv);
-    assert.equal(r.code, 0, r.out);
-  });
-
-  test('--merge-date outside a PR run reads the touched files from merge-base(--base, HEAD)', () => {
+describe('assert-app-dod · a merge that carries the code unchanged is not a change to it', () => {
+  test('(a) record 10-02, code commit 10-02, PR merge commit 10-03 -> GREEN (the #1172 bug), on the PR run and without one', () => {
     const { dir } = prFixture(editCode);
-    const r = run(dir, ['--merge-date', '2026-09-30', '--base', 'main']);
+    const asPr = run(dir, [], PR_ENV);
+    assert.equal(asPr.code, 0, asPr.out);
+    const plain = run(dir);
+    assert.equal(plain.code, 0, plain.out);
+  });
+
+  test('(a) on main: the squash dated 10-03 is followed to its PR head when the code equals it -> GREEN', () => {
+    const { dir, git, prHead } = prFixture(editCode);
+    squashOnMain(git, '2026-10-03', { publishHead: prHead });
+    const r = run(dir);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('RED CONTROL for the squash: with no readable PR head the squash keeps its own date -> RED, printed', () => {
+    const { dir, git } = prFixture(editCode);
+    squashOnMain(git, '2026-10-03');
+    git('2026-10-03', 'remote', 'add', 'origin', join(dir, 'no-such-remote'));
+    const r = run(dir);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /merge mode \(--merge-date\)/);
-    assert.match(r.out, /re-run AS PART OF THIS PR/);
+    assert.match(r.out, /recorded 2026-10-02 and the CODE in .* last changed 2026-10-03/);
+    assert.match(r.out, /kept their own date because origin could not serve the PR head \(#7\)/);
   });
 
-  test('COVERAGE LOST when a pull_request run cannot establish which files it touches', () => {
-    const { dir, prEnv } = prFixture(editCode);
-    const r = run(dir, [], { ...prEnv, GITHUB_SHA: '0'.repeat(40) });
-    assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /could not establish which files this change touches/);
+  test('RED CONTROL: a squash whose code is NOT its PR head\'s is a change of its own -> RED', () => {
+    const { dir, git, prHead } = prFixture(editCode);
+    git('2026-10-03', 'checkout', '-q', 'main');
+    git('2026-10-03', 'merge', '-q', '--squash', 'pr');
+    writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int changedByThePr = 2;\n`);
+    git('2026-10-03', 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'the PR (#7)');
+    git('2026-10-03', 'update-ref', 'refs/pull/7/head', prHead);
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /last changed 2026-10-03/);
   });
 
-  test('COVERAGE LOST on a --merge-date that is not a calendar day', () => {
-    const r = run(build(), ['--merge-date', '2026-02-30']);
-    assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /is not a real YYYY-MM-DD calendar day/);
+  test('(b) record 10-02, code commit 10-03 -> RED, on the PR run and without one', () => {
+    const { dir } = prFixture(editCode, { codeDay: '2026-10-03' });
+    for (const env of [PR_ENV, {}]) {
+      const r = run(dir, [], env);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /the mutation was recorded 2026-10-02 and the CODE in .*settings_screen\.dart last changed 2026-10-03/);
+      assert.match(r.out, /The record now describes code that is no longer there/);
+    }
+  });
+
+  test('(c) a merge commit that CHANGES the bytes counts as a change -> RED, naming the merge', () => {
+    const { dir, git } = prFixture(editCode);
+    // Rebuild HEAD as a merge whose code equals neither parent (a hand-resolved merge).
+    git('2026-10-03', 'checkout', '-q', '--detach', 'main');
+    git('2026-10-03', 'merge', '-q', '--no-ff', '--no-commit', 'pr');
+    writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int resolvedInTheMerge = 1;\n`);
+    git('2026-10-03', 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'Merge pr into main');
+    const mergeSha = git('2026-10-03', 'rev-parse', 'HEAD');
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /last changed 2026-10-03/);
+    assert.ok(r.out.includes(mergeSha.slice(0, 12)), `the message names the merge ${mergeSha}: ${r.out}`);
+  });
+
+  test('an update-branch merge of main INTO the PR head, carrying the code, is not a change -> GREEN', () => {
+    const { dir, git } = prFixture(editCode);
+    git('2026-10-03', 'checkout', '-q', 'main');
+    writeFileSync(join(dir, 'README.md'), 'main moved\n');
+    git('2026-10-03', 'add', '-A');
+    git('2026-10-03', 'commit', '-q', '--no-gpg-sign', '-m', 'main moved');
+    git('2026-10-03', 'checkout', '-q', 'pr');
+    git('2026-10-03', 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', "Merge branch 'main' into pr", 'main');
+    const r = run(dir);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('a COMMENT-ONLY edit dated after the record does not expire it -> GREEN', () => {
+    const { dir } = prFixture((d) => writeFileSync(join(d, SETTINGS_REL), `// reworded prose only\n${SETTINGS_DART}`), { codeDay: '2026-10-03' });
+    const r = run(dir, [], PR_ENV);
+    assert.equal(r.code, 0, r.out);
   });
 });
