@@ -737,6 +737,11 @@
         }
       ]
     },
+    "tooling/ci/assert-codeql-lite.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/ci/assert-codeql-pr-no-new-high.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-30",
@@ -1501,6 +1506,11 @@
         "basis": "exposure",
         "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/assert-locale-register.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
     },
     "tooling/ci/assert-lockfile-discipline.mjs": {
       "catches": 0,
@@ -2588,6 +2598,11 @@
         "reason": "exposed 45 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-12); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-rtl-directional.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/ci/assert-runner-budget.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
@@ -3664,6 +3679,16 @@
     "tooling/e2e/verify_row.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/i18n/locales.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
+    "tooling/i18n/translation-qa.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/kit/new-product.mjs": {

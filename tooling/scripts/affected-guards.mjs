@@ -31,6 +31,8 @@
 //   content a guard whose subject is "any file whose TEXT has X" (CONTENT_SUBJECTS:
 //           assert-workflow-readers, assert-mechanism-claims) is also selected by
 //           the changed file's own text, matched with the guard's own detector.
+//           A rule marked `selectOnly` (assert-codeql-lite: any JS/TS file) selects
+//           its guard but never MAPS the path — see "MAPPED" below.
 //   worker  each services/<w> with a package.json: `tsc --noEmit` + `npm test`, as
 //           lane-workers.yml runs them. Subject: services/<w>/**, and every glob
 //           of the `workers` lane in tooling/ci/lane-map.json (the register of what
@@ -107,6 +109,7 @@ import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
 import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
 import { classifyRed, detachedCheckout, removeCheckout, spawnCeilingUrl } from './preflight.mjs';
 import { GEO_HOME, workerSourceShapes } from '../ci/assert-ports.mjs';
+import { CODE_FILE as CODEQL_LITE_FILES } from '../ci/assert-codeql-lite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** The guard-tests shard planner, as a workflow names it. */
@@ -720,6 +723,19 @@ export const CONTENT_SUBJECTS = Object.freeze([
         (workerSource.test(path) && (({ binding, cf }) => Boolean(binding || cf))(workerSourceShapes(text ?? '')));
     },
   },
+  {
+    // ⏱ 2026-10-03 (lane codeql-lite). Its subject is EVERY JavaScript/TypeScript file a
+    // change touches — the shapes CodeQL alerts on can appear in any of them — matched by
+    // the guard's own CODE_FILE (imported, never restated). SELECT-ONLY: a CodeQL-shape
+    // check reads the file but is no evidence that anything checks what the file DOES, so
+    // it must not map the path, or no JS/TS file could ever be UNMAPPED again.
+    guard: 'tooling/ci/assert-codeql-lite.mjs',
+    what: 'every changed .js/.mjs/.cjs/.ts/.mts/.cts/.jsx/.tsx file (select-only: it maps nothing)',
+    selectOnly: true,
+    build() {
+      return (path) => CODEQL_LITE_FILES.test(path);
+    },
+  },
 ]);
 
 /** The changed file's text for a content subject: '' when it is gone or too big to be prose. */
@@ -823,7 +839,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
       contentLost.push(e.message);
       continue;
     }
-    for (const c of targets) c.subjects = [...c.subjects, { kind: 'content', path: rule.what, test, read }];
+    for (const c of targets) c.subjects = [...c.subjects, { kind: 'content', path: rule.what, test, read, selectOnly: Boolean(rule.selectOnly) }];
   }
 
   // dart — each pub workspace member
@@ -895,7 +911,10 @@ export function select(checks, changed, laneMap) {
       let tier = 9;
       for (const s of c.subjects) {
         if (covers(s, p) !== 'specific') continue;
-        hit = 'specific';
+        // a select-only subject (a CONTENT_SUBJECTS rule that says so) selects the check
+        // but does not map the path: only another subject can do that
+        if (!s.selectOnly) hit = 'specific';
+        else if (!hit) hit = 'select';
         // a directory, glob or lane glob is a looser tie than any named file (tier 3), except
         // a package gate's or Worker suite's OWN directory, which is its code (tier 0)
         tier = Math.min(tier, s.kind === 'file' || s.kind === 'content' ? (s.tier ?? 1) : OWN_DIR_KINDS.has(c.kind) ? (s.tier ?? 3) : 3);

@@ -53,7 +53,7 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../data/portability/subscription_columns.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/refresh_on_return.dart';

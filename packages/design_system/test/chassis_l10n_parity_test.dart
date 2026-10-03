@@ -181,12 +181,12 @@ Map<String, dynamic> _readArb(String relative) {
 
 /// Every translation the chassis ships — the template is `en`.
 ///
-/// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale, for every
-/// stamped app at once. Each limb below ranges over THIS list, so Hindi is held
-/// to exactly what Tamil is held to. The files read are
-/// `lib/src/l10n/chassis_ta.arb` and `lib/src/l10n/chassis_hi.arb`
-/// (`_readArb` below builds the name from each code).
-const List<String> kTranslations = <String>['ta', 'hi'];
+/// Each limb below ranges over THIS list, so every translation is held to
+/// exactly what Tamil is held to, for every stamped app at once. It is the
+/// LOCALE REGISTER's (`kTranslationLocaleCodes`, generated from
+/// tooling/i18n/locales.json), never a typed list. The files read are
+/// `lib/src/l10n/chassis_<code>.arb` (`_readArb` below builds the name).
+final List<String> kTranslations = kTranslationLocaleCodes;
 
 void main() {
   late Map<String, dynamic> en;
@@ -239,18 +239,11 @@ void main() {
   // (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT). The force-update wall replaces the
   // whole app and offers one control, so its keys may never be on the list.
   group('every Tamil value is a translation, not the English pasted across', () {
-    // Measured at 60b63fb9: these three, and only these, were identical.
+    // Measured at 60b63fb9: four were identical; the three language names have
+    // since left the ARBs for the locale register's nativeName, leaving one.
+    // Since then: the two provider brand names and the bulleted note line.
     const Map<String, String> sameInBothLocales = <String, String>{
       'legalese': 'the copyright mark and the company name',
-      'languageEnglish':
-          'the language picker names each language in itself, so a reader '
-          'looking for English finds "English"',
-      'languageTamil':
-          'the language picker names each language in itself: "தமிழ்" is '
-          'Tamil written in Tamil, in both files',
-      'languageHindi':
-          'the language picker names each language in itself: "हिन्दी" is '
-          'Hindi written in Hindi, in every file (T20, XP-06)',
       'connectedAccountsApple':
           'a provider\'s own brand name, written as the provider writes it '
           '(SE-04, Connected accounts)',

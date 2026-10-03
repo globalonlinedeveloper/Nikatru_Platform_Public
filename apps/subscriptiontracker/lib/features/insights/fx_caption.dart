@@ -19,7 +19,7 @@ import 'package:nikatru_core/nikatru_core.dart' show FxTable, MoneyBag;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/home_totals.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 
 /// The caption for [bag], the screen's headline total before conversion.

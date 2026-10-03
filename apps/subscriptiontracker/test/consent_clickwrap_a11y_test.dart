@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 
 /// THE CLICKWRAP IS A LEGAL CONTROL, SO ITS THREE ACCESSIBILITY PROPERTIES ARE
 /// ASSERTED, NOT ASSUMED — backlog B-4.

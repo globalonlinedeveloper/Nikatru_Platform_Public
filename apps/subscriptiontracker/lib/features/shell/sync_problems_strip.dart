@@ -5,7 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../data/api/api_client.dart' show ApiClient;
 import '../../data/api/cached_api_client.dart' show CachedApiClient;
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import '../../state/subscriptions_controller.dart'
     show subscriptionsControllerProvider;

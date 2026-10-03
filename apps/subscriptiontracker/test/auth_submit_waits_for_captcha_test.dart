@@ -26,7 +26,7 @@ import 'package:subscriptiontracker/data/auth/auth_models.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_actions.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/turnstile_gate.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/mock_auth_repository.dart';

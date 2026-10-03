@@ -4,7 +4,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/subscription.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/subscriptions_controller.dart';
 
 /// The subscription list's THREE OUTCOMES, told apart — or null when there is

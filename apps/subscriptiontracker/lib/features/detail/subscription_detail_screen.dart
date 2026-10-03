@@ -14,7 +14,7 @@ import '../../core/format/money_format.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/price_change.dart';
 import '../../data/models/subscription.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';

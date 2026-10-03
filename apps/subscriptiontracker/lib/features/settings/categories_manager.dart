@@ -15,7 +15,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
 import '../../data/models/category.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../../state/providers.dart';
 import '../../state/subscriptions_controller.dart';
 import '../insights/budget_editor.dart' show budgetProvider;
