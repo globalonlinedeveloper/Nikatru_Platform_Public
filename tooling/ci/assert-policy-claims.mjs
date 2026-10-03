@@ -60,6 +60,7 @@ import {
   stripStringLiterals,
 } from './text-reductions.mjs';
 import { providersOnRail } from '../legal/required-providers.mjs';
+import { LEGAL_PHRASES, blocksIn, channelsOnRail, openMarker as channelMarker, renderChannelList } from '../sites/seller-channels.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const CLAIMS = join(repoRoot, 'tooling', 'legal', 'policy-claims.json');
@@ -329,7 +330,21 @@ if (providers.length === 0) {
 }
 const byId = new Map(providers.map((p) => [p.id, p]));
 const roles = providerReg.roles && typeof providerReg.roles === 'object' ? providerReg.roles : {};
+// ⏱ 2026-10-03 · rv2-business 024. `status` was free text
+// tested against a set typed in each guard, so a misspelt status read as "being pursued" here and "not
+// happening" in assert-purchase-path.mjs. The vocabulary now lives in the register beside `roles`, and
+// `silent` is the one property every reader needs: a silent status is a row for a thing we are NOT doing.
+const statuses = providerReg.statuses && typeof providerReg.statuses === 'object' ? providerReg.statuses : {};
+const silentStatuses = new Set(Object.keys(statuses).filter((k) => !k.startsWith('_') && statuses[k]?.silent === true));
 for (const p of providers) {
+  if (!Object.prototype.hasOwnProperty.call(statuses, p.status) || String(p.status).startsWith('_')) {
+    problems.push(
+      `provider ${JSON.stringify(p.id)} has status ${JSON.stringify(p.status ?? null)}, which is not defined in the ` +
+        `register's own \`statuses\` dictionary (${Object.keys(statuses).filter((k) => !k.startsWith('_')).join(', ') || 'none declared'}). ` +
+        'Every rule below branches on the status, so an undeclared one is read as "being pursued" by one guard and ' +
+        '"not happening" by another.',
+    );
+  }
   if (!Object.prototype.hasOwnProperty.call(roles, p.role)) {
     problems.push(
       `provider ${JSON.stringify(p.id)} has role ${JSON.stringify(p.role)}, which is not defined in the register's own ` +
@@ -398,8 +413,9 @@ for (const p of providers) {
         'The merchant of record IS the seller of a website purchase; a buyer whose terms and refund policy name ' +
         'somebody else has been told the wrong counterparty.',
     );
-  } else if (p.status !== 'deferred' && missing.length) {
-    // `deferred` is deliberately silent here. tooling/channel-register.json
+  } else if (!silentStatuses.has(p.status) && missing.length) {
+    // A `silent` status (`deferred`, `retired`, `not-named-not-wired` — the
+    // register's `statuses` says which) is deliberately silent here. tooling/channel-register.json
     // already established that a register carries rows for things we are NOT
     // doing, so the researched facts are recorded once instead of rediscovered
     // under time pressure — and printing "the backup merchant of record is not
@@ -578,7 +594,8 @@ if (headerFiles.length > 0 && firstParty.length === 0) {
     'to make the egress limb pass would be to register a hostname as a company. Neither is a pass.',
   );
 }
-const NOT_HAPPENING = new Set(['deferred', 'not-named-not-wired']);
+// The register's `silent` statuses: rows for things we are not doing (see `statuses`).
+const NOT_HAPPENING = silentStatuses;
 const squashTell = (v) => String(v).toLowerCase().replace(/[^a-z0-9]/g, '');
 let cspSources = 0;
 let egressHosts = 0;
@@ -808,6 +825,57 @@ const checkSeller = (page, provider, sellerIs, label) => {
 for (const [rail, { provider, sellerIs }] of railSeller) {
   for (const page of sellerRowByRail.get(rail).pages) checkSeller(page, provider, sellerIs, `rail ${rail}`);
 }
+
+// ⏱ 2026-10-03 · rv2-business 021. Naming the right SELLER
+// is not naming the right CHANNELS: the three pages said Paddle sells "our direct downloads for
+// Windows, macOS and Linux" while tooling/channel-register.json rules windows-direct out and has no
+// macOS direct channel at all. A `seller-by-rail` row carrying `channelList: true` requires each of
+// its pages to hold ONE <!-- SELLER-CHANNELS:<rail> --> block whose text is what
+// tooling/sites/seller-channels.mjs renders from the register (rail rows not `ruledOutBy`), so a
+// ruled-out channel typed into a page, or a channel joining the rail un-rendered, FAILS here.
+let channelListChecks = 0;
+for (const row of sellerRows) {
+  if (row.channelList === undefined) continue;
+  const where = `${SELLER_BY_RAIL} row ${JSON.stringify(row.rail ?? null)}`;
+  if (row.channelList !== true) {
+    problems.push(`${where} carries channelList ${JSON.stringify(row.channelList)}; it is \`true\` or absent.`);
+    continue;
+  }
+  if (!sellerRowByRail.has(row.rail)) continue; // already a finding above
+  const { ruledOut, unphrased } = channelsOnRail(channelReg, row.rail);
+  if (unphrased.length) {
+    problems.push(
+      `${where}: channel(s) ${unphrased.join(', ')} sell on rail ${row.rail} and have no phrase in tooling/sites/seller-channels.mjs ` +
+        'LEGAL_PHRASES. The pages\' channel list would be short by them and still read as complete; add the phrase.',
+    );
+    continue;
+  }
+  const expected = renderChannelList(channelReg, row.rail);
+  if (expected === null) {
+    problems.push(`${where}: rail ${row.rail} sells on no channel that is not ruled out, so there is no list to publish. Retire channelList or the row.`);
+    continue;
+  }
+  for (const page of row.pages) {
+    channelListChecks++;
+    const blocks = blocksIn(readFileSync(join(siteRoot, page), 'utf8'), row.rail);
+    if (blocks.length !== 1) {
+      problems.push(
+        `${page}: ${where} has channelList, and the page holds ${blocks.length} ${channelMarker(row.rail)} block(s). ` +
+          'Exactly one is required: the list of where this rail sells is rendered from the register, never typed.',
+      );
+      continue;
+    }
+    const got = normaliseForMatch(blocks[0].replace(/<[^>]*>/g, ' '));
+    if (got !== normaliseForMatch(expected)) {
+      const named = ruledOut.filter((id) => Object.prototype.hasOwnProperty.call(LEGAL_PHRASES, id) && got.toLowerCase().includes(LEGAL_PHRASES[id].toLowerCase()));
+      problems.push(
+        `${page}: the ${row.rail} channel list reads "${got}", and tooling/channel-register.json renders "${expected}".` +
+          (named.length ? ` 🔴 It names RULED-OUT channel(s) ${named.join(', ')} as sold on this rail.` : '') +
+          ' Re-render with `node tooling/sites/seller-channels.mjs --write` (a privacy.html change is a policy-version bump).',
+      );
+    }
+  }
+}
 // A `never` role takes no rail of its own (an aggregator records a store's sale),
 // so its providers are read where they are disclosed: each seller-by-rail page
 // their `namedIn` lists must call them never the seller.
@@ -974,7 +1042,8 @@ console.log(
 );
 console.log(
   `    sellers — ${sellerRows.length} ${SELLER_BY_RAIL} row(s) covering all ${railIds.length} selling rail(s), ` +
-    `${sellerChecks} page statement(s) of who sells verified, no page claiming a base-rail seller in a region another rail serves`,
+    `${sellerChecks} page statement(s) of who sells verified, no page claiming a base-rail seller in a region another rail serves; ` +
+    `${channelListChecks} page channel list(s) equal to the register's rendering`,
 );
 console.log(
   '    ⚠️ only `code` rows carry a mechanical assertion. A `descriptive` row proves the sentence was read, not',
