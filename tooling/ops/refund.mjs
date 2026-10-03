@@ -18,6 +18,21 @@
 // answer status and id, when) is appended to --ledger as one JSON line; money
 // figures never land in a repository.
 //
+// 🔴 LEDGER FIRST, ONCE PER TOKEN (review 2026-10-03). Before anything is sent:
+//   1. the ledger path is validated (absolute, outside every git work tree) and
+//      the ledger is READ — an unreadable or unparseable ledger exits 2, because a
+//      ledger that cannot be read cannot prove this refund was not already made;
+//   2. a ledger line that already carries THIS token (an intent or a result), or
+//      an older token-less line for the same rail, reference and amount, refuses
+//      the run: a re-run with the same token never refunds twice. A partial with
+//      another amount is another request, so another token, keyed separately;
+//   3. a `manual_refund_intent` line {token, rail, reference, amount, reason} is
+//      APPENDED — a ledger that will not take it refuses the run, nothing sent;
+// and only then is the request sent; its answer is appended as the
+// `manual_refund` line keyed by (token, refund id). So no refund leaves without a
+// ledger row, and a crash between the two leaves the intent, which refuses the
+// re-run and sends the operator to the rail's dashboard instead.
+//
 // 🔴 NEVER IN CI: under GITHUB_ACTIONS=true it exits 2 with empty stdout, dry run
 // included — a refund is the owner's per-action yes, on the laptop.
 // 🔴 KEYS BY NAME ONLY (PADDLE_API_KEY; RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET),
@@ -39,7 +54,7 @@
 // same on the Windows laptop.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -121,12 +136,53 @@ export function insideGitWorkTree(file, { pathMod = path, exists = existsSync } 
   }
 }
 
+/**
+ * What the ledger already says about this request: `{ prior }` (the line that
+ * makes it a repeat), `{ prior: null }` (no such line, or no ledger yet), or
+ * `{ error }` when the ledger cannot be read or a line is not JSON. `read` is
+ * injectable for the test; a missing file is an empty ledger (read, not checked
+ * for existence first).
+ */
+export function ledgerPrior(file, plan, token, { read = (f) => readFileSync(f, 'utf8') } = {}) {
+  let text;
+  try {
+    text = read(file);
+  } catch (e) {
+    if (e?.code === 'ENOENT') return { prior: null };
+    return { error: `the ledger could not be read (${e?.code ?? 'error'})` };
+  }
+  const lines = text.split('\n').filter((l) => l.trim() !== '');
+  for (const [i, l] of lines.entries()) {
+    let j;
+    try {
+      j = JSON.parse(l);
+    } catch {
+      return { error: `ledger line ${i + 1} is not JSON` };
+    }
+    if (j?.token === token) return { prior: j };
+    const legacy = j?.token === undefined && j?.kind === 'manual_refund' && j.provider === plan.provider && j.ref === plan.ref && (j.amount_minor ?? null) === plan.amount;
+    if (legacy) return { prior: j };
+  }
+  return { prior: null };
+}
+
 function authHeader(provider, env) {
   if (provider === 'paddle') return `Bearer ${env.PADDLE_API_KEY}`;
   return `Basic ${Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')}`;
 }
 
-export async function main(argv, { env = process.env, fetchImpl = globalThis.fetch, out = (s) => process.stdout.write(s), err = (s) => process.stderr.write(s), now = () => new Date().toISOString() } = {}) {
+export async function main(
+  argv,
+  {
+    env = process.env,
+    fetchImpl = globalThis.fetch,
+    out = (s) => process.stdout.write(s),
+    err = (s) => process.stderr.write(s),
+    now = () => new Date().toISOString(),
+    readLedger = (f) => readFileSync(f, 'utf8'),
+    appendLedger = (f, line) => appendFileSync(f, line),
+  } = {},
+) {
   if (env.GITHUB_ACTIONS === 'true') {
     err('✗ refund.mjs refuses to run in CI (GITHUB_ACTIONS=true): a refund is the owner\'s per-action yes, on the laptop.\n');
     return 2;
@@ -159,6 +215,10 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     return 1;
   }
   const pathMod = /^[A-Za-z]:[\\/]|\\/.test(a.ledger) ? path.win32 : path;
+  if (!pathMod.isAbsolute(a.ledger) || a.ledger.includes('\0')) {
+    err('✗ --ledger must be an absolute path (the same file on every run, wherever it is started from). Nothing was sent.\n');
+    return 1;
+  }
   if (insideGitWorkTree(a.ledger, { pathMod })) {
     err('✗ --ledger is inside a git work tree; money events never land in a repository. Nothing was sent.\n');
     return 1;
@@ -166,6 +226,25 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
   const missing = RAILS[plan.provider].keys.filter((k) => !env[k]);
   if (missing.length) {
     err(`✗ ${missing.join(', ')} not set in this environment (load the vault keys by name). Nothing was sent.\n`);
+    return 1;
+  }
+  const seen = ledgerPrior(a.ledger, plan, token, { read: readLedger });
+  if (seen.error) {
+    err(`✗ ${seen.error}, so it cannot show this refund was not already made. Nothing was sent.\n`);
+    return 2;
+  }
+  if (seen.prior !== null) {
+    err(
+      `✗ the ledger already holds this request (${seen.prior.kind ?? 'a line'} at ${seen.prior.at ?? 'an unknown time'}${seen.prior.status === undefined ? '' : `, status ${seen.prior.status}`}). ` +
+        "A refund is sent once per token: check the rail's dashboard, and for another amount prepare another request. Nothing was sent.\n",
+    );
+    return 1;
+  }
+  const reason = plan.body.reason ?? plan.body.notes?.reason;
+  try {
+    appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund_intent', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason })}\n`);
+  } catch (e) {
+    err(`✗ the ledger would not take the intent line (${e?.code ?? 'error'}); no refund leaves without its ledger row. Nothing was sent.\n`);
     return 1;
   }
   let status = 0;
@@ -185,14 +264,11 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     }
   } catch (e) {
     err(`✗ the ${plan.provider} call got no answer (${e?.name ?? 'error'}); check the rail's dashboard before any retry.\n`);
-    appendFileSync(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason: plan.body.reason ?? plan.body.notes?.reason, status: 'no_answer' })}\n`);
+    appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status: 'no_answer', refund_id: null })}\n`);
     return 1;
   }
   const ok = status >= 200 && status < 300;
-  appendFileSync(
-    a.ledger,
-    `${JSON.stringify({ at: now(), kind: 'manual_refund', provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason: plan.body.reason ?? plan.body.notes?.reason, status, refund_id: id })}\n`,
-  );
+  appendLedger(a.ledger, `${JSON.stringify({ at: now(), kind: 'manual_refund', token, provider: plan.provider, ref: plan.ref, amount_minor: plan.amount, reason, status, refund_id: id })}\n`);
   if (!ok) {
     err(`✗ ${plan.provider} answered ${status}; recorded in the ledger. Nothing more was sent.\n`);
     return 1;

@@ -13,12 +13,12 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { buildPlan, confirmationToken, insideGitWorkTree, isThisModule, main, refundIdOf } from '../../ops/refund.mjs';
+import { buildPlan, confirmationToken, insideGitWorkTree, isThisModule, ledgerPrior, main, refundIdOf } from '../../ops/refund.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ops', 'refund.mjs');
@@ -30,15 +30,16 @@ before(() => {
 });
 after(() => rmSync(TMP, { recursive: true, force: true }));
 
-function harness(env = {}, answer = { data: { id: 'adj_01test' } }) {
+function harness(env = {}, answer = { data: { id: 'adj_01test' } }, io = {}) {
   const calls = [];
   const out = [];
   const err = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, init });
+    if (io.noAnswer) throw new Error('socket hang up');
     return new Response(JSON.stringify(answer), { status: 201 });
   };
-  return { calls, out, err, run: (argv) => main(argv, { env: { PADDLE_API_KEY: 'pdl_sdbx_x', ...env }, fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s), now: () => '2026-10-02T00:00:00.000Z' }) };
+  return { calls, out, err, run: (argv) => main(argv, { env: { PADDLE_API_KEY: 'pdl_sdbx_x', ...env }, fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s), now: () => '2026-10-02T00:00:00.000Z', ...io.deps }) };
 }
 
 describe('tooling/ops/refund.mjs', () => {
@@ -90,8 +91,12 @@ describe('tooling/ops/refund.mjs', () => {
     assert.equal(h.calls.length, 1);
     assert.equal(h.calls[0].url, 'https://api.paddle.com/adjustments');
     assert.deepEqual(JSON.parse(h.calls[0].init.body), { action: 'refund', transaction_id: 'txn_01habc', reason: 'goodwill: charged twice', type: 'full' });
-    const line = JSON.parse(readFileSync(ledger, 'utf8').trim());
-    assert.deepEqual(line, { at: '2026-10-02T00:00:00.000Z', kind: 'manual_refund', provider: 'paddle', ref: 'txn_01habc', amount_minor: null, reason: 'goodwill: charged twice', status: 201, refund_id: 'adj_01test' });
+    const token = confirmationToken(plan);
+    const lines = readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(lines, [
+      { at: '2026-10-02T00:00:00.000Z', kind: 'manual_refund_intent', token, provider: 'paddle', ref: 'txn_01habc', amount_minor: null, reason: 'goodwill: charged twice' },
+      { at: '2026-10-02T00:00:00.000Z', kind: 'manual_refund', token, provider: 'paddle', ref: 'txn_01habc', amount_minor: null, reason: 'goodwill: charged twice', status: 201, refund_id: 'adj_01test' },
+    ]);
   });
 
   test('🔴 the answer writes only a rail-shaped refund id to the ledger: free text from the response is recorded as null', async () => {
@@ -100,13 +105,107 @@ describe('tooling/ops/refund.mjs', () => {
     const h = harness({}, { data: { id: 'adj_01\n{"kind":"forged"}' } });
     assert.equal(await h.run([...ARGS, '--execute', '--confirm', confirmationToken(plan), '--ledger', ledger]), 0);
     const lines = readFileSync(ledger, 'utf8').trim().split('\n');
-    assert.equal(lines.length, 1);
-    assert.equal(JSON.parse(lines[0]).refund_id, null);
+    assert.equal(lines.length, 2);
+    assert.equal(JSON.parse(lines[1]).refund_id, null);
     assert.equal(refundIdOf({ id: 'rfnd_FP8QHiV938haTz' }), 'rfnd_FP8QHiV938haTz');
     assert.equal(refundIdOf({ data: { id: 'adj_01h' } }), 'adj_01h');
     assert.equal(refundIdOf({ id: 42 }), null);
     assert.equal(refundIdOf({ id: 'x'.repeat(65) }), null);
     assert.equal(refundIdOf(null), null);
+  });
+
+  // ── LEDGER FIRST, ONCE PER TOKEN (review 2026-10-03) ──────────────────────
+  const RZP = ['--provider', 'razorpay', '--ref', 'pay_N1abc', '--reason', 'goodwill: late cancel'];
+  const RZP_KEYS = { RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: 's' };
+  const tokenOf = (o) => confirmationToken(buildPlan(o));
+
+  test('🔴 a re-run with the SAME token sends nothing: the ledger already holds it', async () => {
+    const ledger = join(TMP, 'rerun.jsonl');
+    const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const h = harness();
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', ledger]), 0);
+    const again = harness();
+    assert.equal(await again.run([...ARGS, '--execute', '--confirm', token, '--ledger', ledger]), 1);
+    assert.equal(again.calls.length, 0);
+    assert.match(again.err.join(''), /already holds this request/);
+    assert.equal(readFileSync(ledger, 'utf8').trim().split('\n').length, 2);
+  });
+
+  test('🔴 a crash after the intent (no answer) still refuses the re-run: the intent is the record', async () => {
+    const ledger = join(TMP, 'crash.jsonl');
+    const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const h = harness({}, undefined, { noAnswer: true });
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', ledger]), 1);
+    assert.equal(h.calls.length, 1);
+    // An intent with no result line at all (the process died mid-send):
+    const only = join(TMP, 'intent-only.jsonl');
+    writeFileSync(only, `${readFileSync(ledger, 'utf8').split('\n')[0]}\n`);
+    const again = harness();
+    assert.equal(await again.run([...ARGS, '--execute', '--confirm', token, '--ledger', only]), 1);
+    assert.equal(again.calls.length, 0);
+  });
+
+  test('🔴 the intent is written BEFORE the send; a ledger that will not take it sends nothing', async () => {
+    const ledger = join(TMP, 'order.jsonl');
+    const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const order = [];
+    const h = harness({}, undefined, {
+      deps: {
+        appendLedger: (f, line) => order.push(`append:${JSON.parse(line).kind}`),
+        fetchImpl: async () => (order.push('send'), new Response(JSON.stringify({ data: { id: 'adj_01x' } }), { status: 201 })),
+      },
+    });
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', ledger]), 0);
+    assert.deepEqual(order, ['append:manual_refund_intent', 'send', 'append:manual_refund']);
+
+    const refused = harness({}, undefined, { deps: { appendLedger: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } } });
+    assert.equal(await refused.run([...ARGS, '--execute', '--confirm', token, '--ledger', join(TMP, 'readonly.jsonl')]), 1);
+    assert.equal(refused.calls.length, 0);
+    assert.match(refused.err.join(''), /would not take the intent line/);
+  });
+
+  test('🔴 an unreadable or corrupt ledger exits 2 and sends nothing; a missing one is empty', async () => {
+    const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const bad = join(TMP, 'corrupt.jsonl');
+    writeFileSync(bad, '{"kind":"manual_refund"\n');
+    let h = harness();
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', bad]), 2);
+    assert.equal(h.calls.length, 0);
+    h = harness({}, undefined, { deps: { readLedger: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } } });
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', join(TMP, 'x.jsonl')]), 2);
+    assert.equal(h.calls.length, 0);
+    assert.deepEqual(ledgerPrior(join(TMP, 'never-written.jsonl'), buildPlan({ provider: 'paddle', ref: 'txn_01habc', reason: 'abc' }), 't'), { prior: null });
+  });
+
+  test('🔴 a relative ledger path is refused before any send', async () => {
+    const token = tokenOf({ provider: 'paddle', ref: 'txn_01habc', reason: 'goodwill: charged twice' });
+    const h = harness();
+    assert.equal(await h.run([...ARGS, '--execute', '--confirm', token, '--ledger', 'refunds.jsonl']), 1);
+    assert.equal(h.calls.length, 0);
+    assert.match(h.err.join(''), /absolute path/);
+  });
+
+  test('partial refunds are keyed separately: another amount is another token and is sent; the same amount again is not', async () => {
+    const ledger = join(TMP, 'partials.jsonl');
+    const t1 = tokenOf({ provider: 'razorpay', ref: 'pay_N1abc', reason: 'goodwill: late cancel', amount: '5000' });
+    const t2 = tokenOf({ provider: 'razorpay', ref: 'pay_N1abc', reason: 'goodwill: late cancel', amount: '2500' });
+    let h = harness(RZP_KEYS, { id: 'rfnd_1' });
+    assert.equal(await h.run([...RZP, '--amount', '5000', '--execute', '--confirm', t1, '--ledger', ledger]), 0);
+    h = harness(RZP_KEYS, { id: 'rfnd_2' });
+    assert.equal(await h.run([...RZP, '--amount', '2500', '--execute', '--confirm', t2, '--ledger', ledger]), 0);
+    assert.equal(h.calls.length, 1);
+    h = harness(RZP_KEYS, { id: 'rfnd_3' });
+    assert.equal(await h.run([...RZP, '--amount', '2500', '--execute', '--confirm', t2, '--ledger', ledger]), 1);
+    assert.equal(h.calls.length, 0);
+    const results = readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((j) => j.kind === 'manual_refund');
+    assert.deepEqual(results.map((j) => [j.token, j.refund_id]), [[t1, 'rfnd_1'], [t2, 'rfnd_2']]);
+  });
+
+  test('a token-less line from before the token existed still refuses the same rail, reference and amount', () => {
+    const plan = buildPlan({ provider: 'paddle', ref: 'txn_01habc', reason: 'abc' });
+    const legacy = JSON.stringify({ at: '2026-10-01T00:00:00.000Z', kind: 'manual_refund', provider: 'paddle', ref: 'txn_01habc', amount_minor: null, status: 201 });
+    assert.equal(ledgerPrior('/l', plan, 'tok', { read: () => `${legacy}\n` }).prior.status, 201);
+    assert.equal(ledgerPrior('/l', { ...plan, ref: 'txn_other' }, 'tok', { read: () => `${legacy}\n` }).prior, null);
   });
 
   test('the token binds the request: another amount or reference is another token', () => {
