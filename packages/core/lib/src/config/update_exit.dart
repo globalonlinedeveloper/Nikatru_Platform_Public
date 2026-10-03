@@ -85,13 +85,16 @@ UpdateExit resolveUpdateExit({
 /// [listing] on a store-listing build with nothing [served], and otherwise
 /// [open]s [url] — the value the app resolved, `served ?? its compiled-in
 /// fallback`, which is the URL [resolveUpdateExit] picks in both cases.
-/// Best-effort: a throwing exit never crashes the update screen.
+/// Best-effort: a throwing exit never crashes the update screen. [reload] is
+/// the page reload, injectable because a test running in a real browser
+/// (`dart test -p chrome`) would otherwise reload its own runner and hang.
 Future<void> openUpdateExit(
   String url,
   String? served, {
   required String channel,
   required Future<Object?> Function() listing,
   required Future<Object?> Function(String url) open,
+  void Function() reload = reloadPage,
 }) async {
   try {
     switch (resolveUpdateExit(
@@ -100,7 +103,7 @@ Future<void> openUpdateExit(
       fallbackUrl: url,
     )) {
       case ReloadPage():
-        reloadPage();
+        reload();
       case OpenStoreListing():
         await listing();
       case OpenUpdateUrl(:final String url):

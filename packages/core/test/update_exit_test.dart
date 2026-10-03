@@ -119,6 +119,7 @@ void main() {
         channel: channel,
         listing: () async => calls.add('listing'),
         open: (String url) async => calls.add('open $url'),
+        reload: () => calls.add('reload'),
       );
       return calls;
     }
@@ -135,8 +136,8 @@ void main() {
       expect(await run('apps-gov-in', null), <String>['open $_fallback']);
     });
 
-    test('web opens nothing — it reloads (a no-op on the VM)', () async {
-      expect(await run('web', _served), isEmpty);
+    test('web opens nothing — it reloads', () async {
+      expect(await run('web', _served), <String>['reload']);
     });
 
     test('a throwing exit does not escape the button', () async {
