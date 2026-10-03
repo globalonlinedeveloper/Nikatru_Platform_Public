@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import '../result.dart';
 import '../storage/key_value_store.dart';
+import 'consent_transport.dart';
 import 'ids.dart';
 import 'privacy_signal.dart';
 
@@ -229,6 +231,10 @@ class ConsentController {
   final PrivacySignal _privacySignal;
   final Map<String, ConsentArtifact> _cache = <String, ConsentArtifact>{};
 
+  /// Per purpose, the `consentId` the SERVER is known to hold — see
+  /// [isAcknowledged].
+  final Map<String, String> _acked = <String, String>{};
+
   /// [pipeline K-15] Purposes a device-level opt-out speaks for.
   ///
   /// GPC is a "do not sell or share" signal. It says nothing about whether the
@@ -267,10 +273,21 @@ class ConsentController {
 
   String _key(ConsentPurpose p) => _keyOf(p.value);
   String _keyOf(String purpose) => '$_keyPrefix$purpose';
+  String _ackKey(ConsentPurpose p) => '${_keyOf(p.value)}.ack';
 
   /// Load the persisted decision for [purpose] into memory. Call once at start
   /// up before consulting [statusOf].
   Future<ConsentStatus> hydrate(ConsentPurpose purpose) async {
+    // The acknowledgement is read whatever the signal says: it is a fact about
+    // the server's record, not a decision, and a GPC toggle must not make an
+    // artifact that already landed look as though it never did.
+    try {
+      final String? ack = await _store.read(_ackKey(purpose));
+      if (ack != null && ack.isNotEmpty) _acked[purpose.value] = ack;
+    } catch (_) {
+      // Unreadable ⇒ unacknowledged ⇒ the artifact is posted again, which the
+      // server dedups on consent_id. The safe direction.
+    }
     // [pipeline K-15] The device signal is consulted BEFORE the store, and it
     // wins. It is not merged with the stored decision and it does not overwrite
     // it: a user who once granted and then switched GPC on gets `denied` now,
@@ -308,6 +325,71 @@ class ConsentController {
 
   /// The artifact currently in force for [purpose], or null.
   ConsentArtifact? artifactOf(ConsentPurpose purpose) => _cache[purpose.value];
+
+  /// **Does the server hold the artifact currently in force for [purpose]?**
+  ///
+  /// 🔴 THE PLATFORM WORKER ENFORCES ANALYTICS CONSENT AT INGEST (2026-10-01):
+  /// a batch from an install whose artifact it has no record of is refused 409
+  /// `consent_not_recorded`. The artifact upload, meanwhile, is best-effort by
+  /// contract — a failed POST never makes the user's choice look rejected — and
+  /// until this existed nothing ever retried it. So an install whose one consent
+  /// POST was lost (offline at the tap, a 503, a tab closed mid-request) had its
+  /// grant on the device and nowhere else, and every honest event it then sent
+  /// would be refused. [AnalyticsRecorder] consults this before every flush and
+  /// posts the artifact itself until it is true.
+  ///
+  /// Compared by `consentId`, so recording a NEW decision un-acknowledges the
+  /// purpose by construction: the server holds the old artifact, not this one.
+  bool isAcknowledged(ConsentPurpose purpose) {
+    final ConsentArtifact? a = _cache[purpose.value];
+    return a != null && _acked[purpose.value] == a.consentId;
+  }
+
+  /// Record that the server accepted [artifact]. Called with the artifact that
+  /// was SENT, not re-read from the cache — a decision recorded while the POST
+  /// was in flight is a different artifact, and stays unacknowledged.
+  /// Persisting is best-effort: a lost write only means one more idempotent POST.
+  Future<void> acknowledge(ConsentArtifact artifact) async {
+    _acked[artifact.purpose] = artifact.consentId;
+    try {
+      await _store.write(
+        _ackKey(ConsentPurpose(artifact.purpose)),
+        artifact.consentId,
+      );
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  /// Send [artifact] over [transport] and, ONLY when the server accepted it,
+  /// [acknowledge] it. The one path every upload takes — the app's decision
+  /// path and [AnalyticsRecorder]'s retry alike — so "sent" and "acknowledged"
+  /// cannot be wired apart. Best-effort by contract, as [ConsentTransport] is:
+  /// the result is returned for a caller that wants it and is never thrown.
+  Future<Result<void>> upload(
+    ConsentTransport transport, {
+    required String appId,
+    required ConsentArtifact artifact,
+  }) async {
+    final Result<void> r = await transport.send(
+      appId: appId,
+      artifact: artifact,
+    );
+    if (r.isOk) await acknowledge(artifact);
+    return r;
+  }
+
+  /// Forget the acknowledgement for [purpose] — the server answered as though
+  /// it holds no artifact for this install (409 `consent_not_recorded`), and
+  /// the server is right about its own table.
+  Future<void> forgetAcknowledgement(ConsentPurpose purpose) async {
+    _acked.remove(purpose.value);
+    try {
+      await _store.remove(_ackKey(purpose));
+    } catch (_) {
+      // best-effort
+    }
+  }
 
   /// **May processing for [purpose] happen right now?** — the one place the
   /// opt-in/opt-out asymmetry is written down.

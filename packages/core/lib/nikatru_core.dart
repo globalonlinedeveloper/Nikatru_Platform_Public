@@ -77,6 +77,8 @@ export 'src/portability/import_plan.dart';
 export 'src/portability/receipt_parser.dart';
 export 'src/promo/promo_gate.dart';
 export 'src/promo/promo_objection.dart';
+// ⏱ 2026-09-30 · ST-P5 (round-2 F36): the report renderer, dependency-free.
+export 'src/report/pdf_report.dart';
 export 'src/review/review_gate.dart';
 export 'src/review/review_prompter.dart';
 export 'src/routing/gate_destination.dart';

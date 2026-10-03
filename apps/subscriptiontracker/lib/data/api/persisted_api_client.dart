@@ -6,6 +6,7 @@ import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 import 'seed_api_client.dart';
@@ -198,6 +199,12 @@ class PersistedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
       paidOn: paidOn,
       idempotencyKey: idempotencyKey,
     );
+  }
+
+  @override
+  Future<SpendHistory> getSpendHistory() async {
+    await _ready();
+    return _seed.getSpendHistory();
   }
 
   @override

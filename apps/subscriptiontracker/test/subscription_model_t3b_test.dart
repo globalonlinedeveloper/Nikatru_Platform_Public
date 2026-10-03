@@ -13,6 +13,7 @@ import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
+import 'package:subscriptiontracker/data/models/spend_history.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -98,6 +99,8 @@ class _RecordingApi implements ApiClient {
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       const <PaymentRecord>[];
+  @override
+  Future<SpendHistory> getSpendHistory() async => SpendHistory.empty;
   @override
   Future<BudgetInfo> getBudget() async => const BudgetInfo(
     monthlyBudget: Money(1, 'USD'),
