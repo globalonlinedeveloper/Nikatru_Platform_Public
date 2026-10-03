@@ -100,6 +100,13 @@
       "entitlementKey": { "ios": "com.apple.developer.declared-age-range", "macos": null },
       "entitlementValue": true,
       "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick Declared Age Range → Save → Confirm. The API refuses DECLARED_AGE_RANGE as a capabilityType on write (ADR 088 §6)."
+    },
+    "APP_ATTEST": {
+      "apiWritable": false,
+      "profileKey": null,
+      "entitlementKey": null,
+      "_why": "⏱ 2026-10-03 · the platform Worker verifies an App Attest attestation on every native iOS sign-in (services/platform/src/lib/native-attest/app-attest.ts; packages/platform_storage/ios/…/NativeAttestPlugin.swift), so the App ID must carry the capability. MEASURED 2026-10-03T10:29Z: POST /v1/bundleIdCapabilities with capabilityType APP_ATTEST on 5Y2628ZNU7 answered 409 ENTITY_ERROR.ATTRIBUTE.TYPE (not in the write enum), and nothing changed. entitlementKey is null on purpose: Apple, com.apple.developer.devicecheck.appattest-environment (read 2026-10-03): after distribution through TestFlight or the App Store the app ignores that entitlement and uses the production environment, which is the only environment the Worker accepts (AAGUID_PRODUCTION). NOT YET ON apps.subscriptiontracker.capabilities, because this register declares what the live App ID READS BACK and the tick has not been made: the same change that adds it there (after the owner tick) writes profileKey from the re-minted profile, moves protected.profiles to the new ids and retires the old ones (Private research/session-2026-10-03/apple-ready/remint-after-app-attest.mjs does all three and prints the diff).",
+      "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → Capabilities → tick App Attest → Save → Confirm. The API refuses APP_ATTEST as a capabilityType on write (measured 2026-10-03). The tick INVALIDATES both App Store profiles: re-mint them with provision-apple.mjs --apply and re-set APPLE_PROVISIONING_PROFILES_BASE64 in the same sitting."
     }
   },
   "macosEntitlementFiles": {
