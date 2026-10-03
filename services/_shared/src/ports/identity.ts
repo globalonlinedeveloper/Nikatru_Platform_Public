@@ -23,13 +23,18 @@
 // `{ ok: false, kind: 'unavailable' | 'timeout' }` carrying the runtime's own
 // error as `cause`, so a caller that logged `err.name` still can; a missing
 // service credential is `{ ok: false, kind: 'refused' }` before anything is sent
-// (fail closed). Any ANSWER the provider gives — a 2xx, a 404, a 5xx — is
-// `{ ok: true, res }`: what an answer MEANS (gone, transient, refused) is each
-// caller's decision, and stays where it was decided before this port existed.
+// (fail closed), and so is a redirect (below). Any other ANSWER the provider
+// gives — a 2xx, a 404, a 5xx — is `{ ok: true, res }`: what an answer MEANS
+// (gone, transient, refused) is each caller's decision, and stays where it was decided before this port existed.
 //
 // 🔴 THIS PORT CHANGES WHERE A CALL IS BUILT, NEVER WHAT IT SENDS. Every request
 // leaves byte-for-byte as it did from its call site: the same method, path,
-// query, headers, body, `redirect` and `signal`.
+// query, headers, body and `signal` — with ONE deliberate exception, the
+// `redirect` mode: every call on the SERVICE credential is `redirect: 'manual'`
+// and a 3xx answer is `{ ok: false, kind: 'refused' }` (`redirectRefused`), so
+// the key is never carried to another origin. ⏱ 2026-10-03 · review of #1182,
+// finding 1: the account read, the identity delete and the session RPC used to
+// follow redirects; real GoTrue redirects none of them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Why a call produced no answer. `retryable`: the same call could succeed later. */
@@ -42,6 +47,8 @@ export type IdentityFailure = {
   detail: string;
   /** The runtime's own error, when one was thrown — never a credential. */
   cause?: unknown;
+  /** The status of a redirect that was refused (`redirectRefused`), and only that. */
+  status?: number;
 };
 
 /** The provider's answer, verbatim, or why there was none. */
@@ -94,6 +101,16 @@ export const missingCredential = (name: string): IdentityFailure => ({
   kind: 'refused',
   retryable: false,
   detail: `${name} is not set`,
+});
+
+/** The failure for a service-credential call the provider answered with a redirect:
+ *  it is never followed (the key would go with it), and it is not an answer. */
+export const redirectRefused = (status: number): IdentityFailure => ({
+  ok: false,
+  kind: 'refused',
+  retryable: false,
+  detail: `the identity provider answered a redirect (${status}); not followed`,
+  status,
 });
 
 /** The failure for a call the runtime could not complete. */

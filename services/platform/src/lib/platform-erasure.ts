@@ -169,7 +169,13 @@ async function readAccountOnce(identity: IdentityAdmin, userId: string, timeoutM
   // ⏱ 2026-10-03 · port-auth: the request is the identity port's `readUser`
   // (src/adapters/identity/gotrue.ts); what each answer means is decided here.
   const answer = await identity.readUser(userId, { signal: AbortSignal.timeout(timeoutMs) });
-  if (!answer.ok) return { kind: 'transient', why: 'the identity provider could not be reached' };
+  // A refusal (a redirect, which is never followed, or no key) is `failed`: it
+  // fails closed, as a refused key's 401 always did (review of #1182, finding 1).
+  if (!answer.ok) {
+    return answer.kind === 'refused'
+      ? { kind: 'failed', why: answer.detail }
+      : { kind: 'transient', why: 'the identity provider could not be reached' };
+  }
   const res = answer.res;
   if (res.status === 404) return { kind: 'no_account' };
   if (res.status >= 500 || res.status === 429) return { kind: 'transient', why: `the identity provider answered ${res.status}` };
@@ -202,7 +208,10 @@ export async function deleteIdentity(
   // ⏱ 2026-10-03 · port-auth: the identity port's `deleteUser`. A call that got
   // no answer THROWS, as the bare fetch it replaces did: each caller already
   // handles that (the request fails; the nightly retry keeps the order open).
+  // A REFUSAL is a failed delete, not a throw: a redirect (never followed —
+  // review of #1182, finding 1) answers its own status, as the non-2xx it is.
   const answer = await identity.deleteUser(userId);
+  if (!answer.ok && answer.kind === 'refused') return { ok: false, status: answer.status ?? 0 };
   if (!answer.ok) throw answer.cause ?? new Error(answer.detail);
   const res = answer.res;
   if (!res.ok && res.status !== 404) return { ok: false, status: res.status };

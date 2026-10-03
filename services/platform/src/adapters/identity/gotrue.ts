@@ -12,9 +12,20 @@
 //
 // The base is the identity origin (`SUPABASE_URL`, or one keep-alive target).
 // A service-role call with no service key is refused before anything is sent.
+//
+// 🔴 EVERY SERVICE-ROLE CALL IS `redirect: 'manual'`, AND A 3xx IS A REFUSAL
+// (`serviceSend`). The key rides in `apikey`, a custom header fetch does NOT
+// strip on a cross-origin redirect (it strips only `Authorization`), so a proxy
+// that answered 3xx to another origin would otherwise be handed the service-role
+// key. ⏱ 2026-10-03 · review of #1182, finding 1: the account read and the
+// identity delete (and the session RPC) followed redirects; the hand-off's admin
+// calls and the credential relay never did. Real GoTrue answers none of these
+// with a redirect, so against it nothing changes. The keep-alive is on the
+// PUBLIC key and keeps the default.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   missingCredential,
+  redirectRefused,
   transportFailure,
   type CredentialOp,
   type IdentityAdmin,
@@ -45,14 +56,23 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
   };
   const key = cfg.serviceKey;
 
+  /** A service-role request: never follows a redirect, and a 3xx answer is refused
+   *  (`opaqueredirect` is the browser's shape of the same answer). */
+  const serviceSend = async (url: string, init: RequestInit): Promise<IdentityAnswer> => {
+    const answer = await send(url, { ...init, redirect: 'manual' });
+    if (answer.ok && (answer.res.type === 'opaqueredirect' || (answer.res.status >= 300 && answer.res.status < 400))) {
+      return redirectRefused(answer.res.status);
+    }
+    return answer;
+  };
+
   /** From routes/native-auth.ts `gotrueAdmin` (the desktop hand-off's admin calls). */
   const handoffCall = (path: string, method: 'GET' | 'POST', body: unknown, init?: IdentityCallInit): Promise<IdentityAnswer> => {
     if (!key) return Promise.resolve(missingCredential(SERVICE_KEY));
-    return send(`${cfg.base}/auth/v1${path}`, {
+    return serviceSend(`${cfg.base}/auth/v1${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
       body: body === undefined ? undefined : JSON.stringify(body),
-      redirect: 'manual',
       signal: init?.signal,
     });
   };
@@ -69,11 +89,10 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
       headers.set('Content-Type', 'application/json');
       headers.set('apikey', key);
       headers.set('Authorization', `Bearer ${key}`);
-      return send(url.toString(), {
+      return serviceSend(url.toString(), {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
-        redirect: 'manual',
         signal: init.signal,
       });
     },
@@ -81,7 +100,7 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
     /** From lib/platform-erasure.ts `readAccountOnce`. */
     readUser(userId: string, init?: IdentityCallInit) {
       if (!key) return Promise.resolve(missingCredential(SERVICE_KEY));
-      return send(`${cfg.base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+      return serviceSend(`${cfg.base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
         method: 'GET',
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         signal: init?.signal,
@@ -91,7 +110,7 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
     /** From lib/platform-erasure.ts `deleteIdentity`. */
     deleteUser(userId: string, init?: IdentityCallInit) {
       if (!key) return Promise.resolve(missingCredential(SERVICE_KEY));
-      return send(`${cfg.base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+      return serviceSend(`${cfg.base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
         method: 'DELETE',
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         signal: init?.signal,
@@ -111,7 +130,7 @@ export function gotrueIdentityAdmin(cfg: GotrueConfig): IdentityAdmin {
     /** From routes/sessions.ts `rpc`: one PostgREST procedure on the service key. */
     sessions(fn: string, args: Record<string, string>, init?: IdentityCallInit) {
       if (!key) return Promise.resolve(missingCredential(SERVICE_KEY));
-      return send(`${cfg.base}/rest/v1/rpc/${fn}`, {
+      return serviceSend(`${cfg.base}/rest/v1/rpc/${fn}`, {
         method: 'POST',
         headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(args),

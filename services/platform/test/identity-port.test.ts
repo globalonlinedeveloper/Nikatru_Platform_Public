@@ -3,7 +3,8 @@
 // Worker half; port-auth, row O-IDENTITY-CALLS-VENDOR-SHAPED).
 //
 //   1. The GoTrue adapter sends, per verb, exactly the request its old call site
-//      sent: the method, the URL, the credential headers and the redirect mode.
+//      sent: the method, the URL, the credential headers — and every service-role
+//      call `redirect: 'manual'`, a 3xx refused (review of #1182, finding 1).
 //   2. Outcomes, never throws: a transport failure is `{ ok: false }` carrying
 //      the runtime's error, and a missing service key refuses BEFORE anything
 //      is sent (fail closed).
@@ -14,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { gotrueIdentityAdmin } from '../src/adapters/identity/gotrue';
 import { fakeIdentityAdmin } from '../../_shared/src/ports/fakes/identity';
 import type { IdentityAdmin } from '../../_shared/src/ports/identity';
-import { readAccount } from '../src/lib/platform-erasure';
+import { deleteIdentity, readAccount } from '../src/lib/platform-erasure';
 import { identityFor } from '../src/ports';
 
 const BASE = 'https://identity.test';
@@ -72,10 +73,15 @@ describe('the GoTrue adapter sends what each call site sent', () => {
     expect(s.url).toBe(`${BASE}/auth/v1/admin/generate_link`);
     expect(JSON.parse(String(s.init.body))).toEqual({ type: 'magiclink', email: 'a@b.test' });
     expect(s.init.redirect).toBe('manual');
+    // ⏱ 2026-10-03 · review of #1182, finding 5: the hand-off's JSON bodies carry their type.
+    expect(header(s, 'content-type')).toBe('application/json');
+    expect(header(s, 'apikey')).toBe('srk');
     await g.redeemSignInLink('ab'.repeat(20));
     s = net.seen.at(-1)!;
     expect(s.url).toBe(`${BASE}/auth/v1/verify`);
     expect(JSON.parse(String(s.init.body))).toEqual({ type: 'magiclink', token_hash: 'ab'.repeat(20) });
+    expect(s.init.redirect).toBe('manual');
+    expect(header(s, 'content-type')).toBe('application/json');
   });
 
   it('sessions: POST <base>/rest/v1/rpc/<fn> with the args as JSON', async () => {
@@ -91,6 +97,51 @@ describe('the GoTrue adapter sends what each call site sent', () => {
     expect(net.seen.at(-1)!.init.headers).toEqual({ apikey: 'pub', Authorization: 'Bearer pub' });
     await gotrueIdentityAdmin({ base: BASE, serviceKey: undefined, publicKey: undefined, fetchImpl: net.impl }).health();
     expect(net.seen.at(-1)!.init.headers).toEqual({});
+  });
+});
+
+// ⏱ 2026-10-03 · review of #1182, finding 1: the service key rides in `apikey`,
+// which fetch does not strip on a cross-origin redirect — so no service-role
+// call may follow one, and a 3xx it is answered with is a refusal, not an answer.
+describe('🔴 every service-role call is redirect manual, and a 3xx is refused', () => {
+  const serviceCalls: [string, (g: IdentityAdmin) => Promise<unknown>][] = [
+    ['credential', (g) => g.credential('token', {}, { headers: new Headers(), query: {} })],
+    ['readUser', (g) => g.readUser(USER)],
+    ['deleteUser', (g) => g.deleteUser(USER)],
+    ['mintSignInLink', (g) => g.mintSignInLink('a@b.test')],
+    ['redeemSignInLink', (g) => g.redeemSignInLink('ab'.repeat(20))],
+    ['sessions', (g) => g.sessions('list_user_sessions', { p_user_id: USER })],
+  ];
+  for (const [name, call] of serviceCalls) {
+    it(`${name}: sent with redirect manual`, async () => {
+      const net = recording(() => new Response('{}', { status: 200 }));
+      await call(gotrueIdentityAdmin({ base: BASE, serviceKey: 'srk', publicKey: undefined, fetchImpl: net.impl }));
+      expect(net.seen).toHaveLength(1);
+      expect(net.seen[0].init.redirect).toBe('manual');
+    });
+
+    it(`${name}: a 3xx answer is REFUSED, never handed back as an answer`, async () => {
+      for (const status of [301, 302, 307, 308]) {
+        const net = recording(() => new Response(null, { status, headers: { Location: 'https://elsewhere.test/' } }));
+        const r = await call(gotrueIdentityAdmin({ base: BASE, serviceKey: 'srk', publicKey: undefined, fetchImpl: net.impl }));
+        expect(r).toMatchObject({ ok: false, kind: 'refused', retryable: false, status });
+        expect(net.seen).toHaveLength(1);
+      }
+    });
+  }
+
+  it('the callers read a refused redirect as a refusal: the account read is `failed`, the delete is not ok', async () => {
+    const net = recording(() => new Response(null, { status: 302, headers: { Location: 'https://elsewhere.test/' } }));
+    const g = gotrueIdentityAdmin({ base: BASE, serviceKey: 'srk', publicKey: undefined, fetchImpl: net.impl });
+    expect(await readAccount(g, USER, 20)).toEqual({ kind: 'failed', why: 'the identity provider answered a redirect (302); not followed' });
+    expect(net.seen).toHaveLength(1); // refused, so never retried
+    expect(await deleteIdentity(g, USER)).toEqual({ ok: false, status: 302 });
+  });
+
+  it('the keep-alive (PUBLIC key) is not a service-role call and keeps the default', async () => {
+    const net = recording(() => new Response('{}', { status: 200 }));
+    await gotrueIdentityAdmin({ base: BASE, serviceKey: 'srk', publicKey: 'pub', fetchImpl: net.impl }).health();
+    expect(net.seen[0].init.redirect).toBeUndefined();
   });
 });
 
