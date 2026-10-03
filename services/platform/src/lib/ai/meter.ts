@@ -31,7 +31,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiBeforeCall, AiCostModel, AiFeature, AiOutcome, AiReservationRequest } from '../../../../_shared/src/ports/ai';
 import { settle } from '../../../../_shared/src/ports/ai';
-import { readProductEntitlement } from '../../../../_shared/src/entitlement-read';
+import { liveBundlePaidTerms, readProductEntitlement } from '../../../../_shared/src/entitlement-read';
 import { allRows, firstRow, nowIso, uuid } from '../d1';
 import { isAttributableProduct } from '../../config';
 import { isMoneyEnvironment } from '../mor/contract';
@@ -120,15 +120,14 @@ const inTrial = (status: string | null, trialEnd: string | null, nowMs: number):
  * active per-app row from a rail (a provider is named), not in its trial and not
  * RevenueCat PROMOTIONAL, or a live bundle grant from a RECEIPT source
  * (`bundle_sources.requires_receipt = 1`, which excludes `promo_code` and
- * `owner_comp`) that is not in its trial. Everything else is `trial` (some grant is
+ * `owner_comp`) that is not in its trial — both read through the ONE entitlement
+ * reader (`liveBundlePaidTerms`), never a second query of the money tables. Everything else is `trial` (some grant is
  * a rail's trial) or `free`, and neither buys a call on our key. An unreadable
  * bundle row is `free`: fail closed.
  */
 export async function planOf(env: Pick<Env, 'PLATFORM_DB' | 'MONEY_ENVIRONMENT'>, userId: string, appId: string, rid: string, nowMs: number): Promise<AiPlan> {
-  const read = await readProductEntitlement(
-    { db: env.PLATFORM_DB, allRows, isMoneyEnvironment, isKnownProduct: isAttributableProduct, warn: (m) => console.warn(m), error: (m) => console.error(m), nowMs: () => nowMs },
-    { userId, productId: appId, environment: env.MONEY_ENVIRONMENT, rid },
-  );
+  const deps = { db: env.PLATFORM_DB, allRows, isMoneyEnvironment, isKnownProduct: isAttributableProduct, warn: (m: string) => console.warn(m), error: (m: string) => console.error(m), nowMs: () => nowMs };
+  const read = await readProductEntitlement(deps, { userId, productId: appId, environment: env.MONEY_ENVIRONMENT, rid });
   if (read.kind !== 'ok' || !read.is_pro) return 'free';
   let trial = false;
   let paid = false;
@@ -139,16 +138,9 @@ export async function planOf(env: Pick<Env, 'PLATFORM_DB' | 'MONEY_ENVIRONMENT'>
   }
   if (read.bundle !== null) {
     try {
-      const grants = await allRows<{ provider_status: string | null; trial_end: string | null; expires_at: string | null; requires_receipt: number | null }>(
-        env.PLATFORM_DB.prepare(
-          `SELECT g.provider_status, g.trial_end, g.expires_at, s.requires_receipt
-             FROM bundle_grants g LEFT JOIN bundle_sources s ON s.source = g.source
-            WHERE g.user_id = ? AND g.source = ? AND g.feature_set_name = ? AND g.feature_set_version = ?
-              AND g.revoked_at IS NULL AND g.superseded_by IS NULL`,
-        ).bind(userId, read.bundle.source, read.bundle.feature_set, read.bundle.version),
-      );
+      // The ONE reader (ADR 057 §5) says which bundle grants are live and how each was paid.
+      const grants = await liveBundlePaidTerms(deps, userId, appId, String(env.MONEY_ENVIRONMENT));
       for (const g of grants) {
-        if (g.expires_at !== null && !(Date.parse(g.expires_at) > nowMs)) continue;
         if (inTrial(g.provider_status, g.trial_end, nowMs)) trial = true;
         else if (g.requires_receipt === 1) paid = true;
       }
