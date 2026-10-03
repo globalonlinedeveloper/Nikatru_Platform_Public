@@ -412,7 +412,7 @@
       },
       "configKeyed": {
         "kind": "runtime-secret",
-        "reason": "OWNER-PROVISIONED and NOT YET PRESENT: the service-account key JSON (`wrangler secret put PLAY_INTEGRITY_SERVICE_ACCOUNT`) and the Play app-signing certificate digest (the PLAY_INTEGRITY_CERT_DIGESTS var). Until both exist `play-integrity` is not listed in NATIVE_AUTH_ATTEST_KINDS, and a listed-but-unconfigured kind answers 503."
+        "reason": "OWNER-PROVISIONED and NOT YET PRESENT: the service-account key JSON (`wrangler secret put PLAY_INTEGRITY_SERVICE_ACCOUNT`) and the Play app-signing certificate digest (the PLAY_INTEGRITY_CERT_DIGESTS var). Until both exist `play-integrity` is not listed in NATIVE_AUTH_ATTEST_KINDS, and a listed-but-unconfigured kind answers 503. ⏱ 2026-10-03: the digest is READ (Play Developer API generatedApks, pinned in tooling/channel-register.json android-play `signing.appSigningCertificate`); the value to set is {\"subscriptiontracker\":{\"play\":[\"98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C\"]}}. Setting it in the Worker is a separate step and is not recorded as done here."
       },
       "ownTheRecord": "N/A — nothing of ours is stored at Google through this surface; each verdict is read once and discarded, and nothing about it is written.",
       "exportPath": {

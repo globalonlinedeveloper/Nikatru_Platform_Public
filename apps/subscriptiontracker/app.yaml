@@ -201,6 +201,12 @@ listings:
 # console. It is null on every channel: the owner, 2026-09-26, "not yet". It
 # never makes these store files a preview (each file's own "sworn" key does);
 # it gates a REAL submission only, which is refused while it is null.
+# ⏱ 2026-10-03: the Play app-signing SHA-256 is READ, so android-play is
+# issued (its one id). Source: Play Developer API, GET applications/
+# com.nikatru.subscriptiontracker/generatedApks/1 (version code 1, internal
+# track release "1 (2026-09-22)", status completed) -> certificateSha256Hash.
+# The same value is tooling/channel-register.json's android-play
+# signing.appSigningCertificate. declaredOn stays null.
 # ST-R4: what this app mints for itself on Windows — not a console id, so not
 # under `stores`. The toast activator's CLSID: ours, never reissued; rendered
 # into msix_config.toast_activator and lib/core/windows_notification_identity.g.dart.
@@ -222,8 +228,10 @@ stores:
     recordId: "6814737675"
     declaredOn: null
   android-play:
-    state: pending
+    state: issued
     declaredOn: null
+    appSigningSha256:
+      - "98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C"
   linux-snap:
     state: pending
     declaredOn: null

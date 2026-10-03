@@ -2243,11 +2243,14 @@
             "",
             "⏭ FILLED FROM THE PLAY CONSOLE, NOT FROM ANY KEYSTORE WE HOLD: Test and release > App integrity",
             "> App signing > App signing key certificate > SHA-256. It is public — the console shows it and",
-            "App Links' assetlinks.json requires it in plaintext. Paste it with the date."
+            "App Links' assetlinks.json requires it in plaintext. Paste it with the date.",
+            "",
+            "⏱ 2026-10-03: READ — off the Play Developer API rather than the console page (the same key: the",
+            "certificate Play re-signs every delivered .apk with). The upload certificate above is unchanged."
           ],
-          "sha256": null,
-          "asOf": "2026-10-01",
-          "source": "not yet read: Play Console > App integrity > App signing key certificate (exists once the app is created with Play App Signing)"
+          "sha256": "98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C",
+          "asOf": "2026-10-03",
+          "source": "Play Developer API, GET applications/com.nikatru.subscriptiontracker/generatedApks/1 (version code 1, internal track release \"1 (2026-09-22)\", status completed) → certificateSha256Hash, read 2026-10-03 ~11:38Z with the vault service account"
         },
         "ciSecrets": {
           "_why": [

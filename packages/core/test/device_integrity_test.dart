@@ -13,6 +13,11 @@ const String _ours =
     '43:C8:4D:11:62:C4:D1:9C:0F:A0:C5:E0:01:90:5B:89:52:3D:C0:82:A6:80:83:C9:93:06:9B:86:3C:28:A6:16';
 const String _oursHex =
     '43C84D1162C4D19C0FA0C5E001905B89523DC082A68083C993069B863C28A616';
+// Play's app signing certificate: what a Play-delivered install carries.
+const String _play =
+    '98:FA:5F:DC:A1:49:1B:EC:84:19:8D:3D:AB:E7:97:B0:43:29:85:74:15:81:BB:FE:A2:55:5B:17:6C:83:3A:3C';
+const String _playHex =
+    '98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C';
 final String _theirs = 'AB' * 32;
 final String _second = 'CD' * 32;
 
@@ -210,12 +215,13 @@ void main() {
   });
 
   group('the generated pins', () {
-    test('android-play compiles in the upload pin, and is incomplete', () {
+    test('android-play compiles in both pins, and is complete', () {
       final SignerPins? play = signerPinsFor('android-play');
       expect(play, isNotNull);
       expect(play!.digests, contains(_oursHex));
-      // The app signing pin is not set: a Play install must not be blocked.
-      expect(play.complete, isFalse);
+      // ⏱ 2026-10-03: the app signing pin, read off the Play Developer API.
+      expect(play.digests, contains(_playHex));
+      expect(play.complete, isTrue);
     });
 
     test('apps-gov-in has a row and no pin yet', () {
@@ -261,11 +267,34 @@ void main() {
       expect(i.blocksDataAccess, isFalse);
     });
 
+    test('Play\'s app signing key on android-play is verified', () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_play])),
+      );
+      expect(i.signer, SignerVerdict.verified);
+      expect(i.blocksDataAccess, isFalse);
+    });
+
+    test('a foreign key on android-play blocks: its set is complete', () async {
+      final DeviceIntegrity i = await assess(
+        FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
+      );
+      expect(i.signer, SignerVerdict.mismatch);
+      expect(i.reportsSigner, isTrue);
+      expect(i.blocksDataAccess, isTrue);
+    });
+
     test(
-      'a foreign key on android-play is reported while it is incomplete',
+      'a foreign key on an INCOMPLETE set is reported, never blocked',
       () async {
-        final DeviceIntegrity i = await assess(
-          FixedDeviceIntegrityProbe(certificates: _signed(<String>[_theirs])),
+        final DeviceIntegrity i = await assessDeviceIntegrity(
+          probe: FixedDeviceIntegrityProbe(
+            certificates: _signed(<String>[_theirs]),
+          ),
+          releaseChannel: 'android-play',
+          isDebugBuild: false,
+          checksSigner: true,
+          pinsFor: (_) => _incomplete,
         );
         expect(i.signer, SignerVerdict.mismatchReported);
         expect(i.reportsSigner, isTrue);

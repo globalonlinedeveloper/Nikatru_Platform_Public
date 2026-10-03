@@ -181,7 +181,8 @@ final class SignerPins {
 
 /// How a check finds a channel's pins: [signerPinsFor] in every build; a test
 /// passes a complete set through it, because no channel's real set is
-/// complete yet.
+/// complete yet. ⏱ 2026-10-03: android-play's real set is complete (the Play
+/// app signing pin is set); a test passes an INCOMPLETE set through it now.
 typedef SignerPinsLookup = SignerPins? Function(String releaseChannel);
 
 /// The pins compiled in for [releaseChannel] (`RELEASE_CHANNEL`), or null for

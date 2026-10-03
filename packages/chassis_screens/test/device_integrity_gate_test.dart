@@ -345,8 +345,9 @@ void main() {
     });
 
     test('modifiedCopyBlocked answers false for an incomplete set', () async {
-      // android-play's set is incomplete today, so a foreign signer is
-      // reported and the app runs: the caller must NOT return.
+      // An incomplete set reports a foreign signer and the app runs: the
+      // caller must NOT return. ⏱ 2026-10-03: android-play's real set is
+      // complete now, so the incomplete one is passed through the seam.
       expect(
         await modifiedCopyBlocked(
           releaseChannel: 'android-play',
@@ -356,6 +357,10 @@ void main() {
           isDebugBuild: false,
           platform: TargetPlatform.android,
           isWeb: false,
+          pinsFor: (_) => core.SignerPins(
+            digests: core.signerPinsFor('android-play')!.digests,
+            complete: false,
+          ),
         ),
         isFalse,
       );
@@ -368,6 +373,8 @@ void main() {
     // THE BLOCKING BRANCH. No channel's real pin set is complete yet, so a
     // complete set is passed through the test seam: a foreign signer then runs
     // the modified-copy app and answers true, and the caller returns.
+    // ⏱ 2026-10-03: android-play's real set is complete; the case after this
+    // one blocks through the REAL generated table.
     testWidgets(
       'a foreign signer on a COMPLETE set runs the modified-copy app',
       (WidgetTester tester) async {
@@ -389,6 +396,28 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(TamperedBuildApp), findsOneWidget);
         expect(find.text('This copy of the app was modified'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a foreign signer on the REAL android-play set runs the modified-copy app',
+      (WidgetTester tester) async {
+        final bool blocked = await modifiedCopyBlocked(
+          releaseChannel: 'android-play',
+          integrityProbe: core.FixedDeviceIntegrityProbe(
+            certificates: core.SigningCertificates(sha256: <String>['AB' * 32]),
+          ),
+          isDebugBuild: false,
+          platform: TargetPlatform.android,
+          isWeb: false,
+        );
+        expect(blocked, isTrue);
+        expect(
+          DeviceIntegrityScope.session.integrity.signer,
+          core.SignerVerdict.mismatch,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(TamperedBuildApp), findsOneWidget);
       },
     );
 

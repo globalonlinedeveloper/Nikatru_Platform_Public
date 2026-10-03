@@ -128,10 +128,12 @@ void main() {
       await pumpShell(tester, size, asking: true);
       return tester
           .getSize(
-            find.ancestor(
-              of: find.byType(SingleChildScrollView),
-              matching: find.byType(ConstrainedBox),
-            ).first,
+            find
+                .ancestor(
+                  of: find.byType(SingleChildScrollView),
+                  matching: find.byType(ConstrainedBox),
+                )
+                .first,
           )
           .width;
     }
@@ -139,7 +141,10 @@ void main() {
     testWidgets('kPhone — narrower than the cap, so the card yields', (
       WidgetTester tester,
     ) async {
-      expect(await cardWidthAt(tester, kPhone), lessThanOrEqualTo(kPhone.width));
+      expect(
+        await cardWidthAt(tester, kPhone),
+        lessThanOrEqualTo(kPhone.width),
+      );
     });
 
     testWidgets('kTablet — the form cap holds', (WidgetTester tester) async {
@@ -244,11 +249,7 @@ void main() {
         },
       );
       addTearDown(() => routedBody = const Text('routed body'));
-      await pumpShell(
-        tester,
-        kTablet,
-        incomingScale: TextScaler.linear(3.0),
-      );
+      await pumpShell(tester, kTablet, incomingScale: TextScaler.linear(3.0));
       expect(seen.scale(10), NikatruApp.maxTextScale * 10);
     });
   });
@@ -331,38 +332,43 @@ void main() {
       });
     }
 
-    testWidgets('paused -> resumed re-reads; a flick inside the floor does not', (
-      WidgetTester tester,
-    ) async {
-      DateTime now = DateTime.utc(2026, 9, 30, 12);
-      int runs = 0;
-      await pumpShell(
-        tester,
-        kPhone,
-        onReturn: () async => runs++,
-        elapsed: () => now.difference(DateTime.utc(2026)),
-      );
-      now = now.add(const Duration(minutes: 5));
-      for (final AppLifecycleState state in <AppLifecycleState>[
-        AppLifecycleState.inactive,
-        AppLifecycleState.hidden,
-        AppLifecycleState.paused,
-        AppLifecycleState.hidden,
-        AppLifecycleState.inactive,
-        AppLifecycleState.resumed,
-      ]) {
-        tester.binding.handleAppLifecycleStateChanged(state);
-      }
-      await tester.pump();
-      expect(runs, 1);
+    testWidgets(
+      'paused -> resumed re-reads; a flick inside the floor does not',
+      (WidgetTester tester) async {
+        DateTime now = DateTime.utc(2026, 9, 30, 12);
+        int runs = 0;
+        await pumpShell(
+          tester,
+          kPhone,
+          onReturn: () async => runs++,
+          elapsed: () => now.difference(DateTime.utc(2026)),
+        );
+        now = now.add(const Duration(minutes: 5));
+        for (final AppLifecycleState state in <AppLifecycleState>[
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        await tester.pump();
+        expect(runs, 1);
 
-      // Alt-tab straight back (desktop, web): inactive -> resumed.
-      now = now.add(const Duration(seconds: 2));
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
-      expect(runs, 1);
-    });
+        // Alt-tab straight back (desktop, web): inactive -> resumed.
+        now = now.add(const Duration(seconds: 2));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        expect(runs, 1);
+      },
+    );
 
     testWidgets('unmounted, it stops listening', (WidgetTester tester) async {
       DateTime now = DateTime.utc(2026, 9, 30, 12);
@@ -484,28 +490,27 @@ void main() {
     // incomplete today (the app signing pin is not set), so a hand-built
     // complete set stands in through a channel the generated table has, and
     // the incomplete real one must NOT block.
-    testWidgets('a re-signed copy stops before notifications, identity and the app', (
-      WidgetTester tester,
-    ) async {
-      final core.IntegritySession before = DeviceIntegrityScope.session;
-      addTearDown(() => DeviceIntegrityScope.session = before);
-      final List<String> steps = await boot(
-        releaseChannel: 'android-play',
-        probe: core.FixedDeviceIntegrityProbe(
-          certificates: core.SigningCertificates(sha256: <String>['00' * 32]),
-        ),
-      );
-      // android-play is INCOMPLETE, so this is reported and the app runs.
-      expect(steps, <String>[
-        'telemetry.zone.enter',
-        'integrity.record mismatchReported',
-        'notifications.init',
-        'identity.init',
-        'runApp',
-        'telemetry.zone.exit',
-      ]);
-      expect(DeviceIntegrityScope.session.integrity.blocksDataAccess, isFalse);
-    });
+    // ⏱ 2026-10-03: android-play's real set is COMPLETE (the Play app signing
+    // pin is set), so the real table blocks here and no stand-in is needed.
+    testWidgets(
+      'a re-signed copy stops before notifications, identity and the app',
+      (WidgetTester tester) async {
+        final core.IntegritySession before = DeviceIntegrityScope.session;
+        addTearDown(() => DeviceIntegrityScope.session = before);
+        final List<String> steps = await boot(
+          releaseChannel: 'android-play',
+          probe: core.FixedDeviceIntegrityProbe(
+            certificates: core.SigningCertificates(sha256: <String>['00' * 32]),
+          ),
+        );
+        expect(steps, <String>[
+          'telemetry.zone.enter',
+          'integrity.record mismatch',
+          'telemetry.zone.exit',
+        ]);
+        expect(DeviceIntegrityScope.session.integrity.blocksDataAccess, isTrue);
+      },
+    );
 
     testWidgets('the genuine signer boots exactly as before', (
       WidgetTester tester,

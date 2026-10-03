@@ -135,7 +135,7 @@ describe('S2 coverage', () => {
     const r = readReg();
     delete r.runtimeSignerCheck.channels['android-play'];
     writeReg(r);
-    assert.match(findings(), /S2 channel "android-play" pins signing\.uploadCertificate\.sha256 and has no runtimeSignerCheck entry/);
+    assert.match(findings(), /S2 channel "android-play" pins signing\.uploadCertificate\.sha256, signing\.appSigningCertificate\.sha256 and has no runtimeSignerCheck entry/);
   });
 
   test('a pin the row carries and the entry does not list', () => {
@@ -172,9 +172,18 @@ describe('S3 the generated pins are the register', () => {
   });
 
   test('the rendering marks a set incomplete while any pin is null', () => {
-    const text = renderSignerPins(realRegister);
+    // ⏱ 2026-10-03: the real android-play set is complete (the app signing pin
+    // was read off the Play Developer API), so the null case is a copy.
+    const r = structuredClone(realRegister);
+    r.channels.find((c) => c.id === 'android-play').signing.appSigningCertificate.sha256 = null;
+    const text = renderSignerPins(r);
     assert.match(text, /'android-play': SignerPins\([\s\S]*?complete: false,/);
     assert.match(text, /signing\.appSigningCertificate\.sha256 — not set/);
+  });
+
+  test('the real android-play set renders both pins, complete', () => {
+    const text = renderSignerPins(realRegister);
+    assert.match(text, /'android-play': SignerPins\([\s\S]*?'98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',[\s\S]*?complete: true,/);
   });
 });
 
@@ -193,6 +202,9 @@ describe('S4 the build-time refusal, and only for that channel\'s release build'
   });
 
   test('android-play, release-signed, app signing pin null: allowed', () => {
+    const r = readReg();
+    r.channels.find((c) => c.id === 'android-play').signing.appSigningCertificate.sha256 = null;
+    writeReg(r);
     assert.equal(unpinnedReleaseRefusal({ root: ROOT, channel: 'android-play', env: RELEASE_ENV }), null);
   });
 
@@ -215,7 +227,7 @@ describe('S4 the build-time refusal, and only for that channel\'s release build'
   });
 
   test('signerPinsOf reports completeness per channel', () => {
-    assert.equal(signerPinsOf(realRegister, 'android-play').complete, false);
+    assert.equal(signerPinsOf(realRegister, 'android-play').complete, true);
     assert.equal(signerPinsOf(realRegister, 'apps-gov-in').complete, false);
     assert.equal(signerPinsOf(realRegister, 'web'), null);
   });

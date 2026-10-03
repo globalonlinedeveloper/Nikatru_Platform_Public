@@ -10,12 +10,13 @@ import 'device_integrity.dart' show SignerPins;
 /// The pins by `RELEASE_CHANNEL`.
 const Map<String, SignerPins> kSignerPinsByChannel = <String, SignerPins>{
   // signing.uploadCertificate.sha256
-  // signing.appSigningCertificate.sha256 — not set
+  // signing.appSigningCertificate.sha256
   'android-play': SignerPins(
     digests: <String>[
       '43C84D1162C4D19C0FA0C5E001905B89523DC082A68083C993069B863C28A616',
+      '98FA5FDCA1491BEC84198D3DABE797B0432985741581BBFEA2555B176C833A3C',
     ],
-    complete: false,
+    complete: true,
   ),
   // signing.signingCertificate.sha256 — not set
   'apps-gov-in': SignerPins(digests: <String>[], complete: false),
