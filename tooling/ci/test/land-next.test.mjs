@@ -783,15 +783,15 @@ describe('.github/workflows/land.yml is a thin, least-privilege shell with one a
   const rel = '.github/workflows/land.yml';
   const text = readFileSync(join(REPO, rel), 'utf8');
   const wf = parseWorkflow(REPO, rel);
-  test('its triggers are the clock, CI/E2E completion, a land-ok label and a dry-run dispatch', () => {
+  test('its triggers are the clock, CI completion, a land-ok label and a dry-run dispatch', () => {
     assert.deepEqual([...workflowEvents(wf)].sort(), ['pull_request_target', 'schedule', 'workflow_dispatch', 'workflow_run']);
     assert.match(text, /^ {4}- cron: '\*\/10 \* \* \* \*'$/m);
     assert.match(text, /^ {2}pull_request_target:\n {4}types: \[labeled\]$/m);
     assert.match(text, /^ {6}dry_run:\n(?: {8}.*\n)*? {8}default: true$/m, 'dry_run defaults to true');
   });
-  test('the workflow_run names are the real workflows\' names', () => {
+  test('the workflow_run names are the real workflows\' names: CI only, E2E\'s verdict is read over the API on each run', () => {
     const names = [...text.matchAll(/^ {4}workflows: \[([^\]]*)\]$/gm)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
-    const real = ['ci.yml', 'e2e.yml'].map((f) => /^name:\s*(.+)$/m.exec(readFileSync(join(REPO, '.github/workflows', f), 'utf8'))[1].trim());
+    const real = ['ci.yml'].map((f) => /^name:\s*(.+)$/m.exec(readFileSync(join(REPO, '.github/workflows', f), 'utf8'))[1].trim());
     assert.deepEqual(names, real);
   });
   test('🔴 exactly one merge actor: concurrency `land`, never cancelled', () => {

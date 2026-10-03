@@ -8,9 +8,9 @@ lines; every decision is `tooling/ci/land-next.mjs`, held by
 
 Every merge used to be made by a laptop script (`land-vNN.sh`) run by local daemons. When the
 laptop was off, rebooting, out of memory or switching accounts, nothing landed. This workflow
-is the merge actor on GitHub: on a 10-minute schedule, on every `CI` or `E2E live`
-completion and on a `land-ok:<sha8>` label, with the run's own `GITHUB_TOKEN`. **No secret, no PAT,
-no GitHub App.**
+is the merge actor on GitHub: on a 10-minute schedule, on every `CI` completion (an `E2E live`
+verdict is read over the API on every run, so the next slot sees it) and on a `land-ok:<sha8>`
+label, with the run's own `GITHUB_TOKEN`. **No secret, no PAT, no GitHub App.**
 
 ## The constraint, and the measurement that settled it
 

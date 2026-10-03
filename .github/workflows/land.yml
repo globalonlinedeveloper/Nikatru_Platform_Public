@@ -17,13 +17,15 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   # zizmor: ignore[dangerous-triggers]
-  # why: a CI or E2E run finishing is what turns a PR (or main) from pending into
-  # a verdict, so it wakes the lander. Safe here: the one expression that reads
-  # the triggering run is `run-name:`'s path and conclusion (display only, never a
-  # shell, never its head), the checkout is main, and the only code run is
-  # land-next.mjs from main.
+  # why: a CI run finishing is what turns a PR (or main) from pending into a
+  # verdict, so it wakes the lander. CI only: an `E2E live` wake replaced the
+  # pending run in bursts (shown cancelled), and land-next.mjs reads E2E's verdict
+  # over the API on every run (e2eVerdict), so the clock picks it up within one
+  # slot. Safe here: the one expression that reads the triggering run is
+  # `run-name:`'s path and conclusion (display only, never a shell, never its
+  # head), the checkout is main, and the only code run is land-next.mjs from main.
   workflow_run:
-    workflows: [CI, E2E live]
+    workflows: [CI]
     types: [completed]
   # zizmor: ignore[dangerous-triggers]
   # why: `labeled` ONLY, and only to WAKE: the lead's `land-ok:<sha8>` is a decision the
