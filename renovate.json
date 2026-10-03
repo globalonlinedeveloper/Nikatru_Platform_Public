@@ -64,8 +64,18 @@
   "prBodyNotes": [
     "Rows: none — Renovate dependency bump; no register row moves"
   ],
+  "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
-    "description": "Security fixes bypass the weekly window entirely.",
+    "description": [
+      "Security fixes bypass the weekly window entirely.",
+      "osvVulnerabilityAlerts (above), 2026-10-01 [rv2-security-004 part 3]: Renovate also reads the OSV",
+      "database itself, for every manager it extracts (npm and pub here), and raises the fix PR with THESE",
+      "settings - labels, and outside the Monday window - on renovate.yml's daily cron. vulnerabilityAlerts",
+      "alone reads GitHub's Dependabot alerts, which had raised none on pubspec.lock, ever (dependabot.yml).",
+      "It is the PR half; the gate half is ops-watch's daily dependency-advisories scan of main.",
+      "EXPERIMENTAL in Renovate's own docs. RE-CHECK BY 2027-01-01: that an OSV-sourced PR has opened (or",
+      "that none was due), and that the option is still named and not yet a default; then drop this line."
+    ],
     "labels": [
       "dependencies",
       "security"

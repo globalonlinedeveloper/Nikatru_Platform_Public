@@ -237,7 +237,7 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=The dependency scan is UNKNOWN - nothing was graded::OSV did not flag its canary lockfile, did not read every tracked lockfile, could not reach its database, or answered in a shape the script cannot read. NOTHING about main's dependencies is known from this run, and that is never a pass. The step log names which."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=A known advisory stands against a lockfile on main::The step log names each vulnerable package, its lockfile and its advisory ids. Move it to a fixed version in a pull request; one that cannot be fixed yet is acknowledged in osv-scanner.toml with a dated ignoreUntil. The next pull request's security-scan is red on it too until then."
+            echo "::error title=A known advisory stands against a lockfile on main::The step log names each vulnerable package, its lockfile and its advisory ids. Move it to a fixed version in a pull request; one that cannot be fixed yet is acknowledged in osv-scanner.toml with a dated ignoreUntil. THIS job owns it: a pull request's security-scan fails on it only when that pull request changes its lockfile (or osv-scanner.toml), and prints it otherwise."
           fi
           exit "$code"
 

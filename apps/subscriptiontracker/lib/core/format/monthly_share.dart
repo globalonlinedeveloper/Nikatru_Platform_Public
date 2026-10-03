@@ -28,11 +28,22 @@ extension type const MonthlyShare._(Money _amount) {
   /// (half away from zero). Monthly and yearly land exactly on [ofMonthly]
   /// and [ofYearly] — 12/12 and 1/12 — so the two plans every row had before
   /// ST-T3b print what they printed.
-  factory MonthlyShare.of(Money price, Cadence cadence) {
+  ///
+  /// ⏱ 2026-09-30 · ST-P4 (round-2 F38): [shareNumerator] / [shareDenominator]
+  /// is the user's own part of a shared plan ("my 1 of 3"), folded into the
+  /// SAME single rounding — a third of a twelfth rounded twice is not a third
+  /// of the price. 1/1, the default, is the whole price, exactly as before.
+  factory MonthlyShare.of(
+    Money price,
+    Cadence cadence, {
+    int shareNumerator = 1,
+    int shareDenominator = 1,
+  }) {
     final ({int numerator, int denominator}) r = cadence.chargesPerYear;
-    final int over = r.denominator * 12;
-    if (r.numerator == over) return MonthlyShare.ofMonthly(price);
-    return MonthlyShare._(price.times(r.numerator).dividedBy(over));
+    final int over = r.denominator * 12 * shareDenominator;
+    final int times = r.numerator * shareNumerator;
+    if (times == over) return MonthlyShare.ofMonthly(price);
+    return MonthlyShare._(price.times(times).dividedBy(over));
   }
 
   /// Per-currency sum; the result is a PER-MONTH total and is printed only

@@ -212,6 +212,12 @@ describe('[4]B-16 · the emitted report names the app AND the release', () => {
     // D1 outage mid-request actually looks like.
     const db = realPlatformDb();
     db.throwOnWrite = true;
+    // ⏱ 2026-10-01 — the install must have CONSENTED, or the route answers 409
+    // at its consent read and never reaches the write whose catch is graded
+    // here. Seeded straight into the engine: `throwOnWrite` would refuse it
+    // through the route.
+    db.db.exec(`INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts)
+                VALUES ('c1', 'subscriptiontracker', 'a1', 'analytics', 1, '2026-07-25', '2026-07-25T00:00:00.000Z')`);
     const lines: string[] = [];
     const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
       lines.push(a.map(String).join(' '));

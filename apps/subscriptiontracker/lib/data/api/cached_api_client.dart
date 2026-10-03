@@ -18,6 +18,7 @@ import '../models/category.dart';
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 
@@ -435,6 +436,11 @@ class CachedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       _network.getPaymentHistory(await _outbox.resolve(id));
+
+  /// Not cached, for [getPaymentHistory]'s reason: an Insights read, and a
+  /// failed one hides the trend rather than drawing a stale one.
+  @override
+  Future<SpendHistory> getSpendHistory() => _network.getSpendHistory();
 
   /// A write: the network or an error, never the cache, and not queued — the
   /// outbox carries subscription rows only, so an offline "Mark as paid"
