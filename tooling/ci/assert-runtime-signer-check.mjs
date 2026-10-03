@@ -59,7 +59,10 @@
 //                key nothing names.
 //   S9 sharing   while `internalAppSharing.pin` is null, no workflow or release
 //                script uploads to Play's internal app sharing: those installs
-//                carry a third, Google-generated key.
+//                carry a third, Google-generated key. The workflows are read
+//                through workflow-scan.mjs (tooling/workflow-readers.json), and
+//                S9 is COVERAGE LOST (2) when that scan finds no Play upload
+//                step (`node tooling/release/submit-play.mjs`) to judge.
 //
 // Exit 0 = green. 1 = a finding. 2 = COVERAGE LOST: the register has no
 // `runtimeSignerCheck`, it names no channel, or no app was found to grade.
@@ -73,6 +76,7 @@ import { listDir } from './tree-walk.mjs';
 import { composeReleaseBuild, signerPinsOf, appPinsAt, unpinnedReleaseRefusal, RELEASE_SIGNING_ENV } from './flutter-release-build.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { SIGNER_PINS_DART } from '../app-yaml/render.mjs';
+import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 export const REGISTER = 'tooling/channel-register.json';
 const SHA256_COLON = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/;
@@ -246,9 +250,16 @@ function hasStorePresence(root, app, row) {
   return null;
 }
 
-/** The release paths S9 reads for an upload to Play's internal app sharing. */
-const INTERNAL_SHARING_DIRS = ['.github/workflows', 'tooling/release', 'tooling/store'];
+/** The release SCRIPTS S9 reads for an upload to Play's internal app sharing.
+ *  The workflows are read through workflow-scan.mjs (parseAllWorkflows), never
+ *  here: a text read of them is the failure assert-workflow-readers exists for. */
+const INTERNAL_SHARING_DIRS = ['tooling/release', 'tooling/store'];
 const INTERNAL_SHARING = /internalappsharing|internal[_-]app[_-]sharing/i;
+/** The Play upload step S9 judges — the one script every Play lane runs. */
+const PLAY_UPLOAD_STEP = /\bnode\s+tooling\/release\/submit-play\.mjs\b/;
+
+const sharingFinding = (where, id) =>
+  `S9 ${where} uploads to Play's internal app sharing, and runtimeSignerCheck.channels.${id}.internalAppSharing.pin is null: those installs carry Google's internal app sharing key, which no pin names, so a release build would call them modified copies. Pin that certificate first.`;
 /** How deep S9 descends below each of those directories. */
 const INTERNAL_SHARING_DEPTH = 4;
 
@@ -279,7 +290,7 @@ function rowPins(row) {
 export function check(root) {
   const problems = [];
   const lost = [];
-  const counts = { channels: 0, pinsSet: 0, pinsNull: 0, appPins: 0, apps: 0, wired: 0, evidence: 0, refused: 0 };
+  const counts = { channels: 0, pinsSet: 0, pinsNull: 0, appPins: 0, playUploads: 0, apps: 0, wired: 0, evidence: 0, refused: 0 };
   let register;
   try {
     register = JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
@@ -393,20 +404,42 @@ export function check(root) {
 
   // S9 internal app sharing: a release path that uploads to it while the
   // channel pins no internal-sharing key ships installs no pin recognises.
-  for (const id of entries) {
+  // ⏱ 2026-10-03 (ruling on #1198, assert-workflow-readers R1): the workflows
+  // are read THROUGH workflow-scan.mjs, never by path text, and S9 refuses
+  // (COVERAGE LOST) when the scan cannot see the Play upload steps it judges.
+  const sharing = Object.keys(block.channels).filter((id) => {
     const ias = block.channels[id]?.internalAppSharing;
-    if (ias === undefined || ias === null || ias.pin !== null) continue;
-    for (const dir of INTERNAL_SHARING_DIRS) {
-      for (const rel of filesUnder(root, dir)) {
-        if (!/\.(ya?ml|mjs|js|sh)$/.test(rel)) continue;
-        let text;
-        try {
-          text = readFileSync(join(root, rel), 'utf8');
-        } catch {
-          continue;
+    return ias !== undefined && ias !== null && ias.pin === null;
+  });
+  if (sharing.length > 0) {
+    const workflows = parseAllWorkflows(root);
+    const uploads = workflows.flatMap((wf) =>
+      [...wf.jobs.values()].flatMap((j) => j.logical.filter((l) => PLAY_UPLOAD_STEP.test(l.text)).map((l) => `${wf.rel}:${l.n}`)),
+    );
+    if (workflows.length === 0 || uploads.length === 0) {
+      lost.push(
+        `S9 cannot see the Play upload steps it judges: ${workflows.length} workflow(s) parsed under ${WORKFLOW_DIR}, and no step runs tooling/release/submit-play.mjs. ` +
+          'Without them a "no internal app sharing" verdict would be about nothing.',
+      );
+    } else {
+      counts.playUploads = uploads.length;
+      for (const id of sharing) {
+        for (const wf of workflows) {
+          for (const l of wf.lines) {
+            if (INTERNAL_SHARING.test(l.text)) problems.push(sharingFinding(`${wf.rel}:${l.n}`, id));
+          }
         }
-        if (INTERNAL_SHARING.test(text)) {
-          problems.push(`S9 ${rel} uploads to Play's internal app sharing, and runtimeSignerCheck.channels.${id}.internalAppSharing.pin is null: those installs carry Google's internal app sharing key, which no pin names, so a release build would call them modified copies. Pin that certificate first.`);
+        for (const dir of INTERNAL_SHARING_DIRS) {
+          for (const rel of filesUnder(root, dir)) {
+            if (!/\.(mjs|js|sh)$/.test(rel)) continue;
+            let text;
+            try {
+              text = readFileSync(join(root, rel), 'utf8');
+            } catch {
+              continue;
+            }
+            if (INTERNAL_SHARING.test(text)) problems.push(sharingFinding(rel, id));
+          }
         }
       }
     }
@@ -552,7 +585,7 @@ function main(args) {
     `ok  runtime signer check — ${counts.channels} Android channel(s), ${counts.pinsSet} pin(s) set and ${counts.pinsNull} not yet set, ${counts.appPins} per-app pin(s) ` +
       `(an incomplete set reports, never blocks); ${counts.refused} channel(s) refuse a release-signed build until pinned; ` +
       `the generated pins match the register; ${counts.wired} wiring file(s) and ${counts.apps} main() (apps + the brick) run the check; ` +
-      `${counts.evidence} store-review evidence file(s) exist.`,
+      `${counts.evidence} store-review evidence file(s) exist; ${counts.playUploads} Play upload step(s) read through workflow-scan, none to internal app sharing.`,
   );
   return 0;
 }

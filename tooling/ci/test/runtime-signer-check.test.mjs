@@ -28,6 +28,7 @@ const GUARD = join(CI_DIR, 'assert-runtime-signer-check.mjs');
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const BRICK_MAIN = `${BRICK}/lib/main.dart`;
 const APP = 'apps/subscriptiontracker';
+const PLAY_LANE = '.github/workflows/submit-play.yml';
 const RELEASE_ENV = Object.fromEntries(RELEASE_SIGNING_ENV.map((n) => [n, 'x']));
 
 const realRegister = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
@@ -40,6 +41,8 @@ function filesToCopy() {
     REGISTER, realRegister.runtimeSignerCheck.generated, ...WIRING.map((w) => w.file),
     BRICK_MAIN, `${BRICK}/lib/app.dart`,
     `${APP}/app.yaml`, `${APP}/lib/main.dart`, `${APP}/lib/app.dart`, `${APP}/lib/core/device_integrity.dart`, `${APP}/${SIGNER_PINS_DART}`,
+    // S9 judges the Play upload steps, read through workflow-scan.mjs.
+    PLAY_LANE,
   ]);
   for (const row of realRegister.channels) for (const a of row.storeReview?.answers ?? []) for (const f of a.evidence ?? []) set.add(f);
   return [...set];
@@ -279,9 +282,29 @@ describe('S8 per-app pins', () => {
 
 describe('S9 internal app sharing', () => {
   test('🔴 a workflow uploading to internal app sharing while no key for it is pinned', () => {
-    mkdirSync(join(ROOT, '.github/workflows'), { recursive: true });
     writeFileSync(join(ROOT, '.github/workflows/share.yml'), 'jobs:\n  share:\n    steps:\n      - run: curl https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/internalappsharing/x/artifacts/bundle\n');
-    assert.match(findings(), /S9 \.github\/workflows\/share\.yml uploads to Play's internal app sharing/);
+    assert.match(findings(), /S9 \.github\/workflows\/share\.yml:4 uploads to Play's internal app sharing/);
+  });
+
+  test('a COMMENT naming internal app sharing is not an upload (workflow-scan blanks comments)', () => {
+    writeFileSync(join(ROOT, '.github/workflows/share.yml'), '# internal app sharing is not used here\njobs:\n  share:\n    steps:\n      - run: echo ok\n');
+    assert.equal(findings(), '');
+  });
+
+  test('🔴 COVERAGE LOST (exit 2): no workflow step runs the Play upload S9 judges', () => {
+    rmSync(join(ROOT, PLAY_LANE));
+    const out = run();
+    assert.equal(out.status, 2, out.stderr + out.stdout);
+    assert.match(out.stderr, /S9 cannot see the Play upload steps it judges: 0 workflow\(s\) parsed/);
+  });
+
+  test('🔴 COVERAGE LOST (exit 2): the Play lane no longer runs submit-play.mjs', () => {
+    const lane = readFileSync(join(ROOT, PLAY_LANE), 'utf8');
+    assert.ok(lane.includes('node tooling/release/submit-play.mjs'), 'fixture anchor');
+    writeFileSync(join(ROOT, PLAY_LANE), lane.replaceAll('node tooling/release/submit-play.mjs', 'node tooling/release/elsewhere.mjs'));
+    const out = run();
+    assert.equal(out.status, 2, out.stderr + out.stdout);
+    assert.match(out.stderr, /no step runs tooling\/release\/submit-play\.mjs/);
   });
 
   test('🔴 a per-app channel that does not say whether internal sharing is used', () => {
