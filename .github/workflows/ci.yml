@@ -1208,6 +1208,15 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      # why: the recurring CodeQL shapes (file-system-race, missing-regexp-anchor, incomplete-sanitization and its
+      # multi-character, url-substring and hostname variants, insecure-temporary-file, an unused import) on this PR's
+      # changed lines, in about a second, before the CodeQL rule below waits minutes to say the same (lane codeql-lite).
+      # Lanes run it before the push through affected-guards.mjs; here it is the same check, against the PR's own base.
+      - name: This pull request's changed lines carry none of the recurring CodeQL shapes (codeql-lite)
+        if: ${{ !cancelled() }}
+        env:
+          CODEQL_LITE_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
+        run: node tooling/ci/assert-codeql-lite.mjs
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
       # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
       # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
@@ -1650,12 +1659,13 @@ jobs:
         run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
       # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
       # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
-      # reads services/, so the Worker lanes below see the tree they saw before.
+      # reads services/, so the Worker lanes below see the tree they saw before: by an EXIT trap, so a red plan
+      # check removes it too (fix-brick-stamp-outside-repo), and gitignored in case the shell itself dies.
       - name: A scratch service stamps from the Worker template, and the plan reads it as a service
         run: |
+          trap 'rm -rf services/probesvc-api' EXIT
           node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
           node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
-          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"

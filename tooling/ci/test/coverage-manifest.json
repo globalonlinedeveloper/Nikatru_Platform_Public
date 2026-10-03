@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    12,
+    13,
 
   "agent-docs.test.mjs":
     21,
@@ -295,6 +295,9 @@
 
   "code-scanning-age.test.mjs":
     15,
+
+  "codeql-lite.test.mjs":
+    51,
 
   "codeql-pr-no-new-high.test.mjs":
     22,
@@ -1096,6 +1099,9 @@
 
   "stamp-properties.test.mjs":
     32,
+
+  "stamp-sandbox.test.mjs":
+    29,
 
   "stamp-text-fidelity.test.mjs":
     44,

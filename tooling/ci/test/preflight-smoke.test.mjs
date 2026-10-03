@@ -207,7 +207,7 @@ describe('the full run closes with the generated line, not "CI should agree."', 
   };
   before(() => {
     root = mkdtempSync(join(TMP, 'full-'));
-    for (const rel of ['tooling/scripts/preflight.mjs', 'tooling/scripts/heavy-lock.mjs', 'tooling/scripts/guard-sweep.mjs', 'tooling/ci/workflow-scan.mjs', 'tooling/ci/tree-walk.mjs']) {
+    for (const rel of ['tooling/scripts/preflight.mjs', 'tooling/scripts/heavy-lock.mjs', 'tooling/scripts/guard-sweep.mjs', 'tooling/ci/workflow-scan.mjs', 'tooling/ci/tree-walk.mjs', 'tooling/kit/stamp-sandbox.mjs']) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       copyFileSync(join(REPO, rel), join(root, rel));
     }
@@ -359,7 +359,7 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
 
   before(() => {
     root = mkdtempSync(join(TMP, 'repo-'));
-    for (const rel of ['tooling/scripts/preflight.mjs', 'tooling/scripts/heavy-lock.mjs', 'tooling/scripts/guard-sweep.mjs', 'tooling/ci/workflow-scan.mjs', 'tooling/ci/tree-walk.mjs']) {
+    for (const rel of ['tooling/scripts/preflight.mjs', 'tooling/scripts/heavy-lock.mjs', 'tooling/scripts/guard-sweep.mjs', 'tooling/ci/workflow-scan.mjs', 'tooling/ci/tree-walk.mjs', 'tooling/kit/stamp-sandbox.mjs']) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       copyFileSync(join(REPO, rel), join(root, rel));
     }
