@@ -1,6 +1,7 @@
 // help-search.test.mjs — lane help-search: the articles and their gates, the
 // index and its budget, the measured recall, the one-search-two-runtimes
 // fixture, and `--check` (tooling/help/build-index.mjs, tooling/help/search.mjs).
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -125,11 +126,20 @@ test('🔴 a hand edit of a committed index fails --check', () => {
     }
     const quiet = () => {};
     assert.equal(main([tmp, '--check'], quiet), 0);
+    // The regen ORDER entry, run as regen.mjs runs it (node + path, no shebang):
+    // it must exit exactly as build-index does, green here and red below.
+    const wrapper = () =>
+      spawnSync(process.execPath, [path.join(ROOT, 'tooling', 'sites', 'gen-help-centre.mjs'), tmp, '--check'], { encoding: 'utf8' });
+    const green = wrapper();
+    assert.equal(green.status, 0, green.stdout + green.stderr);
     const file = path.join(tmp, 'sites', 'nikatru', 'help', 'index.en.json');
     writeFileSync(file, readFileSync(file, 'utf8').replace('"avgdl":', '"avgdl":1+'));
     const lines = [];
     assert.equal(main([tmp, '--check'], (l) => lines.push(l)), 1);
     assert.ok(lines.some((l) => l.includes('stale sites/nikatru/help/index.en.json')), lines.join('\n'));
+    const red = wrapper();
+    assert.equal(red.status, 1, red.stdout + red.stderr);
+    assert.match(red.stdout + red.stderr, /stale sites\/nikatru\/help\/index\.en\.json/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
