@@ -7,7 +7,7 @@ import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_feedback/nikatru_feedback.dart'
-    show openReportProblem, reportProblemLabelOf;
+    show openReportProblem, privacyRightsLabelOf, reportProblemLabelOf;
 import 'package:nikatru_help/nikatru_help.dart'
     show helpCentreLabelOf, openHelpCentre;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
@@ -139,6 +139,15 @@ class SettingsScreen extends ConsumerWidget {
         openUrl: _openUrl,
       ),
       helpLabel: helpCentreLabelOf(context),
+      // Lane dpdp-rights: packages/feedback's rights screen; its erasure opens
+      // this adapter's own account deletion below.
+      onOpenPrivacyRights: () => openPrivacyRightsScreen(
+        context,
+        ref,
+        onDeleteAccount: () async =>
+            _confirmDelete(context, ref, context.chassisL10n),
+      ),
+      privacyRightsLabel: privacyRightsLabelOf(context),
       // O-PLAY-AI-CONTENT-REPORTING: only in an app that generates AI content.
       onReportContent: AppConfig.generatesAiContent
           ? () => showReportContentDialog(context, ref)

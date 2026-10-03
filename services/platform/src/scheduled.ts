@@ -1166,10 +1166,16 @@ export const ERASURE_STUCK_AFTER_DAYS = 7;
  * statements, past d1.queriesPerInvocation's Paid 1,000 on any firing. 15 is
  * 15 × ERASURE_STATEMENTS_PER_ORDER + 4 = 904. An unfinished erasure is retried
  * the next night, and one waiting past ERASURE_STUCK_AFTER_DAYS is RED.
+ * ⏱ 2026-10-03 · lane dpdp-rights: 15 -> 12. The re-walk grows with every
+ * user-owned table, and 0031's two (privacy_requests, privacy_nominees) took a
+ * completed subject to a MEASURED 67 statements: 4 + 15 x 67 = 1,009, past the
+ * 1,000. 12 x ERASURE_STATEMENTS_PER_ORDER (80) + 4 = 964 keeps the firing inside
+ * it with room for the next few tables; three fewer retries a night is a later
+ * night for an already-retried erasure, never a skipped one.
  *
  * @ceiling d1.queriesPerInvocation lte
  */
-export const MAX_ERASURE_RETRIES_PER_RUN = 15;
+export const MAX_ERASURE_RETRIES_PER_RUN = 12;
 
 /**
  * D1 statements one retried order may spend, its subject's completion included.
@@ -1182,10 +1188,13 @@ export const MAX_ERASURE_RETRIES_PER_RUN = 15;
  * and refund tables on one tree): RE-MEASURED 949 for the whole invocation at
  * 15 orders = 63 a completed subject plus 4 a run; 60 -> 66 (4 + 15 x 66 = 994,
  * inside d1.queriesPerInvocation 1,000).
+ * ⏱ 2026-10-03 · lane dpdp-rights (0031: privacy_requests, privacy_nominees):
+ * RE-MEASURED 67 a completed subject; 66 -> 80, with MAX_ERASURE_RETRIES_PER_RUN
+ * 15 -> 12 (4 + 12 x 80 = 964).
  *
  * @ceiling none — a measured per-order cost that JOB_STATEMENT_BUDGET multiplies, not a cap on any platform resource.
  */
-export const ERASURE_STATEMENTS_PER_ORDER = 66;
+export const ERASURE_STATEMENTS_PER_ORDER = 80;
 
 export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promise<void> {
   const nowIso = new Date(nowMs).toISOString();

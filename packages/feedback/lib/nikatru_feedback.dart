@@ -10,4 +10,5 @@ export 'src/l10n/feedback_strings.g.dart';
 export 'src/markup_editor.dart' show MarkupEditorPage, MarkupKeys, ShotPreview;
 export 'src/outbox.dart';
 export 'src/report.dart';
+export 'src/privacy_rights_page.dart';
 export 'src/report_page.dart';

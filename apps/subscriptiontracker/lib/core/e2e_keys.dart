@@ -142,6 +142,10 @@ class E2EKeys {
   /// shares a stem between them.
   static const Key settingsPrivacyNotice = Key('e2e_settings_privacy_notice');
 
+  /// ⏱ 2026-10-03 · lane dpdp-rights. The Privacy card's "Your privacy
+  /// rights" row (packages/feedback's rights screen).
+  static const Key settingsPrivacyRights = Key('e2e_settings_privacy_rights');
+
   // 🔴 THE THREE BELOW KEEP THEIR ORIGINAL STRING VALUES ON PURPOSE.
   // `test/delete_account_test.dart` drives this dialog by LITERAL
   // `const Key('deleteAccountPassword')` in eleven places, and a `Key` compares

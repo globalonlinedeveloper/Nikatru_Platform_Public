@@ -238,3 +238,35 @@ export async function eraseTargets(
   });
   return { deleted, unlinked };
 }
+
+/**
+ * ⏱ 2026-10-03 · lane dpdp-rights (O-SERVER-DATA-EXPORT-MISSING). THE ACCESS
+ * REQUEST'S READ: every row of every table the erasure walk would delete for
+ * this person, read in ONE batch over the SAME schema derivation — so the export
+ * and the erasure cannot disagree about what is "this person's". A table added
+ * with a `user_id` column is exported by its own migration, as it is erased.
+ *
+ * Returns `{ <table>: rows[] }` for every user-owned table, an empty array where
+ * the person has none. An empty TABLE SET is refused, as eraseTargets refuses it:
+ * an export of nothing would read as "we hold nothing about you".
+ */
+export async function exportUserRows(db: SqlDb, userId: string): Promise<Record<string, Array<Record<string, unknown>>>> {
+  const tables = (await erasureTargets(db)).tables;
+  if (tables.length === 0) {
+    throw new Error('no user-owned table to export from; refusing to report an export that read nothing');
+  }
+  for (const name of tables) {
+    if (!PLAIN_IDENTIFIER.test(name)) throw new Error(`refusing to interpolate a non-identifier: ${JSON.stringify(name)}`);
+  }
+  const sets = await withD1Retry(() =>
+    db.batch<Record<string, unknown>>(tables.map((table) => db.prepare(`SELECT * FROM ${table} WHERE user_id = ?`).bind(userId))),
+  );
+  if (!Array.isArray(sets) || sets.length !== tables.length) {
+    throw new Error(`export batch answered ${Array.isArray(sets) ? sets.length : 'nothing'} result set(s) for ${tables.length} table(s)`);
+  }
+  const out: Record<string, Array<Record<string, unknown>>> = {};
+  tables.forEach((table, i) => {
+    out[table] = (sets[i]?.results ?? []) as Array<Record<string, unknown>>;
+  });
+  return out;
+}

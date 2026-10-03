@@ -7,6 +7,9 @@
 //   node tooling/feedback/move.mjs FB-XXXXXXXXXX in-fix --pr 1234
 //   node tooling/feedback/move.mjs FB-XXXXXXXXXX fixed --version 1.4.1
 //   node tooling/feedback/move.mjs FB-XXXXXXXXXX duplicate --of FB-YYYYYYYYYY
+//   node tooling/feedback/move.mjs PR-XXXXXXXXXX acknowledged     (a DPDP rights request,
+//   node tooling/feedback/move.mjs PR-XXXXXXXXXX resolved          lane dpdp-rights; see
+//                                                                   docs/ops/privacy-requests.md)
 //
 // It POSTs to the platform Worker's /v1/ops/feedback/move with the bearer in
 // the FEEDBACK_OPS_SECRET environment variable (never an argument, never
@@ -20,11 +23,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPORT_ID } from './lib.mjs';
 
+/** A DPDP rights request's id (services/platform/src/feedback/privacy.ts PRIVACY_ID). */
+export const PRIVACY_REQUEST_ID = /^PR-[0-9A-HJKMNP-TV-Z]{10}$/;
+
 export const MOVE_URL = 'https://platform.nikatru.com/v1/ops/feedback/move';
 
 export function parseMoveArgs(argv) {
   const [id, to, ...rest] = argv;
-  if (typeof id !== 'string' || !REPORT_ID.test(id)) return { error: 'the first argument is a report id (FB- and 10 characters)' };
+  if (typeof id !== 'string' || !(REPORT_ID.test(id) || PRIVACY_REQUEST_ID.test(id))) {
+    return { error: 'the first argument is a report id (FB- and 10 characters) or a rights request id (PR- and 10 characters)' };
+  }
   if (typeof to !== 'string' || to.startsWith('-')) return { error: 'the second argument is the status to move to' };
   const body = { id, to };
   for (let i = 0; i < rest.length; i++) {

@@ -351,6 +351,8 @@ const ERASURE_KINDS =
   register.erasureKinds && typeof register.erasureKinds === 'object' ? register.erasureKinds : {};
 let disclosuresChecked = 0;
 let writersChecked = 0;
+/** ⏱ 2026-10-03 · lane dpdp-rights: personal-data rows whose access `reader` was checked. */
+let readersChecked = 0;
 /** Consent gates whose enforcing file was opened and searched for its anchors. */
 let consentGatesChecked = 0;
 /** How many erasure declarations were actually compared to the schema. The one
@@ -641,6 +643,54 @@ for (const s of stores) {
     }
   }
 
+  // ── THE ACCESS RELATION (lane dpdp-rights, Do 3; O-SERVER-DATA-EXPORT-MISSING) ──
+  // 🔴 EVERY STORE HOLDING PERSONAL DATA NAMES ITS READER: the code (or, where no
+  // code can address the store for a person, the procedure) that answers a DPDP
+  // ACCESS request for it. Without this an export is a list somebody keeps, and
+  // the first table added after it is a table the export silently omits while the
+  // person is told "this is everything". The kinds are `exportKinds` above, and
+  // each is CHECKED, not believed:
+  //   user_id   the table's erasure is `purge` (so its `user_id` is proven against
+  //             the schema just above) and the reader calls the same derived walk;
+  //   anon_id   the reader selects FROM this table by name;
+  //   manual / withheld  a written reason, and the reader exists.
+  if (s.personalData === true) {
+    const x = s.export;
+    const EXPORT_KINDS = register.exportKinds && typeof register.exportKinds === 'object' ? register.exportKinds : {};
+    if (!x || typeof x !== 'object' || typeof x.reader !== 'string' || x.reader.trim() === '') {
+      problems.push(
+        `${where} holds personal data and names no \`export.reader\`. An access request is answered from the ` +
+          'stores that name a reader; a store with none is one the person is never told about.',
+      );
+    } else if (!existsSync(join(repoRoot, ...x.reader.split('/')))) {
+      problems.push(`${where} names export reader ${x.reader}, which does not exist.`);
+    } else if (typeof x.by !== 'string' || x.by.startsWith('_') || !Object.hasOwn(EXPORT_KINDS, x.by)) {
+      problems.push(
+        `${where} declares export \`by: ${JSON.stringify(x.by)}\`, which is not one of \`exportKinds\` ` +
+          `(${Object.keys(EXPORT_KINDS).filter((k) => !k.startsWith('_')).join(', ')}).`,
+      );
+    } else {
+      readersChecked++;
+      const reader = stripSourceComments(readFileSync(join(repoRoot, ...x.reader.split('/')), 'utf8'), extname(x.reader));
+      if (x.by === 'user_id') {
+        if (s.kind !== 'd1-table' || s.erasure?.kind !== 'purge') {
+          problems.push(
+            `${where} declares export \`by: user_id\` but its erasure is \`${s.erasure?.kind}\`, not \`purge\` — only a ` +
+              'table whose `user_id` is proven against the schema can be read by the derived walk.',
+          );
+        } else if (!/\bexportUserRows\s*\(/.test(reader)) {
+          problems.push(`${where} names ${x.reader} as its user_id reader, and that file never calls exportUserRows(.`);
+        }
+      } else if (x.by === 'anon_id') {
+        if (!new RegExp(`FROM\\s+${s.name}\\s+WHERE\\s+anon_id`).test(reader)) {
+          problems.push(`${where} names ${x.reader} as its anon_id reader, and that file never selects FROM ${s.name} WHERE anon_id.`);
+        }
+      } else if (typeof x.reason !== 'string' || x.reason.trim().length < 40) {
+        problems.push(`${where} declares export \`by: ${x.by}\` without a written \`reason\` (40 characters or more).`);
+      }
+    }
+  }
+
   // A row must name the code that writes it, and that code must still exist and
   // still mention the store. Without this a row drifts off its implementation
   // and keeps describing a system nobody maintains.
@@ -816,6 +866,9 @@ if (disclosuresChecked === 0 && problems.length === 0) {
     'the "every disclosure has an inventory behind it" relation vacuous.',
   );
 }
+if (readersChecked === 0 && problems.length === 0) {
+  coverageLost('NOT ONE personal-data row had its export `reader` checked, so the access relation ranged over nothing.');
+}
 if (writersChecked === 0 && problems.length === 0) {
   coverageLost('NOT ONE `writtenBy` file was read, so no row was connected to the code that fills it.');
 }
@@ -861,6 +914,10 @@ console.log(
   `    ${erasureRowsChecked} erasure declaration(s) checked against the columns of ${columnsByTable.size} table(s): ` +
     'every `purge` names a table that really has a `user_id`, every `unlink` a column that really ends in ' +
     '`_user_id`, and every "unreachable" a table that really has neither',
+);
+console.log(
+  `    ${readersChecked} export reader(s) checked: every personal-data row names the code or procedure that answers an ` +
+    'access request for it (lane dpdp-rights)',
 );
 console.log(
   `    ${consentGatesChecked} consent gate(s) checked: every "only after consent" claim names a server file whose code ` +

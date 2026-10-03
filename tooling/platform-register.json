@@ -615,6 +615,58 @@
       "unconsumedReason": "CONSUMED: apps/subscriptiontracker/lib/features/auth/connected_accounts_sheet.dart (confirmSignInMethodChangeAtServer, the serverCheck of core.guardSignInMethodChange) through packages/api_client/lib/src/account_deletion_request.dart (checkSignInMethodChange). Proven in services/platform/test/identity-change.test.ts."
     },
     {
+      "id": "account-export",
+      "method": "GET",
+      "path": "/v1/account/export",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/account-data.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights (O-SERVER-DATA-EXPORT-MISSING). The DPDP ACCESS request answered at once: every row of every table carrying `user_id` in platform_db and in every app database the Worker binds (APP_TARGETS), read through the SAME schema-derived walk the erasure uses (services/_shared/src/erasure.ts exportUserRows), plus the install's consent records and usage statistics when the app names its `anon_id`. One JSON file (`schema: nikatru.data-export/1`), credential-shaped columns WITHHELD. Per-person burst breaker EVENTS_LIMITER keyed `privacy:<sub>`. tooling/legal/data-inventory.json names this file as every personal-data store's reader.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
+        "expression": "'$_base/v1/account/export'",
+        "note": "The real `_dio.get` inside DioPrivacyDataTransport, the client of packages/feedback's \"Your privacy rights\" screen (PrivacyRightsPage), which every app and the brick open from Settings › Privacy."
+      }
+    },
+    {
+      "id": "account-nominee-get",
+      "method": "GET",
+      "path": "/v1/account/nominee",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/account-data.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights (DPDP Act s.14). The one nominee the account holder named: `{ nominee: { name, email, updatedAt } | null }` from platform_db.privacy_nominees. EVENTS_LIMITER keyed `privacy:<sub>`.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
+        "expression": "'$_base/v1/account/nominee'",
+        "note": "The real `_dio.get` inside DioPrivacyDataTransport.readNominee; DioPrivacyDataTransport, the client of packages/feedback's \"Your privacy rights\" screen (PrivacyRightsPage), which every app and the brick open from Settings › Privacy."
+      }
+    },
+    {
+      "id": "account-nominee-put",
+      "method": "PUT",
+      "path": "/v1/account/nominee",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/account-data.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights (DPDP Act s.14). Sets or replaces the nominee: `{ name, email }` and no other key (422), body bounded at 1 KiB, upserted on PRIMARY KEY user_id. EVENTS_LIMITER keyed `privacy:<sub>`.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
+        "expression": "'$_base/v1/account/nominee'",
+        "note": "The real `_dio.put` inside DioPrivacyDataTransport.writeNominee; DioPrivacyDataTransport, the client of packages/feedback's \"Your privacy rights\" screen (PrivacyRightsPage), which every app and the brick open from Settings › Privacy."
+      }
+    },
+    {
+      "id": "account-nominee-delete",
+      "method": "DELETE",
+      "path": "/v1/account/nominee",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/account-data.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights. Removes the nominee (204). EVENTS_LIMITER keyed `privacy:<sub>`. Account deletion removes it too, through the derived erasure walk.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_privacy_data_transport.dart",
+        "expression": "'$_base/v1/account/nominee'",
+        "note": "The real `_dio.delete` inside DioPrivacyDataTransport.removeNominee; DioPrivacyDataTransport, the client of packages/feedback's \"Your privacy rights\" screen (PrivacyRightsPage), which every app and the brick open from Settings › Privacy."
+      }
+    },
+    {
       "id": "entitlements",
       "method": "GET",
       "path": "/v1/entitlements",
@@ -1041,6 +1093,24 @@
       "owningFile": "services/platform/src/routes/feedback.ts",
       "purpose": "⏱ 2026-10-03 · lane feedback-triage. RFC 8058 one-click unsubscribe: the URL each \"fixed in\" notice carries in `List-Unsubscribe` (with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The token names one report through its hash; the report's contact address is then added to `feedback_mail_suppressed` as a SHA-256 (never the address), after which the feedback stream mails it nothing, ever. An unknown or malformed token is 404. Behind FEEDBACK_EDGE_LIMITER.",
       "unconsumedReason": "Consumed by MAIL CLIENTS from the List-Unsubscribe header, and by the button on the GET page. No app code calls it."
+    },
+    {
+      "id": "feedback-verify-get",
+      "method": "GET",
+      "path": "/v1/feedback/verify",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights. The one-time link a signed-out DPDP rights request mails to the address it names: shows ONE button and changes nothing (a mail scanner fetching links must verify nobody). Bounded by FEEDBACK_EDGE_LIMITER (strictEdgeCeiling, fail closed); the token is matched on its SHA-256, never stored.",
+      "unconsumedReason": "NO CODE CLIENT BY DESIGN: the caller is a person following the link in the verification mail services/platform/src/feedback/privacy.ts sends (`FEEDBACK_LINK_ORIGIN/v1/feedback/verify?t=`). Held by services/platform/test/privacy-requests.test.ts."
+    },
+    {
+      "id": "feedback-verify-post",
+      "method": "POST",
+      "path": "/v1/feedback/verify",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback.ts",
+      "purpose": "⏱ 2026-10-03 · lane dpdp-rights. The button on the verification page: proves the address, moves the rights request `unverified -> new`, starts its 48 h / 30 day clocks and spends the token. Bounded by FEEDBACK_EDGE_LIMITER (fail closed).",
+      "unconsumedReason": "NO CODE CLIENT BY DESIGN: the caller is the form on GET /v1/feedback/verify's own page. Held by services/platform/test/privacy-requests.test.ts."
     },
     {
       "id": "feedback-ops-move",

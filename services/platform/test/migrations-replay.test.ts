@@ -240,6 +240,9 @@ describe('platform_db migrations re-apply cleanly', () => {
       'native_attest_redeemed',
       // ⏱ 2026-09-15 · [ADR 081] migration 0010.
       'pending_erasures',
+      // ⏱ 2026-10-03 · migration 0031 — DPDP rights requests and nominees (lane dpdp-rights).
+      'privacy_nominees',
+      'privacy_requests',
       'provider_accounts',
       'provider_notifications',
       // ⏱ 2026-10-02 · migration 0026 — a Razorpay charge's payment → its subscription (PR #1149).

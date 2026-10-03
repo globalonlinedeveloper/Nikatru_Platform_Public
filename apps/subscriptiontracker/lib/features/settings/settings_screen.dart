@@ -65,6 +65,7 @@ import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'delete_account_billing.dart';
 import 'reminder_settings.dart';
 import 'settings_help_card.dart';
+import 'settings_privacy_rights.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -601,7 +602,6 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ST-U1 (C22/D4): the chassis DAILY "streak" reminder left this app.
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────
             //
             // 🔴 THE ROW A WHOLESALE APPLY DELETES WITH NOTHING GOING RED.
@@ -610,13 +610,6 @@ class SettingsScreen extends ConsumerWidget {
             // true — and it is the same `record()` call the first-run prompt
             // makes, with `granted` flipped. Withdrawal is a NEW append-only
             // artifact, never an edit of the old one.
-            //
-            // `assert-seams-wired.mjs:171` stays green without it because
-            // `app.dart`'s first-run `_ConsentPrompt._answer` is also a caller
-            // (it was `consent_prompt.dart:70` until that unmounted widget was
-            // deleted on 2026-08-10), and `consent_withdrawal_test.dart:59`
-            // pumps its own harness rather than this screen.
-            //
             // ✅ THE GUARD P2.7 OWED NOW EXISTS:
             // `tooling/ci/assert-consent-withdrawal-surface.mjs` fails the build
             // if this row leaves, for the brick and for every apps/* alike.
@@ -661,6 +654,13 @@ class SettingsScreen extends ConsumerWidget {
                   // ⏱ 2026-10-01 · XP-03 · the app lock, Free (ADR 101); its
                   // row is built in app_lock_setup.dart, in this card's shape.
                   AppLockSettingsRow(row: _prefRow),
+                  settingsPrivacyRightsRow(
+                    context,
+                    ref,
+                    row: _LinkRow.new,
+                    onDeleteAccount: () async =>
+                        _confirmDelete(context, ref, l10n),
+                  ),
                 ],
               ),
             ),

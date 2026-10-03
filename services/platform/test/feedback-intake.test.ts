@@ -236,7 +236,12 @@ describe('🔴 [Do 5] the screenshot: stripped, private, never served by a route
     // The one GET under /v1/feedback is the unsubscribe page (lane feedback-triage),
     // which reads a token's address and serves a button, never an object. The
     // platform's other GET routes are not this intake's, and none names a screenshot.
-    expect([...new Set(reads.filter((p) => p.startsWith('/v1/feedback') || p.startsWith('/v1/ops/feedback')))]).toEqual(['/v1/feedback/unsubscribe']);
+    // ⏱ 2026-10-03 · lane dpdp-rights: the rights request's one-time verification
+    // page, which reads a token's request id and serves a button, never an object.
+    expect([...new Set(reads.filter((p) => p.startsWith('/v1/feedback') || p.startsWith('/v1/ops/feedback')))].sort()).toEqual([
+      '/v1/feedback/unsubscribe',
+      '/v1/feedback/verify',
+    ]);
     expect(reads.filter((p) => /shot|screenshot/i.test(p))).toEqual([]);
   });
 });

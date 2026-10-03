@@ -166,7 +166,7 @@ export function surfaces(root, reg, code) {
   }
   if (existsSync(join(root, EMAIL))) {
     const e = readJson(join(root, EMAIL));
-    for (const section of ['digest', 'authMail', 'feedbackMail']) {
+    for (const section of ['digest', 'authMail', 'feedbackMail', 'privacyMail']) {
       out.push({
         surface: `${EMAIL}#${section}`,
         en: flatten(e[section]?.[reg.sourceLocale]),

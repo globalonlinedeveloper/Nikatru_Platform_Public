@@ -102,6 +102,10 @@ describe('the delete set is derived from the real platform schema', () => {
       // the platform's nightly feedback orphan sweep (src/feedback/cron.ts) then deletes their screenshots.
       'feedback_reports',
       'identity',
+      // ⏱ 2026-10-03 · 0031, lane dpdp-rights. Spelt `user_id` ON PURPOSE: a
+      // person's nominee and their rights requests leave with the account.
+      'privacy_nominees',
+      'privacy_requests',
       'provider_accounts',
       'provider_notifications',
       // ⏱ 2026-10-02 · 0026 (PR #1149). Spelt `user_id` ON PURPOSE: a buyer's payment → subscription

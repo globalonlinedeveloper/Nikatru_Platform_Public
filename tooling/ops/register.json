@@ -5794,6 +5794,52 @@
         "cloudflare"
       ],
       "source": "verified",
+      "id": "retention.d1.platform_db.privacy_requests",
+      "store": "d1:platform_db:privacy_requests",
+      "what": "⏱ 2026-10-03 · lane dpdp-rights. One DPDP rights request: the requester (Supabase `sub`, or NULL), the app, the type, the PII-masked words, the answer's address, the status, its deadlines and history. Written only by POST /v1/feedback with `kind: privacy-request` (services/platform/src/feedback/privacy.ts) and moved only by POST /v1/ops/feedback/move.",
+      "rule": "period",
+      "periodDays": 400,
+      "declaredBy": "lane dpdp-rights (lead 7185eb, 2026-10-02): a closed request kept as evidence for the locked 400-day class (C-RETENTION-PERIODS). The value lives in services/platform/src/feedback/privacy.ts `CLOSED_RETENTION_DAYS`; this row, that constant and tooling/legal/data-inventory.json are held equal by services/platform/test/privacy-requests.test.ts.",
+      "response": "n/a — the nightly `privacy` limb deletes a CLOSED request at `purge_at` (resolved_at + 400 days) and an unproven signed-out one after 7 days; an open request has no purge date. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.privacy_requests`, erasure `purge`).",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0031_privacy_requests.sql",
+        "record": "the table itself; `purge_at` on every closed or unproven row",
+        "failingValue": "a closed row whose `purge_at` has passed, still present after a run",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "feedback_purge — the platform Worker's 06:40 UTC firing (services/platform/src/feedback/cron.ts `runFeedbackCron`), whose `privacy` limb writes one platform_db.cron_heartbeat row (ok=0 while any request is past a published deadline, or when the limb threw). Held by services/platform/test/privacy-requests.test.ts."
+    },
+    {
+      "id": "retention.d1.platform_db.privacy_nominees",
+      "kind": "retention",
+      "store": "d1:platform_db:privacy_nominees",
+      "what": "⏱ 2026-10-03 · lane dpdp-rights. At most one nominee per account (DPDP Act s.14): a name and an e-mail address. Written only by PUT /v1/account/nominee (services/platform/src/routes/account-data.ts), removed by DELETE.",
+      "rule": "keep",
+      "keepWhy": "A LIVE CHOICE, at most one row per account (PRIMARY KEY user_id). Deleting it by age would silently cancel a nomination the person relies on. It carries `user_id`, so it leaves with the account through the derived erasure sweep (tooling/legal/data-inventory.json `table:platform_db.privacy_nominees`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0031_privacy_requests.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations and wrangler configs, so a store cannot leave the domain by having no rule.",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
       "id": "retention.d1.platform_db.feedback_counts",
       "store": "d1:platform_db:feedback_counts",
       "what": "⏱ 2026-10-03 · lane feedback-intake. The anonymised count a purged report leaves: (day, app, version, category, status, n).",

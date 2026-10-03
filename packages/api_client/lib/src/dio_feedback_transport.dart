@@ -62,9 +62,12 @@ class DioFeedbackTransport implements core.FeedbackTransport {
     final int status = res.statusCode ?? 0;
     final Object? body = res.data;
     final String? error = body is Map ? body['error'] as String? : null;
-    if (status == 200 || status == 201) {
+    // ⏱ 2026-10-03 · lane dpdp-rights: a rights request rides this route too —
+    // `PR-` ids, and 202 for a signed-out request held until its address is
+    // proven by the e-mailed link.
+    if (status == 200 || status == 201 || status == 202) {
       final Object? id = body is Map ? body['id'] : null;
-      if (id is String && id.startsWith('FB-')) {
+      if (id is String && (id.startsWith('FB-') || id.startsWith('PR-'))) {
         return core.FeedbackSendResult.sent(id);
       }
       return const core.FeedbackSendResult.retryLater(error: 'not_a_receipt');

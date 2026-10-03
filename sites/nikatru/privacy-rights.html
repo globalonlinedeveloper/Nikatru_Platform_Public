@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Support &mdash; Nikatru</title>
-<meta name="description" content="Get help with a Nikatru app: how to reach support, what to include in a report, per-app help and privacy pages, account deletion and the grievance route.">
+<title>Your privacy rights &mdash; Nikatru</title>
+<meta name="description" content="Use your privacy rights with Nikatru: get a copy of your data, correct it, delete it, name a nominee, withdraw a consent or make a complaint.">
 <meta name="robots" content="index,follow">
-<link rel="canonical" href="https://nikatru.com/support">
+<link rel="canonical" href="https://nikatru.com/privacy-rights">
 <meta name="theme-color" content="#0B1220">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
@@ -147,156 +147,47 @@
 </nav>
 
 <main id="main">
-  <h1>Support</h1>
-  <p class="updated">Help with any Nikatru app. No account or sign-in needed to read this page.</p>
+  <h1>Your privacy rights</h1>
+  <p>Under India&rsquo;s Digital Personal Data Protection Act, 2023 and the privacy laws of the other places we
+  serve, you can ask us to do any of the things below. We <b>acknowledge a request within 48 hours</b> and
+  <b>resolve it within 30 days</b>. Our <a href="/privacy">Privacy Policy</a> says what we hold and why.</p>
+  <p>If you have an account, the quickest way is in the app: open <b>Settings</b>, then <b>Your privacy
+  rights</b>. There you can download a copy of your data at once, name a nominee, and delete your account
+  (also on the <a href="/delete-account">Delete account</a> page).</p>
 
-  <div class="cards">
-    <div class="c">
-      <b>Email support</b>
-      <!--email_off--><a href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off--><br>
-      <span>Our primary channel &mdash; we reply within 2 business days.</span>
-    </div>
-    <div class="c">
-      <b>Phone</b>
-      <!-- FACT:phone-link --><a href="tel:+919498498011">+91 94984 98011</a><!-- /FACT:phone-link --><br>
-      <span>Mon&ndash;Fri, 10:00&ndash;18:00 IST.</span>
-    </div>
-  </div>
-
-  <p>Nikatru is a one-person software business in Chennai, India &mdash; a <!-- FACT:entity-of -->proprietorship of Rajasekar Selvam<!-- /FACT:entity-of -->. The person who writes the apps is the person who answers support. Write in English or Tamil.</p>
-
-  <!-- Lanes help-search and status-page: answers first, and whether something is down. -->
-  <p>Many questions are answered in the <a href="/help/">help centre</a>. Is something not working for
-  everyone? The <a href="https://status.nikatru.com/">status page</a> shows whether each of our services is up.</p>
-
-  <h2 id="report-a-problem">Report a problem</h2>
-  <p>Tell us what went wrong. Your report goes to our private support system, never to a public page.
-  We store what you write and, only if you ask us to reply, your email address; we delete each report after
-  90 days. We do not record your network address with it. Please do not include passwords, card numbers or
-  identity numbers.</p>
-  <p class="note report-outcome" id="report-outcome" role="status" hidden></p>
-  <form class="report" method="post" action="/api/report">
-    <label for="report-category">What kind of problem?</label>
-    <select id="report-category" name="category">
-      <option value="bug">Something isn&rsquo;t working</option>
-      <option value="crash">The app crashed</option>
-      <option value="billing">Billing or payment</option>
-      <option value="accessibility">Accessibility</option>
-      <option value="translation">Wrong or missing translation</option>
-      <option value="question">A question</option>
-      <option value="other">Something else</option>
+  <h2 id="request">Send a request</h2>
+  <p>Signed out, or not using an app? Send your request here. We email a link to the address you give; your
+  request counts only once you open that link, so nobody can make a request in your name. If you do not open
+  it, the request is deleted after 7 days.</p>
+  <p class="note report-outcome" id="request-outcome" role="status" hidden></p>
+  <form class="report rights" method="post" action="/api/report">
+    <input type="hidden" name="kind" value="privacy-request">
+    <label for="request-type">What are you asking for?</label>
+    <select id="request-type" name="requestType">
+      <option value="access">A copy of the data you hold about me</option>
+      <option value="correction">Correct something you hold about me</option>
+      <option value="erasure">Delete the data you hold about me</option>
+      <option value="nomination">Name someone to act for me</option>
+      <option value="grievance">A complaint</option>
+      <option value="withdraw-consent">Withdraw a consent</option>
     </select>
-    <label for="report-description">What happened? (required)</label>
-    <textarea id="report-description" name="description" rows="5" maxlength="4000" required></textarea>
-    <label for="report-steps">Steps to make it happen again (optional)</label>
-    <textarea id="report-steps" name="steps" rows="3" maxlength="4000"></textarea>
-    <label class="tick"><input type="checkbox" name="reply" id="report-reply"> You may reply to me</label>
-    <label for="report-email">Your email address (only used if you tick the box above)</label>
-    <input type="email" id="report-email" name="email" autocomplete="email" maxlength="254">
-    <label class="tick"><input type="checkbox" name="notify"> Tell me when it is fixed</label>
-    <div class="hp" aria-hidden="true"><label for="report-website">Leave this empty</label><input type="text" id="report-website" name="website" tabindex="-1" autocomplete="off"></div>
-    <input type="hidden" name="elapsed" id="report-elapsed" value="">
-    <input type="hidden" name="key" id="report-key" value="">
-    <button type="submit">Send report</button>
+    <label for="request-details">Tell us what you are asking for (required for a correction or a complaint)</label>
+    <textarea id="request-details" name="details" rows="5" maxlength="4000"></textarea>
+    <label for="request-email">Your email address (required: we send the confirmation link here)</label>
+    <input type="email" id="request-email" name="email" autocomplete="email" maxlength="254" required>
+    <div class="hp" aria-hidden="true"><label for="request-website">Leave this empty</label><input type="text" id="request-website" name="website" tabindex="-1" autocomplete="off"></div>
+    <input type="hidden" name="elapsed" id="request-elapsed" value="">
+    <input type="hidden" name="key" id="request-key" value="">
+    <button type="submit">Send request</button>
     <noscript><p>This form needs JavaScript to send. Without it, please email <!--email_off--><a href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off-->.</p></noscript>
   </form>
 
-  <h2>What to put in your message</h2>
-  <p>The more of this you include, the more likely the first reply solves it rather than asking questions
-  back:</p>
-  <ol>
-    <li><b>Which app</b>, and where you are using it &mdash; the web app, Android, iOS, Windows or macOS.</li>
-    <li><b>Your device and version</b> &mdash; for example "Pixel 7, Android 15" or "Chrome on Windows 11".
-    The app version is shown on its settings or about screen.</li>
-    <li><b>What you did, what happened, and what you expected instead.</b> The exact steps matter more than
-    the description &mdash; if we can reproduce it, we can usually fix it.</li>
-    <li><b>A screenshot</b>, if anything is visible on screen. Please blank out anything you would not want
-    us to see.</li>
-    <li><b>The email address on your account</b>, if the problem is about signing in or about your data.</li>
-    <li><b>For a payment or refund</b> &mdash; the order or transaction ID from your receipt, and who took
-    the payment (Paddle, Razorpay, Apple or Google).</li>
-  </ol>
-  <p>Please do not send us passwords, one-time codes, full card numbers, or any government identity number.
-  We never ask for them and we do not need them to help you.</p>
-
-  <h2>How quickly we answer</h2>
-  <ul>
-    <li><b>Support email</b> &mdash; we reply within <b>2 business days</b>.</li>
-    <li><b>A formal complaint or grievance</b> &mdash; our Grievance Officer acknowledges within
-    <b>48 hours</b> and resolves within <b>30 days</b>.</li>
-  </ul>
-  <p>Business days are Monday to Friday, excluding Indian public holidays.</p>
-
-  <h2>Help for each app</h2>
-  <!-- 🔴 GENERATED. The block between the sentinels is written by
-       tooling/sites/generate-discovery.mjs from sites/_shared/_data/apps.json
-       (rendered from catalog/apps.json): one entry per live app, the same list
-       the homepage grid carries. Each privacy link is the app's own notice when
-       this site ships one, else the privacyPolicyUrl its app.yaml declares.
-       A second product appears here with no edit to this page. Do not
-       hand-edit; re-run the generator. -->
-  <!-- SUPPORT-APPS -->
-  <h3>Nikatru Subscription Tracker</h3>
-  <p>Track every subscription in one place.</p>
-  <ul>
-    <li>Open the app: <a href="https://nikatru.com/subscriptiontracker/" target="_blank" rel="noopener">nikatru.com/subscriptiontracker</a></li>
-    <li>What it does and how it works: <a href="/apps/subscriptiontracker">Nikatru Subscription Tracker</a></li>
-    <li>What this app collects: <a href="/subscriptiontracker/privacy">Subscription Tracker privacy notice</a></li>
-  </ul>
-<!-- /SUPPORT-APPS -->
-  <p>All of our apps are listed on the <a href="/apps/">Apps</a> page. Each app's own help and privacy pages
-  are linked from its page there.</p>
-
-  <h2>Common questions</h2>
-  <h3>Can I buy anything yet?</h3>
-  <p>No. <b>Paid checkout is not open</b> on nikatru.com and we have taken no payments. Our apps are free to
-  use today. When checkout opens, international purchases will be handled by <b>Paddle</b> as merchant of
-  record and purchases in India through <b>Razorpay</b>; the terms are already published on our
-  <a href="/terms">Terms</a>, <a href="/refund">Refunds</a> and <a href="/shipping">Shipping &amp;
-  Delivery</a> pages.</p>
-
-  <h3>I paid and the purchase has not appeared</h3>
-  <p>Sign out and back in with the exact email address you used at checkout &mdash; that is the usual cause.
-  If it is still missing 30 minutes after payment, email us with the order ID. Full detail on the
-  <a href="/shipping">Shipping &amp; Delivery Policy</a> page.</p>
-
-  <h3>How do I get a refund or cancel?</h3>
-  <p>See the <a href="/refund">Refund &amp; Cancellation Policy</a>. It sets out the 30-day money-back
-  guarantee, the India timeline, and how store purchases are handled.</p>
-
-  <h3>How do I delete my account and my data?</h3>
-  <p>You can delete your account and everything in it from inside the app, or by following the steps on our
-  <a href="/delete-account">Delete your account and data</a> page. That page is the route for a deletion
-  request whether or not you can still sign in.</p>
-
-  <h3>What do you do with my data?</h3>
-  <p>Our <a href="/privacy">Privacy Policy</a> lists what we collect, why, who else sees it, how long we
-  keep it and how to have it erased. Where an app has its own short notice, it is linked above &mdash;
-  saying what that specific app collects.</p>
-
-  <h3>Do I have to be an adult?</h3>
-  <p>Yes. Our apps and this site are for people <b>18 or older</b>. See the
-  <a href="/terms">Terms of Service</a>.</p>
-
-  <h2>If we have not put it right</h2>
-  <p>If a support reply has not resolved your problem, escalate it as a grievance. Our <b>Grievance
-  Officer</b> is <b><!-- FACT:grievance-officer -->Rajasekar Selvam, Proprietor<!-- /FACT:grievance-officer --></b> &mdash;
-  <!--email_off--><a href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off-->, <!-- FACT:phone-display -->+91 94984 98011<!-- /FACT:phone-display -->. Write
-  "Grievance" in the subject line, and include what you asked for, when, and what happened. He acknowledges
-  within 48 hours and resolves within 30 days. The same route covers privacy, data-protection and consumer
-  complaints; the full block is on the <a href="/contact">Contact page</a>.</p>
-  <div class="note">If a privacy complaint is still unresolved after that, you may take it to the Data
-  Protection Board of India under the Digital Personal Data Protection Act, 2023. A consumer complaint may
-  be taken to the consumer forum with jurisdiction, or through the National Consumer Helpline.</div>
-
-  <h2>Reaching us another way</h2>
-  <p>Nikatru &mdash; a <!-- FACT:entity-of -->proprietorship of Rajasekar Selvam<!-- /FACT:entity-of -->.<br>
-  <!-- FACT:office-inline -->7, RR Tower 4, Thiru Vi Ka Industrial Estate, SIDCO Industrial Estate, Guindy, Chennai, Tamil Nadu, 600032, India<!-- /FACT:office-inline -->.<br>
-  Registered MSME &middot; <!-- FACT:udyam -->UDYAM-TN-02-0487004<!-- /FACT:udyam -->.</p>
-  <p>Phone, hours and everything else are on the <a href="/contact">Contact page</a>. More about the
-  business is on the <a href="/about">About page</a>.</p>
+  <h2>How to complain</h2>
+  <p>A complaint goes to our Grievance Officer, whose details are on the <a href="/contact">Contact page</a>.
+  You can also write to <!--email_off--><a href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off-->.
+  If we do not resolve your complaint, you can complain to the <b>Data Protection Board of India</b>.</p>
 </main>
-<script src="/js/report.js" defer></script>
+<script src="/js/privacy-rights.js" defer></script>
 
 <!-- CHROME:footer -->
 <footer>

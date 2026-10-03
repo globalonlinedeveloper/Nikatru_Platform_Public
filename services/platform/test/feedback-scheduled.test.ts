@@ -47,6 +47,8 @@ describe('🔴 [Do 7] 90-day retention, enforced in code', () => {
     expect(beats).toEqual([
       { target: 'notices', ok: 1 },
       { target: 'orphans', ok: 1 },
+      // ⏱ 2026-10-03 · lane dpdp-rights: the rights requests' clocks and purge.
+      { target: 'privacy', ok: 1 },
       { target: 'purge', ok: 1 },
       { target: 'windows', ok: 1 },
     ]);

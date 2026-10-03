@@ -354,6 +354,7 @@ for (const root of siteRoots) {
 // except the dated legal snapshots under legal/, which are frozen as published.
 // A root with no chrome footer at all is COVERAGE LOST for this limb, never a pass.
 const A11Y_STATEMENT = 'accessibility.html';
+const PRIVACY_RIGHTS_PAGE = 'privacy-rights.html';
 const HELP_PAGES = ['help/index.html', 'help/fullshot/index.html', 'help/known-issues.html'];
 let a11yFootersChecked = 0;
 for (const root of siteRoots) {
@@ -367,6 +368,14 @@ for (const root of siteRoots) {
   for (const page of HELP_PAGES) {
     if (!existsSync(join(root, ...page.split('/')))) problems.push(`missing ${relative(repoRoot, join(root, ...page.split('/')))} — the help centre (run node tooling/help/build-index.mjs)`);
   }
+  // ⏱ 2026-10-03 · lane dpdp-rights (O-DPDP-RIGHTS-INTAKE-UNBUILT): the DPDP rights
+  // page — access, correction, erasure, nomination, grievance, withdraw consent —
+  // posting the same-origin /api/report form, and every footer reaches it.
+  if (!existsSync(join(root, PRIVACY_RIGHTS_PAGE))) {
+    problems.push(`missing ${relative(repoRoot, join(root, PRIVACY_RIGHTS_PAGE))} — the DPDP rights request page (lane dpdp-rights)`);
+  } else if (!/<form\b[^>]*action\s*=\s*["']\/api\/report["'][\s\S]*?name\s*=\s*["']kind["'][^>]*value\s*=\s*["']privacy-request["']/.test(readFileSync(join(root, PRIVACY_RIGHTS_PAGE), 'utf8'))) {
+    problems.push(`${relative(repoRoot, join(root, PRIVACY_RIGHTS_PAGE))} has no form posting a \`privacy-request\` to /api/report — the page names rights it gives no way to exercise`);
+  }
   let footers = 0;
   for (const f of htmlIn(root)) {
     if (relative(root, f).split(sep)[0] === 'legal') continue;
@@ -375,6 +384,9 @@ for (const root of siteRoots) {
     footers++;
     if (!/href\s*=\s*["']\/accessibility["']/.test(m[1])) {
       problems.push(`${relative(repoRoot, f)}: the footer does not link /accessibility (tooling/sites/chrome.mjs footer())`);
+    }
+    if (!/href\s*=\s*["']\/privacy-rights["']/.test(m[1])) {
+      problems.push(`${relative(repoRoot, f)}: the footer does not link /privacy-rights (tooling/sites/chrome.mjs footer())`);
     }
     if (!/href\s*=\s*["']\/help\/["']/.test(m[1])) {
       problems.push(`${relative(repoRoot, f)}: the footer does not link /help/ (tooling/sites/chrome.mjs footer())`);

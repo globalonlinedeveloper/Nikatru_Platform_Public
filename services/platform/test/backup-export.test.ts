@@ -612,9 +612,13 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
 // ⏱ 2026-10-01 · ops-watch run 36810231743: `d1-budget` RED at 37 of 42, one query
 // a table. The cost is now FLAT in the table count; these are the cases that hold it there.
 describe('the export costs the same whatever the table count', () => {
+  // ⏱ 2026-10-03 · lane dpdp-rights: the tables the export READS — the catalogue
+  // minus EPHEMERAL_TABLES, exactly the `live` set dump.ts pages — so the counts
+  // below stay exact as the real schema grows past a TABLES_PER_READ boundary.
   const tableCount = (db: RealDb): number =>
-    db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'")
-      .length;
+    db
+      .rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'")
+      .filter((r) => !EPHEMERAL_TABLES.has(String(r.name))).length;
 
   it('🔴 a SIXTY-table schema spends under HALF the pool, and every pad table still lands', async () => {
     const platform = realPlatformDb(padTables(60));
@@ -642,7 +646,10 @@ describe('the export costs the same whatever the table count', () => {
   it('🔴 a table added inside a read adds ZERO queries', async () => {
     const before = realPlatformDb();
     await runBackup(envWith(new FakeBucket(), before, appDb()).env, NOW);
-    const grown = realPlatformDb(padTables(10));
+    // As many pad tables as the last read still has room for (at least one), so the
+    // precondition holds whatever the real schema's size.
+    const room = TABLES_PER_READ * Math.ceil(tableCount(before) / TABLES_PER_READ) - tableCount(before);
+    const grown = realPlatformDb(padTables(Math.max(1, room)));
     // Precondition: the ten still fit the read the schema already makes.
     expect(Math.ceil(tableCount(grown) / TABLES_PER_READ)).toBe(Math.ceil(tableCount(before) / TABLES_PER_READ));
     await runBackup(envWith(new FakeBucket(), grown, appDb()).env, NOW);

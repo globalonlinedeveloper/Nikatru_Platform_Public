@@ -263,6 +263,16 @@ function selfHosted(dir, { root = 'a' } = {}) {
   );
   // …and the statement itself, noindex like every page but the homepage here.
   writeFileSync(join(site, 'accessibility.html'), realPage('Accessibility statement').replace('<html', '<meta name="robots" content="noindex"><html'));
+  // ⏱ 2026-10-03 · lane dpdp-rights: the rights page, with its privacy-request form.
+  writeFileSync(
+    join(site, 'privacy-rights.html'),
+    realPage('Your privacy rights')
+      .replace('<html', '<meta name="robots" content="noindex"><html')
+      .replace('</main>', '<form method="post" action="/api/report"><input type="hidden" name="kind" value="privacy-request"></form></main>'),
+  );
+  // …and the Function its form posts to (the same-origin-form limb requires it).
+  mkdirSync(join(site, 'functions', 'api'), { recursive: true });
+  writeFileSync(join(site, 'functions', 'api', 'report.js'), ESM_FN);
   // ⏱ 2026-10-03 · lane help-search: the help centre, FullShot's own support page and the known issues.
   for (const rel of ['help/index.html', 'help/fullshot/index.html', 'help/known-issues.html']) {
     mkdirSync(dirname(join(site, rel)), { recursive: true });
@@ -344,7 +354,7 @@ const fixtureDutyMatrix = (root) => ({
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
 /** The shared footer region tooling/sites/chrome.mjs splices into every page. */
-const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="https://status.nikatru.com/">Status</a> <a href="/accessibility">Accessibility</a></footer>\n<!-- /CHROME:footer -->';
+const FIXTURE_FOOTER = '<!-- CHROME:footer -->\n<footer><a href="/help/">Help</a> <a href="https://status.nikatru.com/">Status</a> <a href="/accessibility">Accessibility</a> <a href="/privacy-rights">Privacy rights</a></footer>\n<!-- /CHROME:footer -->';
 const ESM_FN = 'export async function onRequestPost() {\n  return new Response("ok");\n}\n';
 
 /** A policy page that clears the floor: an <h1> plus >1000 visible characters. */
@@ -1414,6 +1424,25 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = afterEdit('cf-footer-a11y', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/accessibility">Accessibility</a>', ''));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /index\.html: the footer does not link \/accessibility/);
+  });
+
+  // ── lane dpdp-rights: the rights page exists, can be used, and every footer reaches it ──
+  test('🔴 a missing privacy-rights page FAILS', () => {
+    const r = afterEdit('cf-no-rights', (d) => rmSync(join(d, 'sites/nikatru/privacy-rights.html')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing sites\/nikatru\/privacy-rights\.html — the DPDP rights request page/);
+  });
+
+  test('🔴 a rights page with no privacy-request form FAILS', () => {
+    const r = afterEdit('cf-rights-noform', (d) => patch(d, 'sites/nikatru/privacy-rights.html', 'value="privacy-request"', 'value="report"'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /privacy-rights\.html has no form posting a `privacy-request` to \/api\/report/);
+  });
+
+  test('🔴 a footer that does not link /privacy-rights FAILS', () => {
+    const r = afterEdit('cf-footer-rights', (d) => patch(d, 'sites/nikatru/index.html', '<a href="/privacy-rights">Privacy rights</a>', ''));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /index\.html: the footer does not link \/privacy-rights/);
   });
 
   test('🔴 a missing /help/fullshot/ page FAILS (lane help-search)', () => {

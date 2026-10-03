@@ -176,6 +176,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -209,7 +213,11 @@
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
       },
-      "note": "⚠️ THE PUBLISHED SENTENCE QUOTED ABOVE IS TRUE AND INCOMPLETE. It tells a reader the transaction is processed by a payment processor; it does not tell them we KEEP A COPY of what that processor sent us about them. That is a wording correction and it belongs in the same O-3 version bump as the merchant-of-record naming — recorded here rather than fixed by editing a published page from a code change."
+      "note": "⚠️ THE PUBLISHED SENTENCE QUOTED ABOVE IS TRUE AND INCOMPLETE. It tells a reader the transaction is processed by a payment processor; it does not tell them we KEEP A COPY of what that processor sent us about them. That is a wording correction and it belongs in the same O-3 version bump as the merchant-of-record naming — recorded here rather than fixed by editing a published page from a code change.",
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
     },
     {
       "id": "table:platform_db.provider_accounts",
@@ -233,6 +241,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -257,6 +269,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -281,6 +297,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -305,6 +325,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -329,6 +353,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -355,6 +383,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "The row is NOT the person's: it references them through a `*_user_id` column and holds the buyer's address only as a SHA-256 digest. An access request that asks about a payment is answered by hand from this row (docs/ops/privacy-requests.md), never by a bulk export of other people's unattributed money."
       }
     },
     {
@@ -379,6 +412,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -406,6 +443,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -433,6 +474,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -461,6 +506,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -487,6 +536,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -574,6 +627,10 @@
       "disclosure": {
         "page": "subscriptiontracker/privacy.html",
         "quote": "the renewal reminder emails you choose to receive"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -600,6 +657,10 @@
       "disclosure": {
         "page": "subscriptiontracker/privacy.html",
         "quote": "the renewal reminder emails you choose to receive"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -624,6 +685,10 @@
       "disclosure": {
         "page": "subscriptiontracker/privacy.html",
         "quote": "If you create a private calendar link"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -649,6 +714,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "You can ask us to delete information associated with you"
+      },
+      "export": {
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-data.ts",
+        "reason": "A completion ledger of an erasure IN PROGRESS, under a neutral subject reference; it exists only while a deletion runs and holds nothing about the person beyond that a deletion was asked for."
       }
     },
     {
@@ -674,6 +744,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "You can ask us to delete information associated with you"
+      },
+      "export": {
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-data.ts",
+        "reason": "A sealed sign-in-provider credential kept only to revoke it on deletion. A credential is never exported: the export is what we hold ABOUT the person, and a token is not that."
       }
     },
     {
@@ -699,6 +774,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "You can ask us to delete information associated with you"
+      },
+      "export": {
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-data.ts",
+        "reason": "A sealed sign-in-provider credential kept only to revoke it on deletion. A credential is never exported: the export is what we hold ABOUT the person, and a token is not that."
       }
     },
     {
@@ -728,6 +808,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "email address and the time you signed up"
+      },
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "Keyed by an e-mail address, not an account. A launch-list sign-up asks through nikatru.com/privacy-rights, proves the address by the e-mailed link, and is answered by hand with the one row that address has (docs/ops/privacy-requests.md)."
       }
     },
     {
@@ -769,6 +854,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -858,7 +947,11 @@
         "page": "privacy.html",
         "quote": "if you agree when asked, we record which features of an app are used and when"
       },
-      "note": "🔴 KEYED ON anon_id, NOT ON A USER. That is deliberate (nothing writes an anon_id → user_id mapping, and the route's own header says nothing ever may) and it has a consequence stage 8 records rather than hides: 'delete my account' provably cannot purge these rows, because there is nothing in them that identifies the account. Either the erasure promise narrows or the client sends its anon_id on erasure — a wording decision, and it belongs in the same version bump as the other O-3 corrections."
+      "note": "🔴 KEYED ON anon_id, NOT ON A USER. That is deliberate (nothing writes an anon_id → user_id mapping, and the route's own header says nothing ever may) and it has a consequence stage 8 records rather than hides: 'delete my account' provably cannot purge these rows, because there is nothing in them that identifies the account. Either the erasure promise narrows or the client sends its anon_id on erasure — a wording decision, and it belongs in the same version bump as the other O-3 corrections.",
+      "export": {
+        "by": "anon_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
     },
     {
       "id": "table:platform_db.events_daily",
@@ -884,7 +977,11 @@
         "page": "privacy.html",
         "quote": "if you agree when asked, we record which features of an app are used and when"
       },
-      "note": "Derived entirely from `events` and disclosed by the same sentence — it holds no category of information the raw table did not already hold, and strictly fewer. The reason it is listed separately rather than folded into the events row is that its LIFETIME differs: 1100 days against 400, so a reader asking 'what is still held about me after two years' gets the right answer only if this row exists."
+      "note": "Derived entirely from `events` and disclosed by the same sentence — it holds no category of information the raw table did not already hold, and strictly fewer. The reason it is listed separately rather than folded into the events row is that its LIFETIME differs: 1100 days against 400, so a reader asking 'what is still held about me after two years' gets the right answer only if this row exists.",
+      "export": {
+        "by": "anon_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
     },
     {
       "id": "table:platform_db.rollup_state",
@@ -928,7 +1025,11 @@
         "page": "privacy.html",
         "quote": "We keep a record of each consent decision"
       },
-      "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes."
+      "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes.",
+      "export": {
+        "by": "anon_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
     },
     {
       "id": "table:platform_db.box_config_manifest",
@@ -992,6 +1093,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you use \"Report a problem\""
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1056,6 +1161,65 @@
       ]
     },
     {
+      "id": "table:platform_db.privacy_requests",
+      "kind": "d1-table",
+      "name": "privacy_requests",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane dpdp-rights (O-DPDP-RIGHTS-INTAKE-UNBUILT). One row per DPDP rights request (access, correction, erasure, nomination, grievance, withdraw consent) made through \"Your privacy rights\" in an app or nikatru.com/privacy-rights: the requester's Supabase `sub` when signed in (NULL otherwise), the app, the surface, the request type, the requester's words (PII-masked), the address the answer goes to (the account's, or the one a signed-out requester PROVED by the e-mailed link), their language, the status (unverified, new, acknowledged, resolved, refused) with its timestamped history, the three deadlines (48 h acknowledgement, 30 days resolution, 90 days statutory for a grievance), when it was acknowledged, resolved and last paged to the owner, the SHA-256 of an unused verification link's token, and the purge time. No network address and no new identifier.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 400,
+        "sweptBy": "services/platform/src/feedback/cron.ts",
+        "reason": "A CLOSED request is kept 400 days from its resolution (`purge_at`, CLOSED_RETENTION_DAYS in services/platform/src/feedback/privacy.ts, the locked 400-day class of C-RETENTION-PERIODS), as the evidence that a statutory request was answered and when. An OPEN request has no purge date and is never purged. A signed-out request whose address was never proved is purged after 7 days (UNVERIFIED_TTL_DAYS). Enforced by the `privacy` limb of the feedback cron. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A request is the requester's own; it leaves with the account. The column is spelled `user_id` ON PURPOSE (0031_privacy_requests.sql), so the shared erasure walk DELETES the row. A signed-out request (user_id NULL) is reached by its purge only."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0031_privacy_requests.sql",
+        "services/platform/src/feedback/privacy.ts",
+        "services/platform/src/routes/feedback-ops.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "we keep the request, what you wrote and the address our answer goes to"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
+    },
+    {
+      "id": "table:platform_db.privacy_nominees",
+      "kind": "d1-table",
+      "name": "privacy_nominees",
+      "personalData": true,
+      "holds": "⏱ 2026-10-03 · lane dpdp-rights (DPDP Act s.14). At most one row per account: the name and e-mail address of the ONE person the account holder nominated to exercise their rights if they die or become incapacitated, and when it was set and changed. Nothing else about the nominee; the nominee is told only when they act. Written only by PUT /v1/account/nominee (services/platform/src/routes/account-data.ts) and removed by DELETE.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: a live choice the account holder made, at most one row per account (PRIMARY KEY user_id). Deleting it by age would silently cancel a nomination the person relies on. It leaves with the account, or when they remove it."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The column is spelled `user_id` ON PURPOSE (0031_privacy_requests.sql): the shared erasure walk DELETES the nomination with the account (services/platform/test/account-data.test.ts proves it)."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0031_privacy_requests.sql",
+        "services/platform/src/routes/account-data.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "you can name one person"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
+      }
+    },
+    {
       "id": "r2:nikatru-feedback",
       "kind": "r2-bucket",
       "name": "nikatru-feedback",
@@ -1077,6 +1241,11 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "if you use \"Report a problem\""
+      },
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "A screenshot is a binary object keyed by its report id; the report row (feedback_reports, exported) names it. On an access request the screenshots of that person's reports are sent by hand (docs/ops/privacy-requests.md)."
       }
     },
     {
@@ -1104,6 +1273,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1128,6 +1301,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1152,6 +1329,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1177,6 +1358,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1202,6 +1387,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "do not collect"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1226,6 +1415,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1250,6 +1443,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1274,6 +1471,10 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "in apps that offer accounts) create an account"
+      },
+      "export": {
+        "by": "user_id",
+        "reader": "services/platform/src/routes/account-data.ts"
       }
     },
     {
@@ -1326,7 +1527,12 @@
         "page": "privacy.html",
         "quote": "holds the account credentials and sign-in sessions for apps that offer accounts"
       },
-      "note": "The namespace is titled `platform-session-revoked` (created 2026-09-25). ONE namespace, bound by services/platform (the only writer), services/subscriptiontracker-api and the brick's backend (readers) — one identity project, so one revocation list. NOT in the nightly R2 export (services/platform/src/backup/index.ts): every record expires within the hour, so a restored copy would only resurrect expired refusals."
+      "note": "The namespace is titled `platform-session-revoked` (created 2026-09-25). ONE namespace, bound by services/platform (the only writer), services/subscriptiontracker-api and the brick's backend (readers) — one identity project, so one revocation list. NOT in the nightly R2 export (services/platform/src/backup/index.ts): every record expires within the hour, so a restored copy would only resurrect expired refusals.",
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "The signed-out-session list: an account id, session ids and times, expiring on its own. Its content is the account's own sign-out history and is read by hand on an access request (docs/ops/privacy-requests.md); the list is a security control, not a profile."
+      }
     },
     {
       "id": "kv:d73cf5ffd0fd4d8396012fccd15906ad",
@@ -1349,7 +1555,12 @@
         "page": "privacy.html",
         "quote": "salted, one-way fingerprint"
       },
-      "note": "🔴 THE BINDING IS SPELLED `SIGNUPS` IN services/platform/wrangler.jsonc AND THAT SPELLING IS LOAD-BEARING. A first pass called it `SIGNUPS_KV`, and this file could then satisfy neither of two limbs at once: `rule: ttl` requires a `writtenBy` file that sets `expirationTtl`, and every `writtenBy` file must mention the store's name — and no single file could do both, because the only writer is a Pages Function that spells the binding `SIGNUPS`. Matching the Pages name makes one store read as one store from both walks, which is what it is. Bound in services/platform/wrangler.jsonc for the nightly export ONLY (services/platform/src/backup/index.ts). Before 2026-09-05 this namespace was bound to no Worker at all — `research/revamp-2026-09-05/06 §3.4` measured 2 list operations and zero reads or writes in seven days — which is the shape of a store that disappears without anyone noticing, and it is the one holding contactable addresses."
+      "note": "🔴 THE BINDING IS SPELLED `SIGNUPS` IN services/platform/wrangler.jsonc AND THAT SPELLING IS LOAD-BEARING. A first pass called it `SIGNUPS_KV`, and this file could then satisfy neither of two limbs at once: `rule: ttl` requires a `writtenBy` file that sets `expirationTtl`, and every `writtenBy` file must mention the store's name — and no single file could do both, because the only writer is a Pages Function that spells the binding `SIGNUPS`. Matching the Pages name makes one store read as one store from both walks, which is what it is. Bound in services/platform/wrangler.jsonc for the nightly export ONLY (services/platform/src/backup/index.ts). Before 2026-09-05 this namespace was bound to no Worker at all — `research/revamp-2026-09-05/06 §3.4` measured 2 list operations and zero reads or writes in seven days — which is the shape of a store that disappears without anyone noticing, and it is the one holding contactable addresses.",
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "The same namespace as kv:nikatru-signups, read-only from the platform Worker: a one-hour rate-limit counter that no person can be found in. Answered by hand as \"nothing addressable\" (docs/ops/privacy-requests.md)."
+      }
     },
     {
       "id": "r2:nikatru-backups",
@@ -1374,7 +1585,12 @@
         "page": "privacy.html",
         "quote": "We keep information only for as long as necessary for the purposes described here or as required by"
       },
-      "note": "🔴 THE QUOTED SENTENCE IS THE RETENTION SENTENCE, AND IT IS THE HONEST ONE AVAILABLE TODAY - NOT THE ONE THIS STORE DESERVES. This bucket introduces no new CATEGORY of personal data: every byte is a copy of something already disclosed elsewhere on the same page (the signup email in sec 1, the purchase information in sec 1), and sec 6 is the published sentence about how long information is kept. What the page does NOT yet say is that backup copies exist and are bounded at 30 days. 👤 OWNER ITEM, AND IT IS A RELEASE EVENT, NOT AN EDIT: adding that sentence bumps `data-policy-version`, and assert-seams-wired.mjs pins that string to `kPrivacyPolicyVersion` in the shipped apps, so a wording change re-dates every consent artifact and needs a build. A drafted sentence is in the wave-1 report. ⚠️ THE GAP IS ALSO OLDER AND WIDER THAN THIS BUCKET: the Box A Postgres dumps on Drive and Box B hold the same categories and have never been disclosed either, because no tree walk can see them and so no guard ever asked. This row is simply where it first became visible. ONE portfolio bucket, addressed by key prefix. The per-app `<app>-exports` buckets were removed from the brick on 2026-07-25 for multiplying lifecycle rules by the number of apps; the live app's own per-app binding was removed on 2026-08-01. ⚠️ There is no row for this bucket in tooling/ops/register.json: assert-retention-coverage.mjs's `enumerateStores` reads `kv_namespaces` and `d1_databases` only, so an r2 store would be a rule for a store it cannot see and would fail its own both-directions limb. Teaching that walk `r2_buckets` is the fix; it is a tooling/ci change and was out of this change's scope."
+      "note": "🔴 THE QUOTED SENTENCE IS THE RETENTION SENTENCE, AND IT IS THE HONEST ONE AVAILABLE TODAY - NOT THE ONE THIS STORE DESERVES. This bucket introduces no new CATEGORY of personal data: every byte is a copy of something already disclosed elsewhere on the same page (the signup email in sec 1, the purchase information in sec 1), and sec 6 is the published sentence about how long information is kept. What the page does NOT yet say is that backup copies exist and are bounded at 30 days. 👤 OWNER ITEM, AND IT IS A RELEASE EVENT, NOT AN EDIT: adding that sentence bumps `data-policy-version`, and assert-seams-wired.mjs pins that string to `kPrivacyPolicyVersion` in the shipped apps, so a wording change re-dates every consent artifact and needs a build. A drafted sentence is in the wave-1 report. ⚠️ THE GAP IS ALSO OLDER AND WIDER THAN THIS BUCKET: the Box A Postgres dumps on Drive and Box B hold the same categories and have never been disclosed either, because no tree walk can see them and so no guard ever asked. This row is simply where it first became visible. ONE portfolio bucket, addressed by key prefix. The per-app `<app>-exports` buckets were removed from the brick on 2026-07-25 for multiplying lifecycle rules by the number of apps; the live app's own per-app binding was removed on 2026-08-01. ⚠️ There is no row for this bucket in tooling/ops/register.json: assert-retention-coverage.mjs's `enumerateStores` reads `kv_namespaces` and `d1_databases` only, so an r2 store would be a rule for a store it cannot see and would fail its own both-directions limb. Teaching that walk `r2_buckets` is the fix; it is a tooling/ci change and was out of this change's scope.",
+      "export": {
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-data.ts",
+        "reason": "A nightly COPY of the stores above, held for disaster recovery: its content about a person is exactly what the live export already returns, and it is overwritten on its own schedule."
+      }
     },
     {
       "id": "kv:nikatru-signups",
@@ -1397,7 +1613,12 @@
         "page": "privacy.html",
         "quote": "salted, one-way fingerprint"
       },
-      "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address."
+      "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address.",
+      "export": {
+        "by": "manual",
+        "reader": "docs/ops/privacy-requests.md",
+        "reason": "Holds only a one-hour rate-limit counter keyed by a salted HMAC of a network address and no e-mail; nothing in it can be found for a person. Answered by hand as \"nothing addressable\" (docs/ops/privacy-requests.md)."
+      }
     },
     {
       "id": "table:platform_db.feedback_mail_suppressed",
@@ -1420,7 +1641,19 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "each mail has an unsubscribe link"
+      },
+      "export": {
+        "by": "withheld",
+        "reader": "services/platform/src/routes/account-data.ts",
+        "reason": "A SHA-256 digest of an address that pressed unsubscribe, with nothing else; it cannot be listed for a person without the address, and its whole content is the fact \"this address said stop\"."
       }
     }
-  ]
+  ],
+  "exportKinds": {
+    "_why": "⏱ 2026-10-03 · lane dpdp-rights (O-SERVER-DATA-EXPORT-MISSING). How an ACCESS request reaches each store holding personal data. Every personalData row names its `reader` — the code or the procedure that produces this store's part of the answer — and tooling/ci/assert-data-inventory.mjs fails a row that names none, or a reader that is not there.",
+    "user_id": "the store is a table carrying `user_id` (its erasure kind is `purge`), and GET /v1/account/export reads it through the SAME schema-derived walk the erasure uses (services/_shared/src/erasure.ts exportUserRows). The reader must call exportUserRows.",
+    "anon_id": "the store is keyed on the install id; the export reads it for the install the app names (`?anon_id=`). The reader must select FROM this table.",
+    "manual": "no code can address the store for a person, so the access request is answered by hand under the named procedure. Requires a `reason`.",
+    "withheld": "the store's content is a credential, a ledger or a copy, and is deliberately not exported. Requires a `reason`."
+  }
 }

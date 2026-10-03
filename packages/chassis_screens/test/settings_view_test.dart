@@ -45,6 +45,7 @@ void main() {
     VoidCallback? onManagePlan,
     VoidCallback? onOpenPrivacyPolicy,
     VoidCallback? onOpenTerms,
+    VoidCallback? onOpenPrivacyRights,
   }) => SettingsView(
     profile: profile,
     onEditProfile: onEditProfile,
@@ -76,6 +77,10 @@ void main() {
     onDeleteAccount: onDeleteAccount ?? () {},
     applicationName: 'Probe',
     applicationVersion: '1.2.3',
+    onOpenPrivacyRights: onOpenPrivacyRights,
+    privacyRightsLabel: onOpenPrivacyRights == null
+        ? null
+        : 'Your privacy rights',
   );
 
   // ── (1) THE WIDTH DECISION, AT ALL THREE WINDOW CLASSES ───────────────────
@@ -402,6 +407,22 @@ void main() {
         SettingsView.privacyPolicyTile,
         (VoidCallback fire) => view(onOpenPrivacyPolicy: fire),
       );
+    });
+
+    // ⏱ 2026-10-03 · lane dpdp-rights: the rights screen's door, in the Privacy card.
+    testWidgets('your privacy rights', (WidgetTester tester) async {
+      await tapReaches(
+        tester,
+        SettingsView.privacyRightsTile,
+        (VoidCallback fire) => view(onOpenPrivacyRights: fire),
+      );
+    });
+
+    testWidgets('no rights handler, no rights tile', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byKey(SettingsView.privacyRightsTile), findsNothing);
     });
 
     testWidgets('terms of service', (WidgetTester tester) async {

@@ -24,7 +24,7 @@ import 'package:flutter/foundation.dart'
 // it that way. Without the import the stamped app fails to compile, which no
 // amount of analyzing the TEMPLATE would reveal: the template is mustache, not
 // valid Dart, so only a real stamp can catch it. [pipeline C-16]
-import 'package:flutter/material.dart' show Locale, ThemeMode;
+import 'package:flutter/material.dart' show BuildContext, Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
 import 'package:flutter_riverpod/legacy.dart';
@@ -35,7 +35,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import 'package:nikatru_external_links/nikatru_external_links.dart'
     show UrlLauncherExternalLinks;
 import 'package:nikatru_feedback/nikatru_feedback.dart'
-    show FeedbackHost, buildFeedbackHost;
+    show FeedbackHost, PrivacyRightsHost, buildFeedbackHost, openPrivacyRights;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_platform_storage/age_signals.dart'
@@ -634,6 +634,28 @@ final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
     userId: () => ref.read(authUserProvider).value?.id,
     supportEmail: AppConfig.supportEmail,
     openMail: externalLinks.open,
+  ),
+);
+
+/// Settings › Privacy › "Your privacy rights" (lane dpdp-rights):
+/// packages/feedback's rights screen over the intake host above, the
+/// platform's export and nominee routes, the file seam the export uses and the
+/// Settings adapter's own account deletion ([onDeleteAccount]).
+Future<void> openPrivacyRightsScreen(
+  BuildContext context,
+  WidgetRef ref, {
+  required Future<void> Function() onDeleteAccount,
+}) => openPrivacyRights(
+  context,
+  PrivacyRightsHost(
+    feedback: ref.read(feedbackHostProvider),
+    data: AppConfig.isBackendLive
+        ? DioPrivacyDataTransport(platformBaseUrl: kPlatformBaseUrl)
+        : const core.UnavailablePrivacyDataTransport(),
+    accessToken: ref.read(authTokenProvider),
+    exporter: ref.read(fileExporterProvider),
+    openDeleteAccount: onDeleteAccount,
+    anonId: () => ref.read(installIdProvider.future),
   ),
 );
 

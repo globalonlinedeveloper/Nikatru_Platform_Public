@@ -190,6 +190,8 @@ class SettingsView extends StatelessWidget {
     this.reportProblemLabel,
     this.onOpenHelp,
     this.helpLabel,
+    this.onOpenPrivacyRights,
+    this.privacyRightsLabel,
     super.key,
   });
 
@@ -227,6 +229,7 @@ class SettingsView extends StatelessWidget {
   static const Key privacyPolicyTile = Key('settingsPrivacyPolicy');
   static const Key termsTile = Key('settingsTerms');
   static const Key privacyNoticeTile = Key('settingsPrivacyNotice');
+  static const Key privacyRightsTile = Key('settingsPrivacyRights');
 
   /// The signed-in identity, or null when there is none. Offering "edit your
   /// name" to a signed-out user is an offer the app cannot honour — the same
@@ -256,6 +259,15 @@ class SettingsView extends StatelessWidget {
 
   /// The tile's words, from packages/help's own strings.
   final String? helpLabel;
+
+  /// "Your privacy rights" (lane dpdp-rights): the adapter opens
+  /// packages/feedback's rights screen (access, correction, erasure,
+  /// nomination, grievance, withdraw consent). Null (or no
+  /// [privacyRightsLabel]) and there is no tile.
+  final VoidCallback? onOpenPrivacyRights;
+
+  /// The tile's words, from packages/feedback's own strings.
+  final String? privacyRightsLabel;
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -540,6 +552,16 @@ class SettingsView extends StatelessWidget {
                   // broken control.
                   onChanged: onAnalyticsConsentChanged,
                 ),
+                // ⏱ 2026-10-03 · lane dpdp-rights: every right the notice names,
+                // in the same card as the consent it can withdraw.
+                if (onOpenPrivacyRights != null && privacyRightsLabel != null)
+                  ListTile(
+                    key: privacyRightsTile,
+                    leading: const Icon(Icons.gavel_outlined),
+                    title: Text(privacyRightsLabel!),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onOpenPrivacyRights,
+                  ),
               ],
             ),
 

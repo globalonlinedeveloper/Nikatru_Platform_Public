@@ -71,6 +71,28 @@ function sourceOf(form) {
   return { appId: app, surface: "extension", diagnostics };
 }
 
+/**
+ * ⏱ 2026-10-03 · lane dpdp-rights: /privacy-rights posts a DPDP rights request
+ * (`kind=privacy-request`) here too. It is forwarded as the request body the
+ * Worker's feedback/privacy.ts reads, and the visitor is sent back to that page.
+ */
+const REQUEST_TYPES = new Set(["access", "correction", "erasure", "nomination", "grievance", "withdraw-consent"]);
+const backToRights = (outcome) => respond(303, `/privacy-rights?request=${outcome}#request`);
+function privacyRequestOf(form) {
+  const type = text(form, "requestType");
+  return {
+    kind: "privacy-request",
+    idempotencyKey: text(form, "key") || crypto.randomUUID(),
+    appId: "nikatru",
+    surface: "site",
+    requestType: REQUEST_TYPES.has(type) ? type : "access",
+    details: text(form, "details") || undefined,
+    contactEmail: text(form, "email") || undefined,
+    website: text(form, "website") || undefined,
+    elapsedMs: Number(text(form, "elapsed")) || 0,
+  };
+}
+
 export async function onRequestPost({ request, env }) {
   if (!env.PLATFORM || typeof env.PLATFORM.fetch !== "function") return back("failed");
   const declared = Number(request.headers.get("content-length") ?? "0");
@@ -82,8 +104,10 @@ export async function onRequestPost({ request, env }) {
   } catch {
     return back("failed");
   }
+  const rights = text(form, "kind") === "privacy-request";
+  const done = rights ? backToRights : back;
   const category = text(form, "category");
-  const report = {
+  const report = rights ? privacyRequestOf(form) : {
     idempotencyKey: text(form, "key") || crypto.randomUUID(),
     ...sourceOf(form),
     category: CATEGORIES.has(category) ? category : "other",
@@ -107,16 +131,17 @@ export async function onRequestPost({ request, env }) {
       new Request("https://platform.internal/v1/feedback", { method: "POST", headers, body: JSON.stringify(report) }),
     );
   } catch {
-    return back("failed");
+    return done("failed");
   }
   if (res.status === 201 || res.status === 202 || res.status === 200) {
     const body = await res.json().catch(() => ({}));
-    return back("sent", typeof body.id === "string" ? body.id : "");
+    return done("sent", typeof body.id === "string" ? body.id : "");
   }
-  if (res.status === 429) return back("limited");
-  if (res.status === 413) return back("too-large");
-  if (res.status === 422 || res.status === 400) return back("invalid");
-  return back("failed");
+  if (res.status === 429) return done("limited");
+  if (res.status === 413) return done("too-large");
+  // A signed-out rights request with no address is 401 `proof_required`.
+  if (res.status === 422 || res.status === 400 || res.status === 401) return done("invalid");
+  return done("failed");
 }
 
 export async function onRequestGet() {

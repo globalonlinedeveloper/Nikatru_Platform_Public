@@ -42,6 +42,8 @@ class FeedbackStrings {
 
   String get close => _m['close']!;
 
+  String get complainBoard => _m['complainBoard']!;
+
   String get contactEmailLabel => _m['contactEmailLabel']!;
 
   String get descriptionLabel => _m['descriptionLabel']!;
@@ -49,6 +51,16 @@ class FeedbackStrings {
   String get descriptionRequired => _m['descriptionRequired']!;
 
   String get emailSupport => _m['emailSupport']!;
+
+  String get erasureNow => _m['erasureNow']!;
+
+  String get erasureOpen => _m['erasureOpen']!;
+
+  String get exportDownload => _m['exportDownload']!;
+
+  String get exportFailed => _m['exportFailed']!;
+
+  String get exportSaved => _m['exportSaved']!;
 
   String get includeLogs => _m['includeLogs']!;
 
@@ -64,9 +76,27 @@ class FeedbackStrings {
 
   String get markupUndo => _m['markupUndo']!;
 
+  String get nomineeEmail => _m['nomineeEmail']!;
+
+  String get nomineeExplain => _m['nomineeExplain']!;
+
+  String get nomineeName => _m['nomineeName']!;
+
+  String get nomineeRemove => _m['nomineeRemove']!;
+
+  String get nomineeRemoved => _m['nomineeRemoved']!;
+
+  String get nomineeSave => _m['nomineeSave']!;
+
+  String get nomineeSaved => _m['nomineeSaved']!;
+
   String get notifyConsent => _m['notifyConsent']!;
 
   String get previewTitle => _m['previewTitle']!;
+
+  String get privacyRights => _m['privacyRights']!;
+
+  String get privacyRightsIntro => _m['privacyRightsIntro']!;
 
   String get queuedBody => _m['queuedBody']!;
 
@@ -75,6 +105,35 @@ class FeedbackStrings {
   String get replyConsent => _m['replyConsent']!;
 
   String get reportProblem => _m['reportProblem']!;
+
+  String get requestConfirmEmail => _m['requestConfirmEmail']!;
+
+  String get requestDetailsLabel => _m['requestDetailsLabel']!;
+
+  String get requestDetailsRequired => _m['requestDetailsRequired']!;
+
+  String get requestEmailLabel => _m['requestEmailLabel']!;
+
+  String get requestFormIntro => _m['requestFormIntro']!;
+
+  String get requestSend => _m['requestSend']!;
+
+  String requestSent(String id) =>
+      _m['requestSent']!.replaceAll('{id}', id);
+
+  String get rightAccess => _m['rightAccess']!;
+
+  String get rightAccessNow => _m['rightAccessNow']!;
+
+  String get rightCorrection => _m['rightCorrection']!;
+
+  String get rightErasure => _m['rightErasure']!;
+
+  String get rightGrievance => _m['rightGrievance']!;
+
+  String get rightNomination => _m['rightNomination']!;
+
+  String get rightWithdraw => _m['rightWithdraw']!;
 
   String get screenshotBlurNote => _m['screenshotBlurNote']!;
 
@@ -86,6 +145,8 @@ class FeedbackStrings {
       _m['sentBody']!.replaceAll('{id}', id);
 
   String get stepsLabel => _m['stepsLabel']!;
+
+  String get withdrawNow => _m['withdrawNow']!;
 }
 
 const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
@@ -100,10 +161,16 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'categoryQuestion': 'A question',
     'categoryTranslation': 'Wrong or missing translation',
     'close': 'Close',
+    'complainBoard': 'If we do not resolve your complaint, you can complain to the Data Protection Board of India.',
     'contactEmailLabel': 'Your email address',
     'descriptionLabel': 'What happened?',
     'descriptionRequired': 'Please describe the problem.',
     'emailSupport': 'Email support instead',
+    'erasureNow': 'Deleting your account deletes everything we hold about it.',
+    'erasureOpen': 'Delete my account',
+    'exportDownload': 'Download my data',
+    'exportFailed': 'We could not prepare your data. Try again, or send a request below.',
+    'exportSaved': 'Your data was saved.',
     'includeLogs': 'Include recent app logs (personal details removed)',
     'markupBlur': 'Blur',
     'markupDone': 'Done',
@@ -111,17 +178,41 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupHighlight': 'Highlight',
     'markupScreenshot': 'Mark up the screenshot',
     'markupUndo': 'Undo',
+    'nomineeEmail': 'Nominee\'s email address',
+    'nomineeExplain': 'This person can use your privacy rights if you die or cannot act yourself. We tell them nothing until they contact us.',
+    'nomineeName': 'Nominee\'s name',
+    'nomineeRemove': 'Remove nominee',
+    'nomineeRemoved': 'Nominee removed.',
+    'nomineeSave': 'Save nominee',
+    'nomineeSaved': 'Nominee saved.',
     'notifyConsent': 'Tell me when it is fixed',
     'previewTitle': 'Exactly what will be sent',
+    'privacyRights': 'Your privacy rights',
+    'privacyRightsIntro': 'You can ask us for any of these. We acknowledge a request within 48 hours and resolve it within 30 days.',
     'queuedBody': 'You are offline. Your report is saved on this device and will be sent once, when you are back online.',
     'refusedBody': 'Your report could not be sent. You can email support instead.',
     'replyConsent': 'You may reply to me',
     'reportProblem': 'Report a problem',
+    'requestConfirmEmail': 'Check your email and open the link to confirm the request. We act on it only after you do.',
+    'requestDetailsLabel': 'Tell us what you are asking for',
+    'requestDetailsRequired': 'Please say what is wrong.',
+    'requestEmailLabel': 'Your email address (we send a link to confirm it is yours)',
+    'requestFormIntro': 'Or send us a request:',
+    'requestSend': 'Send request',
+    'requestSent': 'Request {id} received. We acknowledge it within 48 hours and resolve it within 30 days.',
+    'rightAccess': 'Get a copy of your data',
+    'rightAccessNow': 'Download everything we hold about your account on our servers, as one file.',
+    'rightCorrection': 'Correct something we hold',
+    'rightErasure': 'Delete your data',
+    'rightGrievance': 'Make a complaint',
+    'rightNomination': 'Name someone to act for you',
+    'rightWithdraw': 'Withdraw a consent',
     'screenshotBlurNote': 'Text fields and private details are blurred before anything is sent. You can blur more, but you cannot remove the blur.',
     'send': 'Send report',
     'sending': 'Sending…',
     'sentBody': 'Thank you. Your report number is {id}.',
     'stepsLabel': 'Steps to make it happen again (optional)',
+    'withdrawNow': 'Usage statistics and offers can be switched off in Settings at once. Use this form for anything else.',
   },
   'ta': <String, String>{
     'attachScreenshot': 'நீங்கள் இருந்த திரையின் திரைப்பிடிப்பை இணைக்கவும்',
@@ -134,10 +225,16 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'categoryQuestion': 'ஒரு கேள்வி',
     'categoryTranslation': 'தவறான அல்லது விடுபட்ட மொழிபெயர்ப்பு',
     'close': 'மூடு',
+    'complainBoard': 'உங்கள் புகாரை நாங்கள் தீர்க்காவிட்டால், இந்தியத் தரவுப் பாதுகாப்பு வாரியத்திடம் புகார் அளிக்கலாம்.',
     'contactEmailLabel': 'உங்கள் மின்னஞ்சல் முகவரி',
     'descriptionLabel': 'என்ன நடந்தது?',
     'descriptionRequired': 'சிக்கலை விவரிக்கவும்.',
     'emailSupport': 'அதற்குப் பதிலாக ஆதரவுக்கு மின்னஞ்சல் அனுப்பு',
+    'erasureNow': 'உங்கள் கணக்கை நீக்கினால், அதைப் பற்றி நாங்கள் வைத்திருக்கும் அனைத்தும் நீக்கப்படும்.',
+    'erasureOpen': 'என் கணக்கை நீக்கு',
+    'exportDownload': 'என் தரவைப் பதிவிறக்கு',
+    'exportFailed': 'உங்கள் தரவைத் தயாரிக்க முடியவில்லை. மீண்டும் முயலுங்கள், அல்லது கீழே கோரிக்கை அனுப்புங்கள்.',
+    'exportSaved': 'உங்கள் தரவு சேமிக்கப்பட்டது.',
     'includeLogs': 'சமீபத்திய செயலிப் பதிவுகளைச் சேர்க்கவும் (தனிப்பட்ட விவரங்கள் நீக்கப்பட்டவை)',
     'markupBlur': 'மங்கலாக்கு',
     'markupDone': 'முடிந்தது',
@@ -145,17 +242,41 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupHighlight': 'முன்னிலைப்படுத்து',
     'markupScreenshot': 'திரைப்பிடிப்பில் குறியிடவும்',
     'markupUndo': 'செயல்தவிர்',
+    'nomineeEmail': 'நியமனதாரரின் மின்னஞ்சல் முகவரி',
+    'nomineeExplain': 'நீங்கள் இறந்தாலோ அல்லது நீங்களே செயல்பட முடியாவிட்டாலோ, இவர் உங்கள் தனியுரிமை உரிமைகளைப் பயன்படுத்தலாம். அவர் எங்களைத் தொடர்பு கொள்ளும் வரை நாங்கள் அவருக்கு எதுவும் சொல்ல மாட்டோம்.',
+    'nomineeName': 'நியமனதாரரின் பெயர்',
+    'nomineeRemove': 'நியமனதாரரை நீக்கு',
+    'nomineeRemoved': 'நியமனதாரர் நீக்கப்பட்டார்.',
+    'nomineeSave': 'நியமனதாரரைச் சேமி',
+    'nomineeSaved': 'நியமனதாரர் சேமிக்கப்பட்டார்.',
     'notifyConsent': 'சரிசெய்யப்பட்டதும் எனக்குத் தெரிவிக்கவும்',
     'previewTitle': 'சரியாக அனுப்பப்படுவது இதுதான்',
+    'privacyRights': 'உங்கள் தனியுரிமை உரிமைகள்',
+    'privacyRightsIntro': 'இவற்றில் எதையும் நீங்கள் எங்களிடம் கேட்கலாம். கோரிக்கையை 48 மணி நேரத்திற்குள் ஏற்றுக்கொண்டு, 30 நாட்களுக்குள் தீர்த்து வைக்கிறோம்.',
     'queuedBody': 'நீங்கள் இணைப்பில் இல்லை. உங்கள் புகார் இந்தச் சாதனத்தில் சேமிக்கப்பட்டுள்ளது, மீண்டும் இணைப்பில் வந்ததும் ஒருமுறை அனுப்பப்படும்.',
     'refusedBody': 'உங்கள் புகாரை அனுப்ப முடியவில்லை. அதற்குப் பதிலாக ஆதரவுக்கு மின்னஞ்சல் அனுப்பலாம்.',
     'replyConsent': 'நீங்கள் எனக்குப் பதிலளிக்கலாம்',
     'reportProblem': 'சிக்கலைப் புகாரளி',
+    'requestConfirmEmail': 'உங்கள் மின்னஞ்சலைப் பார்த்து, கோரிக்கையை உறுதிப்படுத்த இணைப்பைத் திறக்கவும். நீங்கள் உறுதிப்படுத்திய பிறகே நாங்கள் செயல்படுவோம்.',
+    'requestDetailsLabel': 'நீங்கள் என்ன கேட்கிறீர்கள் என்று சொல்லுங்கள்',
+    'requestDetailsRequired': 'என்ன தவறு என்று சொல்லுங்கள்.',
+    'requestEmailLabel': 'உங்கள் மின்னஞ்சல் முகவரி (அது உங்களுடையது என்பதை உறுதிப்படுத்த ஒரு இணைப்பை அனுப்புவோம்)',
+    'requestFormIntro': 'அல்லது எங்களுக்குக் கோரிக்கை அனுப்புங்கள்:',
+    'requestSend': 'கோரிக்கையை அனுப்பு',
+    'requestSent': 'கோரிக்கை {id} கிடைத்தது. அதை 48 மணி நேரத்திற்குள் ஏற்றுக்கொண்டு, 30 நாட்களுக்குள் தீர்த்து வைக்கிறோம்.',
+    'rightAccess': 'உங்கள் தரவின் நகலைப் பெறுங்கள்',
+    'rightAccessNow': 'எங்கள் சேவையகங்களில் உங்கள் கணக்கைப் பற்றி நாங்கள் வைத்திருக்கும் அனைத்தையும் ஒரே கோப்பாகப் பதிவிறக்குங்கள்.',
+    'rightCorrection': 'நாங்கள் வைத்திருக்கும் ஒன்றைத் திருத்துங்கள்',
+    'rightErasure': 'உங்கள் தரவை நீக்குங்கள்',
+    'rightGrievance': 'புகார் அளியுங்கள்',
+    'rightNomination': 'உங்களுக்காகச் செயல்பட ஒருவரை நியமியுங்கள்',
+    'rightWithdraw': 'ஒப்புதலைத் திரும்பப் பெறுங்கள்',
     'screenshotBlurNote': 'எதையும் அனுப்பும் முன் உரைப் புலங்களும் தனிப்பட்ட விவரங்களும் மங்கலாக்கப்படும். நீங்கள் மேலும் மங்கலாக்கலாம், ஆனால் மங்கலை நீக்க முடியாது.',
     'send': 'புகாரை அனுப்பு',
     'sending': 'அனுப்பப்படுகிறது…',
     'sentBody': 'நன்றி. உங்கள் புகார் எண் {id}.',
     'stepsLabel': 'இது மீண்டும் நிகழும் படிகள் (விருப்பத்தேர்வு)',
+    'withdrawNow': 'பயன்பாட்டுப் புள்ளிவிவரங்களையும் சலுகைகளையும் அமைப்புகளில் உடனே அணைக்கலாம். வேறு எதற்கும் இந்தப் படிவத்தைப் பயன்படுத்துங்கள்.',
   },
   'hi': <String, String>{
     'attachScreenshot': 'जिस स्क्रीन पर आप थे, उसका स्क्रीनशॉट जोड़ें',
@@ -168,10 +289,16 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'categoryQuestion': 'एक सवाल',
     'categoryTranslation': 'गलत या छूटा हुआ अनुवाद',
     'close': 'बंद करें',
+    'complainBoard': 'अगर हम आपकी शिकायत का समाधान नहीं करते, तो आप भारत के डेटा संरक्षण बोर्ड से शिकायत कर सकते हैं।',
     'contactEmailLabel': 'आपका ईमेल पता',
     'descriptionLabel': 'क्या हुआ?',
     'descriptionRequired': 'कृपया समस्या का वर्णन करें।',
     'emailSupport': 'इसके बजाय सहायता को ईमेल करें',
+    'erasureNow': 'अपना खाता हटाने से उसके बारे में हमारे पास रखी हर जानकारी हट जाती है।',
+    'erasureOpen': 'मेरा खाता हटाएँ',
+    'exportDownload': 'मेरा डेटा डाउनलोड करें',
+    'exportFailed': 'हम आपका डेटा तैयार नहीं कर सके। फिर से कोशिश करें, या नीचे अनुरोध भेजें।',
+    'exportSaved': 'आपका डेटा सहेज लिया गया।',
     'includeLogs': 'हाल के ऐप लॉग शामिल करें (निजी जानकारी हटाकर)',
     'markupBlur': 'धुंधला करें',
     'markupDone': 'हो गया',
@@ -179,16 +306,40 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     'markupHighlight': 'हाइलाइट करें',
     'markupScreenshot': 'स्क्रीनशॉट पर निशान लगाएँ',
     'markupUndo': 'पूर्ववत करें',
+    'nomineeEmail': 'नामिती का ईमेल पता',
+    'nomineeExplain': 'अगर आपकी मृत्यु हो जाए या आप स्वयं काम न कर सकें, तो यह व्यक्ति आपके गोपनीयता अधिकारों का उपयोग कर सकता है। जब तक वे हमसे संपर्क नहीं करते, हम उन्हें कुछ नहीं बताते।',
+    'nomineeName': 'नामिती का नाम',
+    'nomineeRemove': 'नामिती हटाएँ',
+    'nomineeRemoved': 'नामिती हटा दिया गया।',
+    'nomineeSave': 'नामिती सहेजें',
+    'nomineeSaved': 'नामिती सहेज लिया गया।',
     'notifyConsent': 'ठीक होने पर मुझे बताएँ',
     'previewTitle': 'ठीक यही भेजा जाएगा',
+    'privacyRights': 'आपके गोपनीयता अधिकार',
+    'privacyRightsIntro': 'आप इनमें से कुछ भी हमसे माँग सकते हैं। हम अनुरोध की पावती 48 घंटों के भीतर देते हैं और उसे 30 दिनों के भीतर निपटाते हैं।',
     'queuedBody': 'आप ऑफ़लाइन हैं। आपकी रिपोर्ट इस डिवाइस पर सहेजी गई है और ऑनलाइन होने पर एक बार भेजी जाएगी।',
     'refusedBody': 'आपकी रिपोर्ट नहीं भेजी जा सकी। आप इसके बजाय सहायता को ईमेल कर सकते हैं।',
     'replyConsent': 'आप मुझे जवाब दे सकते हैं',
     'reportProblem': 'समस्या की रिपोर्ट करें',
+    'requestConfirmEmail': 'अपना ईमेल देखें और अनुरोध की पुष्टि के लिए लिंक खोलें। आपकी पुष्टि के बाद ही हम कार्रवाई करते हैं।',
+    'requestDetailsLabel': 'बताएँ कि आप क्या माँग रहे हैं',
+    'requestDetailsRequired': 'कृपया बताएँ कि क्या गलत है।',
+    'requestEmailLabel': 'आपका ईमेल पता (यह पुष्टि करने के लिए कि यह आपका है, हम एक लिंक भेजते हैं)',
+    'requestFormIntro': 'या हमें अनुरोध भेजें:',
+    'requestSend': 'अनुरोध भेजें',
+    'requestSent': 'अनुरोध {id} मिल गया। हम इसकी पावती 48 घंटों के भीतर देते हैं और इसे 30 दिनों के भीतर निपटाते हैं।',
+    'rightAccess': 'अपने डेटा की एक प्रति पाएँ',
+    'rightAccessNow': 'हमारे सर्वरों पर आपके खाते के बारे में हमारे पास जो कुछ भी है, वह सब एक फ़ाइल के रूप में डाउनलोड करें।',
+    'rightCorrection': 'हमारे पास रखी किसी जानकारी को सुधारें',
+    'rightErasure': 'अपना डेटा हटाएँ',
+    'rightGrievance': 'शिकायत करें',
+    'rightNomination': 'अपनी ओर से काम करने के लिए किसी को नामित करें',
+    'rightWithdraw': 'सहमति वापस लें',
     'screenshotBlurNote': 'कुछ भी भेजने से पहले टेक्स्ट फ़ील्ड और निजी जानकारी धुंधली कर दी जाती है। आप और धुंधला कर सकते हैं, पर धुंधलापन हटा नहीं सकते।',
     'send': 'रिपोर्ट भेजें',
     'sending': 'भेजा जा रहा है…',
     'sentBody': 'धन्यवाद। आपकी रिपोर्ट संख्या {id} है।',
     'stepsLabel': 'इसे दोबारा होने के चरण (वैकल्पिक)',
+    'withdrawNow': 'उपयोग के आँकड़े और ऑफ़र सेटिंग्स में तुरंत बंद किए जा सकते हैं। किसी और चीज़ के लिए यह फ़ॉर्म इस्तेमाल करें।',
   },
 };

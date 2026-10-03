@@ -60,6 +60,7 @@ import { probeTokenKey } from './lib/token-crypto';
 import { corsMiddleware } from './middleware/cors';
 import { requestId } from './lib/request-id';
 import { platformAuth } from './middleware/auth';
+import accountData from './routes/account-data';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
 import appleCode from './routes/apple-code';
@@ -257,6 +258,9 @@ app.use('/v1/account', platformAuth);
 // also serves the apple-token alias) sits under the same line for the same reason.
 app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
+// ⏱ 2026-10-03 · lane dpdp-rights: the DPDP access export and the nominee
+// (routes/account-data.ts), behind the `/v1/account/*` line above.
+app.route('/v1', accountData);
 app.route('/v1', providerToken);
 // ⏱ 2026-10-02 · review of #1155, findings 1 and 3: the native Apple sheet's
 // code exchange (routes/apple-code.ts) and the recency check before a sign-in

@@ -222,6 +222,9 @@ test('Fixes-Report trailers are collected once each, sorted, and nothing else co
 test('move.mjs: arguments, no secret ⇒ 2 and nothing sent, the Worker\'s refusal ⇒ 1', async () => {
   assert.deepEqual(parseMoveArgs(['FB-0123456789', 'fixed', '--version', '1.4.1']).body, { id: 'FB-0123456789', to: 'fixed', version: '1.4.1' });
   assert.match(parseMoveArgs(['nope', 'fixed']).error, /report id/);
+  // ⏱ 2026-10-03 · lane dpdp-rights: a rights request (PR-) is moved by the same tool.
+  assert.deepEqual(parseMoveArgs(['PR-0123456789', 'acknowledged']).body, { id: 'PR-0123456789', to: 'acknowledged' });
+  assert.match(parseMoveArgs(['PR-012345678', 'resolved']).error, /rights request id/);
   let sent = 0;
   const logs = [];
   assert.equal(await move({ id: 'FB-0123456789', to: 'triaged' }, { secret: '', fetchImpl: async () => (sent++, new Response('{}')), log: (s) => logs.push(s) }), 2);

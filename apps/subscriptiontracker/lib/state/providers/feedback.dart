@@ -9,23 +9,30 @@
 import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart'
-    show DioFeedbackTransport;
+    show DioFeedbackTransport, DioPrivacyDataTransport;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_feedback/nikatru_feedback.dart'
-    show FeedbackHost, buildFeedbackHost, openReportProblem;
+    show
+        FeedbackHost,
+        PrivacyRightsHost,
+        buildFeedbackHost,
+        openPrivacyRights,
+        openReportProblem;
 
 import 'package:nikatru_help/nikatru_help.dart' show openHelpCentre;
 
 export 'package:nikatru_feedback/nikatru_feedback.dart'
-    show reportProblemLabelOf;
+    show privacyRightsLabelOf, reportProblemLabelOf;
 export 'package:nikatru_help/nikatru_help.dart' show helpCentreLabelOf;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../help/help_index.g.dart';
-import '../analytics_providers.dart' show keyValueStoreProvider;
+import '../analytics_providers.dart'
+    show installIdProvider, keyValueStoreProvider;
 import 'auth.dart' show authTokenProvider, authUserProvider;
 import 'links.dart' show externalLinks;
+import 'persistence.dart' show fileExporterProvider;
 
 final Provider<FeedbackHost> feedbackHostProvider = Provider<FeedbackHost>(
   (ref) => buildFeedbackHost(
@@ -57,4 +64,26 @@ Future<void> openHelp(BuildContext context, WidgetRef ref) => openHelpCentre(
   indexTable: kHelpIndexJson,
   sourceLocale: kHelpSourceLocale,
   openUrl: (String url) => externalLinks.open(Uri.parse(url)),
+);
+
+/// Settings › Privacy and data › "Your privacy rights" (lane dpdp-rights):
+/// packages/feedback's rights screen over this app's intake host, the
+/// platform's export and nominee routes, the CSV export's file seam and the
+/// Settings screen's own account deletion ([onDeleteAccount]).
+Future<void> openPrivacyRightsScreen(
+  BuildContext context,
+  WidgetRef ref, {
+  required Future<void> Function() onDeleteAccount,
+}) => openPrivacyRights(
+  context,
+  PrivacyRightsHost(
+    feedback: ref.read(feedbackHostProvider),
+    data: AppConfig.isBackendLive
+        ? DioPrivacyDataTransport(platformBaseUrl: AppConfig.platformBaseUrl)
+        : const core.UnavailablePrivacyDataTransport(),
+    accessToken: ref.read(authTokenProvider),
+    exporter: ref.read(fileExporterProvider),
+    openDeleteAccount: onDeleteAccount,
+    anonId: () => ref.read(installIdProvider.future),
+  ),
 );

@@ -19,6 +19,13 @@
 //             and this limb deletes what they pointed at — ORPHAN_MAX_PAGES pages
 //             a night, resuming from a cursor in CONFIG_KV.
 //   windows   the rate-limit windows and their salts, once ended.
+//   privacy   (lane dpdp-rights, Do 1) the DPDP rights requests: every open,
+//             verified request past a published promise (48 h acknowledgement,
+//             30 days resolution, 90 days statutory for a grievance) PAGES THE
+//             OWNER (lib/owner-page.ts, one mail a run, each request at most once
+//             a day while it stays red); then the purge of unproven requests after
+//             7 days and closed ones after 400. 🔴 It never MOVES a request: a
+//             rights request is closed by a person, never by this cron.
 //   notices   (lane feedback-triage, Do 4) every report at `fixed` whose reporter
 //             ticked "tell me when it is fixed": ONE localised mail each, then
 //             `notified` (feedback/notify.ts runNotices, claim-then-send). Runs FIRST,
@@ -32,6 +39,8 @@ import { runNotices } from './notify';
 import { mailFor } from '../ports';
 import type { MailTransport } from '../../../_shared/src/ports/mail';
 import type { Env } from '../types';
+import { markPaged, MAX_OVERDUE_PER_RUN, overdueRequests, pageLine, purgePrivacy } from './privacy';
+import { sendOwnerPage } from '../lib/owner-page';
 
 export const FEEDBACK_CRON_JOB = 'feedback_purge';
 /** Statements in one purge pass's batch: the anonymised count, then the delete. */
@@ -119,7 +128,11 @@ export async function sweepOrphans(env: Env): Promise<number> {
  *  the notices (the read, then per notice the suppression read and the claim, plus
  *  a suppressed row's update), the purge passes (a read and a two-statement batch
  *  each), one read per orphan page, the windows batch, and four heartbeat rows. */
-export const FEEDBACK_STATEMENT_BUDGET = 1 + 3 * MAX_NOTICES_PER_RUN + PURGE_MAX_PASSES * (1 + PURGE_PASS_STATEMENTS) + ORPHAN_MAX_PAGES + 2 + 4;
+export const FEEDBACK_STATEMENT_BUDGET =
+  1 + 3 * MAX_NOTICES_PER_RUN + PURGE_MAX_PASSES * (1 + PURGE_PASS_STATEMENTS) + ORPHAN_MAX_PAGES + 2 + 4 +
+  // ⏱ 2026-10-03 · lane dpdp-rights: the privacy limb — one read, one paged-mark
+  // update per overdue request, one purge, one heartbeat row.
+  1 + MAX_OVERDUE_PER_RUN + 1 + 1;
 
 async function heartbeat(env: Env, target: string, ok: boolean, detail: string, nowMs: number): Promise<void> {
   try {
@@ -141,7 +154,7 @@ async function heartbeat(env: Env, target: string, ok: boolean, detail: string, 
 export async function runFeedbackCron(
   env: Env,
   nowMs: number = Date.now(),
-  deps: { mail?: MailTransport | null } = {},
+  deps: { mail?: MailTransport | null; fetchImpl?: typeof fetch } = {},
 ): Promise<void> {
   try {
     const mail = deps.mail !== undefined ? deps.mail : mailFor('feedback', env);
@@ -155,6 +168,23 @@ export async function runFeedbackCron(
     );
   } catch (err) {
     await heartbeat(env, 'notices', false, String(err), nowMs);
+  }
+  try {
+    const { red, due, amber } = await overdueRequests(env.PLATFORM_DB, nowMs);
+    let paged = 'none';
+    if (due.length > 0) {
+      paged = await sendOwnerPage(
+        env,
+        `${due.length} privacy request(s) past a published deadline`,
+        due.map((r) => `- ${pageLine(r, nowMs)}`),
+        deps.fetchImpl ?? fetch,
+      );
+      if (paged === 'sent') await markPaged(env.PLATFORM_DB, due.map((r) => r.id), nowMs);
+    }
+    const purged = await purgePrivacy(env.PLATFORM_DB, nowMs);
+    await heartbeat(env, 'privacy', red.length === 0, `red=${red.length} amber=${amber} paged=${paged} purged=${purged}`, nowMs);
+  } catch (err) {
+    await heartbeat(env, 'privacy', false, String(err), nowMs);
   }
   try {
     const { purged, capped } = await purgeExpired(env, nowMs);

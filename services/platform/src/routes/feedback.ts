@@ -44,6 +44,7 @@ import { parseReport, type Report } from '../feedback/report';
 import { windowLimiter } from '../feedback/window-limiter';
 import { sendReceipt, suppress, tokenAddress } from '../feedback/notify';
 import { mailFor } from '../ports';
+import { acceptPrivacyRequest, isPrivacyKind, parsePrivacyRequest, requestOfToken, verifyRequest } from '../feedback/privacy';
 import type { AppEnv, Env } from '../types';
 
 const feedback = new Hono<AppEnv>();
@@ -162,6 +163,26 @@ feedback.post('/', async (c) => {
 
   const parts = await partsOf(c.req.header('content-type') ?? '', body.bytes);
   if (!parts.ok) return c.json({ error: parts.error }, parts.status);
+
+  // ── A DPDP RIGHTS REQUEST (lane dpdp-rights, Do 1) rides this route: the same
+  // edge bound, body cap, auth and windows, then its own table and clocks
+  // (feedback/privacy.ts). It carries no screenshot.
+  if (isPrivacyKind(parts.json)) {
+    if (parts.image !== null) return c.json({ error: 'unexpected_screenshot', field: 'screenshot' }, 400);
+    const pr = parsePrivacyRequest(parts.json);
+    if (!pr.ok) return c.json({ error: pr.error, field: pr.field ?? null }, pr.status);
+    if (pr.request.honeypot) {
+      console.log(`[privacy] rid=${rid} honeypot filled; dropped`);
+      return c.json({ id: newReportId().replace('FB-', 'PR-'), status: 'unverified' }, 202);
+    }
+    if (who.kind === 'anonymous' && pr.request.contactEmail === null) return c.json({ error: 'proof_required' }, 401);
+    const v = await overLimit(c.env, who, edgeCeilingKey(c));
+    if (v === 'over') return c.json({ error: 'rate_limited' }, 429, { 'Retry-After': '3600' });
+    if (v === 'unavailable') return c.json({ error: 'temporarily_unavailable' }, 503);
+    const out = await acceptPrivacyRequest(c.env.PLATFORM_DB, mailFor('feedback', c.env), pr.request, who, Date.now());
+    console.log(`[privacy] rid=${rid} ${'id' in out.body ? out.body.id : '-'} type=${pr.request.requestType} app=${pr.request.appId} -> ${out.status}`);
+    return c.json(out.body, out.status);
+  }
 
   const parsed = parseReport(parts.json);
   if (!parsed.ok) return c.json({ error: parsed.error, field: parsed.field ?? null }, parsed.status);
@@ -286,6 +307,40 @@ feedback.post('/unsubscribe', async (c) => {
     return c.text('Unsubscribed.', 200, privateHeaders);
   }
   return c.html(page('Unsubscribed', '<p>You will get no more mail about your problem reports.</p>'), 200, privateHeaders);
+});
+
+// ── THE RIGHTS REQUEST'S ONE-TIME LINK (lane dpdp-rights, Do 1) ─────────────
+// A signed-out requester proves the address by following this link. GET shows
+// one button and changes nothing (a mail scanner fetching links must not verify
+// anybody); POST verifies, starts the 48 h / 30 day clocks and spends the token.
+feedback.get('/verify', async (c) => {
+  const edge = await strictEdgeCeiling(c.env.FEEDBACK_EDGE_LIMITER, c, 'FEEDBACK_EDGE_LIMITER');
+  if (edge !== 'within') return c.text('rate limited', 429, privateHeaders);
+  const token = c.req.query('t');
+  const row = await requestOfToken(c.env.PLATFORM_DB, token);
+  if (row === null) return c.html(page('Link not recognised', '<p>This link is not valid any more.</p>'), 404, privateHeaders);
+  return c.html(
+    page(
+      'Confirm your privacy request',
+      `<p>Confirm that you made privacy request ${row.id}. We act on it only after you do.</p>` +
+        `<form method="post" action="/v1/feedback/verify?t=${token}"><button type="submit">Confirm my request</button></form>`,
+    ),
+    200,
+    privateHeaders,
+  );
+});
+
+feedback.post('/verify', async (c) => {
+  const edge = await strictEdgeCeiling(c.env.FEEDBACK_EDGE_LIMITER, c, 'FEEDBACK_EDGE_LIMITER');
+  if (edge !== 'within') return c.text('rate limited', 429, privateHeaders);
+  const id = await verifyRequest(c.env.PLATFORM_DB, c.req.query('t'), Date.now());
+  if (id === null) return c.html(page('Link not recognised', '<p>This link is not valid any more.</p>'), 404, privateHeaders);
+  console.log(`[privacy] ${id} verified by link`);
+  return c.html(
+    page('Request confirmed', `<p>Thank you. Request ${id} is confirmed: we acknowledge it within 48 hours and resolve it within 30 days.</p>`),
+    200,
+    privateHeaders,
+  );
 });
 
 export default feedback;

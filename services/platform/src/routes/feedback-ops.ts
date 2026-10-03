@@ -25,6 +25,7 @@ import { isPlainObject } from '../../../_shared/src/validate';
 import { readBoundedBody } from '../lib/body';
 import { firstRow, nowIso, run } from '../lib/d1';
 import { appendHistory, checkMove, isStatus, REPORT_ID, type MoveRequest } from '../feedback/lifecycle';
+import { closedPurgeAt, isPrivacyStatus, PRIVACY_ID, PRIVACY_MOVES } from '../feedback/privacy';
 import type { AppEnv } from '../types';
 
 const ops = new Hono<AppEnv>();
@@ -69,6 +70,36 @@ ops.post('/move', async (c) => {
     json = JSON.parse(new TextDecoder().decode(body.bytes));
   } catch {
     return c.json({ error: 'bad_json' }, 400);
+  }
+  // ⏱ 2026-10-03 · lane dpdp-rights: a rights request (PR-…) moves through its own
+  // graph, feedback/privacy.ts PRIVACY_MOVES: new -> acknowledged -> resolved |
+  // refused. Only here, only by the lead; nothing automatic closes one.
+  const raw = json as Record<string, unknown> | null;
+  if (raw !== null && typeof raw === 'object' && typeof raw.id === 'string' && PRIVACY_ID.test(raw.id)) {
+    if (Object.keys(raw).some((k) => k !== 'id' && k !== 'to') || !isPrivacyStatus(raw.to)) return c.json({ error: 'invalid' }, 422);
+    const to = raw.to;
+    const pr = await firstRow<{ status: string; status_history: string | null }>(
+      c.env.PLATFORM_DB.prepare('SELECT status, status_history FROM privacy_requests WHERE id = ?').bind(raw.id),
+    );
+    if (!pr || !isPrivacyStatus(pr.status)) return c.json({ error: 'not_found' }, 404);
+    if (!PRIVACY_MOVES[pr.status].includes(to)) return c.json({ error: 'illegal_move', field: 'to', from: pr.status, to }, 409);
+    const at = nowIso();
+    let list: unknown = [];
+    try {
+      list = pr.status_history ? JSON.parse(pr.status_history) : [];
+    } catch {
+      list = [];
+    }
+    const history = JSON.stringify([...(Array.isArray(list) ? list : []), { from: pr.status, to, at, by: 'ops' }]);
+    const closed = to === 'resolved' || to === 'refused';
+    const moved = await run(
+      c.env.PLATFORM_DB.prepare(
+        `UPDATE privacy_requests SET status = ?, status_at = ?, status_history = ?, acknowledged_at = CASE WHEN ? = 'acknowledged' THEN ? ELSE acknowledged_at END, resolved_at = CASE WHEN ? THEN ? ELSE resolved_at END, purge_at = CASE WHEN ? THEN ? ELSE purge_at END WHERE id = ? AND status = ?`,
+      ).bind(to, at, history, to, at, closed ? 1 : 0, at, closed ? 1 : 0, closedPurgeAt(Date.parse(at)), raw.id, pr.status),
+    );
+    if (moved.meta.changes !== 1) return c.json({ error: 'conflict', from: pr.status, to }, 409);
+    console.log(`[feedback-ops] moved ${raw.id} ${pr.status} -> ${to}`);
+    return c.json({ id: raw.id, from: pr.status, to, at }, 200);
   }
   const req = parseMove(json);
   if (req === null) return c.json({ error: 'invalid' }, 422);
