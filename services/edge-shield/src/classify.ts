@@ -143,6 +143,44 @@ export function normalisePath(pathname: string): string {
 
 export type Route = { kind: 'jwks' } | { kind: 'limit'; cls: ShieldClass } | { kind: 'pass' };
 
+/**
+ * ⏱ 2026-10-02 — the GoTrue POSTs that are SAFE TO SEND TWICE, so an origin fault
+ * on one is retried (src/index.ts). Measured: a request lost between Cloudflare
+ * and the tunnel comes back as a 520 after ~13-15 s, with no line in Box C's
+ * GoTrue or envoy log (2026-09-30 15:30:59Z `POST /logout`, 2026-10-01 15:00:51Z
+ * `POST /admin/generate_link`, which reddened main's E2E). A 520 cannot say
+ * whether the origin acted, so only a request whose repeat changes nothing the
+ * caller relies on is resent:
+ *   · `/logout` — ending a session twice ends it once;
+ *   · `/admin/generate_link` — service-role only; a second call mints a link
+ *     that replaces the first, and the caller receives the second.
+ * NEVER the refresh grant (a replayed refresh token can trip reuse detection
+ * and end the session), `/verify` (single use), or anything that sends mail or
+ * creates an account (`/otp`, `/signup`, `/recover`, `/resend`, `/magiclink`).
+ */
+const RETRY_SAFE_AUTH_POSTS = new Set(['/logout', '/admin/generate_link']);
+
+/**
+ * ⏱ 2026-10-02 · review 1 of #1140, finding 5 — the GETs that CONSUME a
+ * one-time code, so they are never retried either: `/verify` is the link in an
+ * auth e-mail (`?token=…`, used once), `/callback` is the OAuth provider's
+ * return (`?code=…`, used once). A fault that came back after GoTrue spent the
+ * code would turn into an "expired link" on the retry, hiding the fault.
+ */
+const ONE_TIME_AUTH_GETS = new Set(['/verify', '/callback']);
+
+/** Whether an origin fault (520/522) on this request may be retried once: any
+ *  GET or HEAD the shield handles except the one-time-code GETs above, and the
+ *  GoTrue POSTs above. Pure. */
+export function retryableOnOriginFault(url: URL, method: string): boolean {
+  const m = method.toUpperCase();
+  const path = normalisePath(url.pathname);
+  const auth = url.hostname.toLowerCase() === AUTH_HOST && path.startsWith('/auth/v1/');
+  const rest = auth ? path.slice('/auth/v1'.length) : null;
+  if (m === 'GET' || m === 'HEAD') return rest === null || !ONE_TIME_AUTH_GETS.has(rest);
+  return m === 'POST' && rest !== null && RETRY_SAFE_AUTH_POSTS.has(rest);
+}
+
 /** What the shield does with a request. Pure: host, path, query and method only. */
 export function classify(url: URL, method: string): Route {
   const m = method.toUpperCase();

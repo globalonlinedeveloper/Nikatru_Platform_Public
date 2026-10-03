@@ -706,8 +706,8 @@ const WIRE_CONTRACTS = [
   // ⏱ 2026-10-01 · train ST-SETTINGS (SE-03) — the client arrived
   // (packages/api_client DioSessionsTransport, read by core
   // DeviceSession.tryParse, drawn by the chassis DevicesSection), so the list
-  // and the one-session revoke are PINNED. The two POSTs stay gaps: still no
-  // client builds their paths (revoke-all is gotrue's global sign-out).
+  // and the one-session revoke are PINNED. ⏱ 2026-10-02 · AB-A4-01 — and
+  // revoke-all is pinned below; revoke-others stays a gap.
   {
     id: 'sessions-list',
     kind: 'body',
@@ -721,7 +721,7 @@ const WIRE_CONTRACTS = [
     clientOnly: {},
     serverOnly: {
       d1Pending:
-        'NOT THIS ROUTE\'S ANSWER: sessions.ts also serves POST /v1/sessions/revoke-all, whose 200 {d1Pending: true} (EXA-11) is read off the same file. That route has no Dart client (sessions-revoke-all, a gap below); the list never sends it.',
+        'NOT THIS ROUTE\'S ANSWER: sessions.ts also serves POST /v1/sessions/revoke-all, whose 200 {d1Pending: true} (EXA-11) is read off the same file. Its client (sessions-revoke-all, below) reads it there; the list never sends it.',
     },
   },
   {
@@ -740,11 +740,27 @@ const WIRE_CONTRACTS = [
       'DioSessionsTransport.revoke reads only the status — success is a 204 with no body and every refusal is `{error}` beside a literal status — so the STATUS SET is the contract, as for account deletion.',
   },
   {
+    // ⏱ 2026-10-02 · AB-A4-01 — the client arrived: "Log out of all devices" and
+    // a password reset call it (packages/api_client requestWorkerSessionRevocation,
+    // wired as SupabaseAuthRepository(revokeAtWorkers:)). No request body; success
+    // is a 204 with no body; a refusal is a status the client throws on. The ONE
+    // key it reads is `d1Pending` (EXA-11: 200 {d1Pending: true} means every token
+    // IS refused but the extension link floor was not written, and the client
+    // must not read it as done) — so that key is the pin.
     id: 'sessions-revoke-all',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable). ⏱ 2026-09-30 · EXA-11: ONE MORE ANSWER, AND IT IS A RETRY — 200 {d1Pending: true} means every token IS refused but the browser-extension link floor could not be written; the client MUST treat it as \"retry\", never as done.',
-    absentFromDart: '/v1/sessions/revoke-all',
+    kind: 'body',
+    server: 'services/platform/src/routes/sessions.ts',
+    client: {
+      file: 'packages/api_client/lib/src/session_revocation_request.dart',
+      member: 'Future<void> requestWorkerSessionRevocation(',
+      reader: 'body',
+    },
+    /** Not every answer carries it (a 204 has no body), so nothing is required of both. */
+    requiredBoth: [],
+    clientOnly: {},
+    serverOnly: {
+      sessions: 'GET /v1/sessions in the same file answers the list; its own pin (sessions-list, above) reads it, and revoke-all never sends it.',
+    },
   },
   {
     id: 'sessions-revoke-others',
@@ -1729,6 +1745,10 @@ function dartMemberBody(src, marker) {
   if (!params) return null;
   let i = params.end + 1;
   while (i < src.length && /\s/.test(src[i])) i++;
+  // ⏱ 2026-10-02 — an `async` (or `async*` / `sync*`) member: the body follows
+  // the modifier. Without this an async client function read as "no member".
+  const modifier = /^(?:async\*?|sync\*)\s*/.exec(src.slice(i, i + 8));
+  if (modifier) i += modifier[0].length;
   if (src[i] === '{') {
     const body = balanced(src, i);
     return body ? body.body : null;
@@ -1756,8 +1776,12 @@ function dartMemberBody(src, marker) {
 /** The map keys a Dart member SUBSCRIPTS — `j['app_id']`. This is what a
  *  released client actually depends on: a field it never reads cannot break it,
  *  and a field it reads that stops arriving breaks it silently, in the field. */
+// ⏱ 2026-10-02 · AB-A4-01 — camelCase keys too. The revoke-all client reads
+// `body['d1Pending']`, the key the platform Worker answers; a lower-snake-only
+// reader saw no subscript at all and refused the pin as "reads nothing". A wider
+// reader only adds keys to compare, so no pin can go greener by it.
 const dartSubscripts = (body, reader) => [
-  ...new Set([...body.matchAll(new RegExp(`\\b${reader}\\s*\\[\\s*'([a-z_][a-z0-9_]*)'\\s*\\]`, 'g'))].map((m) => m[1])),
+  ...new Set([...body.matchAll(new RegExp(`\\b${reader}\\s*\\[\\s*'([A-Za-z_][A-Za-z0-9_]*)'\\s*\\]`, 'g'))].map((m) => m[1])),
 ];
 
 /** Every .dart file under the declared roots. */

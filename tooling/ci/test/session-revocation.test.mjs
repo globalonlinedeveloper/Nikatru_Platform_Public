@@ -24,12 +24,24 @@ const STA = 'services/subscriptiontracker-api';
 const TEMPLATE = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api';
 const SHARED = 'services/_shared/src';
 const MAIL = 'tooling/mail-transport.json';
+// ⏱ 2026-10-02 · limb 3 (AB-A4-01): the register names the route, the sender
+// carries its path, and the app and the brick wire the sender in.
+const REGISTER = 'tooling/platform-register.json';
+const SENDER = 'packages/api_client/lib/src/session_revocation_request.dart';
+const APP_AUTH = 'apps/subscriptiontracker/lib/state/providers/auth.dart';
+const BRICK_PROVIDERS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
+// ⏱ 2026-10-02 · review 1 of #1140: the hook is handed the bearer to send.
+const WIRING = 'revokeAtWorkers: (String accessToken) =>';
 
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-session-revocation-'));
   mkdirSync(join(root, 'tooling'), { recursive: true });
   cpSync(join(REPO, MAIL), join(root, MAIL));
   cpSync(join(REPO, SHARED), join(root, SHARED), { recursive: true });
+  for (const rel of [REGISTER, SENDER, APP_AUTH, BRICK_PROVIDERS]) {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    cpSync(join(REPO, rel), join(root, rel));
+  }
   for (const svc of [PLATFORM, STA, TEMPLATE]) {
     mkdirSync(join(root, svc), { recursive: true });
     cpSync(join(REPO, svc, 'src'), join(root, svc, 'src'), { recursive: true });
@@ -221,6 +233,58 @@ describe('assert-session-revocation over a copy of the real tree', () => {
     withRoot(root, ({ code, out }) => {
       assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — the brick carries a Worker/);
+    });
+  });
+
+  test('limb 3 green control: the sender and both constructions are named', () => {
+    withRoot(realTree(), ({ code, out }) => {
+      assert.equal(code, 0, out);
+      assert.match(out, /\/v1\/sessions\/revoke-all is sent by packages\/api_client\/lib\/src\/session_revocation_request\.dart and wired into 2 SupabaseAuthRepository construction\(s\)/);
+    });
+  });
+
+  test('🔴 limb 3: the app builds SupabaseAuthRepository WITHOUT revokeAtWorkers ⇒ exit 1 (AB-A4-01, the state before 2026-10-02)', () => {
+    withRoot(mutated([[APP_AUTH, WIRING, 'unusedHook: (String accessToken) =>']]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /providers\/auth\.dart: builds SupabaseAuthRepository without `revokeAtWorkers:`/);
+    });
+  });
+
+  test('🔴 limb 3: the BRICK loses the wiring ⇒ exit 1 (every stamped app would inherit the gap)', () => {
+    withRoot(mutated([[BRICK_PROVIDERS, WIRING, 'unusedHook: (String accessToken) =>']]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /lib\/state\/providers\.dart: builds SupabaseAuthRepository without/);
+    });
+  });
+
+  test('🔴 limb 3: no sender carries the path any more ⇒ exit 1', () => {
+    withRoot(mutated([[SENDER, "'/v1/sessions/revoke-all'", "'/v1/sessions/revoke'"]]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /no Dart file under packages\/\*\/lib sends \/v1\/sessions\/revoke-all/);
+    });
+  });
+
+  test('🔴 limb 3: a path left only in a COMMENT is not a sender ⇒ exit 1', () => {
+    withRoot(mutated([[SENDER, "const String workerRevokeAllRoute = '/v1/sessions/revoke-all';", "// '/v1/sessions/revoke-all'\nconst String workerRevokeAllRoute = '/x';"]]), ({ code, out }) => {
+      assert.equal(code, 1, out);
+      assert.match(out, /no Dart file under packages/);
+    });
+  });
+
+  test('COVERAGE LOST: limb 3 finds no SupabaseAuthRepository construction ⇒ exit 2', () => {
+    const root = realTree();
+    rmSync(join(root, APP_AUTH));
+    rmSync(join(root, BRICK_PROVIDERS));
+    withRoot(root, ({ code, out }) => {
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 3 found no `SupabaseAuthRepository\(` construction/);
+    });
+  });
+
+  test('COVERAGE LOST: the register no longer names the revoke-all route ⇒ exit 2', () => {
+    withRoot(mutated([[REGISTER, '"id": "sessions-revoke-all"', '"id": "sessions-revoke-everything"']]), ({ code, out }) => {
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 3 could not read the path of route "sessions-revoke-all"/);
     });
   });
 

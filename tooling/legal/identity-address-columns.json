@@ -1,0 +1,40 @@
+{
+  "_what": "Every column in the identity store (self-hosted GoTrue on Box C) that can hold a network address, and the value a write leaves in it. SYN-P2: every app notice says no network address is kept with your account, and says that a pending sign-in verification briefly holds one; the identity store is inside that promise. tooling/ci/assert-app-yaml.mjs limb 10 refuses any column in `columns` that the trigger file does not empty on write, any statement on an `exempt` column's table other than its declared on-verify trigger (graded by table, timing and function, never by name) or a DROP TRIGGER, an `exempt` column whose sweep is not run, and an empty list (COVERAGE LOST).",
+  "_measuredBy": "A catalog read on Box C, counts and names only: every inet or cidr column and every column named ip, *_ip, ip_address, remote_addr or client_ip, in both databases of the stack (postgres and _supabase). The query is the first block of the trigger file's header. Re-run it after every GoTrue image upgrade: a new column is an address the notice would then wrongly deny.",
+  "store": "Box C, supabase/gotrue:v2.189.0, auth.schema_migrations max 20260302000000",
+  "asOf": "2026-10-02",
+  "triggerFile": "docs/platform/supabase/sql/identity-address-null-on-write.sql",
+  "columns": [
+    {
+      "table": "auth.sessions",
+      "column": "ip",
+      "emptiedTo": "NULL"
+    },
+    {
+      "table": "auth.audit_log_entries",
+      "column": "ip_address",
+      "emptiedTo": "''"
+    }
+  ],
+  "_exempt": "⏱ 2026-10-02 · review 1 of #1140, finding 3; ruling on review 2, items 1 and 3. A column GoTrue READS BACK while a challenge is pending cannot be emptied on every write: the value it compares would no longer match. MFA stays ON (TOTP enrolment is a security control, never turned off for this). Each such column is held by exactly two declared things, both read by limb 10: `onVerify`, a BEFORE UPDATE trigger whose function body is `onVerify.body`, and `sweep`, a function running `sweep.statement`, called by `sweep.runBy`.",
+  "exempt": [
+    {
+      "table": "auth.mfa_challenges",
+      "column": "ip_address",
+      "reason": "GoTrue v2.189.0 internal/api/mfa.go:584 (validateChallenge, TOTP and WebAuthn) and :774 (verifyPhoneFactor) refuse a verify whose request address differs from challenge.IPAddress ('Challenge and verify IP addresses mismatch'), BEFORE challenge.Verify writes verified_at (:702, :854; internal/models/challenge.go:84-87, an UPDATE of verified_at only), so a value emptied while the challenge is pending fails every MFA verify.",
+      "heldBy": "MFA stays on. A pending sign-in verification holds the address: a BEFORE UPDATE trigger blanks it to 0.0.0.0 on the write that sets verified_at, and nikatru_privacy.mfa_challenge_ip_sweep() blanks it on every challenge older than GoTrue's challenge expiry (300 s, the default and the floor), run daily by docs/platform/supabase/boxc/identity-log-retention.sh. So it is kept at most 300 s plus a day.",
+      "onVerify": {
+        "trigger": "BEFORE UPDATE",
+        "function": "nikatru_privacy.mfa_ip_blank_on_verify",
+        "body": "IF NEW.verified_at IS NOT NULL THEN NEW.ip_address := '0.0.0.0'; END IF; RETURN NEW;"
+      },
+      "sweep": {
+        "function": "nikatru_privacy.mfa_challenge_ip_sweep",
+        "statement": "UPDATE auth.mfa_challenges SET ip_address = '0.0.0.0' WHERE created_at < now() - interval '300 seconds'",
+        "challengeExpirySeconds": 300,
+        "runBy": "docs/platform/supabase/boxc/identity-log-retention.sh"
+      },
+      "readBack": "READ-BACK 3 of the trigger file: no verified or expired challenge holds an address (count 0)"
+    }
+  ]
+}

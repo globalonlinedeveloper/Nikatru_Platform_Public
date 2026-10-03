@@ -17,10 +17,12 @@ import 'support/raw_vendor_error.dart';
 /// types stay pinned in `apps/subscriptiontracker/test/auth_error_vendor_test.dart`,
 /// because this package may not import the SDK even in a test.
 void main() {
-  final ChassisLocalizations en =
-      lookupChassisLocalizations(const Locale('en'));
-  final ChassisLocalizations ta =
-      lookupChassisLocalizations(const Locale('ta'));
+  final ChassisLocalizations en = lookupChassisLocalizations(
+    const Locale('en'),
+  );
+  final ChassisLocalizations ta = lookupChassisLocalizations(
+    const Locale('ta'),
+  );
 
   /// The shape the adapters really hand over: `AuthFailure.toString()` is
   /// `'AuthFailure: <server message>'`, so every sentence match runs against
@@ -35,14 +37,13 @@ void main() {
     String code, {
     String message = 'the server said no',
     List<String> reasons = const <String>[],
-  }) =>
-      core.AuthFailure(message, code: code, reasons: reasons);
+  }) => core.AuthFailure(message, code: code, reasons: reasons);
 
   core.AuthFailure weak(List<String> reasons, {String? message}) => coded(
-        core.AuthFailure.weakPassword,
-        message: message ?? 'Password is known to be weak and easy to guess.',
-        reasons: reasons,
-      );
+    core.AuthFailure.weakPassword,
+    message: message ?? 'Password is known to be weak and easy to guess.',
+    reasons: reasons,
+  );
 
   group('🔴 a weak password is mapped by REASON — one case per reason', () {
     test(
@@ -103,10 +104,9 @@ void main() {
       expect(
         authErrorText(
           en,
-          weak(
-            <String>['pwned'],
-            message: 'Password should be at least 8 characters.',
-          ),
+          weak(<String>[
+            'pwned',
+          ], message: 'Password should be at least 8 characters.'),
         ),
         en.passwordBreached,
       );
@@ -123,13 +123,16 @@ void main() {
     // 🔴 ST-A3 (audit BUG-3): offline on web read "Something went wrong".
     // MUTATION PROOF: drop the network arm, or the fetch spellings from the
     // fallback, and the matching case goes red.
-    test('the adapter''s network code → authNetworkError', () {
+    test('the adapter'
+        's network code → authNetworkError', () {
       expect(
         authErrorText(en, coded(core.AuthFailure.network)),
         en.authNetworkError,
       );
     });
-    test('Chrome''s and Safari''s fetch failures → authNetworkError', () {
+    test('Chrome'
+        's and Safari'
+        's fetch failures → authNetworkError', () {
       expect(
         authErrorText(
           en,
@@ -184,19 +187,21 @@ void main() {
         );
       }
     });
-    test('a code nobody modelled FALLS BACK to the sentence, not to unknown',
-        () {
-      expect(
-        authErrorText(
-          en,
-          coded(
-            'some_future_code',
-            message: 'captcha protection: request disallowed',
+    test(
+      'a code nobody modelled FALLS BACK to the sentence, not to unknown',
+      () {
+        expect(
+          authErrorText(
+            en,
+            coded(
+              'some_future_code',
+              message: 'captcha protection: request disallowed',
+            ),
           ),
-        ),
-        en.authCaptchaFailed,
-      );
-    });
+          en.authCaptchaFailed,
+        );
+      },
+    );
   });
 
   group('text a screen already wrote is shown AS WRITTEN', () {
@@ -209,35 +214,36 @@ void main() {
         );
       },
     );
-    test('AuthFailure.localized passes through, even with server-ish words',
-        () {
-      // A sentence that the network branch WOULD match if it were read as
-      // server English. `localized` is the whole difference.
-      expect(
-        authErrorText(
-          en,
-          core.AuthFailure.localized('Check your connection, then try again.'),
-        ),
-        'Check your connection, then try again.',
-      );
-    });
     test(
-      '🔴 the sign-up screens\' LOCAL length refusal → passwordTooShort, '
-      'never authUnknownError',
+      'AuthFailure.localized passes through, even with server-ish words',
       () {
-        // Exactly what both sign-up screens raise before any request is made.
-        // It was a bare `AuthFailure(l10n.passwordTooShort)`, which this
-        // function read as unmatched server English: "Something went wrong".
-        final core.AuthFailure local = core.AuthFailure(
-          en.passwordTooShort,
-          code: core.AuthFailure.weakPassword,
-          reasons: const <String>[core.AuthFailure.reasonLength],
+        // A sentence that the network branch WOULD match if it were read as
+        // server English. `localized` is the whole difference.
+        expect(
+          authErrorText(
+            en,
+            core.AuthFailure.localized(
+              'Check your connection, then try again.',
+            ),
+          ),
+          'Check your connection, then try again.',
         );
-        expect(authErrorText(en, local), en.passwordTooShort);
-        expect(authErrorText(en, local), isNot(en.authUnknownError));
-        expect(authErrorText(ta, local), ta.passwordTooShort);
       },
     );
+    test('🔴 the sign-up screens\' LOCAL length refusal → passwordTooShort, '
+        'never authUnknownError', () {
+      // Exactly what both sign-up screens raise before any request is made.
+      // It was a bare `AuthFailure(l10n.passwordTooShort)`, which this
+      // function read as unmatched server English: "Something went wrong".
+      final core.AuthFailure local = core.AuthFailure(
+        en.passwordTooShort,
+        code: core.AuthFailure.weakPassword,
+        reasons: const <String>[core.AuthFailure.reasonLength],
+      );
+      expect(authErrorText(en, local), en.passwordTooShort);
+      expect(authErrorText(en, local), isNot(en.authUnknownError));
+      expect(authErrorText(ta, local), ta.passwordTooShort);
+    });
   });
 
   group('the sentence FALLBACK — failures that carry no code', () {
@@ -372,16 +378,45 @@ void main() {
     });
   });
 
+  // ⏱ 2026-10-02 · AB-A4-01 — after a password reset the password IS set and
+  // the other devices are NOT signed out. MUTATION PROOF: delete the arm in
+  // `_codeSentence` and this reads `authUnknownError`, which would send the
+  // person back to set a password they already set.
+  test('sessions_not_revoked → its own sentence, in both locales', () {
+    expect(
+      authErrorText(en, coded('sessions_not_revoked')),
+      en.authSessionsNotRevoked,
+    );
+    expect(
+      authErrorText(en, coded('sessions_not_revoked')),
+      isNot(en.authUnknownError),
+    );
+    expect(
+      authErrorText(ta, coded('sessions_not_revoked')),
+      ta.authSessionsNotRevoked,
+    );
+    expect(ta.authSessionsNotRevoked, isNot(en.authSessionsNotRevoked));
+  });
+
   // ⏱ 2026-10-01 · EN-02 — the platform Worker's native route refuses with
   // three codes of its own (`native-auth.ts`). MUTATION PROOF: delete any one
   // arm in `_codeSentence` and its case reads `authUnknownError` here.
   group('🔴 the native route\'s refusals have words', () {
-    for (final (String code, String Function(ChassisLocalizations) said) in
-        <(String, String Function(ChassisLocalizations))>[
-      ('attestation_required', (ChassisLocalizations l) => l.authAttestationRequired),
-      ('attestation_kind_refused', (ChassisLocalizations l) => l.authAttestationRefused),
-      ('native_auth_unavailable', (ChassisLocalizations l) => l.authNativeUnavailable),
-    ]) {
+    for (final (String code, String Function(ChassisLocalizations) said)
+        in <(String, String Function(ChassisLocalizations))>[
+          (
+            'attestation_required',
+            (ChassisLocalizations l) => l.authAttestationRequired,
+          ),
+          (
+            'attestation_kind_refused',
+            (ChassisLocalizations l) => l.authAttestationRefused,
+          ),
+          (
+            'native_auth_unavailable',
+            (ChassisLocalizations l) => l.authNativeUnavailable,
+          ),
+        ]) {
       test('$code → its own sentence, never authUnknownError', () {
         expect(authErrorText(en, coded(code)), said(en));
         expect(authErrorText(en, coded(code)), isNot(en.authUnknownError));
@@ -392,10 +427,10 @@ void main() {
 
     test('a Retry-After the server sent is said, rounded up', () {
       core.AuthFailure limited(int seconds) => core.AuthFailure(
-            'Request rate limit reached',
-            code: 'over_request_rate_limit',
-            retryAfter: Duration(seconds: seconds),
-          );
+        'Request rate limit reached',
+        code: 'over_request_rate_limit',
+        retryAfter: Duration(seconds: seconds),
+      );
       expect(
         authErrorText(en, limited(60)),
         '${en.authRateLimited} ${en.authRetryAfterMinutes(1)}',
@@ -464,15 +499,11 @@ void main() {
   test('it is localized, not hardcoded English', () {
     expect(authErrorText(ta, fail('captcha_failed')), ta.authCaptchaFailed);
     expect(
-        authErrorText(ta, fail('captcha_failed')), isNot(en.authCaptchaFailed));
-    expect(
-      authErrorText(ta, weak(<String>['pwned'])),
-      ta.passwordBreached,
+      authErrorText(ta, fail('captcha_failed')),
+      isNot(en.authCaptchaFailed),
     );
-    expect(
-      authErrorText(ta, weak(<String>['characters'])),
-      ta.passwordTooWeak,
-    );
+    expect(authErrorText(ta, weak(<String>['pwned'])), ta.passwordBreached);
+    expect(authErrorText(ta, weak(<String>['characters'])), ta.passwordTooWeak);
     expect(ta.passwordBreached, isNot(en.passwordBreached));
     expect(ta.passwordTooWeak, isNot(en.passwordTooWeak));
   });
