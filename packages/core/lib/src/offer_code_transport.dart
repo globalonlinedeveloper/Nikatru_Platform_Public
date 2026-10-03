@@ -112,6 +112,23 @@ class InviteState {
   }
 }
 
+/// "Your invites": how many people joined with this account's invite, and how
+/// many of them were rewarded. Counts only — never who (`GET /v1/invites/mine`).
+class InviteCounts {
+  const InviteCounts({required this.joined, required this.rewarded});
+
+  final int joined;
+  final int rewarded;
+
+  static InviteCounts? tryParse(Object? j) {
+    if (j is! Map) return null;
+    final Object? joined = j['joined'];
+    final Object? rewarded = j['rewarded'];
+    if (joined is! int || rewarded is! int) return null;
+    return InviteCounts(joined: joined, rewarded: rewarded);
+  }
+}
+
 /// The client half of our own offer codes and invite-a-friend.
 abstract class OfferCodeTransport {
   /// Redeems [code] once; a retry with the same [idempotencyKey] answers the
@@ -133,6 +150,12 @@ abstract class OfferCodeTransport {
     required String? accessToken,
     required String app,
     required String code,
+  });
+
+  /// "Your invites" for [app]: two counts.
+  Future<Result<InviteCounts>> inviteCounts({
+    required String? accessToken,
+    required String app,
   });
 
   /// Asks for the reward, once the rules are met.

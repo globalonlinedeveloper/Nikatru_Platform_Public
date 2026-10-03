@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { codesRoutes } from '../src/routes/codes';
 import { invitesRoutes } from '../src/routes/invites';
+import { invitesMineRoutes } from '../src/routes/invites-mine';
 import { codeHash } from '../src/lib/codes/verify';
 import { inviteVerdict, type InviteFacts } from '../src/lib/codes/invites';
 import { freeOffersOf, type FreeOffer, type InviteRules } from '../src/lib/codes/offers';
@@ -154,6 +155,8 @@ describe('🔴 POST /v1/codes/redeem — authed, rate-limited, idempotent, hashe
 const facts = (over: Partial<InviteFacts> = {}): InviteFacts => ({
   inviteeId: FRIEND,
   inviterId: ME,
+  inviteeEmail: 'ravi@example.com',
+  inviterEmail: 'asha@example.com',
   accountCreatedAt: new Date(Date.now() - 8 * DAY).toISOString(),
   emailConfirmed: true,
   activationRows: 1,
@@ -174,6 +177,8 @@ describe('🔴 the invite abuse rules — one red case per rule (src/lib/codes/i
     ['maxRewardsPerInviterPerYear', { inviterRewardsThisYear: 5 }, true],
     ['noPriorProOrTrial', { priorProOrTrial: true }, true],
     ['noSelfInvite', { inviterId: FRIEND }, true],
+    // The same mailbox under two accounts: case, a +tag and Gmail's dots all fold.
+    ['noSelfInvite', { inviteeEmail: 'A.Sha+second@googlemail.com', inviterEmail: 'asha@gmail.com' }, true],
   ] as const)('🔴 %s refuses', (rule, over, final) => {
     expect(inviteVerdict(facts(over as Partial<InviteFacts>), RULES)).toEqual({ ok: false, rule, final });
   });
@@ -183,12 +188,16 @@ describe('🔴 the invite abuse rules — one red case per rule (src/lib/codes/i
 });
 
 describe('🔴 the invite routes, end to end', () => {
-  const idp = (createdDaysAgo: number, confirmed = true) =>
-    (async () =>
-      new Response(
-        JSON.stringify({ email: 'ravi@example.com', email_confirmed_at: confirmed ? '2026-09-01T00:00:00Z' : null, created_at: new Date(Date.now() - createdDaysAgo * DAY).toISOString() }),
+  // The identity provider: each account answers its own address.
+  const EMAIL: Record<string, string> = { [ME]: 'asha@example.com', [FRIEND]: 'ravi@example.com' };
+  const idp = (createdDaysAgo: number, confirmed = true, email: Record<string, string> = EMAIL) =>
+    (async (url: string) => {
+      const id = decodeURIComponent(String(url).split('/').pop() as string);
+      return new Response(
+        JSON.stringify({ email: email[id] ?? '', email_confirmed_at: confirmed ? '2026-09-01T00:00:00Z' : null, created_at: new Date(Date.now() - createdDaysAgo * DAY).toISOString() }),
         { status: 200 },
-      )) as unknown as typeof fetch;
+      );
+    }) as unknown as typeof fetch;
 
   async function claimed(platform: RealDb, app: RealDb, fetchImpl: typeof fetch) {
     const { code } = (await (await serve(ME, platform, app, fetchImpl)('/v1/invites/code', { app: 'subscriptiontracker' })).json()) as { code: string };
@@ -250,5 +259,53 @@ describe('🔴 the invite routes, end to end', () => {
     const r = await serve(FRIEND, platform, app, idp(10))('/v1/invites/settle', { app: 'subscriptiontracker' });
     expect(await r.json()).toEqual({ state: 'refused', rule: 'maxRewardsPerInviterPerYear' });
     expect(grants(platform, ME)).toEqual([]);
+  });
+
+  it('🔴 the same mailbox under a second account is a self-invite, refused for good', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    const same = idp(10, true, { [ME]: 'asha@gmail.com', [FRIEND]: 'A.Sha+alt@gmail.com' });
+    await claimed(platform, app, same);
+    app.db.prepare("INSERT INTO subscriptions (id, user_id, name) VALUES ('s1', ?, 'Netflix')").run(FRIEND);
+    const r = await serve(FRIEND, platform, app, same)('/v1/invites/settle', { app: 'subscriptiontracker' });
+    expect(await r.json()).toEqual({ state: 'refused', rule: 'noSelfInvite' });
+    expect(grants(platform, ME)).toEqual([]);
+  });
+
+  it('"your invites" is two counts and nothing about who', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    await claimed(platform, app, idp(10));
+    app.db.prepare("INSERT INTO subscriptions (id, user_id, name) VALUES ('s1', ?, 'Netflix')").run(FRIEND);
+    await serve(FRIEND, platform, app, idp(10))('/v1/invites/settle', { app: 'subscriptiontracker' });
+    const a = new Hono<AppEnv>();
+    a.use('*', async (c, next) => {
+      c.set('userId', ME);
+      await next();
+    });
+    a.route('/v1', invitesMineRoutes(LIVE));
+    const res = await a.request('https://platform.nikatru.com/v1/invites/mine?app=subscriptiontracker', {}, { PLATFORM_DB: platform, EVENTS_LIMITER: memoryRateLimiter({ budget: 10 }) } as never);
+    expect(await res.json()).toEqual({ joined: 1, rewarded: 1 });
+  });
+});
+
+describe('🔴 a free month never stacks', () => {
+  it('inside a live trial it starts when the trial ends; a second code starts when the first month ends', async () => {
+    const db = realPlatformDb();
+    const trialEnd = new Date(Date.now() + 5 * DAY).toISOString();
+    db.db
+      .prepare("INSERT INTO entitlements (user_id, app_id, entitlement, is_active, updated_at, trial_end) VALUES (?, 'subscriptiontracker', 'pro', 1, '2026-10-01', ?)")
+      .run(ME, trialEnd);
+    await issue(db, CODE);
+    await issue(db, 'SCND-SCND-SCND-SCND');
+    const post = serve(ME, db);
+    const first = (await (await post('/v1/codes/redeem', { code: CODE, idempotencyKey: 'key-00000001' })).json()) as { expiresAt: string };
+    const d1 = new Date(trialEnd);
+    d1.setUTCMonth(d1.getUTCMonth() + 1);
+    expect(first.expiresAt).toBe(d1.toISOString());
+    const second = (await (await post('/v1/codes/redeem', { code: 'SCND-SCND-SCND-SCND', idempotencyKey: 'key-00000002' })).json()) as { expiresAt: string };
+    const d2 = new Date(first.expiresAt);
+    d2.setUTCMonth(d2.getUTCMonth() + 1);
+    expect(second.expiresAt).toBe(d2.toISOString());
   });
 });

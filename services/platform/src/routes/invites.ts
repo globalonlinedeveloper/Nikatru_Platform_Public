@@ -5,6 +5,7 @@
 //   POST /v1/invites/code    { app }        → 200 { code }       mint (or rotate) my invite code
 //   POST /v1/invites/claim   { app, code }  → 200 { state }      the invitee names who invited them
 //   POST /v1/invites/settle  { app }        → 200 { state, expiresAt } | 202 { state, waitingOn }
+//   GET  /v1/invites/mine is routes/invites-mine.ts (its own file, so each wire pin reads one body).
 //
 // AUTHED (src/index.ts mounts `platformAuth` on /v1/invites/*). The code is
 // returned ONCE, at mint, and stored only as its hash (migration 0032
@@ -148,6 +149,10 @@ export function invitesRoutes(offers: readonly FreeOffer[] = FREE_OFFERS, fetchI
     if (activation === null) return c.json({ error: 'unavailable' }, 503);
     const account = await readAccount(c.env.SUPABASE_URL, key, userId, fetchImpl);
     if (account.kind !== 'found') return c.json({ error: 'unavailable' }, 503);
+    // The inviter's address, only to refuse the same mailbox inviting itself; never stored.
+    const inviterAccount = invite.inviter_user_id === null ? null : await readAccount(c.env.SUPABASE_URL, key, invite.inviter_user_id, fetchImpl);
+    if (inviterAccount !== null && inviterAccount.kind !== 'found' && inviterAccount.kind !== 'no_account') return c.json({ error: 'unavailable' }, 503);
+    const inviterId = inviterAccount?.kind === 'found' ? invite.inviter_user_id : null;
     const prior = await allRows<{ n: number }>(
       db
         .prepare(
@@ -166,7 +171,9 @@ export function invitesRoutes(offers: readonly FreeOffer[] = FREE_OFFERS, fetchI
     const verdict = inviteEligibility.verify(
       {
         inviteeId: userId,
-        inviterId: invite.inviter_user_id,
+        inviterId,
+        inviteeEmail: account.email,
+        inviterEmail: inviterAccount?.kind === 'found' ? inviterAccount.email : '',
         accountCreatedAt: account.created_at ?? null,
         emailConfirmed: account.email_confirmed_at !== null,
         activationRows: activation,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_billing_revenuecat/nikatru_billing_revenuecat.dart';
@@ -44,6 +45,15 @@ rc.CustomerInfo _customerInfo({
     );
 
 void main() {
+  // Lane growth-codes: Apple's offer-code sheet is iOS-only, so every other
+  // platform answers false and the caller shows where to redeem instead.
+  test('the offer-code sheet answers false off iOS', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final RevenueCatBridge bridge = RevenueCatBridge(capabilities: _canSell);
+    expect(await bridge.presentCodeRedemptionSheet(), isFalse);
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   /// Answers the plugin's method channel with a scripted result, so the bridge

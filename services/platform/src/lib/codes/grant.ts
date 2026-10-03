@@ -16,6 +16,10 @@
 //   last_event_id     the OPERATOR RECORD: `code:<issued_by>` or
 //                     `invite:<offer>` — tooling/ci/assert-bundle-provenance.mjs
 //                     limb 5.
+//   expires_at        NEVER STACKED (the brief's rule): the months start when the
+//                     account's live trial for the app ends, or its live free
+//                     months end, or now — whichever is latest. One free month
+//                     at a time, and never inside a trial.
 //
 // 🔴 A RELAY, NOT A DOOR (assert-bundle-provenance limb 3b): every caller must
 // verify first — routes/codes.ts through `codeVerifier(...).verify(`, and
@@ -26,7 +30,7 @@ import type { SqlDb } from '../../../../_shared/src/ports/sql';
 import { upsertBundleGrant } from '../mor/bundle-store';
 import type { MoneyEnvironment } from '../mor/contract';
 import { catalogueApp } from '../catalog';
-import { nowIso, run } from '../d1';
+import { firstRow, nowIso, run } from '../d1';
 
 export const PROMO_PROVIDER = 'nikatru_code';
 // @ceiling none — a feature-set version number, not a platform resource
@@ -68,13 +72,31 @@ async function pinPromoSet(db: SqlDb, appId: string): Promise<void> {
   );
 }
 
+/**
+ * When new free months may start: the latest of now, a live trial's end for
+ * this app (the rail's `trial_end`), and the end of free months already held.
+ */
+export async function promoStart(db: SqlDb, userId: string, appId: string, at: string): Promise<string> {
+  const trial = await firstRow<{ t: string | null }>(
+    db.prepare('SELECT MAX(trial_end) AS t FROM entitlements WHERE user_id = ? AND app_id = ? AND trial_end > ?').bind(userId, appId, at),
+  );
+  const promo = await firstRow<{ t: string | null }>(
+    db
+      .prepare(
+        "SELECT MAX(expires_at) AS t FROM bundle_grants WHERE user_id = ? AND source = 'promo_code' AND feature_set_name = ? AND revoked_at IS NULL AND expires_at > ?",
+      )
+      .bind(userId, promoFeatureSet(appId), at),
+  );
+  return [at, trial?.t ?? at, promo?.t ?? at].reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a));
+}
+
 /** Write the grant. Returns its expiry. */
 export async function grantPromoMonths(
   deps: { db: SqlDb; environment: MoneyEnvironment },
   g: PromoGrant,
 ): Promise<{ expiresAt: string; grantKey: string }> {
   await pinPromoSet(deps.db, g.appId);
-  const expiresAt = addMonths(g.nowIso, g.months);
+  const expiresAt = addMonths(await promoStart(deps.db, g.userId, g.appId, g.nowIso), g.months);
   await upsertBundleGrant(deps, {
     userId: g.userId,
     source: 'promo_code',

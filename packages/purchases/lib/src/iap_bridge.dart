@@ -188,6 +188,12 @@ abstract interface class IapBridge {
   /// Ask the store to restore prior purchases — [pipeline 5]M-10.
   Future<IapPurchaseResult> restore();
 
+  /// Open the store's own OFFER-CODE redemption sheet (lane growth-codes): an
+  /// App Store build never shows our own code field (guideline 3.1.1), so a
+  /// code there is Apple's, redeemed in Apple's sheet. Answers false where the
+  /// store has no such sheet or it could not be opened. Must not throw.
+  Future<bool> presentCodeRedemptionSheet();
+
   /// The store's current belief about this customer, read once.
   Future<IapCustomerState> currentCustomerState();
 

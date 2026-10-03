@@ -134,6 +134,36 @@ class DioOfferCodeTransport implements core.OfferCodeTransport {
   }
 
   @override
+  Future<core.Result<core.InviteCounts>> inviteCounts({
+    required String? accessToken,
+    required String app,
+  }) async {
+    if (_signedOut(accessToken)) {
+      return const core.Result<core.InviteCounts>.err(_noSession);
+    }
+    try {
+      final Response<dynamic> res = await _dio.get<dynamic>(
+        '$_base'
+        '/v1/invites/mine',
+        queryParameters: <String, Object?>{'app': app},
+        options: _options(accessToken!),
+      );
+      final core.InviteCounts? counts = res.statusCode == 200
+          ? core.InviteCounts.tryParse(res.data)
+          : null;
+      return counts == null
+          ? core.Result<core.InviteCounts>.err(
+              core.Failure('invite counts refused (${res.statusCode})'),
+            )
+          : core.Result<core.InviteCounts>.ok(counts);
+    } catch (e) {
+      return core.Result<core.InviteCounts>.err(
+        core.Failure('invite counts failed', cause: e),
+      );
+    }
+  }
+
+  @override
   Future<core.Result<core.InviteState>> claimInvite({
     required String? accessToken,
     required String app,

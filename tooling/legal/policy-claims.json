@@ -181,7 +181,7 @@
         "files": [
           "services/platform/src/lib/codes/invites.ts"
         ],
-        "pattern": "if \\(rules\\.noSelfInvite && f\\.inviterId === f\\.inviteeId\\)",
+        "pattern": "rules\\.noSelfInvite && \\(f\\.inviterId === f\\.inviteeId \\|\\| ",
         "why": "The paragraph's rules (one reward per invited person, five a year, a 7-day-old account with a confirmed address that started using the app and never had a paid plan or trial) are inviteVerdict over tooling/catalog/offers.json `st-invite.rules`, one red case each in services/platform/test/offer-codes.test.ts; the code is stored only as its SHA-256 (src/lib/codes/verify.ts), and a free month is a `promo_code` grant the AI meter never counts as paid."
       }
     },

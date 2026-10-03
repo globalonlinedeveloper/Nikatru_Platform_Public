@@ -6,7 +6,8 @@
 // account record, the app's own rows, the money tables), never the client's.
 //
 //   rule                      refuses when                            final?
-//   noSelfInvite              invitee === inviter                     yes
+//   noSelfInvite              invitee === inviter, or the two         yes
+//                             accounts' canonical addresses match
 //   inviterGone               the inviter's account was erased        yes
 //   noPriorProOrTrial         any entitlement row or bundle grant     yes
 //                             the invitee ever held for the app
@@ -24,6 +25,9 @@ import type { InviteRules } from './offers';
 export interface InviteFacts {
   readonly inviteeId: string;
   readonly inviterId: string | null;
+  /** Both accounts' addresses, from the identity provider (compared canonicalised, never stored). */
+  readonly inviteeEmail: string;
+  readonly inviterEmail: string;
   /** The invitee's account creation instant, from the identity provider. */
   readonly accountCreatedAt: string | null;
   readonly emailConfirmed: boolean;
@@ -50,9 +54,26 @@ export type InviteVerdict = { ok: true } | { ok: false; rule: InviteRule; final:
 // @ceiling none — a unit of time, not a platform resource
 const DAY_MS = 86_400_000;
 
+/**
+ * An address as one mailbox: trimmed, lower-cased, a `+tag` dropped, and for
+ * Gmail the dots too (they deliver to the same inbox). Used only to compare.
+ */
+export function canonicalEmail(email: string): string {
+  const e = email.trim().toLowerCase();
+  const at = e.lastIndexOf('@');
+  if (at < 1) return e;
+  let local = e.slice(0, at).split('+')[0];
+  let domain = e.slice(at + 1);
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') local = local.replace(/\./g, '');
+  return `${local}@${domain}`;
+}
+
 /** The verdict over the facts. Final refusals first, then the ones time can lift. */
 export function inviteVerdict(f: InviteFacts, rules: InviteRules): InviteVerdict {
-  if (rules.noSelfInvite && f.inviterId === f.inviteeId) return { ok: false, rule: 'noSelfInvite', final: true };
+  if (rules.noSelfInvite && (f.inviterId === f.inviteeId || (f.inviteeEmail !== '' && canonicalEmail(f.inviteeEmail) === canonicalEmail(f.inviterEmail)))) {
+    return { ok: false, rule: 'noSelfInvite', final: true };
+  }
   if (f.inviterId === null) return { ok: false, rule: 'inviterGone', final: true };
   if (rules.noPriorProOrTrial && f.priorProOrTrial) return { ok: false, rule: 'noPriorProOrTrial', final: true };
   if (f.inviterRewardsThisYear >= rules.maxRewardsPerInviterPerYear) return { ok: false, rule: 'maxRewardsPerInviterPerYear', final: true };

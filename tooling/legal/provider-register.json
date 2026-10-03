@@ -106,6 +106,7 @@
       "invites",
       "claim",
       "settle",
+      "mine",
       "health",
       "config",
       "webhooks",

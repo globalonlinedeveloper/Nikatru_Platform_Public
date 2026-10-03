@@ -1016,6 +1016,19 @@ const WIRE_CONTRACTS = [
     serverOnly: { code: 'POST /v1/invites/code answers it, read by DioOfferCodeTransport.inviteCode; the other invite routes of the same file send it (the body parse reads routes/invites.ts whole).' },
   },
   {
+    id: 'invites-mine',
+    kind: 'body',
+    server: 'services/platform/src/routes/invites-mine.ts',
+    client: {
+      file: 'packages/core/lib/src/offer_code_transport.dart',
+      member: 'static InviteCounts? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['joined', 'rewarded'],
+    clientOnly: {},
+    serverOnly: {},
+  },
+  {
     id: 'invites-settle',
     kind: 'body',
     server: 'services/platform/src/routes/invites.ts',

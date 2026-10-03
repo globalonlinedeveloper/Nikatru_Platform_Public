@@ -45,6 +45,13 @@ class _FakeCodes implements OfferCodeTransport {
   }) async => const Result<InviteState>.ok(InviteState(state: 'pending'));
 
   @override
+  Future<Result<InviteCounts>> inviteCounts({
+    required String? accessToken,
+    required String app,
+  }) async =>
+      const Result<InviteCounts>.ok(InviteCounts(joined: 0, rewarded: 0));
+
+  @override
   Future<Result<InviteState>> settleInvite({
     required String? accessToken,
     required String app,

@@ -29,6 +29,12 @@ class _NoCodes implements OfferCodeTransport {
   }) async => const Result<InviteState>.err(Failure('none'));
 
   @override
+  Future<Result<InviteCounts>> inviteCounts({
+    required String? accessToken,
+    required String app,
+  }) async => const Result<InviteCounts>.err(Failure('none'));
+
+  @override
   Future<Result<InviteState>> settleInvite({
     required String? accessToken,
     required String app,

@@ -64,6 +64,7 @@ import accountExport from './routes/account-export';
 import accountNominee from './routes/account-nominee';
 import codes from './routes/codes';
 import invites from './routes/invites';
+import invitesMine from './routes/invites-mine';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
 import appleCode from './routes/apple-code';
@@ -273,6 +274,7 @@ app.use('/v1/codes/*', platformAuth);
 app.route('/v1', codes);
 app.use('/v1/invites/*', platformAuth);
 app.route('/v1', invites);
+app.route('/v1', invitesMine);
 // ⏱ 2026-10-02 · review of #1155, findings 1 and 3: the native Apple sheet's
 // code exchange (routes/apple-code.ts) and the recency check before a sign-in
 // method is linked or unlinked (routes/identity-change.ts), under the same line.

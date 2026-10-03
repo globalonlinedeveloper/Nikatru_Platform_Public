@@ -258,6 +258,21 @@ class RevenueCatBridge implements IapBridge {
     }
   }
 
+  /// Apple's offer-code sheet (lane growth-codes). iOS only: RevenueCat's
+  /// `presentCodeRedemptionSheet` has no Android or macOS counterpart, so
+  /// those answer false and the caller shows where to redeem instead.
+  @override
+  Future<bool> presentCodeRedemptionSheet() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return false;
+    try {
+      await rc.Purchases.presentCodeRedemptionSheet();
+      return true;
+    } catch (e) {
+      debugPrint('[billing] the offer-code sheet could not open: $e');
+      return false;
+    }
+  }
+
   @override
   Future<IapCustomerState> currentCustomerState() async {
     if (!_capabilities.canPurchase && !_capabilities.canRestore) {

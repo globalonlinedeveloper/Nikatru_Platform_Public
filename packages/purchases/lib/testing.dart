@@ -155,6 +155,15 @@ class FakeIapBridge implements IapBridge {
   }
 
   @override
+  Future<bool> presentCodeRedemptionSheet() async {
+    onCall?.call('presentCodeRedemptionSheet');
+    return codeSheetAnswer;
+  }
+
+  /// What [presentCodeRedemptionSheet] answers.
+  bool codeSheetAnswer = true;
+
+  @override
   Future<IapPurchaseResult> restore() async {
     onCall?.call('restore');
     restoreCalls++;

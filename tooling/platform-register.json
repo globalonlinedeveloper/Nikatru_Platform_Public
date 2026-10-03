@@ -706,6 +706,19 @@
       }
     },
     {
+      "id": "invites-mine",
+      "method": "GET",
+      "path": "/v1/invites/mine",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/invites-mine.ts",
+      "purpose": "⏱ 2026-10-03 · lane growth-codes. \"Your invites\": `?app=` → `{ joined, rewarded }`, two counts over the invites that name this account as the inviter — never who joined. EVENTS_LIMITER keyed `invites:<sub>`.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_offer_code_transport.dart",
+        "expression": "'/v1/invites/mine'",
+        "note": "The real `_dio.get` inside DioOfferCodeTransport.inviteCounts (packages/api_client)."
+      }
+    },
+    {
       "id": "invites-settle",
       "method": "POST",
       "path": "/v1/invites/settle",
