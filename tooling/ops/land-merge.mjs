@@ -16,6 +16,13 @@
 //   gh pr merge <n> --repo <r> --squash --match-head-commit <head>
 //              --subject "<title> (#<n>)" --body-file <the PR body>
 //
+// ⏱ 2026-10-03 (lead 7185eb): the repository's squash default is now ALSO
+// squash_merge_commit_title=PR_TITLE / squash_merge_commit_message=PR_BODY
+// (gh api -X PATCH repos/<r>, 15:38Z), as a second line of defence: #1165's own
+// squash (9631dbb6) went through a lander that ran plain `gh pr merge --squash`
+// and reddened main on assert-main-rows. This file still passes both, so a
+// setting changed back later cannot drop the line again.
+//
 // The body and the head come from ONE `gh pr view` read, and
 // --match-head-commit makes GitHub refuse the merge if the head moved after it,
 // so the message is the body of the commit that merges. The `Rows:` line is
