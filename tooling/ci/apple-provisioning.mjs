@@ -104,13 +104,19 @@ export function validateRegister(reg) {
       if (!ekOk) {
         p.push(`capabilities.${name}.entitlementKey must be null, a string, or { ios, macos } each a key or null (not both null)`);
       }
+      // ⏱ 2026-10-03 · APP_ATTEST: the object form names EVERY profile type,
+      // each a key or null, and not all null — the live MAC_APP_STORE profile
+      // carries no App Attest key while the IOS_APP_STORE one does. A type left
+      // out is still refused: absent is not a spelling of "none".
       const pk = c.profileKey;
       const pkOk =
         pk === null ||
         (typeof pk === 'string' && pk) ||
-        (pk && typeof pk === 'object' && PROFILE_KINDS.every((k) => typeof pk[k.profileType] === 'string' && pk[k.profileType]) &&
+        (pk && typeof pk === 'object' && !Array.isArray(pk) &&
+          PROFILE_KINDS.every((k) => Object.hasOwn(pk, k.profileType) && (pk[k.profileType] === null || (typeof pk[k.profileType] === 'string' && pk[k.profileType]))) &&
+          PROFILE_KINDS.some((k) => typeof pk[k.profileType] === 'string') &&
           Object.keys(pk).every((t) => PROFILE_KINDS.some((k) => k.profileType === t)));
-      if (!pkOk) p.push(`capabilities.${name}.profileKey must be null, a string, or one string per profile type`);
+      if (!pkOk) p.push(`capabilities.${name}.profileKey must be null, a string, or one string per profile type (null where that type carries none, not all null)`);
       if (c.apiWritable === false && !(typeof c.portalStep === 'string' && c.portalStep.includes('{identifier}'))) {
         p.push(`capabilities.${name} is not API-writable, so it must name its portal step (with {identifier})`);
       }
