@@ -59,13 +59,35 @@
 // All three are the house failure mode: "a check that silently stopped checking".
 // The lesson is encoded here rather than in a session note, per CLAUDE.md.
 //
+// ⏱ 2026-10-03 — A DRAFT PULL REQUEST RUNS NOTHING (rules A1, A6, A10, A11).
+// Stacked pull requests (body `STACKED ON: #a, #b`) cannot merge until their
+// bases do, and every base merge used to re-run their full ~40-job CI, showing
+// as red or cancelled runs that judged nothing. They now live as DRAFTS and are
+// marked ready once every base has merged; GitHub refuses to merge a draft, so a
+// draft needs no gate at all. ONE predicate carries that, byte for byte:
+// DRAFT_SKIP_IF on a constituent, DRAFT_GATE_IF (`always() && DRAFT_SKIP_IF`) on
+// the aggregator. It is the one `if:` A6 admits on a constituent, and only when
+// the aggregator skips on the same predicate, so on a draft the gate is skipped
+// WITH its lanes rather than reading them skipped, and on every other event the
+// predicate is true and nothing changes. A10 proves it on the parsed graph: a
+// draft run starts no job, and a ready_for_review run (and a push to main)
+// starts every constituent and the gate. A11 holds every workflow that skips
+// drafts to `ready_for_review` in its pull_request `types:`, the event that
+// gives a readied draft its one run. Not in workflow-scan.mjs beside
+// POST_GATE_IF because that file is claimed by two production deploy units
+// (tooling/ci/lane-map.json deployUnits): a CI-only rule would redeploy them.
+// ⚠️ The skipped ci-gate check of a draft run satisfies branch protection, so
+// between `gh pr ready` and the ready run's ci-gate (created only once its needs
+// finish) GitHub alone would allow a merge. land-rules.mjs gateVerdict reads only
+// SUCCESS as GREEN, so the lander waits through it; a hand merge must too.
+//
 // Usage:  node tooling/ci/assert-green-means-ran.mjs [repoRoot]
 // Exit 0 = every aggregate verdict is complete, no job can green-skip, and every
 //          drift check proves its artifact was written.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents, POST_GATE_IF, postGateClass, failFastLane } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents, POST_GATE_IF, POST_GATE_EVENTS, postGateClass, failFastLane } from './workflow-scan.mjs';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 
@@ -80,6 +102,8 @@ const AGGREGATORS = [
     workflow: '.github/workflows/ci.yml',
     job: 'ci-gate',
     why: 'the root of trust — assert-gate-passed.mjs polls this check run and both production deploys plus branch protection ride on it',
+    // A10: a draft pull request runs nothing in this workflow, gate included.
+    draftSkips: true,
   },
   {
     workflow: '.github/workflows/build-platforms.yml',
@@ -95,6 +119,81 @@ const AGGREGATORS = [
  *  nothing. Removing a preflight entirely is a deliberate act; it should cost an
  *  edit here. */
 const REQUIRED_SECRET_GATES = ['.github/workflows/e2e.yml'];
+
+/** THE DRAFT PREDICATE, byte for byte (header, ⏱ 2026-10-03). False on a pull_request
+ *  event whose PR is a draft, true on every other event: a push or a dispatch carries no
+ *  `pull_request`, and `null != true` holds. The aggregator form keeps `always()` first,
+ *  so a red lane is still read on every run that is not a draft. */
+const DRAFT_SKIP_IF = 'github.event.pull_request.draft != true';
+const DRAFT_GATE_IF = `always() && ${DRAFT_SKIP_IF}`;
+const DRAFT_PREDICATES = new Set([DRAFT_SKIP_IF, DRAFT_GATE_IF]);
+
+/**
+ * A10's plan: which jobs of `wf` a run STARTS for `ctx` = { event, ref, draft } when
+ * every job that starts succeeds. `{ starts: Set<id>, unread: [{ id, cond }] }`.
+ * A job-level `if:` is read only in the shapes this file grades — none (success() over
+ * its needs), the two draft predicates, `always()`, POST_GATE_IF, and an FF-2 follow-up
+ * (`failure() && …`, which nothing red in this plan starts). Any other `if:` is UNREAD
+ * and planned as starting, so a draft plan names it instead of passing over it. A call
+ * job's callee jobs start only when the call job does, so the call job stands for them.
+ */
+function planRun(wf, ctx) {
+  const memo = new Map();
+  const unread = [];
+  const draft = ctx.event === 'pull_request' && ctx.draft === true;
+  const postGate = POST_GATE_EVENTS.includes(ctx.event) && ctx.ref === 'refs/heads/main';
+  const starts = (id, stack) => {
+    if (memo.has(id)) return memo.get(id);
+    const job = wf.jobs.get(id);
+    if (!job || stack.has(id)) return false; // a ghost need (A2 names it) or a cycle (GitHub refuses one)
+    stack.add(id);
+    const needsStart = job.needs.every((n) => starts(n, stack));
+    stack.delete(id);
+    const c = job.jobIf === null ? null : job.jobIf.cond;
+    let v;
+    if (c === null) v = needsStart;
+    else if (c === DRAFT_SKIP_IF) v = needsStart && !draft;
+    else if (c === DRAFT_GATE_IF) v = !draft;
+    else if (c === 'always()') v = true;
+    else if (c === POST_GATE_IF) v = needsStart && postGate;
+    else if (/^failure\(\)/.test(c)) v = false;
+    else {
+      unread.push({ id, cond: c });
+      v = needsStart;
+    }
+    memo.set(id, v);
+    return v;
+  };
+  for (const id of wf.jobs.keys()) starts(id, new Set());
+  return { starts: new Set([...memo].filter(([, v]) => v).map(([id]) => id)), unread };
+}
+
+/** The `types:` under `on: pull_request:`, or null when that trigger lists none (GitHub's
+ *  defaults then apply, and they omit ready_for_review). Flow and block lists. */
+function pullRequestTypes(wf) {
+  const head = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
+  const at = head.findIndex((l) => /^ {2}pull_request:\s*$/.test(l.text));
+  if (at === -1) return null;
+  const unq = (s) => s.trim().replace(/^['"]|['"]$/g, '');
+  for (let i = at + 1; i < head.length; i++) {
+    const t = head[i].text;
+    if (t.trim() === '') continue;
+    if (!/^ {4}/.test(t)) break;
+    const m = t.match(/^ {4}types:\s*(.*)$/);
+    if (!m) continue;
+    const rest = m[1].trim();
+    if (rest.startsWith('[')) return rest.replace(/^\[/, '').replace(/\]$/, '').split(',').map(unq).filter(Boolean);
+    if (rest !== '') return [unq(rest)];
+    const items = [];
+    for (const l of head.slice(i + 1)) {
+      const b = l.text.match(/^ {6}-\s*(\S+)\s*$/);
+      if (!b) break;
+      items.push(unq(b[1]));
+    }
+    return items;
+  }
+  return null;
+}
 
 /* THE POST-GATE PREDICATE (rule A9) is POST_GATE_IF, and the class is postGateClass,
    both from workflow-scan.mjs [ADR 095 §4]: assert-ops-register admits its RED-SINCE
@@ -215,6 +314,8 @@ const bodyOf = (job) => job.lines.map((l) => l.text);
 
 // ═════ A. every aggregating job's verdict set is complete ════════════════════
 let aggregatorsChecked = 0;
+/** A10's readings, one per draftSkips aggregator, for the passing line. */
+const draftPlans = [];
 /** aggregator target → the jobs A9 admits as post-gate (exempt from A2 and A6). */
 const postGateJobs = new Map();
 
@@ -291,6 +392,20 @@ for (const target of AGGREGATORS) {
         'Without it the aggregate inherits the default success() and reports SKIPPED the moment any lane fails — and a skipped required check SATISFIES branch protection. ' +
         'The verdict tests below only mean anything because this job runs no matter what its lanes did.',
     );
+  } else {
+    // ⏱ 2026-10-03 — EXACTLY, not "mentions always()". `always() && <anything>` passed
+    // the test above, and every conjunct is an event on which the gate is SKIPPED, which
+    // branch protection reads as satisfied. The one conjunct admitted is the draft
+    // predicate, and only on an aggregator declared draftSkips (A10 proves its plan).
+    const want = target.draftSkips ? DRAFT_GATE_IF : 'always()';
+    if (cond !== want) {
+      problems.push(
+        `${where} carries \`if: ${cond}\`; it must be exactly \`${want}\`. ` +
+          (target.draftSkips
+            ? 'This aggregator skips draft pull requests (draftSkips): the gate must skip on exactly the predicate its lanes skip on, and on nothing else, or a draft run reads every lane skipped and goes red, or some other event skips the gate, which branch protection reads as satisfied.'
+            : 'Every conjunct after always() names events on which this job is SKIPPED, and a skipped required check satisfies branch protection.'),
+      );
+    }
   }
 
   // A2. needs-completeness. The failure channel is adding a lane and forgetting
@@ -350,16 +465,90 @@ for (const target of AGGREGATORS) {
   // the aggregate. Better to say so here, at authoring time, than at 03:00 in a
   // red CI run — and the alternative (letting the lane opt out) is precisely the
   // hole this file closes. A9's post-gate jobs are the one exemption.
+  // ⏱ 2026-10-03 — THE ONE ADMITTED `if:` is DRAFT_SKIP_IF, and only while the
+  // aggregator carries DRAFT_GATE_IF: the lane and the gate then skip on the same
+  // event, a draft, which cannot merge, and both run on every other one (A10 proves it).
+  const draftGate = cond === DRAFT_GATE_IF;
+  let draftLanes = 0;
   for (const j of others.filter((o) => !postGate.includes(o))) {
     const laneIf = wf.jobs.get(j).jobIf;
     const c = laneIf === null ? null : laneIf.cond;
     if (c === null) continue;
+    if (c === DRAFT_SKIP_IF && draftGate) {
+      draftLanes++;
+      continue;
+    }
+    if (c === DRAFT_SKIP_IF) {
+      problems.push(
+        `${target.workflow}: lane "${j}" skips draft pull requests (\`if: ${c}\`) and "${target.job}" does not (its \`if:\` is ${cond === null ? 'absent' : `\`${cond}\``}, not \`${DRAFT_GATE_IF}\`). ` +
+          'On a draft the gate then runs, reads this lane skipped, and goes red over a pull request that cannot merge anyway. Skip the gate on the same predicate, or drop it from the lane.',
+      );
+      continue;
+    }
     problems.push(
       `${target.workflow}: lane "${j}" carries a job-level \`if: ${c}\`, and "${target.job}" aggregates it. ` +
         'Whenever that condition is false the lane resolves to `skipped`, which the aggregate must treat as not-green — so this lane either always runs, or it is not a constituent of the gate. ' +
         'A lane that opts out of the gate on some events is a gate that means different things on different events.',
     );
   }
+
+  // A10. ⏱ 2026-10-03 — A DRAFT RUNS NOTHING, A READIED ONE RUNS EVERYTHING. Proved on
+  // the parsed graph (planRun), not on the predicate's spelling alone: a lane added
+  // without the predicate starts on every draft push while its gate is skipped, which
+  // is exactly the unaggregated work this rule removes; a constituent that needs a job
+  // which never starts is skipped on the one run that has to judge the PR.
+  if (!target.draftSkips) continue;
+  const types = pullRequestTypes(wf);
+  if (!workflowEvents(wf).has('pull_request') || types === null || !types.includes('ready_for_review')) {
+    problems.push(
+      `${target.workflow} skips draft pull requests (draftSkips) and its \`on: pull_request: types:\` is ${types === null ? 'absent (GitHub\'s defaults omit it)' : `[${types.join(', ')}]`}, without \`ready_for_review\`. ` +
+        'Marking a draft ready is then no event at all: the pull request has no ci-gate until somebody pushes, and every stacked PR waits on a run that never starts.',
+    );
+  }
+  const draftPlan = planRun(wf, { event: 'pull_request', draft: true });
+  for (const u of draftPlan.unread) {
+    problems.push(`${target.workflow}: job "${u.id}" carries \`if: ${u.cond}\`, a shape A10 cannot plan, so whether it runs on a draft pull request is unknown. Use one of the graded shapes (none, the draft predicates, always(), POST_GATE_IF, an FF-2 follow-up).`);
+  }
+  if (draftPlan.starts.size) {
+    problems.push(
+      `a draft pull_request run of ${target.workflow} would start ${draftPlan.starts.size} job(s): ${[...draftPlan.starts].map((j) => `"${j}"`).join(', ')}. ` +
+        `A draft cannot merge and "${target.job}" is skipped on it, so that work is judged by nothing. Give each job with no \`needs\` \`if: ${DRAFT_SKIP_IF}\`; a job that needs one inherits the skip.`,
+    );
+  }
+  const mustStart = [target.job, ...others.filter((o) => !postGate.includes(o))];
+  for (const [label, ctx, also] of [
+    ['a ready_for_review pull_request run', { event: 'pull_request', draft: false }, []],
+    ['a push to main', { event: 'push', ref: 'refs/heads/main', draft: null }, postGate],
+  ]) {
+    const plan = planRun(wf, ctx);
+    const dark = [...mustStart, ...also].filter((j) => !plan.starts.has(j));
+    if (dark.length) {
+      problems.push(
+        `${label} of ${target.workflow} would not start ${dark.map((j) => `"${j}"`).join(', ')}. ` +
+          'That is the run that judges the change; a constituent it skips is a lane that went dark under the gate.',
+      );
+    }
+  }
+  draftPlans.push({ target, jobs: wf.jobs.size, draftStarts: draftPlan.starts.size, readyStarts: mustStart.length - 1, draftLanes });
+}
+
+// A11. ⏱ 2026-10-03 — EVERY WORKFLOW THAT SKIPS DRAFTS HEARS ready_for_review. A10 asks it
+// of the aggregators; codeql.yml skips drafts too, and ci.yml's CodeQL PR rule waits for
+// its analysis on the run that readies the PR. A workflow with no pull_request trigger
+// never sees a draft, so the predicate is true there and nothing is asked.
+let draftWorkflows = 0;
+for (const w of parseAllWorkflows(ROOT)) {
+  const skipping = [...w.jobs.values()].filter((j) => j.jobIf !== null && DRAFT_PREDICATES.has(j.jobIf.cond));
+  if (!skipping.length || !workflowEvents(w).has('pull_request')) continue;
+  const types = pullRequestTypes(w);
+  if (types === null || !types.includes('ready_for_review')) {
+    problems.push(
+      `${w.rel}: ${skipping.map((j) => `job "${j.name}"`).join(', ')} skip(s) draft pull requests, and \`on: pull_request: types:\` is ${types === null ? 'absent (GitHub\'s defaults omit ready_for_review)' : `[${types.join(', ')}]`}. ` +
+        'Add `ready_for_review`: it is the one event a readied draft gets, so without it this workflow never runs on that pull request until its next push.',
+    );
+    continue;
+  }
+  draftWorkflows++;
 }
 
 // A7. ⏱ 2026-09-24 — A WORKFLOW ONLY `workflow_call` CAN START IS GATED ONLY
@@ -677,5 +866,12 @@ console.log(
     `${laneCallees.length ? `, ${calledOnlyGated} of ${laneCallees.length} called-only workflow(s) called by an aggregator constituent` : ''}` +
     `${laneCallees.length ? `, ${calleeVerdicts} of ${laneCallees.length} ending in one always-run verdict job over every other job` : ''}` +
     `${postGateCount ? `, ${postGateCount} post-gate job(s) run only after their aggregator on a push to main` : ''}` +
-    `${postGateCallees.length ? `, ${postGateCalleesClean} of ${postGateCallees.length} post-gate callee(s) with no job-level \`if:\`` : ''}`,
+    `${postGateCallees.length ? `, ${postGateCalleesClean} of ${postGateCallees.length} post-gate callee(s) with no job-level \`if:\`` : ''}` +
+    draftPlans
+      .map(
+        (d) =>
+          `, a draft pull_request run of ${d.target.workflow} starts ${d.draftStarts} of ${d.jobs} job(s) (${d.draftLanes} lane(s) skip drafts with "${d.target.job}") and a ready_for_review run starts all ${d.readyStarts} constituent(s) and the gate`,
+      )
+      .join('') +
+    `${draftWorkflows ? `, ${draftWorkflows} workflow(s) skipping drafts hear ready_for_review` : ''}`,
 );
