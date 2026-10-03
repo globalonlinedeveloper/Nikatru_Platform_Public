@@ -24,8 +24,23 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 /// ⚠️ WEB IS THE HONEST EXCEPTION. A browser has no OS keychain a page can
 /// reach, so `SecureStore` on web is backed by ordinary web storage and this
 /// class cannot make it stronger. That is a property of the platform, not a bug
-/// here — it is stated rather than papered over, and it is why the web build
-/// leans on short token lifetimes instead.
+/// here — it is stated rather than papered over.
+///
+/// 🔴 AND NO SHORT LIFETIME MAKES UP FOR IT (rv2-security-008, 2026-10-01: this
+/// paragraph said the web build "leans on short token lifetimes", and none is
+/// short). What bounds a session taken from that storage is what
+/// `tooling/mail-transport.json` records (`jwt_exp`..`sessions_inactivity_timeout`,
+/// :139-143, and the owner's rule at :127):
+///   · the ACCESS token lives 1 h (`jwt_exp` 3600);
+///   · the REFRESH token is single-use — rotated on every refresh, and one
+///     replayed more than 10 s after use is reuse, which revokes the session
+///     (GoTrue's defaults, recorded there and not yet read back live);
+///   · the SESSION never ends on its own — the owner's rule
+///     (`sessions_timebox`, `sessions_inactivity_timeout` null): signed in until
+///     a password reset or a sign-out from all devices.
+/// So a refresh token lifted from web storage is good until it, or the user's
+/// copy, is next refreshed; rotation is what turns the theft into a visible
+/// sign-out, and a password reset is what ends it.
 ///
 /// 🔴 WRITES AND DELETES ARE NOT SYMMETRIC, and the difference is the whole of
 /// [removePersistedSession]. A failed WRITE costs the user a re-login. A failed

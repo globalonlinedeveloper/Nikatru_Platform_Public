@@ -5189,6 +5189,10 @@ describe('assert-stamp-properties', () => {
   // A fixture thinner than the tree it stands for fails for reasons that have
   // nothing to do with the behaviour under test.
   const goodTest = `
+group('property: release-silences-debugprint', () {
+  test('r1', () {});
+  test('r2', () {});
+});
 group('property: paywall-gate-driven-by-server', () {
   test('m1', () {});
   test('m2', () {});
@@ -5933,6 +5937,7 @@ messenger.showSnackBar(SnackBar(content: Text(
   // every outbound test stays green.
   const goodMain = `
 Future<void> main() async {
+  silenceDebugPrintInRelease();
   await TelemetryBootstrap.init(config, appRunner: () async {
     AppErrorScreen.install();
     final core.NotificationService notifications =
@@ -6230,6 +6235,23 @@ class AnalyticsLifecycle {
 }
 `;
 
+  // [rv2-security-006] The release-mode debugPrint silencer and the chassis boot
+  // sequence that calls it first — both repo-absolute anchors of
+  // release-silences-debugprint.
+  const RELEASE_LOGGING = 'packages/design_system/lib/src/logging/release_logging.dart';
+  const goodReleaseLogging = `
+void silenceDebugPrintInRelease({bool release = kReleaseMode}) {
+  if (release) debugPrint = (String? message, {int? wrapWidth}) {};
+}
+`;
+  const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';
+  const goodBootstrap = `
+Future<void> bootstrapNikatru({required VoidCallback run}) async {
+  silenceDebugPrintInRelease();
+  WidgetsFlutterBinding.ensureInitialized();
+  run();
+}
+`;
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -6275,6 +6297,7 @@ class LocalNotificationService {
   const SUBLY_NOTIFS = 'apps/subscriptiontracker/lib/services/notifications/notification_service.dart';
   const goodSublyMain = `
 Future<void> main() async {
+  silenceDebugPrintInRelease();
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
   runApp(const ProviderScope(child: SublyApp()));
@@ -6469,7 +6492,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, [UPDATE_EXIT_DART]: updateExitDart, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, [RELEASE_LOGGING]: goodReleaseLogging, [BOOTSTRAP]: goodBootstrap, [UPDATE_EXIT_DART]: updateExitDart, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at

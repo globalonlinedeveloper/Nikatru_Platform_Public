@@ -4,6 +4,7 @@ import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 
 // ApiException is generic (transport-level) and lives in the shared client;
@@ -34,6 +35,10 @@ abstract class ApiClient {
     required DateTime paidOn,
     required String idempotencyKey,
   });
+
+  /// Every charge and price edit across the user's plans over the last year —
+  /// `GET /v1/insights` (ST-P6 trend, ST-I4 price-rise alert).
+  Future<SpendHistory> getSpendHistory();
   Future<BudgetInfo> getBudget();
   Future<BudgetInfo> updateBudget(BudgetInfo budget);
   Future<Entitlements> getEntitlements();
