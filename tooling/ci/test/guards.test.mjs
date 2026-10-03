@@ -8422,7 +8422,9 @@ const InitializationSettings settings = InitializationSettings(
       // `bundledContentPackSourceProvider` (ST-T6a); MIN_DOMAIN went 64 → 66.
       // 2026-09-30: 65 → 69 for the four offline providers (audit D28); MIN_DOMAIN
       // went 66 → 70.
-      assert.match(out, /COVERAGE LOST — the domain parse found 69/);
+      // 2026-10-03: 70 → 71 for `feedbackHostProvider` (lane feedback-intake);
+      // MIN_DOMAIN went 70 → 71.
+      assert.match(out, /COVERAGE LOST — the domain parse found 70/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

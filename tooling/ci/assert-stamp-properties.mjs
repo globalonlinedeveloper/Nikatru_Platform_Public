@@ -1716,7 +1716,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // domain, all four ADMITTED gaps in UNASSERTED with their reason (the stamped
 // test/offline_cache_test.dart drives them; no chassis property does), in the
 // same PR as the providers.
-const MIN_DOMAIN = 70;
+// 70 -> 71 on 2026-10-03 (lane feedback-intake): `feedbackHostProvider` joined the
+// domain, an ADMITTED gap in UNASSERTED with its reason. Measured by this guard's
+// own ok line: "tracked domain: 71 chassis behaviour(s)".
+const MIN_DOMAIN = 71;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
