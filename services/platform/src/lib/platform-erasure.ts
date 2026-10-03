@@ -107,8 +107,21 @@ export async function purgeVerifiedSignups(
  * uses (probeReachability, sendHeartbeat).
  *
  * @ceiling none — a per-call wait we chose, not a platform resource.
+ *
+ * ⏱ 2026-10-02 — TWO ATTEMPTS OF FIVE SECONDS, NOT ONE OF TEN (E2E live #204,
+ * run 36837985672). `DELETE /v1/account` answered 202 after 17.9 s with the
+ * signup purge `pending`: the platform's read never reached Box C (its GoTrue log
+ * holds only the E2E's own reads for that window), so one lost request cost the
+ * whole ten seconds and left a real user waiting for the nightly retry. A second
+ * attempt inside the same budget turns one lost request into a normal answer; the
+ * worst case is still ten seconds. Only a TRANSIENT outcome is retried: a 404, a
+ * 401/403 or any other definite answer is the answer.
  */
-export const ACCOUNT_READ_TIMEOUT_MS = 10_000;
+// @ceiling none — a retry count we chose, not a platform resource
+export const ACCOUNT_READ_ATTEMPTS = 2;
+// @ceiling none — a per-attempt wait we chose, not a platform resource
+export const ACCOUNT_READ_ATTEMPT_MS = 5_000;
+export const ACCOUNT_READ_TIMEOUT_MS = ACCOUNT_READ_ATTEMPTS * ACCOUNT_READ_ATTEMPT_MS;
 
 /**
  * What the identity provider says about ONE account — the admin-user read, in one
@@ -128,6 +141,10 @@ export const ACCOUNT_READ_TIMEOUT_MS = 10_000;
  *
  * The key is never echoed; the address is returned to the caller and never logged
  * here. `fetchImpl` is injectable for tests, as in lib/report-notify.ts.
+ *
+ * A `transient` outcome is tried again once (ACCOUNT_READ_ATTEMPTS, each bounded
+ * by `attemptMs`), so every caller — the signup purge on the request path, the
+ * nightly erasure retry and the reminder job — gets the retry from this one place.
  */
 export type AccountRead =
   | { kind: 'found'; email: string; email_confirmed_at: string | null }
@@ -140,7 +157,22 @@ export async function readAccount(
   serviceRoleKey: string,
   userId: string,
   fetchImpl: typeof fetch = fetch,
-  timeoutMs: number = ACCOUNT_READ_TIMEOUT_MS,
+  attemptMs: number = ACCOUNT_READ_ATTEMPT_MS,
+): Promise<AccountRead> {
+  let read: AccountRead = { kind: 'transient', why: 'the identity provider was not asked' };
+  for (let attempt = 1; attempt <= ACCOUNT_READ_ATTEMPTS; attempt++) {
+    read = await readAccountOnce(supabaseUrl, serviceRoleKey, userId, fetchImpl, attemptMs);
+    if (read.kind !== 'transient') return read;
+  }
+  return read;
+}
+
+async function readAccountOnce(
+  supabaseUrl: string | undefined,
+  serviceRoleKey: string,
+  userId: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
 ): Promise<AccountRead> {
   let res: Response;
   try {

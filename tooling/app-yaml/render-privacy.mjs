@@ -196,6 +196,17 @@ const RETENTION_MEANING = {
   1100: 'the derived rollup, which holds strictly less about a person than the raw table it is computed from',
 };
 
+/** Section 5's network-address paragraphs: the same for every app, because the
+ *  edge and the identity store they describe are shared by every app. SYN-P2
+ *  (2026-10-02); the measurements behind each sentence are in the `hostinger`
+ *  row's `transits.ip_address` in tooling/legal/provider-register.json. */
+const NETWORK_ADDRESS_NOTICE = [
+  'Apart from a pending sign-in verification, described next, no network address is kept with any of the rows above, or with your account. Our sign-in service records the address a request comes from, and since 2 October 2026 the database it writes to empties that field on every write, so the account and sign-in records hold none.',
+  'A pending sign-in verification briefly holds the network address it was requested from: if you use a second sign-in step, the one-time code is accepted only from the address that asked for it, so that address is kept until the code is used. It is erased when the verification succeeds, or, if it is never completed, within a day of the code expiring, 5 minutes after it was requested.',
+  'Two things see the address a connection comes from, and neither keeps it with your data. Cloudflare, at the network edge, uses it to deliver the request, to stop abuse and to infer the approximate location in section 1, and then discards it, apart from Cloudflare’s own security logs. The request log of our sign-in service, on a server we run, records it for security and fault diagnosis and deletes it after 7 days.',
+  'Copies made before 2 October 2026 remain until they age out: a sign-in session opened before that date keeps the address it was opened from until it next refreshes, which the app does whenever it is used; the encrypted backups of the sign-in records taken before that date contain those addresses; and so does the fallback copy of the sign-in records Supabase holds from before 27 September 2026, until it is retired.',
+];
+
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /** One chrome region, sentinels and body, exactly as chrome.mjs emits it. The
@@ -275,7 +286,7 @@ export function renderAppPage(doc, { appName, appId, providerNames, portfolioPol
   p('');
   p('<div class="callout">');
   p('<span class="tag">In one line</span>');
-  p(`<p style="margin:8px 0 0">${esc(`${appName} collects ${plural(rows.length, 'category', 'categories')} of personal data for ${plural(purposes.length, 'stated purpose', 'stated purposes')}, keeps each for a fixed period, shares ${shared.length === 0 ? 'none of it' : plural(shared.length, 'category', 'categories')} with anyone beyond the service providers named below, and records no network address at all.`)}</p>`);
+  p(`<p style="margin:8px 0 0">${esc(`${appName} collects ${plural(rows.length, 'category', 'categories')} of personal data for ${plural(purposes.length, 'stated purpose', 'stated purposes')}, keeps each for a fixed period, shares ${shared.length === 0 ? 'none of it' : plural(shared.length, 'category', 'categories')} with anyone beyond the service providers named below, and keeps no network address with any of it.`)}</p>`);
   p('</div>');
 
   // ── 1 · what is collected ────────────────────────────────────────────────
@@ -334,7 +345,17 @@ export function renderAppPage(doc, { appName, appId, providerNames, portfolioPol
   // ── 5 · what is never collected ──────────────────────────────────────────
   p('');
   p('<h2>5. What is never collected</h2>');
-  p('<p>No network address is recorded anywhere, for any of the rows above. This is not a setting: there is no column to put one in, the declaration cannot say otherwise, and a build fails if the words appear in it. It is the one identifier that would turn every analytics row into personal data, and it is the one this portfolio does not keep.</p>');
+  // ⏱ 2026-10-02 — SYN-P2 (red). This paragraph said "no network address is
+  // recorded anywhere … there is no column to put one in" while the self-hosted
+  // identity store wrote the client address into auth.sessions.ip on every
+  // sign-in and refresh. The store now empties every such column on write
+  // (docs/platform/supabase/sql/identity-address-null-on-write.sql, held by
+  // assert-app-yaml limb 10), and the paragraph says exactly what still sees an
+  // address, for how long, and the copies made before the fix.
+  // ⏱ 2026-10-02 · ruling on review 2 of #1140, item 1: MFA stays on, so a
+  // pending sign-in verification holds the address (GoTrue compares it on
+  // verify) until it is verified or swept after expiry; the notice says so.
+  for (const para of NETWORK_ADDRESS_NOTICE) p(`<p>${esc(para)}</p>`);
   p('<p>Nothing on this page is collected from anyone under 18. Nikatru does not offer any app, extension or site to children, and does not knowingly collect data from them.</p>');
 
   // ── 6 · the itemised notice ──────────────────────────────────────────────
