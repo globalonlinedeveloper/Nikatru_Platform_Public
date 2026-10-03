@@ -284,7 +284,7 @@ export async function loadPlatform(root) {
 /** The GoTrue origin production trusts: the platform Worker's top-level
  *  vars.SUPABASE_URL, the issuer its JWT verify and /v1/health read. */
 async function authTargetOf(root) {
-  const { parseJsonc } = await import(pathToFileURL(join(root, 'tooling/ci/d1-sql-inventory.mjs')).href);
+  const { parseJsonc } = await import(pathToFileURL(join(root, 'tooling/ci/d1-stores.mjs')).href);
   const cfg = parseJsonc(readFileSync(join(root, 'services/platform/wrangler.jsonc'), 'utf8'));
   const v = cfg?.vars?.SUPABASE_URL;
   if (typeof v !== 'string' || !v.startsWith('https://')) {
@@ -297,7 +297,7 @@ async function authTargetOf(root) {
  *  the deploys read (never typed here). */
 async function platformTarget(root) {
   const { backendOf } = await import(pathToFileURL(join(root, 'tooling/e2e/backend.mjs')).href);
-  const { parseJsonc } = await import(pathToFileURL(join(root, 'tooling/ci/d1-sql-inventory.mjs')).href);
+  const { parseJsonc } = await import(pathToFileURL(join(root, 'tooling/ci/d1-stores.mjs')).href);
   const { platformDb } = backendOf(APP, { env: 'production', root });
   const cfg = parseJsonc(readFileSync(join(root, 'services/platform/wrangler.jsonc'), 'utf8'));
   return { dbId: platformDb, environment: cfg?.vars?.MONEY_ENVIRONMENT };
