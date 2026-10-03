@@ -6332,9 +6332,11 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(input.rows[0].mechanism.recordQuery.firstDue, committed, 'the committed register the caller holds is never mutated');
     // RED CONTROL: a firstDue far past any cadence window of the REAL clock is
     // still far past it in the replay, so the spawned guard still refuses it.
+    // ⏱ 2026-10-03 (club-nits-b B1): the row's own bootstrap is spent and
+    // deleted, so the control PLANTS the far-future date instead of moving one.
     const over = (register) => {
       const row = register.rows.find((r) => r.id === 'duty.workflow.name-clearance.yml');
-      assert.ok(row?.mechanism?.recordQuery?.firstDue, 'premise: the row carries a bootstrap');
+      assert.ok(row?.mechanism?.recordQuery?.reader === 'github-run-history', 'premise: the row reads the run history');
       row.mechanism.recordQuery.firstDue = '2099-01-01T00:00:00Z';
     };
     const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: over }) });
