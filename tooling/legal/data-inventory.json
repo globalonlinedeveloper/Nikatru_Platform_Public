@@ -236,6 +236,30 @@
       }
     },
     {
+      "id": "table:platform_db.provider_payment_links",
+      "kind": "d1-table",
+      "name": "provider_payment_links",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · PR #1149 ruling item 2 (O-RAZORPAY-CHECKOUT-ADAPTER). One row per subscription charge on a rail whose refunds and disputes name a PAYMENT rather than a subscription (Razorpay): the rail's payment id, the subscription id it charged, our account id when the charge resolved one, the money world, and the notification that carried both ids. Written once, first link wins, on the signed `subscription.charged`, so a later refund or chargeback of that payment resolves its subscription without trusting the payment entity's own fields. No name, no email, no payment detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "It is the answer to 'which subscription does this refunded or disputed payment belong to', and a refund or chargeback can arrive for as long as the subscription's payments can be reversed — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`, and the shared erasure route derives the tables it empties from the schema."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0026_provider_payment_links.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.unclaimed_payments",
       "kind": "d1-table",
       "name": "unclaimed_payments",
@@ -824,6 +848,25 @@
         "quote": "We keep a record of each consent decision"
       },
       "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes."
+    },
+    {
+      "id": "table:platform_db.box_config_manifest",
+      "kind": "d1-table",
+      "name": "box_config_manifest",
+      "personalData": false,
+      "holds": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each of that box's live config files under a logical name (compose, override, tunnel) and the server's time of the post. Written by POST /v1/ops/box-manifest from the box's own cron. Hashes only — no file content, no user data of any kind.",
+      "retention": {
+        "kind": "keep",
+        "reason": "At most one row per box, replaced whole on every post, so the table cannot grow past the box count. It is the live side of the drift comparison tooling/ops/check-box-config-drift.mjs makes; deleting it by age would read as a box that stopped reporting."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A box name, config-file hashes and a timestamp. No user id, no install id, nothing that is about anybody."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0025_box_config_manifest.sql",
+        "services/platform/src/routes/box-manifest.ts"
+      ]
     },
     {
       "id": "table:platform_db.cron_heartbeat",

@@ -26,6 +26,15 @@
 //       app-erasure-endpoints  the `APP_ERASURE_ENDPOINTS` var (`<app>=https://<first host>`)
 //       app-erasure-bindings   one `ERASURE_<APP>` service binding per app Worker
 //       app-databases          one `<APP>_DB` D1 binding per owned app database
+//     ⏱ 2026-10-01 (rv2-services-022) and the same three for the platform's
+//     `env.sandbox`, each from the app Worker's OWN `env.sandbox`:
+//       sandbox-app-erasure-endpoints  `<app>=https://<app script>-sandbox.<subdomain>.workers.dev`
+//       sandbox-app-erasure-bindings   `ERASURE_<APP>` → the app's SANDBOX script
+//       sandbox-app-databases          `<APP>_DB` → the D1 the app's env.sandbox owns
+//     so a sandbox account deletion relays to the sandbox app Worker and empties the
+//     sandbox app database — never production's, which the platform's sandbox could not
+//     reach before (it bound none of the three, so a sandbox E2E could not see an
+//     erasure defect at all). An app Worker with no `env.sandbox` is a refusal.
 //     Everything outside the markers is the hand-written file, untouched.
 //   · services/platform/src/generated/app-targets.ts: `APP_TARGETS` (the fan-out and the
 //     backup's app databases) and `APP_KV` (each app Worker's KV namespaces the platform
@@ -60,11 +69,19 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseJsonc, ownedD1 } from '../ci/d1-stores.mjs';
 import { appIdOf, appsInScope, TARGET_DIRS } from '../ci/assert-auth-callbacks.mjs';
+import { WORKERS_DEV_SUBDOMAIN } from '../store/capture-backend.mjs';
 
 export const REGISTER_REL = 'tooling/platform-register.json';
 export const PLATFORM_CONFIG_REL = 'services/platform/wrangler.jsonc';
 export const MODULE_REL = 'services/platform/src/generated/app-targets.ts';
-export const REGIONS = ['app-erasure-endpoints', 'app-erasure-bindings', 'app-databases'];
+export const REGIONS = [
+  'app-erasure-endpoints',
+  'app-erasure-bindings',
+  'app-databases',
+  'sandbox-app-erasure-endpoints',
+  'sandbox-app-erasure-bindings',
+  'sandbox-app-databases',
+];
 const RENDERER = 'tooling/scripts/render-platform-app-block.mjs';
 
 export class Refusal extends Error {
@@ -78,7 +95,8 @@ const upper = (appId) => appId.toUpperCase().replace(/-/g, '_');
 
 /**
  * The per-app rows for the tree at `root`:
- * `[{ appId, worker, origin, db: {binding, databaseName, databaseId} | null, kv: [{binding, id}] }]`.
+ * `[{ appId, worker, origin, db: {binding, databaseName, databaseId} | null, kv: [{binding, id}],
+ *     sandbox: { worker, origin, db: {binding, databaseName, databaseId} | null } }]`.
  */
 export function appRows(root) {
   const regAbs = join(root, REGISTER_REL);
@@ -113,12 +131,35 @@ export function appRows(root) {
     if (owned.length > 1) throw new Refusal(`${where}: ${rel} owns ${owned.length} D1 databases; the per-app block binds one per app.`);
     const own = owned[0] ?? null;
     if (own !== null && !own.databaseId) throw new Refusal(`${where}: ${rel} owns ${own.databaseName} with no database_id to bind it by.`);
+    // The sandbox twin, from the app Worker's own env.sandbox: its script is what
+    // `wrangler deploy --env sandbox` names it, and its database the one entry there
+    // that carries `migrations_dir` (the D1 it owns, as at the top level).
+    const sbx = cfg?.env?.sandbox;
+    if (sbx === null || typeof sbx !== 'object' || Array.isArray(sbx)) {
+      throw new Refusal(
+        `${where}: ${rel} declares no \`env.sandbox\`, so the platform's sandbox would have no erasure relay, service binding ` +
+          'or database twin for this app. Every app Worker carries the block the brick stamps.',
+      );
+    }
+    const sbxOwned = (Array.isArray(sbx.d1_databases) ? sbx.d1_databases : []).filter((d) => d && d.migrations_dir);
+    if (sbxOwned.length > 1) throw new Refusal(`${where}: ${rel} env.sandbox owns ${sbxOwned.length} D1 databases; the per-app block binds one per app.`);
+    if ((own === null) !== (sbxOwned.length === 0)) {
+      throw new Refusal(`${where}: ${rel} owns ${own === null ? 'no' : 'a'} D1 at the top level and ${sbxOwned.length ? 'one' : 'none'} in env.sandbox; the sandbox twins production's.`);
+    }
+    const sbxOwn = sbxOwned[0] ?? null;
+    if (sbxOwn !== null && !sbxOwn.database_id) throw new Refusal(`${where}: ${rel} env.sandbox owns ${sbxOwn.database_name} with no database_id to bind it by.`);
+    const sbxWorker = typeof sbx.name === 'string' && sbx.name ? sbx.name : `${cfg.name}-sandbox`;
     rows.push({
       appId,
       worker: w.name,
       origin: `https://${host}`,
       db: own === null ? null : { binding: `${upper(appId)}_DB`, databaseName: own.databaseName, databaseId: own.databaseId },
       kv: (Array.isArray(cfg?.kv_namespaces) ? cfg.kv_namespaces : []).map((k) => ({ binding: k.binding, id: k.id })),
+      sandbox: {
+        worker: sbxWorker,
+        origin: `https://${sbxWorker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`,
+        db: sbxOwn === null ? null : { binding: `${upper(appId)}_DB`, databaseName: sbxOwn.database_name, databaseId: sbxOwn.database_id },
+      },
     });
   }
   return rows;
@@ -151,6 +192,20 @@ const END = (region) => `// ── GENERATED END ${region} ──`;
 /** The text between the markers of each region, indented as the region's BEGIN line is. */
 export function regionTexts(rows, indent) {
   const pad = (n) => ' '.repeat(n);
+  const sandboxRows = rows.map((r) => ({ ...r, ...r.sandbox }));
+  const prod = productionRegionTexts(rows, pad, indent);
+  const sbx = productionRegionTexts(sandboxRows, pad, indent);
+  return {
+    ...prod,
+    'sandbox-app-erasure-endpoints': sbx['app-erasure-endpoints'],
+    'sandbox-app-erasure-bindings': sbx['app-erasure-bindings'],
+    'sandbox-app-databases': sbx['app-databases'],
+  };
+}
+
+/** The three region bodies over `rows`. The sandbox regions are the same shapes over
+ *  each row's `sandbox` twin, so the two can never be rendered two ways. */
+function productionRegionTexts(rows, pad, indent) {
   return {
     'app-erasure-endpoints': `${pad(indent)}"APP_ERASURE_ENDPOINTS": "${rows.map((r) => `${r.appId}=${r.origin}`).join(',')}"`,
     'app-erasure-bindings': rows

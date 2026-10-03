@@ -19,6 +19,17 @@
       "reason": "The GoTrue admin response is written to the runner-provided $GITHUB_OUTPUT (the response cannot choose the path); user_id must be a UUID before it is written, and the origin it came from is pinned by tooling/ops/credential-origin.mjs to the self-hosted GoTrue or OUR hosted Supabase project (sha256-pinned hostname) (fixed 2026-09-30)."
     },
     {
+      "alert": 590,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/e2e/provision_user.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "sha256:4d544c2d8e55934aab155541e14e74be2d4fd60cee9d653a241b23218b288edb"
+      ],
+      "reason": "The SAME flow as #68, re-raised when PR #1177 moved the `user_id=` write ahead of the magic-link mint (so a failed mint still hands the always() purge an id): the GoTrue admin response is written to the runner-provided $GITHUB_OUTPUT (the response cannot choose the path), user_id must be a UUID before it is written, and its origin is pinned by tooling/ops/credential-origin.mjs to the self-hosted GoTrue or OUR hosted Supabase project (sha256-pinned hostname)."
+    },
+    {
       "alert": 70,
       "rule": "js/http-to-file-access",
       "path": "tooling/ops/safe-rerun.mjs",
@@ -565,6 +576,17 @@
       "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
+      "alert": 589,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/e2e/magic_link.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "sha256:4d544c2d8e55934aab155541e14e74be2d4fd60cee9d653a241b23218b288edb"
+      ],
+      "reason": "The SAME flow as #533, re-raised when PR #1177 moved the generate_link request into a closure for its one bounded retry: a Supabase key read from the vault/env goes to SUPABASE_URL only after tooling/ops/credential-origin.mjs has pinned its origin to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project (sha256-pinned hostname) — before any request; the retry re-sends to that same pinned origin (loopback allowed for test stubs)."
+    },
+    {
       "alert": 538,
       "rule": "js/file-access-to-http",
       "path": "tooling/ci/assert-codeql-pr-no-new-high.mjs",
@@ -658,6 +680,14 @@
       "disposition": "by-design",
       "host": "127.0.0.1",
       "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
+    },
+    {
+      "alert": 584,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-box-config-drift.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "A SELECT-only read of box_config_manifest through the Cloudflare D1 HTTP API with the Cloudflare token is intended. The host is a literal; services/platform/wrangler.jsonc supplies only the database id, and d1QueryUrl() refuses (CouldNotLook) any database_id that is not a UUID before it enters the URL (tooling/ci/test/box-config-drift.test.mjs feeds x/../../user and sees no fetch made)."
     }
   ]
 }

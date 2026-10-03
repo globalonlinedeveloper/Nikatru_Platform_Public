@@ -453,8 +453,8 @@ class Subscription {
         ? code.toUpperCase()
         : fallbackCurrencyCode;
     final Object? minor = newest['old_price_minor'];
-    if (minor is int) return Money(minor, currency);
     final Object? major = newest['old_price'];
+    if (minor is int) return exactOrDecimal(minor, major, currency);
     if (major is num) return Money.fromMajorUnits(major, currency);
     return null;
   }
@@ -523,8 +523,23 @@ class Subscription {
     // server that has confused the two columns, and reading 4.99 as 499 there
     // would misprice the row by a hundred. Fall through to the decimal column,
     // which is the field that shape belongs to.
-    if (minor is int) return Money(minor, code);
-    return Money.fromMajorUnits((j['price'] as num?) ?? 0, code);
+    final Object? major = j['price'];
+    if (minor is int) return exactOrDecimal(minor, major, code);
+    return Money.fromMajorUnits((major as num?) ?? 0, code);
+  }
+
+  /// `minor` when it IS `major` in [code]'s ISO 4217 scale, else `major`.
+  ///
+  /// ⏱ 2026-10-03 · PR #1174 lead ruling 1(a), review finding 2. Before #1174
+  /// money.dart wrote every code but JPY and KWD with two minor digits, so a
+  /// ₩14,900 plan was stored as `price=14900, price_minor=1490000`; read with
+  /// the ISO table (KRW 0) that is ₩1,490,000. The REAL `price` is right under
+  /// both scales, so when the two disagree the decimal wins. With no decimal
+  /// beside it (null, or not a number) the exact form is all there is.
+  static Money exactOrDecimal(int minor, Object? major, String code) {
+    if (major is! num) return Money(minor, code);
+    final Money decimal = Money.fromMajorUnits(major, code);
+    return decimal.minorUnits == minor ? Money(minor, code) : decimal;
   }
 
   /// 🔴 THE WIRE KEEPS ITS DECIMAL `price` AND GAINS TWO FIELDS BESIDE IT.

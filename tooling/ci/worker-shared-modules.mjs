@@ -53,6 +53,10 @@ import { stripSourceComments } from './text-reductions.mjs';
 /** The one home. Repo-relative, POSIX, no trailing slash. */
 export const SHARED_DIR = 'services/_shared/src';
 
+/** How many whole-file re-exports a delegation may pass through inside the home
+ *  before it is COVERAGE LOST (carrier → home module → adapter is two). */
+export const MAX_DELEGATION_HOPS = 4;
+
 /** The one shape a delegation may take. Anchored at both ends on purpose — see
  *  the "ENTIRE, not contains" paragraph in the header. */
 const WHOLE_FILE_REEXPORT = /^export\s+\*\s+from\s+'([^']+)';$/;
@@ -156,7 +160,32 @@ export function sharedHomeOf(repoRoot, relFile) {
 export function workerModuleSource(repoRoot, relFile) {
   const home = sharedHomeOf(repoRoot, relFile);
   if (home !== null && 'lost' in home) return home;
-  if (home !== null) return { relPath: home.target, source: home.source, delegated: true };
+  if (home !== null) {
+    // ⏱ 2026-10-01 (port-telemetry) — THE CHAIN IS FOLLOWED INSIDE THE HOME. A
+    // shared module may itself be wholly a re-export of another shared module:
+    // services/_shared/src/error-sink.ts now re-exports the telemetry port's
+    // `sentry-envelope` adapter (adapters/telemetry/sentry-envelope.ts), where the
+    // body moved. The property moves with the body, so the walk goes on to it —
+    // bounded, every hop still inside SHARED_DIR (sharedHomeOf refuses any other),
+    // and a cycle or an over-long chain is COVERAGE LOST, never a pass.
+    let at = home;
+    const visited = [relFile, at.target];
+    for (;;) {
+      const next = sharedHomeOf(repoRoot, at.target);
+      if (next === null) break;
+      if ('lost' in next) return next;
+      if (visited.includes(next.target) || visited.length > MAX_DELEGATION_HOPS) {
+        return {
+          lost:
+            `${relFile} delegates through ${visited.join(' → ')} → ${next.target}, which ${visited.includes(next.target) ? 'is a cycle' : `is longer than ${MAX_DELEGATION_HOPS} hops`}. ` +
+            'No file in the chain holds a body, so nothing here is being checked.',
+        };
+      }
+      visited.push(next.target);
+      at = next;
+    }
+    return { relPath: at.target, source: at.source, delegated: true };
+  }
   const abs = join(repoRoot, ...relFile.split('/'));
   if (!existsSync(abs)) {
     return { lost: `${relFile} does not exist, so there is nothing to read and nothing to certify.` };

@@ -425,3 +425,145 @@ export function duplicateMigrationNumbers(paths) {
     .sort((a, b) => (a.dir === b.dir ? (a.value < b.value ? -1 : a.value > b.value ? 1 : 0) : a.dir.localeCompare(b.dir)))
     .map(({ dir, number, files }) => ({ dir, number, files }));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · AN INDEX THAT IS A STRICT COLUMN-PREFIX OF ANOTHER IS DEAD WEIGHT
+// (rv2-services-034, row O-BRICK-REDUNDANT-USER-INDEX). The brick's starter schema
+// created `idx_records_user ON records (user_id)` beside `(user_id, server_seq)`
+// and `(user_id, id)`: SQLite answers every `WHERE user_id = ?` from either longer
+// index, so the short one bought nothing on read and cost a B-tree write on every
+// INSERT, UPDATE and DELETE — stamped into every app. tooling/ci/check-migrations.mjs
+// runs this over exactly the files it scans.
+//
+// What counts, stated so a green is not read as more than it is:
+//   · both sides are `CREATE [UNIQUE] INDEX … ON <table> (<columns>)` statements, in
+//     ONE migrations directory, net of a later `DROP INDEX` of the same name. A
+//     table's PRIMARY KEY or inline UNIQUE constraint is not compared;
+//   · the SHORTER index is redundant only when it is a plain index: a UNIQUE one
+//     enforces a constraint the longer cannot, and a partial one (`WHERE`) covers a
+//     different row set. A partial LONGER index cannot stand in for it either;
+//   · a column is its name with `ASC`/`DESC` dropped (SQLite walks a B-tree either
+//     way) and its `COLLATE` kept (a different collation answers different
+//     queries). An expression column is never a prefix of anything.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CREATE_INDEX =
+  /\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w."`[\]]+)\s+ON\s+([\w."`[\]]+)\s*\(/gi;
+const DROP_INDEX = /\bDROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?([\w."`[\]]+)/gi;
+const unquoteIdent = (s) => String(s).replace(/["`[\]]/g, '').toLowerCase();
+/** Comments blanked, and SINGLE-quoted literals only: in SQL a double-quoted token
+ *  is an IDENTIFIER (`"user_id"`), so blanking it as stripStringLiterals does would
+ *  erase the very column names compared here. */
+const indexCode = (text) =>
+  stripSourceComments(String(text), '.sql').replace(/'(?:[^'\n]|'')*'/g, (m) => `'${' '.repeat(Math.max(0, m.length - 2))}'`);
+
+/** The text between the `(` at `open` and its matching `)`, or null. */
+function parenBody(code, open) {
+  let depth = 0;
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === '(') depth++;
+    else if (code[i] === ')' && --depth === 0) return { body: code.slice(open + 1, i), end: i + 1 };
+  }
+  return null;
+}
+
+/** One index column as compared, or null for an expression column. */
+function indexColumn(part) {
+  const words = part.trim().replace(/\s+/g, ' ').split(' ');
+  if (words.length === 0 || words[0] === '' || /[()]/.test(part)) return null;
+  const kept = words.filter((w) => !/^(asc|desc)$/i.test(w));
+  return [unquoteIdent(kept[0]), ...kept.slice(1).map((w) => w.toLowerCase())].join(' ');
+}
+
+/** `${dir}\u0000${index}` for every index any `CREATE [UNIQUE] INDEX` in `files`
+ *  created, dropped later or not: what a KEPT row in check-migrations.mjs must name. */
+export function createdIndexKeys(files) {
+  const out = new Set();
+  for (const f of files) {
+    const p = String(f.path).replaceAll('\\', '/');
+    const cut = p.lastIndexOf('/');
+    const dir = cut === -1 ? '.' : p.slice(0, cut);
+    const code = indexCode(f.text);
+    CREATE_INDEX.lastIndex = 0;
+    let m;
+    while ((m = CREATE_INDEX.exec(code)) !== null) out.add(`${dir}\u0000${unquoteIdent(m[2])}`);
+  }
+  return out;
+}
+
+/**
+ * Every plain index that is a STRICT column-prefix of another index on the same
+ * table in the same migrations directory, as `[{ dir, table, index, columns, file,
+ * line, coveredBy: [{ index, columns, file }] }]`, sorted by dir, file and line.
+ * `files` is `[{ path, text }]`; the files of one directory are read in name order.
+ */
+export function redundantPrefixIndexes(files) {
+  const byDir = new Map();
+  for (const f of files) {
+    const p = String(f.path).replaceAll('\\', '/');
+    const cut = p.lastIndexOf('/');
+    const dir = cut === -1 ? '.' : p.slice(0, cut);
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push({ path: p, text: String(f.text) });
+  }
+  const out = [];
+  for (const [dir, list] of byDir) {
+    list.sort((a, b) => a.path.localeCompare(b.path));
+    /** index name → { index, table, columns, unique, partial, file, line } */
+    const live = new Map();
+    for (const { path, text } of list) {
+      const code = indexCode(text);
+      const events = [];
+      CREATE_INDEX.lastIndex = 0;
+      let m;
+      while ((m = CREATE_INDEX.exec(code)) !== null) events.push({ at: m.index, kind: 'create', m });
+      DROP_INDEX.lastIndex = 0;
+      while ((m = DROP_INDEX.exec(code)) !== null) events.push({ at: m.index, kind: 'drop', m });
+      events.sort((a, b) => a.at - b.at);
+      for (const e of events) {
+        if (e.kind === 'drop') {
+          live.delete(unquoteIdent(e.m[1]));
+          continue;
+        }
+        const body = parenBody(code, e.m.index + e.m[0].length - 1);
+        if (!body) continue;
+        const columns = body.body.split(',').map(indexColumn);
+        if (columns.some((c) => c === null)) continue;
+        const tail = code.slice(body.end, code.indexOf(';', body.end) === -1 ? code.length : code.indexOf(';', body.end));
+        const name = unquoteIdent(e.m[2]);
+        live.set(name, {
+          index: name,
+          table: unquoteIdent(e.m[3]),
+          columns,
+          unique: Boolean(e.m[1]),
+          partial: /\bWHERE\b/i.test(tail),
+          file: path,
+          line: code.slice(0, e.at).split('\n').length,
+        });
+      }
+    }
+    const all = [...live.values()];
+    for (const short of all) {
+      if (short.unique || short.partial) continue;
+      const coveredBy = all.filter(
+        (long) =>
+          long !== short &&
+          long.table === short.table &&
+          !long.partial &&
+          long.columns.length > short.columns.length &&
+          short.columns.every((c, i) => long.columns[i] === c),
+      );
+      if (coveredBy.length === 0) continue;
+      out.push({
+        dir,
+        table: short.table,
+        index: short.index,
+        columns: short.columns,
+        file: short.file,
+        line: short.line,
+        coveredBy: coveredBy.map((l) => ({ index: l.index, columns: l.columns, file: l.file })).sort((a, b) => a.index.localeCompare(b.index)),
+      });
+    }
+  }
+  return out.sort((a, b) => a.dir.localeCompare(b.dir) || a.file.localeCompare(b.file) || a.line - b.line);
+}

@@ -22,8 +22,8 @@ import {
   type RailOutbound,
 } from '../../_shared/src/ports/payments';
 import { FAKE_RAIL_TEST_SECRET, FAKE_SIGNATURE_HEADER, fakeSignature, fakeVerifier, makeFakeRail } from '../../_shared/src/ports/fakes/payments';
-import { inboundFor, portFor, railFor } from '../src/ports';
-import { CHECKOUT_RAIL_ID, PAYMENTS_ADAPTERS, RAIL_CANCEL_PATH } from '../src/generated/ports';
+import { checkoutRailFor, inboundFor, portFor, railFor } from '../src/ports';
+import { CHECKOUT_RAIL_BY_MARKET, CHECKOUT_RAIL_ID, PAYMENTS_ADAPTERS, RAIL_CANCEL_PATH } from '../src/generated/ports';
 import { RAIL_CANCEL_PATH as REGISTRY_CANCEL_PATH } from '../src/lib/mor/registry';
 import { PADDLE_API_KEY_VAR } from '../src/lib/mor/paddle-rail';
 import paymentsRegistry from '../../../tooling/ports/payments.json';
@@ -140,14 +140,34 @@ describe("the fake rail's verify takes the configured secret, never the public c
 describe('the rendered table is the one the Worker reads', () => {
   it('RAIL_CANCEL_PATH is the rendered map, re-exported by the registry', () => {
     expect(REGISTRY_CANCEL_PATH).toBe(RAIL_CANCEL_PATH);
-    expect(RAIL_CANCEL_PATH).toMatchObject({ paddle: 'api', razorpay: 'none', revenuecat: 'store' });
+    // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay declares `cancel` now → api.
+    expect(RAIL_CANCEL_PATH).toMatchObject({ paddle: 'api', razorpay: 'api', revenuecat: 'store' });
   });
 
-  it('the web checkout rail is the one real adapter declaring checkout, and the root binds it', () => {
-    const sellers = PAYMENTS_ADAPTERS.filter((a) => a.status !== 'fake' && a.capabilities.includes('checkout'));
-    expect(sellers.map((a) => a.id)).toEqual([CHECKOUT_RAIL_ID]);
-    const rail = railFor(CHECKOUT_RAIL_ID, {} as unknown as AppEnv['Bindings']);
-    expect(rail !== null && railCan(rail, 'checkout')).toBe(true);
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: two real adapters sell now (paddle, razorpay), so the web
+  // checkout rail is chosen PER BUYER-DECLARED MARKET from the rendered CHECKOUT_RAIL_BY_MARKET (the
+  // `web` channel's purchaseRail in tooling/channel-register.json); CHECKOUT_RAIL_ID is its default.
+  it('every rendered checkout rail is a real adapter declaring checkout, and the root binds each', () => {
+    const sellers = new Set(PAYMENTS_ADAPTERS.filter((a) => a.status !== 'fake' && a.capabilities.includes('checkout')).map((a) => a.id));
+    expect([...sellers].sort()).toEqual(['paddle', 'razorpay']);
+    expect(CHECKOUT_RAIL_BY_MARKET).toEqual({ default: 'paddle', IN: 'razorpay' });
+    expect(CHECKOUT_RAIL_ID).toBe(CHECKOUT_RAIL_BY_MARKET.default);
+    for (const id of Object.values(CHECKOUT_RAIL_BY_MARKET)) {
+      expect(id !== null && sellers.has(id)).toBe(true);
+      const rail = railFor(id, {} as unknown as AppEnv['Bindings']);
+      expect(rail !== null && railCan(rail, 'checkout')).toBe(true);
+    }
+  });
+
+  it('checkoutRailFor: only a buyer-declared IN selects the India rail; null, unknown and malformed markets take the default', () => {
+    expect(checkoutRailFor('IN')).toBe('razorpay');
+    expect(checkoutRailFor(null)).toBe('paddle');
+    expect(checkoutRailFor('US')).toBe('paddle');
+    expect(checkoutRailFor('DE')).toBe('paddle');
+    expect(checkoutRailFor('in')).toBe('paddle'); // not upper-case alpha-2: not a declaration
+    expect(checkoutRailFor('IND')).toBe('paddle');
+    expect(checkoutRailFor('default')).toBe('paddle');
+    expect(checkoutRailFor('__proto__')).toBe('paddle');
   });
 
   // #1127 CodeQL #548: the route passes the rendered, nullable selection straight to
@@ -178,7 +198,8 @@ describe('the rendered table is the one the Worker reads', () => {
   });
 
   it('a rail with no outbound half binds to null, never to a stand-in', () => {
-    expect(railFor('razorpay', {} as unknown as AppEnv['Bindings'])).toBeNull();
+    // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay HAS an outbound half now (razorpay-rail.ts).
+    expect(railFor('razorpay', {} as unknown as AppEnv['Bindings'])?.id).toBe('razorpay');
     expect(railFor('revenuecat', {} as unknown as AppEnv['Bindings'])).toBeNull();
   });
 });

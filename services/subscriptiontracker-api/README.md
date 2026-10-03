@@ -27,13 +27,12 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/v1/health` | none | Liveness / deploy verification |
-| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads) |
-| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`) |
+| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads). Bounded: the bare array is `LIMIT` the per-account row cap (500); `?limit=N&after=<cursor>` is keyset-paged as `{items, next}` |
+| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`); 409 `limit_reached` at 500 rows per account (removed rows count until purged) |
 | GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history + price_history |
 | PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`, and `{cancelled_on: null}` alone keeps a cancelled row's date; a removed row is a 404 to everything but `{deleted_at: null}` (restore) and `{deleted_at: <any>}` alone (a repeat removal: 200, the first stamp kept, as `DELETE`) |
 | DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history) |
 | POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`); `paid_on` is 2000-01-01 to tomorrow (UTC); takes the same optional `Idempotency-Key`: a retry answers the payment as recorded, 409 `idempotency_in_progress` while the first attempt runs, 422 for the key with another body or subscription, 410 once the subscription is removed |
-| GET | `/v1/renewals?withinDays=7` | Supabase JWT | Upcoming renewals + `days_left` |
 | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
 | PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps (a cap may name its `category_id`) |
 | GET | `/v1/categories` | Supabase JWT | Built-in categories (stable ids) + the user's own |
@@ -42,6 +41,16 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | DELETE | `/v1/categories/:id` | Supabase JWT | Delete one; its subscriptions become uncategorised, its cap goes |
 | GET | `/v1/entitlements` | Supabase JWT | `is_pro` + `granted_via` + entitlements (+ `bundle` when a live grant exists) for this app — THE ONE reader, `services/_shared/src/entitlement-read.ts`, byte-identical to the shared host's answer |
 | DELETE | `/v1/account` | **ES256/JWKS only** | Erase this user from every user-owned table in `subscriptiontracker_db` |
+
+**Every route above but `/v1/health` (lane fix-st-api-bounds, 2026-10-01):** a write
+(non-GET) is limited per verified account by the `WRITE_LIMITER` binding — 120 a minute,
+then 429 `rate_limited` with `Retry-After: 60` (`src/middleware/write-limit.ts`); a body is
+read under a cap derived from the route's field bounds (≈ 32 KB for a subscription,
+≈ 132 KB for a budget), else 413 `body_too_large` (`src/lib/json-body.ts`); a date is
+1970-01-01 to 2100-12-31; a currency is an ISO 4217 code in `contracts/currency/iso4217.js`,
+and `price_minor` must equal `round(price × 10^digits)` in it. Every one is a refusal with
+no row written; `test/bounds.test.ts`, `test/write-limit.test.ts` and
+`test/mount-auth.test.ts` (an unauthenticated request through the real app) hold them.
 
 ### ⚠️ Served ahead of their screens (2026-09-29)
 
@@ -52,6 +61,12 @@ soft delete) IS consumed — `apps/subscriptiontracker/lib/state/subscriptions_c
 has sent those writes since #1045.
 
 ### ⚠️ `GET /v1/renewals` and `GET /v1/entitlements` are SERVED AND UNCONSUMED
+
+⏱ **2026-10-01 · `GET /v1/renewals` IS REMOVED (rv2-services-023, lane
+fix-st-api-bounds)** — the route, its mount, `test/renewals.test.ts`, its tenancy case and
+its `tooling/platform-register.json` row, in one change. It had no caller since 2026-08-25,
+and the reminders it would have fed are `services/platform`'s. What follows is the record
+as it stood; `GET /v1/entitlements` is unchanged.
 
 **`GET /v1/renewals` — nothing in this repository calls it.** `ApiClient`
 (`apps/subscriptiontracker/lib/data/api/api_client.dart`) declares no renewals method at all —
@@ -342,8 +357,8 @@ now a choice, kept because one place to look beats a Worker per job:
    past-due `next_renewal` forward one cycle (monthly/yearly), inserting a
    `payment_history` row per crossed charge, over each app's bound `APP_DB`.
 
-The renewals HTTP read endpoint (`GET /v1/renewals`) still lives here — served,
-and with no in-repo client; see the note under the API surface table above.
+The renewals HTTP read endpoint (`GET /v1/renewals`) was removed on 2026-10-01
+(rv2-services-023): it had no client. See the note under the API surface table above.
 
 ## Clone for the next app
 

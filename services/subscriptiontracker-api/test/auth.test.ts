@@ -419,6 +419,67 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
   });
+
+  // ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13). The cached copy
+  // above expires ten minutes after the last good fetch, and in a Box C outage
+  // there is no good fetch. The LAST-KNOWN-GOOD copy (`supabase_jwks_lkg`, no
+  // expiry) is what is left — and on THIS Worker its absence is not only a 401:
+  // with a legacy secret configured, the request falls to HS256. So the
+  // assertion is `assurance`, as in the first case of this block.
+  const lkgOnlyKv = (lkg: unknown) =>
+    ({
+      get: async (k: string) =>
+        k === 'supabase_jwks_lkg' ? (typeof lkg === 'string' ? lkg : JSON.stringify(lkg)) : null,
+      put: async () => undefined,
+    }) as unknown as KVNamespace;
+
+  it('🔴 RED WITHOUT THE LKG: unreachable + the 10-minute copy EXPIRED => 200 and STILL asymmetric', async () => {
+    const url = 'https://outage-lkg.test';
+    mode = 'down';
+    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, secret: null })(
+      `Bearer ${await es256(url)}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
+  });
+
+  it('🔴 the LKG keeps a long outage off the HS256 path when a legacy secret IS configured', async () => {
+    const url = 'https://outage-lkg-secret.test';
+    mode = 'down';
+    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url })(`Bearer ${await es256(url)}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
+  });
+
+  it('ERASURE survives a long outage through the LKG, with no secret in scope', async () => {
+    const url = 'https://outage-lkg-erase.test';
+    mode = 'down';
+    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, middleware: erasureAuth, secret: null })(
+      `Bearer ${await es256(url)}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
+  });
+
+  it('the LKG does NOT widen — a FOREIGN ES256 key is still 401 against it', async () => {
+    const url = 'https://outage-lkg-foreign.test';
+    mode = 'down';
+    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, secret: null })(
+      `Bearer ${await es256(url, { signer: foreignKey })}`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('a usable 10-minute copy WINS over the LKG: a kid it lacks is 401, not retried against the older set', async () => {
+    const url = 'https://outage-lkg-short-wins.test';
+    mode = 'down';
+    const kv = {
+      get: async (k: string) => JSON.stringify({ keys: [k === 'supabase_jwks_lkg' ? publicJwk : rotatedJwk] }),
+      put: async () => undefined,
+    } as unknown as KVNamespace;
+    const res = await api({ kv, url, secret: null })(`Bearer ${await es256(url)}`);
+    expect(res.status).toBe(401);
+  });
 });
 
 /**

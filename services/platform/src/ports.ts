@@ -25,7 +25,17 @@
 // RENDERED table (src/generated/ports.ts, from payments.json by tooling/ports/render.mjs).
 // The two binding records below are typed by the rendered id union: a rendered adapter
 // with no binding, or a binding for an id the registry does not list, fails `tsc`.
+// ⏱ 2026-10-01 · fix-india-rail-tax-data: which rail SELLS on web is `checkoutRailFor(market)`
+// below, from the rendered CHECKOUT_RAIL_BY_MARKET — a buyer-declared market, never a header.
 //
+// TELEMETRY (tooling/ports/telemetry.json) · ⏱ 2026-10-02 · port-telemetry, the Worker half:
+//   · `errorSinkFor(env)` — the `sentry-envelope` adapter (GLITCHTIP_DSN).
+//     `app.onError` still calls `reportWorkerError(` through lib/error-sink.ts, the
+//     port's one declared exception (tooling/ports/telemetry.json `handTables`).
+//   · `notifierFor(severity, env)` — the route in ports/telemetry.ts
+//     NOTIFIER_ROUTES: a primary and an off-Box-B fallback, tried once each.
+// Selecting another adapter is an edit to that table and to the switch below,
+// never to a caller.
 // AI (tooling/ports/ai.json). `aiFor(feature, env, { beforeCall })` is the
 // provider and the model for one feature, or why there is none:
 //   · the model of each feature is AI_FEATURE_TABLE below — a hand table
@@ -54,13 +64,20 @@ import { MAIL_FROM } from './generated/entity';
 import type { Env } from './types';
 import { isMoneyEnvironment, type MoneyEnvironment } from './lib/mor/contract';
 import type { RailInbound, RailOutbound, SecretReader } from '../../_shared/src/ports/payments';
-import { MOR_VERIFIER_IDS, PAYMENTS_ADAPTERS, type PaymentsAdapterId, type PortEnvironment } from './generated/ports';
+import { CHECKOUT_RAIL_BY_MARKET, MOR_VERIFIER_IDS, PAYMENTS_ADAPTERS, type PaymentsAdapterId, type PortEnvironment } from './generated/ports';
 import { paddleVerifier } from './lib/mor/paddle';
 import { razorpayVerifier } from './lib/mor/razorpay';
 import { revenuecatVerifier } from './lib/mor/revenuecat';
 import { paddleRail } from './lib/mor/paddle-rail';
+import { razorpayRail } from './lib/mor/razorpay-rail';
 import { fakeVerifier, makeFakeRail } from '../../_shared/src/ports/fakes/payments';
 import { RAIL_PRICE_IDS } from './routes/rail-price-ids';
+import { NOTIFIER_ROUTES, withFallback } from '../../_shared/src/ports/telemetry';
+import type { AlertSeverity, ErrorSink, Notifier, NotifierId } from '../../_shared/src/ports/telemetry';
+import { sentryEnvelopeSink } from '../../_shared/src/adapters/telemetry/sentry-envelope';
+import { ntfyNotifier } from '../../_shared/src/adapters/telemetry/notify-ntfy';
+import { webhookNotifier } from '../../_shared/src/adapters/telemetry/notify-webhook';
+import { mailNotifier } from '../../_shared/src/adapters/telemetry/notify-mail';
 
 type MailSecret = 'RESEND_API_KEY' | 'RESEND_REMINDERS_API_KEY';
 
@@ -96,7 +113,10 @@ const INBOUND: { readonly [K in PaymentsAdapterId]: RailInbound } = {
 /** Each adapter's outbound half, or null for a rail with no outbound verb built yet. */
 const OUTBOUND: { readonly [K in PaymentsAdapterId]: ((secrets: SecretReader) => RailOutbound) | null } = {
   paddle: paddleRail,
-  razorpay: null, // O-RAZORPAY-CHECKOUT-ADAPTER: checkout, cancel and the plan ids arrive with Razorpay PR B.
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (O-RAZORPAY-CHECKOUT-ADAPTER): checkout (a subscription's hosted
+  // page) and cancel at the cycle end. Its plan ids are RAIL_PRICE_IDS.razorpay — empty until the plans
+  // exist, so every checkout answers `invalid`, nothing sent. Selected only via `checkoutRailFor('IN')`.
+  razorpay: razorpayRail,
   revenuecat: null, // a store rail: only the store that billed can cancel (cancel path `store`).
   // The fake sells what Paddle prices, so a sandbox rehearses the same catalogue.
   fake: () => makeFakeRail((appId, offeringId) => RAIL_PRICE_IDS.paddle?.[appId]?.[offeringId] !== undefined),
@@ -133,7 +153,7 @@ export function inboundFor(provider: string, environment: MoneyEnvironment | nul
  * when the registry lists no outbound half for it. Callers narrow with `railCan`.
  *
  * `provider` is `string | null` so a RENDERED selection that may be null
- * (CHECKOUT_RAIL_ID) is passed straight in: the null test is made here, on a typed
+ * (`checkoutRailFor(market)`, formerly CHECKOUT_RAIL_ID) is passed straight in: the null test is made here, on a typed
  * parameter, and never by a route against a generated constant whose value the build
  * already fixes (#1127, CodeQL #548 js/comparison-between-incompatible-types).
  *
@@ -159,10 +179,55 @@ export function railFor(provider: string | null, env: Env): RailOutbound | null 
   return make(secrets);
 }
 
+/**
+ * ⏱ 2026-10-01 · fix-india-rail-tax-data · THE WEB CHECKOUT RAIL FOR A BUYER-DECLARED MARKET.
+ *
+ * Pure, and the ONLY reader of the rendered CHECKOUT_RAIL_BY_MARKET (tooling/ports/render.mjs,
+ * from tooling/channel-register.json's `web` purchaseRail: `rail` is the default, `regionRails`
+ * the per-country rail). `market` is what the BUYER declared in the checkout request, validated
+ * by the caller to ISO 3166-1 alpha-2; null, unknown or a market with no region rail → the
+ * default rail. It is NEVER `cf.country` or any IP geolocation (Q2 is ruled): a VPN or a
+ * traveller would otherwise be routed to a rail they cannot pay on, and the route would be
+ * deciding money from a header nobody signed.
+ *
+ * THE BACKSTOP IS THE RAIL'S, NOT OURS: the Razorpay account accepts DOMESTIC instruments only
+ * (international cards off), so a buyer outside India who declares `IN` cannot complete the
+ * payment there. That is an OWNER / ACCOUNT setting on the Razorpay dashboard, not code, and
+ * nothing here can verify it — Private/runbooks carry the switch.
+ */
+export function checkoutRailFor(market: string | null): PaymentsAdapterId | null {
+  const byMarket = CHECKOUT_RAIL_BY_MARKET;
+  if (market !== null && /^[A-Z]{2}$/.test(market) && Object.hasOwn(byMarket, market)) return byMarket[market] ?? null;
+  return byMarket.default ?? null;
+}
+
 /** The port's generic accessor (tooling/ports/README.md §3): the payments adapters a deploy may select. */
 export function portFor(port: 'payments', environment: PortEnvironment): readonly PaymentsAdapterId[] {
   if (port !== 'payments') return [];
   return PAYMENTS_ADAPTERS.filter((a) => a.environments.includes(environment)).map((a) => a.id);
+}
+
+/** One notifier adapter by its wire id (tooling/ports/telemetry.json). */
+export function notifierAdapter(id: NotifierId, env: Env): Notifier {
+  switch (id) {
+    case 'ntfy':
+      return ntfyNotifier(env);
+    case 'webhook':
+      return webhookNotifier(env, 'nikatru-platform');
+    case 'mail':
+      return mailNotifier();
+  }
+}
+
+/** The owner-alert channel for `severity`: its primary, then its fallback once. */
+export function notifierFor(severity: AlertSeverity, env: Env): Notifier {
+  const route = NOTIFIER_ROUTES[severity];
+  return withFallback(notifierAdapter(route.primary, env), route.fallback ? notifierAdapter(route.fallback, env) : null);
+}
+
+/** The telemetry port's ErrorSink adapter for this Worker. */
+export function errorSinkFor(env: Env): ErrorSink {
+  return sentryEnvelopeSink(env);
 }
 
 /**

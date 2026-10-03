@@ -4648,6 +4648,28 @@
         "cloudflare"
       ],
       "source": "verified",
+      "id": "retention.d1.platform_db.provider_payment_links",
+      "store": "d1:platform_db:provider_payment_links",
+      "what": "The payment-to-subscription map: which subscription a Razorpay payment charged (PR #1149 ruling item 2).",
+      "rule": "keep",
+      "keepWhy": "It is the only durable answer to \"which subscription does this refunded or disputed payment belong to\", written once on the signed `subscription.charged` that names both ids. A refund or chargeback can arrive for as long as a payment can be reversed, so a timer here would turn a later refund into an unclaimed one that revokes nothing; the row carries `user_id`, so it already leaves when the account does via the derived erasure sweep — which is a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0026_provider_payment_links.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
       "id": "retention.d1.platform_db.unclaimed_payments",
       "store": "d1:platform_db:unclaimed_payments",
       "what": "Money arrived and no account could be resolved.",
@@ -5020,6 +5042,28 @@
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
       "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_keys` limb deletes rows whose `last_used_at` is older than NATIVE_ATTEST_KEYS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a key used yesterday through the sweep.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.box_config_manifest",
+      "kind": "retention",
+      "store": "d1:platform_db:box_config_manifest",
+      "what": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each live config file the box's cron reports (tooling/ops/boxes/post-config-manifest.sh) and the server's time of the post. Written by POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts); read by tooling/ops/check-box-config-drift.mjs in ops-watch. No user data.",
+      "rule": "keep",
+      "keepWhy": "At most one row per box (PRIMARY KEY box, a closed set of two the route enforces), replaced whole on every post, so the table cannot outgrow the box count. Its freshness is the drift reader's STALE limb (`maxPostAgeHours` in tooling/ops/box-config-vendored.json), not a timer here; deleting a row by age would read as a box that stopped reporting.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0025_box_config_manifest.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
       "accessProviders": [
         "cloudflare"
       ],

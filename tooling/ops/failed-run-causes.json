@@ -30,8 +30,8 @@
   "causes": [
     {
       "signature": "ops-register:red-since:duty.workflow.build-platforms.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.build-platforms.yml FAILING because the newest build-platforms run on main was red (the Windows leg: the slug rename pushed one path past MAX_PATH 260, 'Unable to generate build files'), and that verdict then failed every CI run — including the ones carrying the remedy.",
-      "fix": "PR #582 ddfc63d4 (2026-09-09, the Windows path) + PR #593 846d90a0 (2026-09-09, the verdict no longer freezes the gate its remedy needs)",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.build-platforms.yml FAILING because the newest build-platforms run on main was red (the Windows leg: the slug rename pushed one path past MAX_PATH 260, 'Unable to generate build files'), and that verdict then failed every CI run — including the ones carrying the remedy. On 2026-10-01 (ops-watch runs 36868870982 .. 36907501061) the red build-platforms run was 36864391489: on the macOS image setup-flutter ran BSD sha256sum with --check, which printed its usage and failed the SDK step.",
+      "fix": "PR #582 ddfc63d4 (2026-09-09, the Windows path) + PR #593 846d90a0 (2026-09-09, the verdict no longer freezes the gate its remedy needs) 2026-10-01: PR #1125 d1ae3643 checks the archive with shasum on macOS; build-platforms green on main in run 36914935790.",
       "fixedBy": {
         "kind": "merge",
         "sha": "ddfc63d4",
@@ -40,6 +40,10 @@
           {
             "sha": "846d90a0",
             "pr": 593
+          },
+          {
+            "sha": "d1ae3643",
+            "pr": 1125
           }
         ]
       },
@@ -47,8 +51,8 @@
     },
     {
       "signature": "ops-register:red-since:duty.workflow.ops-watch.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.ops-watch.yml FAILING because the newest ops-watch run on main was red (Pages freshness strict equality, the alert-disposition 403, the monitor-register drift after the subly rename), and that verdict then failed every CI run. On 2026-09-28 (ci.yml 36430039571, ops-watch 36440893650) ops-watch was red because GitHub's branch=main run listing was days stale, so the prod-provenance walker could not see the builds in production (COULD NOT LOOK), and then because the subscriptiontracker Pages deployment lagged W55.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403); 2026-09-28: PR #1041 f8700bc5 and PR #1046 00687bec (the freshness readers and the provenance walker cross-check the stale listing)",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.ops-watch.yml FAILING because the newest ops-watch run on main was red (Pages freshness strict equality, the alert-disposition 403, the monitor-register drift after the subly rename), and that verdict then failed every CI run. On 2026-09-28 (ci.yml 36430039571, ops-watch 36440893650) ops-watch was red because GitHub's branch=main run listing was days stale, so the prod-provenance walker could not see the builds in production (COULD NOT LOOK), and then because the subscriptiontracker Pages deployment lagged W55. On 2026-09-30 (ops-watch run 36663623381) the red ops-watch run was 36663226147: 873 macOS minutes in billing period 2026-09 over the declared 200. On 2026-10-01 (ci.yml 36941079094, ops-watch 36943198098) the red runs were 36939849073 and 36940922904: the live auth uri_allow_list carried https://nikatru.com/app/connect and the register did not.",
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403); 2026-09-28: PR #1041 f8700bc5 and PR #1046 00687bec (the freshness readers and the provenance walker cross-check the stale listing) 2026-09-30: PR #1078 1f348d8c (a dated 2026-09 macOS exception); 2026-10-02: PR #1138 f6c1aa4a (the register records /app/connect).",
       "fixedBy": {
         "kind": "merge",
         "sha": "846d90a0",
@@ -69,6 +73,14 @@
           {
             "sha": "00687bec",
             "pr": 1046
+          },
+          {
+            "sha": "1f348d8c",
+            "pr": 1078
+          },
+          {
+            "sha": "f6c1aa4a",
+            "pr": 1138
           }
         ]
       },
@@ -76,8 +88,8 @@
     },
     {
       "signature": "ops-register:red-since:duty.workflow.e2e.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.e2e.yml FAILING because the newest nightly e2e run on main was red, and that verdict then failed every CI run until a green e2e landed. On 2026-09-28 (ops-watch runs 36382960478, 36384367573, 36399752579) the red e2e runs were the #1022 (ST-T1) regression: the auth buttons were dead until a Turnstile token existed.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main; 2026-09-28: PR #1039 0c29df69 (the auth buttons validate first and wait visibly for the captcha), e2e green on main in run 36409747279",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.e2e.yml FAILING because the newest nightly e2e run on main was red, and that verdict then failed every CI run until a green e2e landed. On 2026-09-28 (ops-watch runs 36382960478, 36384367573, 36399752579) the red e2e runs were the #1022 (ST-T1) regression: the auth buttons were dead until a Turnstile token existed. On 2026-09-30 (ops-watch run 36703864605, ci.yml run 36698846135) the red e2e runs were 36698011430 and 36699356737: #1082 (500e0d56, the Insights budget train) moved the budget Edit button, and the walk waited a fixed 2 s for it (\"Bad state: No element\" at app_test.dart:1319).",
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main; 2026-09-28: PR #1039 0c29df69 (the auth buttons validate first and wait visibly for the captcha), e2e green on main in run 36409747279 2026-09-30: PR #1084 d62de7b0 waits for the Insights budget Edit button; e2e green on main in run 36705776162.",
       "fixedBy": {
         "kind": "merge",
         "sha": "846d90a0",
@@ -86,6 +98,10 @@
           {
             "sha": "0c29df69",
             "pr": 1039
+          },
+          {
+            "sha": "d62de7b0",
+            "pr": 1084
           }
         ]
       },
@@ -93,12 +109,18 @@
     },
     {
       "signature": "ops-register:red-since:duty.workflow.deploy-web.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.deploy-web.yml FAILING because the newest deploy-web run on main was red (refused downstream while ci-gate was red for that SHA, or the post-deploy smoke read the previous build), and that verdict then failed every CI run.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); cleared by the next green deploy-web on main",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.deploy-web.yml FAILING because the newest deploy-web run on main was red (refused downstream while ci-gate was red for that SHA, or the post-deploy smoke read the previous build), and that verdict then failed every CI run. On 2026-10-02 (ops-watch run 37034001179) the red deploy-web run was ci.yml 37029778489: smoke-web-artifact saw 5 probe requests its interception never paused, because #1145 (fcf77f1e) made the offline shell's service worker answer them.",
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); cleared by the next green deploy-web on main 2026-10-02: PR #1167 ac6108bf (the smoke bypasses the service worker for the connect-src probe); deploy-web green on main in run 37062734965.",
       "fixedBy": {
         "kind": "merge",
         "sha": "846d90a0",
-        "pr": 593
+        "pr": 593,
+        "also": [
+          {
+            "sha": "ac6108bf",
+            "pr": 1167
+          }
+        ]
       },
       "guard": "tooling/ci/assert-ops-register.mjs"
     },
@@ -115,23 +137,27 @@
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-daily-backup",
-      "rootCause": "The laptop backup's newest SUCCESSFUL heartbeat fell outside its 12h window: the backup refused to sync because the subly rename deleted more paths than its --max-delete threshold allows. On 2026-09-28 (ops-watch runs 36412378353, 36412660595, 36413994725) the newest successful beat again fell outside the 12h window; this duty pages, it does not change the tree.",
-      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6); 2026-09-28: the backup was re-run at 10:58Z and succeeded, and its beat was read fresh on the next ops-watch",
+      "rootCause": "The laptop backup's newest SUCCESSFUL heartbeat fell outside its 12h window: the backup refused to sync because the subly rename deleted more paths than its --max-delete threshold allows. On 2026-09-28 (ops-watch runs 36412378353, 36412660595, 36413994725) the newest successful beat again fell outside the 12h window; this duty pages, it does not change the tree. On 2026-09-29 (ops-watch runs 36608990647 .. 36633453785; newest beat 05:45:07Z) the laptop was being moved to a new machine (archived 2026-09-29 17:54 IST, restored from 2026-09-30 01:42 IST; its routines resumed at 2026-09-29T21:19Z), so the 8h task did not run. On 2026-10-02 (runs 36949946104, 36952541569; newest beat 2026-10-01 13:02:38Z) the 02:02 IST run (backup-offsite-20261002-020223.log) ended in \"rclone copy failed for 'platform repo' (7)\": files of a live lane's scratch copy under Projects/.lead-state/scratch changed while rclone copied them (\"corrupted on transfer\", \"failed to open source object\").",
+      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6); 2026-09-28: the backup was re-run at 10:58Z and succeeded, and its beat was read fresh on the next ops-watch 2026-09-29: the restore resumed the routines and the task beat again; 2026-10-02: the 06:58 IST run copied cleanly and beat again (no change to the tree either time).",
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "an owner-authorised sync paused the beat; it resumed with no change to the tree"
       },
-      "guard": "tooling/ci/assert-ops-register.mjs"
+      "guard": "tooling/ci/assert-ops-register.mjs",
+      "firstSeen": "2026-09-09",
+      "lastSeen": "2026-10-02"
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-watchdog",
-      "rootCause": "The hourly laptop watchdog's newest SUCCESSFUL heartbeat fell outside its 2h window: the routine was starved by a long-running session on the same laptop.",
-      "fix": "not a defect in the tree: the routine beat again at 2026-09-10T00:34:04Z (GlitchTip monitor 30)",
+      "rootCause": "The hourly laptop watchdog's newest SUCCESSFUL heartbeat fell outside its 2h window: the routine was starved by a long-running session on the same laptop. On 2026-09-29/30 (ops-watch runs 36643085965, 36648158288) the laptop was being moved to a new machine, so the hourly routine did not run until the restore resumed it (21:19Z).",
+      "fix": "not a defect in the tree: the routine beat again at 2026-09-10T00:34:04Z (GlitchTip monitor 30) 2026-09-30: the routine beat again after the restore, with no change to the tree.",
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "the routine beat again with no change to the tree"
       },
-      "guard": "tooling/ci/assert-ops-register.mjs"
+      "guard": "tooling/ci/assert-ops-register.mjs",
+      "firstSeen": "2026-09-10",
+      "lastSeen": "2026-09-30"
     },
     {
       "signature": "ops-register:duty-stale:*",
@@ -318,7 +344,9 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "a newer run in the same concurrency group evicted it"
-      }
+      },
+      "firstSeen": "2026-09-11",
+      "lastSeen": "2026-09-28"
     },
     {
       "signature": "cancelled:by-hand-or-unknown",
@@ -593,13 +621,25 @@
     {
       "signature": "osv:known-vulnerable",
       "scope": "main",
-      "rootCause": "osv-scanner found newly PUBLISHED advisories against pins main already carried (js-yaml 3.15.1 GHSA-2883-xcg3-v3hh among ten) — main went red with no tree change, on the day the advisories appeared.",
-      "fix": "PR #557 5995bf03 (2026-09-08 23:53Z, ten advisories fixed rather than waived)",
+      "rootCause": "osv-scanner found newly PUBLISHED advisories against pins main already carried (js-yaml 3.15.1 GHSA-2883-xcg3-v3hh among ten) — main went red with no tree change, on the day the advisories appeared. Again on 2026-09-28 (ci.yml run 36489609993: undici 7.29.0, GHSA-3wwx-pv8p-q78v, in every Worker lockfile) and 2026-10-01 (ci.yml run 36929041146: node-forge 1.4.0 in tooling/web-ext, GHSA-86w9-cpqp-85rv, no patched release).",
+      "fix": "PR #557 5995bf03 (2026-09-08 23:53Z, ten advisories fixed rather than waived) 2026-09-29: PR #1054 ff5bc430 (undici 7.29.1 everywhere); 2026-10-02: PR #1134 c5cdc2f6 (node-forge acknowledged with a dated ignore).",
       "fixedBy": {
         "kind": "merge",
         "sha": "5995bf03",
-        "pr": 557
-      }
+        "pr": 557,
+        "also": [
+          {
+            "sha": "ff5bc430",
+            "pr": 1054
+          },
+          {
+            "sha": "c5cdc2f6",
+            "pr": 1134
+          }
+        ]
+      },
+      "firstSeen": "2026-09-08",
+      "lastSeen": "2026-10-01"
     },
     {
       "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so",
@@ -759,11 +799,12 @@
     },
     {
       "signature": "actions-usage:over-ceiling",
-      "rootCause": "ops-watch read the Actions usage ledger: billing period 2026-09 was NET $0.99 over the declared ceiling $0.00, so a spending limit could stop scheduled runs from starting.",
-      "fix": "owner-side: the spending assumption was re-established (billing is settled, pay-as-you-go); ops-watch green on main from 2026-09-03",
+      "rootCause": "ops-watch read the Actions usage ledger: billing period 2026-09 was NET $0.99 over the declared ceiling $0.00, so a spending limit could stop scheduled runs from starting. On 2026-09-30 (ops-watch run 36663226147) it was the macOS limb: billing period 2026-09 spent 873 macOS minutes against a declared 200 (net $0.00 under the public-repo discount; build-platforms ~542, native-auth-proof ~282, store-screenshots ~17).",
+      "fix": "owner-side: the spending assumption was re-established (billing is settled, pay-as-you-go); ops-watch green on main from 2026-09-03 2026-09-30: PR #1078 1f348d8c records ONE dated 2026-09 macOS exception (1000) that expires with the period, instead of raising the standing ceiling.",
       "fixedBy": {
-        "kind": "live-action",
-        "what": "the owner re-established the spending assumption (billing settled, pay-as-you-go)"
+        "kind": "merge",
+        "sha": "1f348d8c",
+        "pr": 1078
       }
     },
     {
@@ -1002,7 +1043,9 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "no log to read; closed by proof alone (a later green, or the branch gone)"
-      }
+      },
+      "firstSeen": "2026-09-11",
+      "lastSeen": "2026-10-01"
     },
     {
       "signature": "stamped-service:typecheck",
@@ -1354,7 +1397,7 @@
     {
       "signature": "failure-ledger:unexplained",
       "scope": "main",
-      "rootCause": "The weekly failed-run ledger's own step exits 1 when it lists UNEXPLAINED runs, by design. Its first two live reads (workflow_dispatch, runs 36206110356 and 36206329284, 2026-09-26) printed UNEXPLAINED: 62 and 63: 45 were the ledger's own defect (its later-green proof took the ops-watch run executing it, still in progress, as ops-watch's newest run) and the rest had no cause row.",
+      "rootCause": "The weekly failed-run ledger's own step exits 1 when it lists UNEXPLAINED runs, by design. Its first two live reads (workflow_dispatch, runs 36206110356 and 36206329284, 2026-09-26) printed UNEXPLAINED: 62 and 63: 45 were the ledger's own defect (its later-green proof took the ops-watch run executing it, still in progress, as ops-watch's newest run) and the rest had no cause row. Its first scheduled run, 36447758185 (the Monday 07:45 UTC slot, created 8h14m late at 2026-09-28T15:59:37Z), printed UNEXPLAINED: 31; the read of 2026-10-03 (2026-09-27 07:45Z .. 2026-10-03 00:00Z) printed UNEXPLAINED: 88 and RECURRING UNRANKED: 7, mapped in the same change as this sentence.",
       "fix": "not a defect: the red is the report, and every run it listed is graded on its own row by the next read. The in-flight proof is fixed and the missing causes are filed in the same change as this row (branch fix/ledger-monday-2026-09-26; O-FAILURE-LEDGER-CANNOT-CLEAR-OPS-WATCH, O-FAILURE-LEDGER-UNEXPLAINED-BEFORE-MONDAY).",
       "fixedBy": {
         "kind": "not-a-defect",
@@ -1506,7 +1549,9 @@
         "kind": "merge",
         "sha": "0c29df69",
         "pr": 1039
-      }
+      },
+      "firstSeen": "2026-09-28",
+      "lastSeen": "2026-09-28"
     },
     {
       "signature": "heartbeat-table:never-written:reminder_mail",
@@ -1516,7 +1561,9 @@
         "kind": "merge",
         "sha": "aad5d670",
         "pr": 1042
-      }
+      },
+      "firstSeen": "2026-09-28",
+      "lastSeen": "2026-09-28"
     },
     {
       "signature": "provenance:absent-builds-past-lookup-cap",
@@ -1618,6 +1665,211 @@
         "sha": "7754edb2",
         "pr": 892
       }
+    },
+    {
+      "signature": "heartbeat-table:reported-failed:ops_watchdog",
+      "rootCause": "The ops_watchdog cron wrote a FRESH row with ok=0 for target main:ops-watch.yml: \"unreadable: stale page: the page ends at run 35477612056 but a cross-read by creation date answered run 36455387316\" — GitHub's branch=main run listing was days stale on 2026-09-28 and the Worker's copy of the reader refused it instead of grading from the fresh cross-read (ops-watch runs 36462165209 .. 36500171179, 2026-09-28 18:00Z .. 23:51Z).",
+      "fix": "PR #1053 c3ebfe7b (2026-09-28): the Worker's ops-watchdog grades a stale-page workflow from its fresh cross-read, the #1041 rule; the next watchdog tick wrote ok=1.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c3ebfe7b",
+        "pr": 1053
+      },
+      "firstSeen": "2026-09-28",
+      "lastSeen": "2026-09-28"
+    },
+    {
+      "signature": "heartbeat-table:reported-failed:backup_export",
+      "rootCause": "The daily backup_export wrote a FRESH row with ok=0 for target d1-budget: \"OVER THE WARN LINE: 37 of 42 D1 queries (88%), red above 80% — platform_db 29, subscriptiontracker_db 8\": the export cost queries per table, and the table count had grown (ops-watch runs 36810231743 .. 36859712513, 2026-10-01 03:22Z .. 12:07Z).",
+      "fix": "PR #1108 355429e0 (2026-10-01): the export costs 4 D1 queries per database, flat in table count (37/42 -> 8/42); the next daily export wrote ok=1.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "355429e0",
+        "pr": 1108
+      },
+      "firstSeen": "2026-10-01",
+      "lastSeen": "2026-10-01"
+    },
+    {
+      "signature": "pages-freshness:serving-older-commit:nikatru-apex",
+      "rootCause": "ops-watch read the direct-upload nikatru-apex project while the ci.yml deploy that carries the newest commit touching its deploy unit was still queued or running, and graded the previous build a failure: runs 36673935750, 36674357743, 36675057329 (2026-09-30, CI 36673911318 running 05:32:55Z .. 05:58:49Z after four cancelled pushes), 36824019531 (2026-10-01, CI 36823713791 running 06:14Z .. 06:37Z), 37016683957 and 37024343900 (2026-10-02, CI 37012909401 and 37020790032 in progress), 37066450042 (2026-10-02, CI 37062734965 running 20:46Z .. 21:53Z).",
+      "fix": "not a defect of production: each deploy landed when its CI finished and the next ops-watch read the project fresh. PR #1166 (open on 2026-10-03) makes that state PENDING until the deploy run completes; when it merges this row becomes {merge, its sha, 1166}.",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the deploy carrying the commit was still queued or running when ops-watch read the project; production caught up when it landed"
+      },
+      "firstSeen": "2026-09-30",
+      "lastSeen": "2026-10-02"
+    },
+    {
+      "signature": "bundle-launch:probe-not-intercepted",
+      "rootCause": "smoke-web-artifact launched the built subscriptiontracker bundle and saw 5 probe requests (subscriptiontracker-api, glitchtip, platform, config and one masked host) that its interception never paused, so they may have reached the hosts: #1145 (fcf77f1e) added the offline shell's own service worker, which answered the connect-src probe before the interception could (ci.yml runs 37020790032, 37029778489, 37033246405, 2026-10-02).",
+      "fix": "PR #1167 ac6108bf (2026-10-02): the smoke bypasses the service worker for the connect-src probe; deploy-web green on main in run 37062734965.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ac6108bf",
+        "pr": 1167
+      },
+      "scope": "main",
+      "firstSeen": "2026-10-02",
+      "lastSeen": "2026-10-02"
+    },
+    {
+      "signature": "bundle-launch:404",
+      "rootCause": "On main the web-artifacts lane launched the bundle and it asked for /subscriptiontracker/fallback-fonts/notosanssymbols2/v24/…woff2, which the bundle did not contain (404): the lane did not self-host the fallback fonts the deploy does (ci.yml run 36309384414, 2026-09-27).",
+      "fix": "PR #1011 34406a6c (2026-09-27, FWA-1): the web-artifacts lane self-hosts the fallback fonts like the deploy.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "34406a6c",
+        "pr": 1011
+      },
+      "scope": "main"
+    },
+    {
+      "signature": "guard-failed:assert-app-dod",
+      "rootCause": "assert-app-dod refused the brick's done-record: feature[3] \"edit profile\" carried a mutation proof recorded 2026-09-29, and #1066 (95543942) changed the code of tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart on 2026-09-30, so the proof had expired (ci.yml run 36663013198).",
+      "fix": "PR #1079 f0b50a22 (2026-09-30): the expired mutation proof was re-run and re-recorded.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "f0b50a22",
+        "pr": 1079
+      },
+      "scope": "main"
+    },
+    {
+      "signature": "guard-test:every lockfile format the real tree tracks has a canary, and the set is not empty",
+      "rootCause": "scan-dependencies.test.mjs named pnpm-lock.yaml in its expected lockfile set by hand, and with #1095 (6f59cee6) and #1102 both on main the tracked set no longer matched it while .github/dependabot.yml kept the root npm entry pnpm had left, so three real-tree cases failed on main (ci.yml run 36819728312, 2026-10-01).",
+      "fix": "PR #1109 a6332afc (2026-10-01): dependabot drops the stale root npm entry and the test derives its expected set from git ls-files.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "a6332afc",
+        "pr": 1109
+      },
+      "scope": "main"
+    },
+    {
+      "signature": "e2e-provision:html-error-page",
+      "rootCause": "The provision step's generate_link call answered \"HTTP 520\" with Cloudflare's \"Web server is returning an unknown error\" page for nikatru.com instead of GoTrue's JSON, so no throwaway user existed and the run stopped (e2e run 36880654202, 2026-10-01 14:58Z).",
+      "fix": "infrastructure, self-cleared: the origin answered again and e2e was green on main 12 minutes later in run 36882164741, with no change to the tree.",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
+    },
+    {
+      "signature": "setup-flutter:sha256sum-bsd",
+      "rootCause": "On the macOS runner image setup-flutter found a sha256sum on PATH and ran `sha256sum --check`, but it is the BSD one (\"usage: sha256sum [-bctwz] [files ...]\"), so the Flutter archive check failed the SDK step (build-platforms run 36864391489, 2026-10-01).",
+      "fix": "PR #1125 d1ae3643 (2026-10-01): setup-flutter checks the archive with shasum on macOS; build-platforms green on main in run 36914935790.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "d1ae3643",
+        "pr": 1125
+      }
+    },
+    {
+      "signature": "native-auth-proof:sign-in-not-home",
+      "rootCause": "The real sign-in form did not reach Home within 60 s, so every later proof step was missing. 2026-09-29 (run 36525783687, Android, at 5ea5bd8c): the proof did not answer the consent prompt or tick the updated-terms box, and its submit tap landed on the obscured form. 2026-09-30 (run 36736302501, Linux, at 5d023f93): the same leg passed 26 minutes later in run 36739638735 at 0008ed54 with no change to the proof or the sign-in path — a transient, not a defect.",
+      "fix": "PR #1062 5d023f93 (2026-09-30): the proof answers the consent prompt and ticks the updated-terms box before Accept; native-auth-proof green on main in run 36754113416.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "5d023f93",
+        "pr": 1062
+      },
+      "firstSeen": "2026-09-29",
+      "lastSeen": "2026-09-30"
+    },
+    {
+      "signature": "purge-throwaway:uncaught-throw",
+      "rootCause": "The purge step threw \"TypeError: fetch failed\" (SocketError: other side closed, UND_ERR_SOCKET) after purging the D1 rows: the Cloudflare edge closed the TLS socket mid-request, and the purge had no retry (native-auth-proof run 36739638735, Windows, 2026-09-30).",
+      "fix": "PR #1094 c6f72c46 (2026-09-30): the purge step survives a transient network close; native-auth-proof green on main in run 36754113416.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c6f72c46",
+        "pr": 1094
+      }
+    },
+    {
+      "signature": "codeql:no-disposition:551",
+      "rootCause": "CodeQL opened #551 (js/unused-local-variable, tooling/ci/assert-mor-adapters.mjs:82: a REGISTRY constant #1127 left unread) on main, and it had no entry in tooling/ci/codeql-dispositions.json, so limb C failed (codeql.yml run 36929056657, 2026-10-01).",
+      "fix": "PR #1134 c5cdc2f6 (2026-10-02): the unread REGISTRY constant is dropped; codeql green on main in run 37071292547.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c5cdc2f6",
+        "pr": 1134
+      }
+    },
+    {
+      "signature": "codeql:no-disposition:560",
+      "rootCause": "CodeQL opened #560 (js/file-access-to-http, tooling/ops/check-wildcard-dns.mjs:156) on main with no entry in tooling/ci/codeql-dispositions.json, so assert-alert-disposition limb C failed (ci.yml run 37057868484, 2026-10-02).",
+      "fix": "PR #1147 c00a1937 (2026-10-02): #560 carries its by-design disposition; ci.yml green on main in run 37071292884.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c00a1937",
+        "pr": 1147
+      }
+    },
+    {
+      "signature": "supabase-auth:drift:uri_allow_list",
+      "rootCause": "The live auth uri_allow_list carried https://nikatru.com/app/connect (the desktop system-browser hand-off #1133 shipped) and tooling/mail-transport.json did not, so the comparison failed (ops-watch runs 36939849073 and 36940922904, 2026-10-01).",
+      "fix": "PR #1138 f6c1aa4a (2026-10-02): the register records https://nikatru.com/app/connect, so live and the record agree.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "f6c1aa4a",
+        "pr": 1138
+      },
+      "firstSeen": "2026-10-01",
+      "lastSeen": "2026-10-01"
+    },
+    {
+      "signature": "rollback:target-is-production",
+      "rootCause": "Two workflow_dispatch runs of rollback.yml (36970520119, 36970542712, 2026-10-02 05:47Z, PB-09 drills) asked to re-promote subscriptiontracker-web to ledger Deployment 6802136537 (67c5902a, Pages d2461134), the deployment already serving production; Cloudflare refuses that (8000039), and rollback.mjs read the refusal as a failure and exited 1 with nothing re-promoted.",
+      "fix": "Production was never touched. PR #1146 (open on 2026-10-03) makes re-promoting the live Pages build a no-op that still smokes, and reads an 8000039 refusal the same way; when it merges this row becomes {merge, its sha, 1146}. rollback.yml has no schedule, so its next green run on main is the next dispatch.",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "Cloudflare refused a re-promote of the build already live, so nothing changed in production; the exit 1 is fixed in PR #1146"
+      },
+      "firstSeen": "2026-10-02",
+      "lastSeen": "2026-10-02"
+    },
+    {
+      "signature": "ops-register:red-since:duty.workflow.codeql.yml",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.codeql.yml FAILING because the newest codeql.yml run on main, 36929056657, failed limb C on CodeQL #551 with no disposition (ops-watch run 36931579971, 2026-10-01).",
+      "fix": "PR #1134 c5cdc2f6 (2026-10-02): the unread REGISTRY constant is dropped; codeql green on main in run 37071292547.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c5cdc2f6",
+        "pr": 1134
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
+    },
+    {
+      "signature": "ops-register:problem:duty.failure-ledger — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL. globalonl",
+      "rootCause": "duty.failure-ledger's recordQuery.firstDue (2026-10-03T00:00:00Z) passed with no scheduled success of the Monday-only failure-ledger job on main: its one slot so far (run 36447758185, 2026-09-28) failed on UNEXPLAINED: 31, and the unit scan read only the newest 100 ops-watch.yml runs (~81h; 39 schedule runs back to 36587820199) of the row's 252h window (ops-watch run 37080147071, 2026-10-03).",
+      "fix": "PR #1175 726474b2 (2026-10-03) moves firstDue to 2026-10-08, after the 2026-10-05 slot; the unit scan reading back to the row's window start, and the causes of the window's UNEXPLAINED runs, land in the pull request that adds this row (fix/duty-record-window).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "726474b2",
+        "pr": 1175
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
+    },
+    {
+      "signature": "e2e:leg-failed:visits every page, creates a subscription, reads it back",
+      "rootCause": "The page walk failed against the live backend twice in this window, each time on a UI change the walk had not followed: 2026-09-29 (e2e run 36513585035) the \"Remove\" button never appeared because T3b's taller add sheet moved the submit button and no subscription was created; 2026-09-30 (runs 36698011430, 36699356737) #1082 (500e0d56) moved the Insights budget Edit button and the walk waited a fixed 2 s for it (\"Bad state: No element\").",
+      "fix": "PR #1060 b8e44d11 (2026-09-29: submit the add sheet where it now is, and prove it closed) and PR #1084 d62de7b0 (2026-09-30: wait for the Edit button); e2e green on main in runs 36518744194 and 36705776162.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "b8e44d11",
+        "pr": 1060,
+        "also": [
+          {
+            "sha": "d62de7b0",
+            "pr": 1084
+          }
+        ]
+      },
+      "scope": "main",
+      "firstSeen": "2026-09-29",
+      "lastSeen": "2026-09-30"
     }
   ]
 }
