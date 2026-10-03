@@ -196,6 +196,45 @@ describe('🔴 [Do 4] "fixed in version X": one mail, to a consenting reporter o
     expect(statusOf(h, second)).toBe('fixed');
   });
 
+  // ⏱ 2026-10-03 — the one-click answer is chosen from the RFC 8058 body, not the
+  // `Origin` header (assert-no-origin-authz). Red control: drop the body check in
+  // routes/feedback.ts and the one-click POST below is answered with the page.
+  it('an RFC 8058 one-click POST gets a plain answer, the page\'s own form gets the page; both suppress', async () => {
+    const h = harness({ FEEDBACK_OPS_SECRET: SECRET });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const tokenFor = async (address: string) => {
+      const mail = createFakeMail(MAIL_FROM);
+      const id = await submit(h, { ...consenting, contactEmail: address });
+      await walkToFixed(h, id);
+      await runFeedbackCron(h.env, Date.now(), { mail });
+      const t = /unsubscribe\?t=([A-Za-z0-9_-]{43})/.exec(mail.sent[0]?.text ?? '')?.[1];
+      expect(t).toBeDefined();
+      return t;
+    };
+    const oneClick = await app.fetch(
+      new Request(`https://feedback.example.test/v1/feedback/unsubscribe?t=${await tokenFor('one@example.com')}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'List-Unsubscribe=One-Click',
+      }),
+      h.env as never,
+      ctx() as never,
+    );
+    expect(oneClick.status).toBe(200);
+    expect(await oneClick.text()).toBe('Unsubscribed.');
+    const form = await app.fetch(
+      new Request(`https://feedback.example.test/v1/feedback/unsubscribe?t=${await tokenFor('two@example.com')}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', Origin: 'https://platform.nikatru.com' },
+      }),
+      h.env as never,
+      ctx() as never,
+    );
+    expect(form.status).toBe(200);
+    expect(await form.text()).toContain('You will get no more mail');
+    expect(h.db.rows('SELECT * FROM feedback_mail_suppressed')).toHaveLength(2);
+  });
+
   it('a malformed or unknown token is refused, and suppresses nothing', async () => {
     const h = harness();
     for (const t of ['short', 'A'.repeat(43)]) {

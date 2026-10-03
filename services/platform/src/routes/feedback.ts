@@ -278,7 +278,11 @@ feedback.post('/unsubscribe', async (c) => {
   const address = await tokenAddress(c.env.PLATFORM_DB, c.req.query('t'));
   if (address === null) return c.text('This unsubscribe link is not valid any more.', 404, privateHeaders);
   await suppress(c.env.PLATFORM_DB, address, nowIso());
-  if ((c.req.header('content-type') ?? '').startsWith('application/x-www-form-urlencoded') && c.req.header('Origin') === undefined) {
+  // A mail client's RFC 8058 one-click POST says so in its BODY
+  // (`List-Unsubscribe=One-Click`) and gets a plain answer; the page's own form
+  // posts an empty body and gets the page. Decided from the body, never from the
+  // `Origin` header, which only the CORS middleware may read (assert-no-origin-authz).
+  if ((await c.req.text().catch(() => '')).trim() === 'List-Unsubscribe=One-Click') {
     return c.text('Unsubscribed.', 200, privateHeaders);
   }
   return c.html(page('Unsubscribed', '<p>You will get no more mail about your problem reports.</p>'), 200, privateHeaders);

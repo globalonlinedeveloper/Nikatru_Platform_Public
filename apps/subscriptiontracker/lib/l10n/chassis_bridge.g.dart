@@ -49,6 +49,8 @@ extension ChassisBridge on AppLocalizations {
 
   String get authCaptchaUnavailable => _chassis.authCaptchaUnavailable;
 
+  String get authCodeInvalid => _chassis.authCodeInvalid;
+
   String get authConfirmEmail => _chassis.authConfirmEmail;
 
   String get authEnterBoth => _chassis.authEnterBoth;
@@ -60,6 +62,8 @@ extension ChassisBridge on AppLocalizations {
   String get authIncorrect => _chassis.authIncorrect;
 
   String get authInvalidEmail => _chassis.authInvalidEmail;
+
+  String get authLastSignInMethod => _chassis.authLastSignInMethod;
 
   String get authLinkFailedSignIn => _chassis.authLinkFailedSignIn;
 
@@ -78,6 +82,8 @@ extension ChassisBridge on AppLocalizations {
       _chassis.authProviderSignInCancelled;
 
   String get authRateLimited => _chassis.authRateLimited;
+
+  String get authReauthRequired => _chassis.authReauthRequired;
 
   String get authResendConfirmation => _chassis.authResendConfirmation;
 
@@ -113,6 +119,31 @@ extension ChassisBridge on AppLocalizations {
   String get checkInboxThenSignIn => _chassis.checkInboxThenSignIn;
 
   String get checkInboxTitle => _chassis.checkInboxTitle;
+
+  String get connectedAccountsApple => _chassis.connectedAccountsApple;
+
+  String get connectedAccountsBody => _chassis.connectedAccountsBody;
+
+  String get connectedAccountsConnect => _chassis.connectedAccountsConnect;
+
+  String get connectedAccountsConnected => _chassis.connectedAccountsConnected;
+
+  String get connectedAccountsGoogle => _chassis.connectedAccountsGoogle;
+
+  String get connectedAccountsNotConnected =>
+      _chassis.connectedAccountsNotConnected;
+
+  String get connectedAccountsOnlyMethod =>
+      _chassis.connectedAccountsOnlyMethod;
+
+  String get connectedAccountsPassword => _chassis.connectedAccountsPassword;
+
+  String get connectedAccountsRemove => _chassis.connectedAccountsRemove;
+
+  String get connectedAccountsTitle => _chassis.connectedAccountsTitle;
+
+  String get connectedAccountsVerifyFirst =>
+      _chassis.connectedAccountsVerifyFirst;
 
   String get consentAllow => _chassis.consentAllow;
 
@@ -186,6 +217,22 @@ extension ChassisBridge on AppLocalizations {
   String get editProfile => _chassis.editProfile;
 
   String get email => _chassis.email;
+
+  String get emailCodeLabel => _chassis.emailCodeLabel;
+
+  String get emailCodeResend => _chassis.emailCodeResend;
+
+  String emailCodeResendIn(int seconds) => _chassis.emailCodeResendIn(seconds);
+
+  String get emailCodeSentAgain => _chassis.emailCodeSentAgain;
+
+  String emailCodeSentTo(String email) => _chassis.emailCodeSentTo(email);
+
+  String get emailCodeShape => _chassis.emailCodeShape;
+
+  String get emailCodeSignIn => _chassis.emailCodeSignIn;
+
+  String get emailCodeUsePassword => _chassis.emailCodeUsePassword;
 
   String get emailRequired => _chassis.emailRequired;
 
@@ -379,7 +426,18 @@ extension ChassisBridge on AppLocalizations {
 
   String get reacceptTermsBody => _chassis.reacceptTermsBody;
 
+  String get reacceptTermsChangedIntro => _chassis.reacceptTermsChangedIntro;
+
   String get reacceptTermsNotRecorded => _chassis.reacceptTermsNotRecorded;
+
+  String reacceptTermsNoteHeading(String document, String version, String date) =>
+      _chassis.reacceptTermsNoteHeading(document, version, date);
+
+  String reacceptTermsNoteLine(String line) =>
+      _chassis.reacceptTermsNoteLine(line);
+
+  String reacceptTermsReadDocument(String document) =>
+      _chassis.reacceptTermsReadDocument(document);
 
   String get reacceptTermsTitle => _chassis.reacceptTermsTitle;
 

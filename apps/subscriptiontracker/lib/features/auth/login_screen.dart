@@ -695,7 +695,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         // (`emailCodeAvailable`) — a native build waits for the route's `otp`.
         if (!_signUp && ref.watch(authRepositoryProvider).emailCodeAvailable)
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               key: LoginScreen.emailCodeButton,
               onPressed: _loading ? null : _requestCode,

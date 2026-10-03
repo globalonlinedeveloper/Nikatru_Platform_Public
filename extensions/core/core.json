@@ -161,9 +161,9 @@
     "specifiedV1ModuleFiles": 13,
     "specifiedV1ModulesBuilt": 1,
     "specifiedV1ModulesNotBuilt": 10,
-    "unspecifiedV1FilesBuilt": 4,
+    "unspecifiedV1FilesBuilt": 5,
     "devHelpersBuilt": 3,
-    "coreTestSims": 5
+    "coreTestSims": 6
   },
 
   "countsVerifiedBy": "core/test/coverage.node.js. Every number in `counts` above is recomputed from this file's own `modules` map and from the tree on disk, on every CI run, and a mismatch fails the core job. Mind the unit when reading a mismatch: specifiedV1Modules/Built/NotBuilt are in MODULES (11), specifiedV1ModuleFiles is in FILES (13), and counting built/not-built in the wrong unit produces 1/12 instead of 1/10 — which looks like an error in this file and is an error in the counter.",
