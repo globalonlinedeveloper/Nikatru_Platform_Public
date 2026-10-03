@@ -5,6 +5,9 @@
   "a11y-primitives.test.mjs":
     28,
 
+  "a11y-statement.test.mjs":
+    23,
+
   "adapter-capabilities.test.mjs":
     32,
 
@@ -435,7 +438,7 @@
     29,
 
   "feedback-triage.test.mjs":
-    20,
+    31,
 
   "finish-capture.test.mjs":
     12,
@@ -579,7 +582,7 @@
     62,
 
   "legal-text-parity.test.mjs":
-    30,
+    32,
 
   "legal-tripwires.test.mjs":
     29,
@@ -1008,7 +1011,7 @@
     49,
 
   "site-bindings.test.mjs":
-    32,
+    35,
 
   "site-integrity.test.mjs":
     125,
