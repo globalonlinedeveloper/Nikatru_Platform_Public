@@ -817,7 +817,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
           '  linux_web_android:\n    name: Linux + Web + Android\n',
           '  linux_web_android:\n    name: Linux + Web + Android\n    outputs: { decoy: "needs: [linux_web_android, windows, apple]" }\n',
         )
-        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, release]', '    needs: [gate, prepare]'),
+        // ⏱ 2026-10-01: the aggregator also needs `durable_symbols` (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
+        .replace('    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]', '    needs: [gate, prepare]'),
     );
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
@@ -829,8 +830,8 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   test('the aggregator written in BLOCK form is read correctly — no false red on a legal spelling', () => {
     const root = mutate((s) =>
       s.replace(
-        '    needs: [gate, prepare, linux_web_android, windows, apple, release]',
-        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - release',
+        '    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]',
+        '    needs:\n      - gate\n      - prepare\n      - "linux_web_android"\n      - windows\n      - apple\n      - durable_symbols\n      - release',
       ),
     );
     assert.equal(assertWatchedWorkflowIntact(root), null);

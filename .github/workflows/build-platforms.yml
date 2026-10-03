@@ -364,7 +364,7 @@ jobs:
           --out ${{ runner.temp }}/android-permissions.json
           --run-id ${{ github.run_id }}
           --commit ${{ github.sha }}
-          --artifact ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
+          --artifact store-${{ matrix.app }}-android-aab-${{ env.ANDROID_SIGNING_POSTURE }}
       - name: The Data safety merged set equals this build's .aab
         run: >
           node tooling/ci/assert-play-declarations.mjs
@@ -452,9 +452,13 @@ jobs:
           path: apps/${{ matrix.app }}/build/linux/snap/${{ matrix.app }}.snap
           retention-days: 90
           if-no-files-found: error
+      # why `ci-proof-`: no channel takes the Linux bundle out of a Release (linux-snap takes the .snap packed
+      # from it, uploaded above as store-<app>-linux-snap; linux-appimage has no lane), so the bundle is a build
+      # proof, outside the release job's `<app>-*` download —
+      # assert-release-durable.mjs limb 1c, docs/ci/build-platforms.md §release-carried (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES).
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
+          name: ci-proof-linux-bundle-${{ matrix.app }}
           path: |
             apps/${{ matrix.app }}/build/linux/x64/release/bundle
           retention-days: 90
@@ -603,9 +607,11 @@ jobs:
           apps/${{ matrix.app }}/build/windows/msix/*.msix
       # why: the artifact is preserved BEFORE the identity check that can reject it. A
       # refusal must leave the evidence behind, not delete it.
-      # ⏱ 2026-09-24: now AFTER the read-back, which must follow msix:create directly; `if: always()` still keeps the .msix it refuses.
+      # ⏱ 2026-09-24: now AFTER the read-back, which must follow msix:create directly; `if: failure()` still keeps the .msix it refuses.
+      # ⏱ 2026-10-01 (O-ARTIFACT-SIZES-UNRECORDED, AA-21): `failure()`, not `always()` — on a green run
+      # `store-<app>-windows-msix` below holds the same bytes, and the diagnostic copy was a second upload of them.
       - name: Keep the .msix even if what follows refuses it
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: store-${{ matrix.app }}-windows-msix-diagnostic
@@ -983,9 +989,12 @@ jobs:
               --dir "apps/${APP}/build/symbols/${lane}" \
               --org "$gt_org" --project "$gt_project"
           done
+      # why `ci-proof-`: the App Store-signed .app is not what any channel takes (macos-appstore takes the .pkg
+      # below), so it is a build proof, outside the release job's `<app>-*` download — assert-release-durable.mjs
+      # limb 1c (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES).
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.app }}-macos
+          name: ci-proof-macos-app-${{ matrix.app }}
           path: apps/${{ matrix.app }}/build/macos/Build/Products/Release
           retention-days: 90
           if-no-files-found: error
@@ -1012,10 +1021,11 @@ jobs:
             apps/${{ matrix.app }}/build/ios/ipa/*.ipa.channel.json
           retention-days: 90
           if-no-files-found: error
+      # why `ci-proof-`: the unsigned iOS .app is a build proof no channel takes — limb 1c, as the two above.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
         with:
-          name: ${{ matrix.app }}-ios-${{ env.APPLE_SIGNING_POSTURE }}
+          name: ci-proof-ios-app-${{ matrix.app }}-${{ env.APPLE_SIGNING_POSTURE }}
           path: apps/${{ matrix.app }}/build/ios/iphoneos
           retention-days: 90
           if-no-files-found: error
@@ -1027,12 +1037,12 @@ jobs:
     # why: this aggregate treats 'skipped' as not-green as well as failure and
     # cancelled. A job-level if: on any platform job would otherwise let it print
     # "All 6 platforms built" over a platform that never built.
-    needs: [gate, prepare, linux_web_android, windows, apple, release]
+    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]
     if: always()
     steps:
       - name: Require every platform green
         run: |
-          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }} release=${{ needs.release.result }}"
+          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }} durable_symbols=${{ needs.durable_symbols.result }} release=${{ needs.release.result }}"
           # 'skipped' added by review 2026-07-31: a job-level `if:` on any
           # platform job would otherwise let this print "All 6 platforms built"
           # over a platform that never built.
@@ -1040,6 +1050,71 @@ jobs:
             echo "::error::One or more platform builds failed"; exit 1
           fi
           echo "All 6 platforms built"
+
+  # ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07). A tag's builds are the
+  # ones that ship — the apps.gov.in .apk a person uploads from the Release above all — and their
+  # symbols lived only in the 90-day `symbols-<app>-*` artifacts. This copies each symbols directory to
+  # the private R2 release store (tooling/channel-register.json releaseStore) BEFORE the Release exists:
+  # `release` needs this job. A job of its own, not steps of `release`: limbs 1b/1c of
+  # assert-release-durable.mjs read every download in a publishing job as published, and the mappings
+  # must never be. On a non-tag run every step is skipped and the job is green, so `release` still runs.
+  # The key's channel segment is the symbols ARTIFACT's lane (linux-android, windows, apple): one tarball
+  # per artifact, holding every symbols directory flutter-release-build.mjs wrote in that job.
+  # assert-obfuscation-coupled.mjs limb DURABLE holds this job upstream of the publish.
+  durable_symbols:
+    name: Durable symbols (tag pushes only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs:
+      - gate
+      - prepare
+      - linux_web_android
+      - windows
+      - apple
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.ref_type == 'tag'
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: github.ref_type == 'tag'
+        with:
+          path: symbols-in
+          pattern: symbols-${{ matrix.app }}-*
+      - name: Copy this tag's symbols to the release store (R2)
+        if: github.ref_type == 'tag'
+        env:
+          APP: ${{ matrix.app }}
+          RUN_NUMBER: ${{ github.run_number }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASE_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          R2_RELEASE_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          release_line="$(node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" | sed -n 's/^release_line=//p')"
+          copied=0
+          for d in symbols-in/*/; do
+            [ -d "$d" ] || continue
+            # one artifact per directory (three always match, so none is extracted flat); the
+            # segment is the artifact's build lane: linux-android, windows, apple.
+            lane="$(basename "$d")"
+            lane="${lane#symbols-"${APP}"-}"
+            node tooling/ci/r2-durable-copy.mjs --kind symbols --app "$APP" --channel "$lane" \
+              --version "${release_line}.${RUN_NUMBER}" --build "$RUN_NUMBER" \
+              --dir "$d" --out "${RUNNER_TEMP}/symbols-record-${lane}.json"
+            copied=$((copied + 1))
+          done
+          if [ "$copied" -eq 0 ]; then
+            echo "::error title=Durable symbols::no symbols directory under symbols-in/ — the tag's builds kept no mapping to copy"
+            exit 1
+          fi
 
   release:
     name: Durable release artifacts
@@ -1051,6 +1126,7 @@ jobs:
       - linux_web_android
       - windows
       - apple
+      - durable_symbols
     permissions:
       contents: write
       deployments: write
@@ -1120,6 +1196,9 @@ jobs:
           # `ref_type == 'tag'` would leave it dead until the first real release.
           node tooling/ci/assert-app-versioning.mjs --tag "$TAG" --ref-type "$REF_TYPE" --app "apps/$APP"
           mkdir -p dist
+          # ⏱ 2026-10-01: `downloads` may not exist — no upload is in the `<app>-*` namespace unless a
+          # channel's row says a Release carries it (limb 1c), and a pattern matching nothing makes no directory.
+          mkdir -p downloads
           # Each installer's build stamp goes to stamps/, never to dist/ (flat, and
           # published whole); the next step reads each file's channel from there.
           node tooling/ci/release-manifest.mjs --stage downloads --out dist --stamps stamps --app "$APP" --tag "$TAG" --ref-type "$REF_TYPE"

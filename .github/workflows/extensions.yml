@@ -1863,7 +1863,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TOOL: ${{ steps.tag.outputs.id }}
           LISTING_URL: ${{ steps.amo.outputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL" --mode production
+          RUN_NUMBER: ${{ github.run_number }}
+        # why --artifact: the record names the zip AMO was sent by sha256 and size, not only the commit
+        # (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST; assert-release-provenance.mjs limb 5).
+        run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL" --mode production --artifact "release-assets/${TOOL}-firefox.zip" --build-number "$RUN_NUMBER"
 
       # why: in this job and only for this store's word (EXT-3): the verdict is the register's, read
       # before the publish step so an unarmed or uncredentialled lane says which, by name.

@@ -675,7 +675,7 @@
     26,
 
   "obfuscation-coupled.test.mjs":
-    40,
+    45,
 
   "one-entitlement-reader.test.mjs":
     13,
@@ -852,7 +852,7 @@
     6,
 
   "release-durable.test.mjs":
-    200,
+    204,
 
   "release-grades-legs.test.mjs":
     7,
@@ -861,7 +861,7 @@
     105,
 
   "release-provenance.test.mjs":
-    159,
+    163,
 
   "release-tag-lanes.test.mjs":
     24,
@@ -1048,6 +1048,9 @@
 
   "store-build-config.test.mjs":
     38,
+
+  "store-bytes-record.test.mjs":
+    19,
 
   "store-capture-board-parity.test.mjs":
     26,

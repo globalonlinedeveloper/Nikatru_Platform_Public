@@ -61,6 +61,11 @@
 //   final ones, the .pkg and the .ipa); renaming `store-${{ matrix.app }}-windows`
 //   back into the `<app>-*` namespace on the real tree → exit 1 naming it.
 //
+// LIMB 1c (⏱ 2026-10-01, O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES) The converse for
+//   EVERY file: each path of an upload a publishing job's download takes maps to a
+//   register row that is served or that `releaseCarriesFor` says a Release carries.
+//   RECORDED FAILING CASE: the macOS .app upload named back into `<app>-*` → exit 1.
+//
 // LIMB 2  A durable publish must carry an INTEGRITY RECORD it has re-derived.
 //   The publishing job must run `release-manifest.mjs --write <dir>` and then
 //   `--verify <dir>` before it publishes, and must publish FROM `<dir>`. The
@@ -206,8 +211,9 @@ let installableExtensions;
 let EXTRA_INSTALLABLE;
 let storeOnlyFormats;
 let BUNDLE_MEMBERS;
+let releaseCarriesFor;
 try {
-  ({ MANIFEST_NAME, RELEASE_JSON_NAME, installableExtensions, EXTRA_INSTALLABLE, storeOnlyFormats, BUNDLE_MEMBERS } = await import(
+  ({ MANIFEST_NAME, RELEASE_JSON_NAME, installableExtensions, EXTRA_INSTALLABLE, storeOnlyFormats, BUNDLE_MEMBERS, releaseCarriesFor } = await import(
     `file://${manifestAbs.replace(/\\/g, '/')}`
   ));
 } catch (e) {
@@ -220,10 +226,11 @@ if (
   RELEASE_JSON_NAME === '' ||
   typeof installableExtensions !== 'function' ||
   typeof storeOnlyFormats !== 'function' ||
+  typeof releaseCarriesFor !== 'function' ||
   !(BUNDLE_MEMBERS instanceof Map)
 ) {
   coverageLost([
-    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\`, \`RELEASE_JSON_NAME\`, \`installableExtensions\`, \`storeOnlyFormats\` and \`BUNDLE_MEMBERS\`.`,
+    `${MANIFEST_SCRIPT_REL} no longer exports \`MANIFEST_NAME\`, \`RELEASE_JSON_NAME\`, \`installableExtensions\`, \`storeOnlyFormats\`, \`releaseCarriesFor\` and \`BUNDLE_MEMBERS\`.`,
     'This guard reads both OUT of that file so there is exactly one declaration of each. Without them it',
     'would have to carry its own copy — and a private copy of a constant is the first thing to drift,',
     'silently, in the direction that prints ok.',
@@ -903,6 +910,39 @@ function storeOnlyIn(rawPath) {
   }
   return null;
 }
+// ── limb 1c — the Release carries only what a channel's row says it carries ──
+// ⏱ 2026-10-01 (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES, review AA-13). Limb 1b
+// refuses a STORE-ONLY file; it said nothing about a file NO channel takes at all.
+// The App Store-signed macOS .app (379.9 MB on its last run) and the Linux bundle
+// were both in the `<app>-*` namespace the release job downloads, so a tag would
+// have published each as a public .tar.gz while no register row names either:
+// macos-appstore takes the .pkg, linux-snap builds its own .snap, linux-appimage
+// has no lane. So every path of every upload a release download takes must map to
+// a row that is `served: true` or that release-manifest.mjs `releaseCarriesFor`
+// answers yes for:
+//   · a path ending in a register file format maps to the rows accepting it;
+//   · a path that is only an expression (the apps.gov.in .apk's step output)
+//     maps to the rows whose declared `lane` is the uploading job — it cannot be
+//     read, so the job's own declaration is what it is held to;
+//   · anything else — a bundle DIRECTORY above all — maps to no row, and fails.
+// A `<path>.channel.json` stamp travels with its installer and is not graded alone.
+// A path limb 1b already refused is not reported twice.
+//   RECORDED FAILING CASE: `<app>-macos` restored on the real tree → exit 1
+//   naming it (release-durable.test.mjs 'limb 1c', the fixture twin).
+const FILE_FORMAT = /^\.[A-Za-z0-9]+$/;
+const releaseRow = (c) => c?.served === true || releaseCarriesFor(register ?? {}, c);
+/** The rows a release-bound upload path maps to, or [] when none does. */
+function carriedBy(rawPath, wfRel, jobName) {
+  const p = rawPath.replace(/\.channel\.json$/i, '');
+  const bare = p.replace(EXPR, '').trim();
+  const rows = register?.channels ?? [];
+  if (bare === '') {
+    return rows.filter((c) => releaseRow(c) && typeof c?.lane?.workflow === 'string' && c.lane.workflow === wfRel && c.lane.job === jobName);
+  }
+  const lower = p.replace(EXPR, '_').trim().toLowerCase();
+  return rows.filter((c) => releaseRow(c) && (c?.artifactFormats ?? []).some((f) => typeof f === 'string' && FILE_FORMAT.test(f) && lower.endsWith(f.toLowerCase())));
+}
+let carriedPathsGraded = 0;
 let storeOnlyDownloads = 0;
 let storeOnlyUploadsGraded = 0;
 for (const wf of workflows) {
@@ -933,6 +973,22 @@ for (const wf of workflows) {
         if (!reader) continue;
         storeOnlyUploadsGraded++;
         const hits = stepPaths(step).map((p) => ({ p, f: storeOnlyIn(p) })).filter((h) => h.f !== null);
+        // limb 1c, over the same release-bound upload (see its header above).
+        const unchanneled = [];
+        for (const p of stepPaths(step)) {
+          if (/\.channel\.json$/i.test(p.trim()) || hits.some((h) => h.p === p)) continue;
+          carriedPathsGraded++;
+          if (carriedBy(p, wf.rel, up.name).length === 0) unchanneled.push(p);
+        }
+        if (unchanneled.length) {
+          problems.push(
+            `${wf.rel}: job "${up.name}" uploads "${name}" at ${lineAt(wf, step.n)}, and job "${job.name}"'s download \`${reader.target}\` at ${lineAt(wf, reader.d.n)} takes it into the Release — ` +
+              `path(s) no channel a Release carries maps to: ${unchanneled.join(', ')}. ` +
+              `A Release carries a file only for a row that is \`served: true\` or that ${MANIFEST_SCRIPT_REL} \`releaseCarriesFor\` answers yes for ` +
+              '(a direct row, an extension row, a store a person uploads to by hand). A build proof goes under `ci-proof-<…>-<app>`, a store-only file under `store-<app>-…`, ' +
+              'and neither name is in the `<app>-*` download. O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES',
+          );
+        }
         if (hits.length === 0) continue;
         // ⚠️ No template literal here OPENS with an SQL keyword: assert-d1-sql-inventory.mjs
         // reads a literal that starts `with …` and names a `from` as SQL (measured on this line).
@@ -946,6 +1002,13 @@ for (const wf of workflows) {
       }
     }
   }
+}
+if (scanningRealRepo && storeOnlyDownloads > 0 && carriedPathsGraded === 0) {
+  coverageLost([
+    'limb 1c graded NO upload path that a release download takes.',
+    'The apps.gov.in .apk upload is in that set on every tree that has its lane; with nothing graded, "the Release carries only',
+    'what a channel says it carries" is a claim about nothing — the shape a download whose pattern stopped matching would take.',
+  ]);
 }
 if (scanningRealRepo && storeOnlyDownloads === 0) {
   coverageLost([
@@ -1131,6 +1194,10 @@ ok(
 ok(
   `limb 1b — ${storeOnlyDownloads} release download(s) read; ${storeOnlyUploadsGraded} upload(s) they take graded against ${STORE_ONLY.size} store-only format(s) ` +
     `{${[...STORE_ONLY].sort().join(' ')}} from ${MANIFEST_SCRIPT_REL} \`storeOnlyFormats\``,
+);
+ok(
+  `limb 1c — ${carriedPathsGraded} release-bound upload path(s) graded against the ${(register?.channels ?? []).filter(releaseRow).length} row(s) that are served or that ` +
+    `${MANIFEST_SCRIPT_REL} \`releaseCarriesFor\` says a Release carries`,
 );
 for (const p of printed) note(p);
 for (const w of warnings) {

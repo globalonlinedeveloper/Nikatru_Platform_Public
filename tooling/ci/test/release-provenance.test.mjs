@@ -2704,3 +2704,36 @@ describe('assert-release-provenance — limb 2b, the sandbox exemption', () => {
     assert.match(out, /services\/w\/wrangler\.jsonc env\.sandbox .*MONEY_ENVIRONMENT = "live", not "sandbox"/);
   });
 });
+
+// ⏱ ADDED 2026-10-01 — limb 5 (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST, review AA-12). A
+// production record a `--submit` job writes names the bytes the store received. Green
+// control first; then each mutation that must fail.
+describe('assert-release-provenance — limb 5: a production submission record passes --artifact', () => {
+  const record = (extra) => `\n      - run: node tooling/ci/record-deployment.mjs "x-store" --state in_review --listing-url "$L" --mode production${extra}`;
+  const withRecord = (extra) => tree({ submit: submitWorkflow({ step: SUBMIT_STEP + record(extra) }) });
+
+  test('GREEN CONTROL — a production record carrying --artifact passes, and the limb counts it', () => {
+    const { code, out } = run(withRecord(' --artifact "$AAB" --build-number 7'));
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 5: 1 production submission record\(s\) in `--submit` job\(s\) graded for `--artifact`/);
+  });
+
+  test('MUTATION — the same record without --artifact ⇒ exit 1 naming the job and the line', () => {
+    const { code, out } = run(withRecord(''));
+    assert.equal(code, 1, out);
+    assert.match(out, /job "submit" records a production submission at :\d+ without `--artifact`/);
+  });
+
+  test('a dry-run record is outside the limb: a rehearsal sent the store nothing', () => {
+    const r = run(tree({ submit: submitWorkflow({ step: `${SUBMIT_STEP}\n      - run: node tooling/ci/record-deployment.mjs "x-store" --mode dry-run` }) }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 5: 0 production submission record\(s\)/);
+  });
+
+  test('two calls on one logical line are graded one segment at a time — the second missing it fails', () => {
+    const both = `\n      - run: |\n          node tooling/ci/record-deployment.mjs "x-store" --state draft_staged --listing-url "$L" --mode production --artifact a.aab --build-number 7\n          node tooling/ci/record-deployment.mjs "x-store" --state in_review --listing-url "$L" --mode production`;
+    const { code, out } = run(tree({ submit: submitWorkflow({ step: SUBMIT_STEP + both }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /limb 5: 2 production submission record\(s\)/);
+  });
+});

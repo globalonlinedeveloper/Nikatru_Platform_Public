@@ -85,6 +85,15 @@
 //       starting `dry-run`, and takes no --state, --listing-url or --version-code: it
 //       submitted nothing. Refused on every other row, which no lane rehearses; there the
 //       flag is optional, and `--mode production` only adds `payload.mode`.
+//   node tooling/ci/record-deployment.mjs <app>-<store channel> … --artifact <file> --build-number <n> \
+//        [--symbols-record <file.json>]
+//     → ⏱ 2026-10-01 · THE BYTES THE STORE RECEIVED (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST,
+//       O-ARTIFACT-SIZES-UNRECORDED; review AA-12, AA-21). `payload.artifact` is
+//       {name, sha256, size, buildNumber} of the file read HERE, so the ledger names the bytes and
+//       not only the commit; `payload.symbols` is r2-durable-copy.mjs's record of the build's
+//       symbols {r2Key, sha256, size, stored}. Store rows only (kind: store); --artifact and
+//       --build-number come together. assert-release-provenance.mjs limb 5 requires --artifact on
+//       every production record of a submit job.
 //   On EVERY failure path the recorder prints one recovery command: this invocation again,
 //   prefixed with the run identity below, for a hand re-run once the cause is fixed.
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
@@ -108,8 +117,9 @@
 //          missing, so the record would bind to no run. Red on purpose. ⏱ 2026-09-26: or
 //          the channel is one a lane submits through and no --mode names the run.
 // ─────────────────────────────────────────────────────────────────────────────
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { appendFileSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { basename, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   encodeDescription,
@@ -666,6 +676,48 @@ export function rollbackRecord(kind, rollbackOf, ref) {
   return { sha: ref.toLowerCase(), payload: { rollback: true, rollback_of: Number(rollbackOf) }, refusal: null };
 }
 
+// ── ⏱ 2026-10-01 · THE BYTES A STORE RECEIVED, AND WHERE THEIR SYMBOLS ARE (see the usage) ──
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/** `{ artifact }` — {name, sha256, size, buildNumber} of the file at `path`, hashed here — or
+ *  `{ refusal }`. Reads the file: a digest typed by the caller is a digest nobody computed. */
+export function artifactRecord(path, buildNumberRaw) {
+  if (path === null && buildNumberRaw === null) return { artifact: null };
+  if (path === null || buildNumberRaw === null) {
+    return { refusal: `--${path === null ? 'build-number' : 'artifact'} was given without --${path === null ? 'artifact' : 'build-number'}. A record names a file AND the build number it carries, or neither.` };
+  }
+  if (!/^[1-9]\d*$/.test(buildNumberRaw) || !Number.isSafeInteger(Number(buildNumberRaw))) {
+    return { refusal: `--build-number "${buildNumberRaw}" is not a whole number of 1 or more.` };
+  }
+  let st;
+  try {
+    st = statSync(path);
+  } catch (e) {
+    return { refusal: `--artifact ${path} cannot be read (${e.code ?? e.message}). The record would name bytes nobody hashed.` };
+  }
+  if (!st.isFile() || st.size === 0) return { refusal: `--artifact ${path} is ${st.isFile() ? 'empty' : 'not a regular file'}.` };
+  const sha256 = createHash('sha256').update(readFileSync(path)).digest('hex');
+  return { artifact: { name: basename(path), sha256, size: st.size, buildNumber: Number(buildNumberRaw) } };
+}
+
+/** `{ symbols }` — r2-durable-copy.mjs's record, checked — or `{ refusal }`. */
+export function symbolsRecord(path) {
+  if (path === null) return { symbols: null };
+  let j;
+  try {
+    j = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    return { refusal: `--symbols-record ${path} is not readable JSON (${e.code ?? e.message}).` };
+  }
+  const bad = [];
+  if (typeof j?.r2Key !== 'string' || !j.r2Key.startsWith('symbols/')) bad.push('r2Key');
+  if (typeof j?.sha256 !== 'string' || !SHA256_HEX.test(j.sha256)) bad.push('sha256');
+  if (!Number.isSafeInteger(j?.size) || j.size <= 0) bad.push('size');
+  if (typeof j?.stored !== 'boolean') bad.push('stored');
+  if (bad.length) return { refusal: `--symbols-record ${path} lacks a valid ${bad.join(', ')} (tooling/ci/r2-durable-copy.mjs writes it).` };
+  return { symbols: { r2Key: j.r2Key, sha256: j.sha256, size: j.size, stored: j.stored } };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const positional = [];
@@ -898,6 +950,23 @@ async function main() {
         'Drop the flag, or record the row\'s high-water block first.',
     );
   }
+  // ── ⏱ 2026-10-01 · THE BYTES THE STORE RECEIVED, AND THEIR SYMBOLS (above) ──
+  let bytes;
+  let symbols;
+  try {
+    bytes = artifactRecord(flagValue(argv, 'artifact'), flagValue(argv, 'build-number'));
+    symbols = symbolsRecord(flagValue(argv, 'symbols-record'));
+  } catch (err) {
+    return fail(`could not build the deployment record: ${err.message}`);
+  }
+  if (bytes.refusal) return fail(bytes.refusal);
+  if (symbols.refusal) return fail(symbols.refusal);
+  if ((bytes.artifact !== null || symbols.symbols !== null) && kind !== 'store') {
+    return fail(
+      `--${bytes.artifact !== null ? 'artifact' : 'symbols-record'} was given for "${environment}", a unit of kind "${kind}". ` +
+        'Only a store row records the file a store received: a web or service deploy is named by its Pages or Worker id.',
+    );
+  }
   // ── ⏱ 2026-09-25 · WHICH PAGES DEPLOYMENT OR WORKER VERSION WENT LIVE (above) ──
   const published = publishedIds(kind, idFlags, process.env);
   if (published.refusal) return fail(published.refusal);
@@ -913,6 +982,8 @@ async function main() {
     // mode is one of the rows no lane rehearses, or predates this date: production.
     ...(mode !== null ? { mode } : {}),
     ...(versionCode !== null ? { version_code: versionCode } : {}),
+    ...(bytes.artifact !== null ? { artifact: bytes.artifact } : {}),
+    ...(symbols.symbols !== null ? { symbols: symbols.symbols } : {}),
     ...published.ids,
     ...rollback.payload,
   };
@@ -976,6 +1047,8 @@ async function main() {
     console.log(
       `ok  recorded ${ledgerEnvironment} ${rehearsal ? 'dry-run' : state} at ${sha.slice(0, 8)}` +
         `${versionCode !== null ? ` · versionCode ${versionCode}` : ''}` +
+        `${payload.artifact ? ` · ${payload.artifact.name} ${payload.artifact.size} bytes sha256 ${payload.artifact.sha256}` : ''}` +
+        `${payload.symbols ? ` · symbols ${payload.symbols.stored ? 'stored' : 'PENDING'} at ${payload.symbols.r2Key}` : ''}` +
         `${payload.pages_deployment_id ? ` · Pages deployment ${payload.pages_deployment_id}` : ''}` +
         `${payload.worker_version_id ? ` · Worker version ${payload.worker_version_id}` : ''}` +
         `${payload.rollback ? ` · re-promoted from ledger Deployment ${payload.rollback_of}` : ''}` +

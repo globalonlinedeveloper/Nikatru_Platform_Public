@@ -387,6 +387,78 @@ describe('assert-release-durable.mjs — limb 1b (no store-only file reaches a R
   });
 });
 
+// ⏱ ADDED 2026-10-01 — limb 1c (O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES, review AA-13).
+// Limb 1b refuses a store-only file; this refuses a file NO channel's row says a
+// Release carries. R5 on the real tree: `ci-proof-macos-app-<app>` named back to
+// `<app>-macos` → exit 1 naming the .app directory.
+describe('assert-release-durable.mjs — limb 1c (a Release carries only channel-claimed files)', () => {
+  const CARRY_REGISTER = {
+    channels: [
+      { id: 'web', kind: 'web', surface: 'app', served: true, artifactFormats: ['static-bundle'], deploymentEnvironment: '{app}-web' },
+      { id: 'macos-appstore', kind: 'store', surface: 'app', served: false, submittable: true, platforms: ['macos'], artifactFormats: ['.pkg'] },
+      { id: 'linux-appimage', kind: 'direct', surface: 'app', served: false, submittable: false, platforms: ['linux'], artifactFormats: ['.AppImage'] },
+      {
+        id: 'apps-gov-in', kind: 'store', surface: 'app', served: false, submittable: false, platforms: ['android'], artifactFormats: ['.apk'],
+        lane: { workflow: '.github/workflows/b.yml', job: 'build' },
+      },
+    ],
+  };
+  const upload = (name, ...paths) => `      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${name}
+          path: |
+${paths.map((p) => `            ${p}\n`).join('')}          retention-days: 7
+`;
+  const DOWNLOAD = `      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: downloads
+          pattern: \${{ matrix.app }}-*
+`;
+  const APP_DIR = 'apps/${{ matrix.app }}/build/macos/Build/Products/Release';
+
+  test('RED — the App Store-signed macOS .app in the `<app>-*` namespace is named: no row takes a bundle directory', () => {
+    const root = fixture({ register: CARRY_REGISTER, workflows: { 'b.yml': lane({ upload: upload('${{ matrix.app }}-macos', APP_DIR), publish: DOWNLOAD + PUBLISH_STEPS }) } });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /FAIL \.github\/workflows\/b\.yml: job "build" uploads "\$\{\{ matrix\.app \}\}-macos" at :\d+, and job "release"'s download `\$\{\{ matrix\.app \}\}-\*` at :\d+ takes it into the Release — path\(s\) no channel a Release carries maps to: apps\/\$\{\{ matrix\.app \}\}\/build\/macos\/Build\/Products\/Release\./,
+    );
+    assert.match(r.out, /O-RELEASE-ARCHIVES-UNCHANNELED-BUNDLES/);
+  });
+
+  test('GREEN CONTROL — the same upload named `ci-proof-…` is outside the download, and the limb grades nothing of it', () => {
+    const root = fixture({ register: CARRY_REGISTER, workflows: { 'b.yml': lane({ upload: upload('ci-proof-macos-app-${{ matrix.app }}', APP_DIR), publish: DOWNLOAD + PUBLISH_STEPS }) } });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}limb 1c — 0 release-bound upload path\(s\) graded against the 3 row\(s\) that are served or that/);
+  });
+
+  test('GREEN — a file a direct row accepts, with its stamp, maps to that row', () => {
+    const root = fixture({
+      register: CARRY_REGISTER,
+      workflows: { 'b.yml': lane({ upload: upload('${{ matrix.app }}-linux-appimage', 'apps/x/build/linux/x.AppImage', 'apps/x/build/linux/x.AppImage.channel.json'), publish: DOWNLOAD + PUBLISH_STEPS }) },
+    });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}limb 1c — 1 release-bound upload path\(s\) graded/);
+  });
+
+  test('an expression-only path is held to the uploading job: a declared lane of a carried row passes, any other job fails', () => {
+    // Beside an installable upload: an expression-only path is no installable to limb 1's classifier.
+    const agi =
+      upload('${{ matrix.app }}-linux-appimage', 'apps/x/build/linux/x.AppImage') +
+      upload('${{ steps.v.outputs.artifact_name }}', '${{ steps.a.outputs.apk }}', '${{ steps.a.outputs.apk }}.channel.json');
+    const green = run(fixture({ register: CARRY_REGISTER, workflows: { 'b.yml': lane({ upload: agi, publish: DOWNLOAD + PUBLISH_STEPS }) } }));
+    assert.equal(green.code, 0, green.out);
+    const elsewhere = JSON.parse(JSON.stringify(CARRY_REGISTER));
+    elsewhere.channels.find((c) => c.id === 'apps-gov-in').lane.job = 'release';
+    const red = run(fixture({ register: elsewhere, workflows: { 'b.yml': lane({ upload: agi, publish: DOWNLOAD + PUBLISH_STEPS }) } }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /path\(s\) no channel a Release carries maps to: \$\{\{ steps\.a\.outputs\.apk \}\}\./);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE DEAD-DESTINATION CLAUSE — every case below was run against the version
 // of this guard that only knew the literal `false`, and the three never-true

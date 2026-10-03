@@ -235,6 +235,8 @@ jobs:
         run: node tooling/ci/gen-ci-map.mjs --check
       - name: The release runbook's arming lines match the register (channel-arming --check)
         run: node tooling/ci/channel-arming.mjs --check
+      - name: The release runbook's §3 matches what a Release carries (gen-release-carries --check)
+        run: node tooling/ci/gen-release-carries.mjs --check
 
   ff-guard-meta:
     # why: FF-2 — starts only once `guard-meta` has concluded red, so it keeps its failure. docs/ci/README.md §2.1

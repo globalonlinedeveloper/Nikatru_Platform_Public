@@ -418,6 +418,30 @@ jobs:
           path: apps/${{ needs.gate.outputs.app }}/build/symbols/android-aab
           retention-days: 90
           if-no-files-found: error
+      # why: BEFORE the store upload, and the one copy of this build's mapping that outlives the run: a store
+      # serves the build for years and the artifact above expires at 90 days (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS).
+      # Private R2, keyed symbols/<app>/<channel>/<version>+<build>/; the record below carries its sha256.
+      # assert-obfuscation-coupled.mjs limb DURABLE holds it before the `--submit` step.
+      - name: Copy this build's symbols to the release store (R2), before the upload
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASE_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          R2_RELEASE_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          release_line="$(node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" | sed -n 's/^release_line=//p')"
+          node tooling/ci/r2-durable-copy.mjs --kind symbols --app "$APP" --channel android-play \
+            --version "${release_line}.${RUN_NUMBER}" --build "$RUN_NUMBER" \
+            --dir "apps/${APP}/build/symbols/android-aab" --out "${RUNNER_TEMP}/symbols-record.json"
+      # why: BEFORE the upload — fails at 80% of the store's stated limit, warns at 2× the median the ledger's
+      # earlier records carry (tooling/channel-register.json storeSizeLimit; O-ARTIFACT-SIZES-UNRECORDED).
+      - name: The android-play artifact is within its store's size limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AAB: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
+        run: node tooling/ci/assert-artifact-size.mjs --app "$APP" --channel android-play "$AAB"
       - name: Upload to Google Play
         id: upload
         env:
@@ -472,6 +496,8 @@ jobs:
           LISTING_URL: ${{ inputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
           RELEASE_STATUS: ${{ inputs.release_status }}
+          # why: the bytes the store received, named in the record by sha256 and size (O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST).
+          AAB: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
         # why: a DRAFT is uploaded and NOT sent for review (#1099 review, finding 1), so it is recorded
         # `draft_staged`, which [10]D-6's cadence does not count; only the owner's console "send for review"
         # makes it in_review. Two LITERAL calls in one unconditional step, so assert-publish-records grades
@@ -479,7 +505,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$RELEASE_STATUS" = draft ]; then
-            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state draft_staged --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production
+            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state draft_staged --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production --artifact "$AAB" --build-number "$RUN_NUMBER" --symbols-record "${RUNNER_TEMP}/symbols-record.json"
           else
-            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production
+            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production --artifact "$AAB" --build-number "$RUN_NUMBER" --symbols-record "${RUNNER_TEMP}/symbols-record.json"
           fi
