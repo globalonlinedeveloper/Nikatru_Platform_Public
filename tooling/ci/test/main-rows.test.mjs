@@ -238,7 +238,11 @@ describe('M6 — the wiring in ci.yml', () => {
     const step = gm.slice(gm.lastIndexOf('- name:', at), at);
     assert.match(step, /if: \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && github\.ref == 'refs\/heads\/main'/);
     assert.match(gm, /fetch-depth: 0/);
-    assert.doesNotMatch(gm.slice(0, gm.indexOf('steps:')), /\n {4}if:/, 'a job-level if: on guard-meta would read as skipped in ci-gate');
+    // ⏱ 2026-10-03 · merge of main (#1192) into club/rt-ports: the ONE job-level `if:` allowed is the
+    // draft predicate every ci.yml job now shares with ci-gate (assert-green-means-ran A10). It is
+    // true on a push to main (no pull request, so no draft), the one event this step runs on.
+    const jobIfs = [...gm.slice(0, gm.indexOf('steps:')).matchAll(/\n {4}if: (.*)/g)].map((m) => m[1].trim());
+    assert.ok(jobIfs.every((c) => c === 'github.event.pull_request.draft != true'), `a job-level if: on guard-meta other than the draft predicate would read as skipped in ci-gate: ${jobIfs.join(' | ')}`);
   });
 
   test('ci-gate still needs guard-meta, runs always and counts skipped red', () => {

@@ -29,7 +29,8 @@
 //
 // ── WIRING ───────────────────────────────────────────────────────────────────
 // ci.yml job guard-meta, a STEP-level `if:` for push to main — never on a PR,
-// whose merge does not exist yet, and never a job-level `if:`, because ci-gate
+// whose merge does not exist yet, and no job-level `if:` but the draft predicate
+// every ci.yml job shares with ci-gate (true on a push to main), because ci-gate
 // counts a skipped job red. guard-meta checks out with fetch-depth: 0.
 //
 // Tests: tooling/ci/test/main-rows.test.mjs.
