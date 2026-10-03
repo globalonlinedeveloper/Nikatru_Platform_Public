@@ -2090,6 +2090,50 @@
       "unverifiedWhy": "The workflow has not run yet: a schedule and a dispatch exist only once the file is on the default branch. Its first runs are DRY, beside the laptop landers, until the lead's cut-over sets LAND_DRY_RUN to false."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-REVIEWS-DEPEND-ON-THE-LAPTOP. The owner rule of 2026-09-29 (an auth, money, user-data or API pull request gets an independent review before it may merge) lived only on the laptop: a hold list, approve files and a daemon. This workflow labels the review-classed pull requests on GitHub, and land-next.mjs waits for an owner verdict review on the head. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.review-gate.yml",
+      "kind": "duty",
+      "what": "On every opened, synchronized, reopened or ready-for-review pull request, tooling/autopilot/review-paths.mjs reads the PR's file list over the API and adds `needs-review` when a path matches a class in tooling/autopilot/review-paths.json (auth, money, user-data, api) or the list cannot be read whole; on a new head it removes `review:approve` / `review:changes`, because a verdict is pinned to the head it read. It never removes `needs-review`. It runs from main under pull_request_target and never checks out the PR's code.",
+      "detector": "The run's own exit: review-paths.mjs exits 1 when a label write was refused. tooling/ci/test/autopilot-review-gate.test.mjs holds every class, the fail-closed list, the synchronize rule and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the classes it found and the labels it changed. A missing `needs-review` on a review-classed PR is added by hand; land-next.mjs then waits for the verdict like any other.",
+      "cadence": "trigger",
+      "trigger": "a pull request opened, synchronized, reopened or marked ready for review",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/review-gate.yml",
+        "record": "GitHub Actions run history for review-gate.yml, and the labels on each pull request",
+        "failingValue": "conclusion = failure — a label write was refused",
+        "readBy": "tooling/ci/test/autopilot-review-gate.test.mjs on every CI run (the decisions and the shell); land-next.mjs reads the labels it sets. NOT graded RED-SINCE: it has no workflow_dispatch, and its next pull request event re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a pull_request_target workflow runs from the default branch, so its first run is the first pull request event after this row reaches main."
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-WATCH-RUNS-ON-THE-LAPTOP. The cloud-lane watch, the run ledger and E2E-after-deploy ran only as laptop daemons, so all three stopped when the laptop was off. They read only GitHub facts, so they run here in both modes. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.autopilot-watch.yml",
+      "kind": "duty",
+      "what": "Every 15 minutes and on each CI, E2E live or Land completion, tooling/autopilot/watch.mjs reads the laptop heartbeat (opening, editing or closing ONE `laptop-off` issue on a transition), the open same-repo PR board (newest ci-gate run per head, STALL past 6 h), every run that ended red in the last 12 h with an owner and a cause, and the open `land-freeze` issue, and edits the body of ONE `Autopilot ledger` issue with public facts only. A second job dispatches e2e.yml on main when the head a CI run deployed to web is not E2E-proven and touches an app or shared UI path (at most once per 30 minutes; never while an `e2e-hold` issue is open).",
+      "detector": "The run's own exit: watch.mjs exits 1 when a write was refused or a body was refused as not public, 2 when it could not look. tooling/ci/test/autopilot-ledger.test.mjs holds every decision and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the laptop state, the ledger edit and the E2E decision. The ledger issue is the record; a stale ledger means this workflow stopped, which its run history shows.",
+      "cadence": "trigger",
+      "trigger": "a 15-minute schedule, completion of CI, E2E live or Land, or a manual dispatch",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/autopilot-watch.yml",
+        "record": "GitHub Actions run history for autopilot-watch.yml, the `Autopilot ledger` issue body it edits, and the `laptop-off` issues it opens and closes",
+        "failingValue": "conclusion = failure — a write or a body was refused, or the watch could not look",
+        "readBy": "tooling/ci/test/autopilot-ledger.test.mjs on every CI run (the decisions and the shell); the lead, through the ledger issue. NOT graded RED-SINCE on purpose: a transient GitHub read failure would otherwise turn every pull request's ci-gate red until the next slot (TRAPS ci-26), and its next 15-minute slot re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a schedule exists only once the file is on the default branch."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",
@@ -2657,6 +2701,10 @@
       "detector": "A GlitchTip heartbeat monitor (id 6): the script POSTs on success, and the monitor goes red on ABSENCE. 🔴 THIS ROW CLAIMED TO BE 'the one provably complete alarm chain in the portfolio and the template every other row is measured against' AND IT WAS THE ONLY BROKEN ONE. Monitor 6 was created with project_id = NULL; GlitchTip joins alert -> project -> monitor to find recipients, so the recipient set was empty and it went Down 13 times of 41 checks telling nobody, while the dashboard drew it red. Fixed and PROVEN 2026-08-05 — assigned to project `ops`, forced a real Down and a real recovery, both emails delivered (evidence in tooling/ops/alarm-chains.json). Now enforced by tooling/ops/verify-alarm-chains.mjs, which fails if any monitor has no project, if any project hosting a monitor has no uptime recipient, or if a chain has never been observed delivering. ⏱ SECOND DETECTOR ADDED 2026-09-08 — see `remotelessHistoryLimb` on this row. The heartbeat watches SILENCE; it cannot see a run that succeeds while a repo with no git remote leaves its only off-machine history behind. That state happened, for three and a half hours, and is now a throw before the POST rather than a green run.",
       "response": "Email from the GlitchTip alert rule; run the task by hand and read its log.",
       "cadence": "8h",
+      "outage": {
+        "cloudTwin": "none: laptop-only (the vault, the Drive OAuth and the local corpus live there)",
+        "laptopOnly": "the whole backup; the Windows task has StartWhenAvailable=True, so it catches up on boot, and past DEGRADED_MAX_H of outage this row is red again"
+      },
       "remotelessHistoryLimb": {
         "_why": [
           "🔴 ADDED 2026-09-08 BECAUSE THIS DUTY'S OWN JUSTIFICATION HAD GONE FALSE FOR TWO REPOS.",
@@ -2745,6 +2793,10 @@
       "detector": "GlitchTip heartbeat monitor 29 `Laptop routine: ops check`, project `ops`, interval 50400 s. The interval is 12 h of cadence plus 2 h of slack, and the slack is not decorative: at exactly 43200 s the observed gap between the 2026-09-06T14:40:01Z and 2026-09-07T02:42:20Z check-ins was 12 h 02 m, i.e. already past the window, so the monitor was one slow run away from a spurious Down. Corrected to 50400 s on 2026-09-08 through the full-replace PUT, because PATCH on this endpoint returns 405.",
       "response": "Read the routine's own record and the ntfy digest for the last run, then run it by hand. ⚠️ MEASURED 2026-09-09T19:19Z WHILE THIS ROW WAS BEING WRITTEN, AND RECORDED RATHER THAN TIDIED AWAY: monitor 29's newest check-in was 2026-09-08T02:41:54Z, about 16.6 h earlier, so the 14:30Z run of 2026-09-08 did not beat. `isUp` still read True because GlitchTip had not yet evaluated the window. That is this detector doing its job on the day it was declared, and it is the routine's own to fix, not this row's.",
       "cadence": "12h",
+      "outage": {
+        "cloudTwin": "the platform Worker's cron (#802) and ops-watch.yml",
+        "laptopOnly": "the SSH and vault checks of Box B and Box C"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
@@ -2795,6 +2847,10 @@
       "detector": "GlitchTip heartbeat monitor 30 `Laptop routine: CI watchdog`, project `ops`, interval 7200 s — one hour of cadence plus one hour of slack. 🔴 THE ROUTINE'S SILENCE RULE GOVERNS ntfy AND THE RECORD FILE, NEVER THE HEARTBEAT. \"Nothing was stuck\" is a COMPLETED run and MUST beat; if the silence rule reached the beat, this monitor would go Down on the routine working perfectly.",
       "response": "Read the routine's record for the last run and run it by hand. The 2026-09-08 incident is the worked example and is worth reading before assuming a defect: the monitor went Down at 15:16:09Z with the routine's own `lastRunAt` at 17:31:40Z, i.e. THE ROUTINE WAS RUNNING THE WHOLE TIME. The monitor was correct and the routine was correct; the WIRE between them had been lost when the three routines were recreated that day. Check the beat one-liner in the task prompt before suspecting either end.",
       "cadence": "1h",
+      "outage": {
+        "cloudTwin": "the platform Worker's cron (#808, cancels stuck runs) and land.yml (merges)",
+        "laptopOnly": "reaping the reaper: the laptop-side checks of its own routines and agents"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
@@ -2845,6 +2901,10 @@
       "detector": "GlitchTip heartbeat monitor 33 `Laptop routine: pipeline driver`, project `ops`, Heartbeat, interval 86400 s, confirmationThreshold 2. CREATED 2026-09-09; before that this routine had NO absence alarm at all and was the only one of the three whose disappearance nothing outside this laptop would have noticed. 🔴 THE THRESHOLD IS LOAD-BEARING, NOT DECORATIVE. GlitchTip refuses any interval above 86400 s (HTTP 422, `Input should be less than or equal to 86400` — the same wall duty.restic-snapshot records hitting on 2026-09-05), and 86400 s is EXACTLY this routine's cadence, so threshold 1 would take it Down on a few minutes of ordinary drift. A monitor that cries wolf daily gets muted, which is the same end state as no monitor. Threshold 2 alarms after roughly two missed days instead.",
       "response": "Read the routine's record (`Private/docs/areas/history.md`) and the `nikatru-digest` ntfy topic for the last run, then run it by hand. ⚠️ Its beat one-liner reads the URL out of the gitignored vault at run time; if the key is lost, the routine prints a one-line gap notice on every run instead of skipping silently, and that notice reaches the record and the digest.",
       "cadence": "1d",
+      "outage": {
+        "cloudTwin": "the autopilot runner routines' pipeline-driver fallback, OFF by default (tooling/autopilot/contract.json `pipelineDriverFallback` is false)",
+        "laptopOnly": "moving the next pipeline item: it writes the remote-less Private corpus"
+      },
       "mechanism": {
         "substrate": "claude-scheduled-task",
         "anchor": "Private/runbooks/scheduled-tasks.md",
