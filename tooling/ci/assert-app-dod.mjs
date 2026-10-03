@@ -108,7 +108,7 @@
 // selection fields) have no real instance in the tree and are exercised by
 // fixture only. The passing line says so out loud, every run.
 //
-// ⏱ 2026-09-30 → 2026-10-03 — A MERGE IS NOT A CHANGE TO THE CODE IT CARRIES.
+// ⏱ 2026-09-30 → 2026-10-03 — A PROOF IS GRADED BY BYTES, NOT BY DAYS.
 // #1066's PR CI was green: its commits were dated 2026-09-29, the same day as
 // the brick's `edit profile` mutation record. Its SQUASH merge landed at 02:51Z
 // on 2026-09-30, so on main the probed file "last changed 2026-09-30", after its
@@ -116,16 +116,16 @@
 // (2026-09-30) graded every file an open PR touched as "last changed" on UTC
 // TODAY, which turned the same clock on PRs instead: #1172 went red at
 // 2026-10-03 00:00Z with no new commit, its code commit and its proof both dated
-// 2026-10-02. The LEAD'S RULING (lead 7185eb, 2026-10-03): the record must be no
-// older than the committer day of the newest commit, on the PR head or main,
-// that CHANGED THE RECORDED CODE BYTES (comment prose ignored, as before). A
-// merge — actions/checkout's `refs/pull/N/merge`, an update-branch merge, the
-// squash land-next.mjs lands — whose code equals the PR head's is not a change,
-// so a proof dated on or after the code's real commit stays valid when the PR
-// lands a day later, on the PR's run and on main's alike. `codeChangeAt` is the
-// walk; its note says how a squash reaches its PR head. A code commit after the
-// record, a merge that changes the code, a future-dated record and a missing
-// record all still red.
+// 2026-10-02. A second answer dated the commit that changed the bytes, and
+// review 250f9bb8 reproduced a false green with it: a PR's code commit dated
+// 09-28 passed after another lane re-dated the record on main to 10-01 against
+// main's code, which never held the PR's change. Dates are the wrong unit. THE
+// LEAD'S RULING (lead 7185eb, 2026-10-03): R is the newest commit on HEAD's
+// history that set the row's current `mutation` record; the proof is valid iff
+// the recorded CODE at R equals the recorded CODE at HEAD (comment prose
+// ignored, as before). Dates are printed, never decisive. Local history only —
+// no fetch, no ref written; R outside a shallow clone is COVERAGE LOST.
+// `recordSetAt` is the walk.
 //
 // Usage:  node tooling/ci/assert-app-dod.mjs [repoRoot] [--require-stamped]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -661,83 +661,34 @@ function lastCommitDay(relPath) {
  *     field and six honestly re-run mutations to populate, so it is named here
  *     rather than half-built.
  *
- * Shallow clones cannot reach this: `isShallow` is COVERAGE LOST below, so the
- * walk is never asked to reason about a truncated history. */
+ * ⏱ 2026-10-03 — this note was written for `lastCodeChangeDay`, a date walk.
+ * The definition of "code" it argues for now lives in `codeAt` below, which
+ * the byte comparison (`recordSetAt`) reads; the dates no longer decide.
+ *
+ * Shallow clones: `isShallow` is COVERAGE LOST below, and a walk that reaches
+ * a shallow graft before finding R is COVERAGE LOST on its own row. */
 const git = (args) => spawnSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', timeout: 30_000, maxBuffer: 64 * 1024 * 1024 });
 
-function lastCodeChangeDay(relPath, rev = 'HEAD') {
-  return codeChangeAt(rev, relPath)?.day ?? null;
-}
-
-/** ⏱ 2026-10-03 — THE COMMIT THAT CHANGED THE CODE BYTES, NOT THE DAY A MERGE
- *  RE-DATED THEM. `{ sha, day }` of the newest commit reachable from `rev` that
- *  changed the file's CODE (`codeAt`), or null when git knows nothing about the
- *  path. Three kinds of commit carry the same code forward, and each is followed
- *  to where the code really came from rather than dated:
+/** ⏱ 2026-10-03 — THE BYTES THE PROOF RAN AGAINST, NOT THE DAY IT WAS DATED
+ *  (lead 7185eb, replacing the date ruling after review 250f9bb8 finding 1).
  *
- *   · a commit whose whole effect on the file was COMMENT PROSE (2026-09-09,
- *     the long note above) — its parent's history answers;
- *   · a MERGE commit whose code equals one parent's — actions/checkout's
- *     `refs/pull/N/merge`, a `Merge branch 'main' into …` from update-branch,
- *     a `Merge pull request #N`. That parent's history answers (the newest, when
- *     several parents carry the same code). `git log -- <path>` already skips a
- *     merge that is byte-TREESAME to a parent; this also skips one that differs
- *     only in comment prose. A merge whose code equals NO parent made a change
- *     of its own and is dated (a conflict resolved by hand is new code);
- *   · a SQUASH commit — one parent, subject ending `(#N)`, the only way
- *     land-next.mjs merges — whose code equals PR #N's head. The squash is
- *     dated the moment it lands, so on main every probed file a PR touched
- *     "last changed" on its merge day; the PR head's own history answers
- *     instead. That head is read from `refs/pull/N/head` (local, or fetched
- *     from `origin` once per PR). When it cannot be read, or its code differs
- *     from the squash's, the squash IS the change and keeps its own date —
- *     the strict reading, never a forgiving one.
+ *  A proof is VALID iff the recorded CODE at R equals the recorded CODE at
+ *  HEAD, where R is the newest commit on HEAD's history that SET the row's
+ *  current `mutation` record. Comment prose is stripped first (`codeAt`, the
+ *  2026-09-09 note above). Dates are printed, never decisive:
  *
- *  🔴 THE RED THIS CLOSES, MEASURED: #1172 at 2026-10-03 00:00Z went red with no
- *  new commit. Its code commit and its mutation record were both 2026-10-02;
- *  the old merge mode graded every file a PR touched as "last changed" on UTC
- *  today, so the PR expired its own proof at midnight. #1066 (2026-09-30) was
- *  the same date on main, read off the squash. Both are the merge's date, and a
- *  merge that does not change the bytes the proof ran against is not a change.
- *  What still reds: a code commit after the record, a merge commit that changes
- *  the code, a squash whose code is not its PR head's. */
-const changeMemo = new Map();
-function codeChangeAt(rev, relPath) {
-  const log = git(['log', '-1', '--format=%H%x09%P%x09%cI%x09%s', rev, '--', relPath]);
-  if (log.status !== 0) return null;
-  const line = log.stdout.trim();
-  if (line === '') return null;
-  const [sha, parentList, iso, subject = ''] = line.split('\t');
-  const memoKey = `${sha}\0${relPath}`;
-  if (!changeMemo.has(memoKey)) changeMemo.set(memoKey, changeFrom(sha, parentList, iso, subject, relPath));
-  return changeMemo.get(memoKey);
-}
-
-function changeFrom(sha, parentList, iso, subject, relPath) {
-  const asUtc = new Date(iso);
-  const self = { sha, day: Number.isNaN(asUtc.getTime()) ? iso.slice(0, 10) : asUtc.toISOString().slice(0, 10) };
-  const code = codeAt(sha, relPath);
-  // Added here, renamed into place, or unreadable: a change, dated here.
-  if (code === null) return self;
-  const parents = parentList.split(' ').filter(Boolean);
-  const carriers = parents.filter((p) => codeAt(p, relPath) === code);
-  if (carriers.length > 0) {
-    // The newest of the parents carrying this code; a parent git knows nothing
-    // about (null) cannot be the answer while another one has history.
-    const answers = carriers.map((p) => codeChangeAt(p, relPath)).filter((a) => a !== null);
-    if (answers.length === 0) return self;
-    return answers.reduce((a, b) => (b.day > a.day ? b : a));
-  }
-  const squash = parents.length === 1 ? /\(#(\d+)\)\s*$/.exec(subject) : null;
-  if (squash) {
-    const head = pullHead(squash[1]);
-    if (head !== null && codeAt(head, relPath) === code) {
-      const viaHead = codeChangeAt(head, relPath);
-      if (viaHead !== null) return viaHead;
-    }
-  }
-  return self;
-}
+ *   · the #1172 midnight red cannot recur — a record set at R against code
+ *     that has not moved since is valid on any day the merge lands;
+ *   · a record RE-DATED on main against main's code (review finding 1: a
+ *     side-branch code commit dated 09-28, a record re-run on main and dated
+ *     10-01) does not cover the side branch's code, because main's bytes at R
+ *     are not HEAD's bytes — a date comparison passed it;
+ *   · committer dates are author-controlled and a rebase re-dates every commit
+ *     (finding 2); no date decides anything here;
+ *   · a merge that changes the recorded bytes, by hand or by carrying a code
+ *     change the record never saw, is HEAD's code and not R's — red.
+ *
+ *  Local history only: no fetch, no ref written (finding 3). */
 
 /** The file's code at one commit: comment prose stripped for Dart (`dartCodeAt`),
  *  every byte for anything else. Null when the commit does not hold the file. */
@@ -754,29 +705,83 @@ function codeAt(sha, relPath) {
   return codeMemo.get(key);
 }
 
-/** PR #N's head commit, or null. A local `refs/pull/N/head` (or
- *  `refs/remotes/origin/pull/N/head`) first; otherwise ONE fetch from `origin`
- *  into `refs/pull/N/head`. CI's checkout is anonymous over HTTPS and the
- *  repository is public, so the ref is readable there; offline it is null and
- *  the squash keeps its own date (strict). */
-const pullHeads = new Map();
-function pullHead(n) {
-  if (pullHeads.has(n)) return pullHeads.get(n);
-  const local = (ref) => {
-    const r = git(['rev-parse', '--verify', '-q', `${ref}^{commit}`]);
-    return r.status === 0 ? r.stdout.trim() : null;
-  };
-  let head = local(`refs/pull/${n}/head`) ?? local(`refs/remotes/origin/pull/${n}/head`);
-  if (head === null && git(['remote', 'get-url', 'origin']).status === 0) {
-    const f = git(['fetch', '-q', '--no-tags', '--no-write-fetch-head', 'origin', `+refs/pull/${n}/head:refs/pull/${n}/head`]);
-    if (f.status === 0) head = local(`refs/pull/${n}/head`);
-    else unreadHeads.push(n);
+/** True when a commit git shows as parentless still names a parent in its own
+ *  object: a shallow clone's graft, whose history is not in this clone. */
+const isGraft = (sha) => {
+  const raw = git(['cat-file', 'commit', sha]);
+  return raw.status === 0 && /^parent [0-9a-f]+$/m.test(raw.stdout.split('\n\n')[0]);
+};
+
+/** The row's `mutation` record in the record file at one commit, as canonical
+ *  JSON, or null when the commit does not hold the file, it does not parse, or
+ *  the row is absent. `key` is the row's name plus its occurrence among rows of
+ *  that name, so a renamed or reordered duplicate is a different row. */
+const rowMemo = new Map();
+function mutationRowAt(sha, recFile, key) {
+  const memoKey = `${sha}\0${recFile}\0${key.name}\0${key.nth}`;
+  if (!rowMemo.has(memoKey)) {
+    let value = null;
+    const blob = git(['show', `${sha}:${recFile}`]);
+    if (blob.status === 0) {
+      try {
+        const rows = JSON.parse(blob.stdout)?.features;
+        const row = Array.isArray(rows) ? rows.filter((f) => f && f.name === key.name)[key.nth] : undefined;
+        if (row && row.mutation !== undefined) value = JSON.stringify(row.mutation);
+      } catch {
+        value = null;
+      }
+    }
+    rowMemo.set(memoKey, value);
   }
-  pullHeads.set(n, head);
-  return head;
+  return rowMemo.get(memoKey);
 }
-/** PRs whose head could not be fetched, PRINTED: their squash dates stood. */
-const unreadHeads = [];
+
+/** R: `{ sha, day }` of the newest commit reachable from `rev` that SET the
+ *  row's current value, `{ shallow: sha }` when the walk reached a graft of a
+ *  shallow clone before finding where it was set, or null when git holds no
+ *  history of the record file or the row at `rev` is not `value`.
+ *
+ *  `git log -1 <rev> -- <file>` is the newest commit that changed the file on
+ *  the simplified history (a merge TREESAME to a parent is followed down that
+ *  parent). If a parent already holds the same row value, the row was set
+ *  further back and that parent's history answers — the NEWEST such answer
+ *  when several parents carry it (a row set on two lines of history counts
+ *  from the later setting). Otherwise this commit set it. */
+const setMemo = new Map();
+function recordSetAt(rev, recFile, key, value) {
+  const log = git(['log', '-1', '--format=%H%x09%P%x09%cI', rev, '--', recFile]);
+  if (log.status !== 0 || log.stdout.trim() === '') return null;
+  const [sha, parentList, iso] = log.stdout.trim().split('\t');
+  const memoKey = `${sha}\0${recFile}\0${key.name}\0${key.nth}\0${value}`;
+  if (setMemo.has(memoKey)) return setMemo.get(memoKey);
+  let answer;
+  if (mutationRowAt(sha, recFile, key) !== value) answer = null;
+  else {
+    const parents = parentList.split(' ').filter(Boolean);
+    if (parents.length === 0 && isGraft(sha)) answer = { shallow: sha };
+    else {
+      const carried = parents
+        .filter((p) => mutationRowAt(p, recFile, key) === value)
+        .map((p) => recordSetAt(p, recFile, key, value))
+        .filter((a) => a !== null);
+      const lost = carried.find((a) => a.shallow);
+      if (lost) answer = lost;
+      else if (carried.length > 0) answer = carried.reduce((a, b) => (b.day > a.day ? b : a));
+      else {
+        const asUtc = new Date(iso);
+        answer = { sha, day: Number.isNaN(asUtc.getTime()) ? iso.slice(0, 10) : asUtc.toISOString().slice(0, 10) };
+      }
+    }
+  }
+  setMemo.set(memoKey, answer);
+  return answer;
+}
+
+/** True when git holds any history of the path (the brick-source fallback). */
+const hasHistory = (relPath) => {
+  const r = git(['log', '-1', '--format=%H', 'HEAD', '--', relPath]);
+  return r.status === 0 && r.stdout.trim() !== '';
+};
 
 /** A .dart file's code at one commit, with comment prose gone. `stripDartComments`
  *  is length-preserving, so a blanked `//` comment becomes trailing spaces and
@@ -1027,33 +1032,56 @@ for (const appDir of domain) {
       // A freshly stamped app is UNTRACKED, so git knows nothing about its files.
       // Its implementation IS the brick source it was rendered from, which is
       // tracked — so the clause runs against the probe instead of going quiet.
+      // Its record is rendered from the brick's too, so R is found there.
       //
-      // ⏱ 2026-09-09 — `lastCodeChangeDay`, NOT `lastCommitDay`. A commit that
-      // only reworded comment prose beside this code is not a change to the
-      // behaviour the mutation proved. See the long note on that function for
-      // the measurement that forced it and for why the narrowing forgives
-      // nothing a mutation proof could have noticed.
+      // ⏱ 2026-09-09 — comment prose does not count as code (`codeAt`). See the
+      // long note above `codeAt` for the measurement that forced it.
       //
-      // ⏱ 2026-10-03 — a merge or squash that carries the code unchanged is not
-      // a change to it (`codeChangeAt`), so a proof dated on the day of the
-      // code's last real commit stays in date when the PR lands a day later.
-      let subject = effRel;
-      let change = codeChangeAt('HEAD', effRel);
-      if (change === null) {
-        subject = `${BRICK_APP}/${effFile}`;
-        change = codeChangeAt('HEAD', subject);
-      }
-      const day = change?.day ?? null;
-      if (day === null) {
+      // ⏱ 2026-10-03 — BYTES, NOT DAYS (`recordSetAt`, lead 7185eb): the code at
+      // R, the commit that set this row's current mutation record, must be the
+      // code at HEAD. The dates are printed only.
+      const subject = hasHistory(effRel) ? effRel : `${BRICK_APP}/${effFile}`;
+      const recFile = hasHistory(recRel) ? recRel : `${BRICK_APP}/dod.json`;
+      const key = { name: f.name, nth: features.slice(0, idx).filter((g) => g && g.name === f.name).length };
+      const committed = mutationRowAt('HEAD', recFile, key);
+      if (!hasHistory(subject)) {
         unverifiable.push(`${at}: neither ${effRel} nor its brick source has any commit history, so the mutation record's freshness could not be established.`);
-      } else if (mut.date < day) {
+        return;
+      }
+      if (committed === null) {
         fail(
-          `${at}: the mutation was recorded ${mut.date} and the CODE in ${subject} last changed ${day} ` +
-            '(comment prose is ignored; every other byte counts). ' +
-            'The record now describes code that is no longer there — re-run the mutation against what is ' +
-            'in the tree today and re-date the row. This is what turns "proven once in a terminal" into a ' +
-            `state rather than an event. (The change is ${change.sha.slice(0, 12)}, the newest commit that ` +
-            'changed those bytes; a merge or squash that only carried them is not counted.)',
+          `${at}: the mutation record is not committed in ${recFile} at HEAD, so there is no commit to say which ` +
+            'code it ran against. Commit the record in the change whose code it proved.',
+        );
+        return;
+      }
+      if (recFile === recRel && committed !== JSON.stringify(mut)) {
+        fail(
+          `${at}: the mutation record in ${recRel} differs from the one committed at HEAD. Freshness is the code at ` +
+            'the commit that records the proof, so an uncommitted record proves nothing yet — commit it.',
+        );
+        return;
+      }
+      const r = recordSetAt('HEAD', recFile, key, committed);
+      if (r === null) {
+        unverifiable.push(`${at}: git holds no history of ${recFile}, so the commit that set the mutation record could not be found.`);
+        return;
+      }
+      if (r.shallow) {
+        const depth = git(['rev-list', '--count', 'HEAD']).stdout.trim();
+        coverageLost([
+          `${at}: the commit that set the mutation record in ${recFile} is not in this clone — the walk reached`,
+          `${r.shallow.slice(0, 12)}, a shallow-clone graft, with the row still unchanged. This checkout holds ${depth} commit(s);`,
+          'raise actions/checkout `fetch-depth` to 0 (full history). A proof whose commit cannot be read is not evidence.',
+        ]);
+      }
+      if (codeAt(r.sha, subject) !== codeAt('HEAD', subject)) {
+        fail(
+          `${at}: the mutation recorded ${mut.date} was set by ${r.sha.slice(0, 12)} (committed ${r.day}), and the ` +
+            `CODE in ${subject} at ${r.sha.slice(0, 12)} is not the code at HEAD (comment prose is ignored; every ` +
+            'other byte counts). The record now describes code that is no longer there — re-run the mutation against ' +
+            'the code at HEAD and re-record it in this change. This is what turns "proven once in a terminal" into ' +
+            'a state rather than an event.',
         );
       }
     });
@@ -1165,17 +1193,12 @@ if (isShallow) {
     'this is a SHALLOW clone (`git rev-parse --is-shallow-repository` = true).',
     'At fetch-depth 1 there is exactly one commit, dated at checkout time, so `git log -1 -- <file>` returns',
     'that date for every file — every mutation record would read as stale and every human-review row as',
-    'freshly signed. The lane must check out with `fetch-depth: 0`. This is COVERAGE LOST rather than a',
+    `freshly signed. This checkout holds ${git(['rev-list', '--count', 'HEAD']).stdout.trim()} commit(s); the lane must check out with`,
+    '`fetch-depth: 0`. This is COVERAGE LOST rather than a',
     'printed note on purpose: "I could not check" must never look like "ok".',
   ]);
 }
 
-if (unreadHeads.length) {
-  console.log(
-    `⬜ ${unreadHeads.length} squash commit(s) kept their own date because origin could not serve the PR head ` +
-      `(${unreadHeads.map((n) => `#${n}`).join(', ')}) — the strict reading, printed rather than implied.`,
-  );
-}
 if (unverifiable.length) {
   console.log(`⬜ ${unverifiable.length} thing(s) this guard could NOT verify from the public repo, printed rather than implied:`);
   for (const u of unverifiable) console.log(`   · ${u}`);
@@ -1201,7 +1224,7 @@ console.log(
     `(${appMembers.length - stampedApps.length} exempt by name); ${items.length} register item(s), ${mechanical} ` +
     `mechanical and each resolved to a run: step in a push-triggered job inside ${AGGREGATOR}'s needs, ` +
     `${humanItems} human; ${featureRows} feature row(s) resolved to a declared, non-empty test plus an ` +
-    'implementation anchor and a mutation record no older than the last change to the CODE it probed ' +
-    `(comment prose does not expire a proof); ${claimingDone} app(s) ` +
+    'implementation anchor and a mutation record set in a commit whose CODE for it is the code at HEAD ' +
+    `(comment prose does not expire a proof; dates decide nothing); ${claimingDone} app(s) ` +
     'claiming done (the human-verdict and selection clauses have no real instance until one does)',
 );

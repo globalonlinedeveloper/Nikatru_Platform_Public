@@ -68,10 +68,9 @@ function fixture(files) {
   return dir;
 }
 
-/** 🔴 The GITHUB_* event variables are SCRUBBED: on a pull_request CI run this
- *  suite inherits GITHUB_EVENT_NAME=pull_request, which puts the guard in merge
- *  mode against a fixture whose HEAD is not GITHUB_SHA — every case would be
- *  COVERAGE LOST. A case that wants merge mode passes the variables itself. */
+/** The GITHUB_* event variables are scrubbed so a fixture run never inherits
+ *  the CI run's context. The guard reads none of them since 2026-10-03 (merge
+ *  mode is gone); this is belt and braces, not a mode switch. */
 function run(cwd, args = [], env = {}) {
   const base = { ...process.env };
   for (const k of ['GITHUB_EVENT_NAME', 'GITHUB_BASE_REF', 'GITHUB_SHA']) delete base[k];
@@ -405,9 +404,10 @@ describe('assert-app-dod', () => {
   });
 
   test('FAILS when the mutation record is older than the code it probed', () => {
-    const rec = JSON.parse(record('{{app_id}}'));
-    rec.features[0].mutation.date = '2020-01-01';
-    const { code, out } = run(build({ brickRecord: JSON.stringify(rec, null, 2) }));
+    const dir = build();
+    writeFileSync(join(dir, BRICK, 'lib/features/settings/settings_screen.dart'), `${SETTINGS_DART}final int movedAfterTheProof = 1;\n`);
+    spawnSync('git', ['-C', dir, 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'code moves after the proof'], { encoding: 'utf8' });
+    const { code, out } = run(dir);
     assert.equal(code, 1, '"proven once" must become "proven against what is there now"');
     assert.match(out, /The record now describes code that is no longer there/);
   });
@@ -477,129 +477,170 @@ describe('assert-app-dod', () => {
   });
 });
 
-// ── A MERGE IS NOT A CHANGE (⏱ 2026-10-03, lead 7185eb) ─────────────────────
-// #1172: code commit 2026-10-02, record 2026-10-02, and the PR went red at
-// 2026-10-03 00:00Z with no new commit, because the old merge mode dated every
-// file a PR touched on UTC today. #1066 was the same date read off main's
-// squash. The ruling: the record must be no older than the newest commit, on
-// the PR head or main, that CHANGED THE CODE BYTES. Every date below is PINNED.
+// ── BYTES, NOT DAYS (⏱ 2026-10-03, lead 7185eb, after review 250f9bb8) ──────
+// R is the newest commit on HEAD's history that set a row's current mutation
+// record; the proof is valid iff the recorded code at R equals the code at
+// HEAD. #1172 went red at 2026-10-03 00:00Z with no new commit (a date rule);
+// the review then reproduced a false green under the date rule that replaced
+// it (finding 1, case (a) below). Every date is PINNED, and is printed only.
 const SETTINGS_REL = `${BRICK}/lib/features/settings/settings_screen.dart`;
-const RECORD_DAY = '2026-10-02';
+const DOD_REL = `${BRICK}/dod.json`;
 
-/** A history shaped like the real one: `main` at a base commit (2026-10-01), a
- *  PR branch whose one commit applies `edit` at `codeDay`, and HEAD detached at
- *  the two-parent merge actions/checkout builds for a pull_request run, dated
- *  `mergeDay`. The record's first row (probing SETTINGS_REL) is RECORD_DAY. */
-function prFixture(edit, { codeDay = RECORD_DAY, mergeDay = '2026-10-03' } = {}) {
-  const rec = JSON.parse(record('{{app_id}}'));
-  rec.features[0].mutation.date = RECORD_DAY;
-  const dir = build({ brickRecord: JSON.stringify(rec, null, 2) });
+/** A history shaped like the real one: `main` at a base commit (`baseDay`)
+ *  whose record row was set there, and a `pr` branch checked out on it. Each
+ *  helper commits on the branch it is standing on, at a pinned day. */
+function history({ baseDay = '2026-09-27' } = {}) {
+  const dir = build({ brickRecord: dated(baseDay) });
   const on = (day) => ({ ...process.env, GIT_COMMITTER_DATE: `${day}T12:00:00Z`, GIT_AUTHOR_DATE: `${day}T12:00:00Z` });
   const git = (day, ...args) => {
     const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: on(day) });
     assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout.trim();
   };
-  git('2026-10-01', 'commit', '-q', '--amend', '--no-edit', '--no-gpg-sign', '--reset-author');
-  git('2026-10-01', 'checkout', '-q', '-B', 'main');
-  git('2026-10-01', 'checkout', '-q', '-b', 'pr');
-  edit(dir);
-  git(codeDay, 'add', '-A');
-  git(codeDay, 'commit', '-q', '-m', 'the PR', '--no-gpg-sign');
-  const prHead = git(codeDay, 'rev-parse', 'HEAD');
-  git(mergeDay, 'checkout', '-q', '--detach', 'main');
-  git(mergeDay, 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', 'Merge pr into main', 'pr');
-  return { dir, git, prHead };
+  git(baseDay, 'commit', '-q', '--amend', '--no-edit', '--no-gpg-sign', '--reset-author');
+  git(baseDay, 'checkout', '-q', '-B', 'main');
+  git(baseDay, 'checkout', '-q', '-b', 'pr');
+  const commit = (day, msg, files) => {
+    for (const [rel, body] of Object.entries(files)) writeFileSync(join(dir, rel), body);
+    git(day, 'add', '-A');
+    git(day, 'commit', '-q', '--no-gpg-sign', '-m', msg);
+    return git(day, 'rev-parse', 'HEAD');
+  };
+  /** HEAD detached at the two-parent merge actions/checkout builds for a PR run. */
+  const prMerge = (day) => {
+    git(day, 'checkout', '-q', '--detach', 'main');
+    git(day, 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', 'Merge pr into main', 'pr');
+  };
+  /** main after land-next.mjs squashes the PR: one parent, subject `… (#7)`. */
+  const squash = (day) => {
+    git(day, 'checkout', '-q', 'main');
+    git(day, 'merge', '-q', '--squash', 'pr');
+    git(day, 'commit', '-q', '--no-gpg-sign', '-m', 'the PR (#7)');
+  };
+  return { dir, git, commit, prMerge, squash };
 }
 
-/** main after land-next.mjs squashes PR #7: one parent, subject `… (#7)`, dated `day`. */
-function squashOnMain(git, day, { publishHead = null } = {}) {
-  git(day, 'checkout', '-q', 'main');
-  git(day, 'merge', '-q', '--squash', 'pr');
-  git(day, 'commit', '-q', '--no-gpg-sign', '-m', 'the PR (#7)');
-  if (publishHead) git(day, 'update-ref', 'refs/pull/7/head', publishHead);
+/** The brick record with its one row's mutation dated `day`. */
+function dated(day) {
+  const rec = JSON.parse(record('{{app_id}}'));
+  rec.features[0].mutation.date = day;
+  return JSON.stringify(rec, null, 2);
 }
+const CHANGED = `${SETTINGS_DART}final int changedByThePr = 1;\n`;
 
-const editCode = (dir) => writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int changedByThePr = 1;\n`);
-const PR_ENV = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_BASE_REF: 'main' };
+describe('assert-app-dod · the code at the commit that set the record must be the code at HEAD', () => {
+  test('(a) review finding 1: a PR code commit 09-28, the record re-dated 10-01 ON MAIN against main\'s code -> RED, on the PR run and on main', () => {
+    const h = history();
+    h.commit('2026-09-28', 'the PR changes the code', { [SETTINGS_REL]: CHANGED });
+    h.git('2026-10-01', 'checkout', '-q', 'main');
+    const redated = h.commit('2026-10-01', 'another lane re-runs the proof on main and re-dates the row', { [DOD_REL]: dated('2026-10-01') });
+    h.prMerge('2026-10-03');
+    const asPr = run(h.dir);
+    assert.equal(asPr.code, 1, asPr.out);
+    assert.ok(asPr.out.includes(redated.slice(0, 12)), `names R ${redated}: ${asPr.out}`);
+    assert.match(asPr.out, /settings_screen\.dart at [0-9a-f]{12} is not the code at HEAD/);
+    assert.match(asPr.out, /re-run the mutation against the code at HEAD and re-record it in this change/);
+    h.squash('2026-10-03');
+    const onMain = run(h.dir);
+    assert.equal(onMain.code, 1, onMain.out);
+    assert.ok(onMain.out.includes(redated.slice(0, 12)), onMain.out);
+  });
 
-describe('assert-app-dod · a merge that carries the code unchanged is not a change to it', () => {
-  test('(a) record 10-02, code commit 10-02, PR merge commit 10-03 -> GREEN (the #1172 bug), on the PR run and without one', () => {
-    const { dir } = prFixture(editCode);
-    const asPr = run(dir, [], PR_ENV);
+  // Finding 4: the red control for (a). The SAME history, except the lane
+  // re-records AFTER the PR's code is on main — so R holds the code and the
+  // only difference from (a) is the bytes R saw. Its later date is not what
+  // turns (a) red: (a)'s record is dated AFTER the code commit too.
+  test('RED CONTROL for (a): the same re-record made after the PR\'s code reached main -> GREEN', () => {
+    const h = history();
+    h.commit('2026-09-28', 'the PR changes the code', { [SETTINGS_REL]: CHANGED });
+    h.squash('2026-09-29');
+    h.commit('2026-10-01', 'another lane re-runs the proof on main and re-dates the row', { [DOD_REL]: dated('2026-10-01') });
+    const r = run(h.dir);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('(b) the #1172 midnight case: code and record set together 10-02, merged 10-03 -> GREEN on the PR run and on main', () => {
+    const h = history({ baseDay: '2026-10-01' });
+    h.commit('2026-10-02', 'the PR changes the code and re-runs its proof', { [SETTINGS_REL]: CHANGED, [DOD_REL]: dated('2026-10-02') });
+    h.prMerge('2026-10-03');
+    const asPr = run(h.dir);
     assert.equal(asPr.code, 0, asPr.out);
-    const plain = run(dir);
-    assert.equal(plain.code, 0, plain.out);
+    h.squash('2026-10-03');
+    const onMain = run(h.dir);
+    assert.equal(onMain.code, 0, onMain.out);
   });
 
-  test('(a) on main: the squash dated 10-03 is followed to its PR head when the code equals it -> GREEN', () => {
-    const { dir, git, prHead } = prFixture(editCode);
-    squashOnMain(git, '2026-10-03', { publishHead: prHead });
-    const r = run(dir);
+  test('(b) the record committed after the code, in a later PR commit, still sees it -> GREEN', () => {
+    const h = history({ baseDay: '2026-10-01' });
+    h.commit('2026-10-02', 'the PR changes the code', { [SETTINGS_REL]: CHANGED });
+    h.commit('2026-10-02', 'the PR re-runs its proof', { [DOD_REL]: dated('2026-10-02') });
+    h.prMerge('2026-10-03');
+    const r = run(h.dir);
     assert.equal(r.code, 0, r.out);
   });
 
-  test('RED CONTROL for the squash: with no readable PR head the squash keeps its own date -> RED, printed', () => {
-    const { dir, git } = prFixture(editCode);
-    squashOnMain(git, '2026-10-03');
-    git('2026-10-03', 'remote', 'add', 'origin', join(dir, 'no-such-remote'));
-    const r = run(dir);
+  test('(c) code changed after R -> RED, naming R and the file, even dated the same day', () => {
+    const h = history({ baseDay: '2026-10-01' });
+    const rSha = h.commit('2026-10-02', 'the PR changes the code and re-runs its proof', { [SETTINGS_REL]: CHANGED, [DOD_REL]: dated('2026-10-02') });
+    h.commit('2026-10-02', 'and then changes it again', { [SETTINGS_REL]: `${CHANGED}final int again = 2;\n` });
+    const r = run(h.dir);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /recorded 2026-10-02 and the CODE in .* last changed 2026-10-03/);
-    assert.match(r.out, /kept their own date because origin could not serve the PR head \(#7\)/);
+    assert.ok(r.out.includes(rSha.slice(0, 12)), `names R ${rSha}: ${r.out}`);
+    assert.match(r.out, /the CODE in .*settings_screen\.dart at [0-9a-f]{12} is not the code at HEAD/);
   });
 
-  test('RED CONTROL: a squash whose code is NOT its PR head\'s is a change of its own -> RED', () => {
-    const { dir, git, prHead } = prFixture(editCode);
-    git('2026-10-03', 'checkout', '-q', 'main');
-    git('2026-10-03', 'merge', '-q', '--squash', 'pr');
-    writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int changedByThePr = 2;\n`);
-    git('2026-10-03', 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'the PR (#7)');
-    git('2026-10-03', 'update-ref', 'refs/pull/7/head', prHead);
-    const r = run(dir);
+  test('(d) a merge commit that CHANGES the recorded bytes -> RED', () => {
+    const h = history({ baseDay: '2026-10-01' });
+    h.commit('2026-10-02', 'the PR changes the code and re-runs its proof', { [SETTINGS_REL]: CHANGED, [DOD_REL]: dated('2026-10-02') });
+    // A merge whose code equals neither parent (a hand-resolved merge).
+    h.git('2026-10-03', 'checkout', '-q', '--detach', 'main');
+    h.git('2026-10-03', 'merge', '-q', '--no-ff', '--no-commit', 'pr');
+    writeFileSync(join(h.dir, SETTINGS_REL), `${SETTINGS_DART}final int resolvedInTheMerge = 1;\n`);
+    h.git('2026-10-03', 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'Merge pr into main');
+    const r = run(h.dir);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /last changed 2026-10-03/);
+    assert.match(r.out, /is not the code at HEAD/);
   });
 
-  test('(b) record 10-02, code commit 10-03 -> RED, on the PR run and without one', () => {
-    const { dir } = prFixture(editCode, { codeDay: '2026-10-03' });
-    for (const env of [PR_ENV, {}]) {
-      const r = run(dir, [], env);
-      assert.equal(r.code, 1, r.out);
-      assert.match(r.out, /the mutation was recorded 2026-10-02 and the CODE in .*settings_screen\.dart last changed 2026-10-03/);
-      assert.match(r.out, /The record now describes code that is no longer there/);
-    }
-  });
-
-  test('(c) a merge commit that CHANGES the bytes counts as a change -> RED, naming the merge', () => {
-    const { dir, git } = prFixture(editCode);
-    // Rebuild HEAD as a merge whose code equals neither parent (a hand-resolved merge).
-    git('2026-10-03', 'checkout', '-q', '--detach', 'main');
-    git('2026-10-03', 'merge', '-q', '--no-ff', '--no-commit', 'pr');
-    writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int resolvedInTheMerge = 1;\n`);
-    git('2026-10-03', 'commit', '-q', '-a', '--no-gpg-sign', '-m', 'Merge pr into main');
-    const mergeSha = git('2026-10-03', 'rev-parse', 'HEAD');
-    const r = run(dir);
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /last changed 2026-10-03/);
-    assert.ok(r.out.includes(mergeSha.slice(0, 12)), `the message names the merge ${mergeSha}: ${r.out}`);
-  });
-
-  test('an update-branch merge of main INTO the PR head, carrying the code, is not a change -> GREEN', () => {
-    const { dir, git } = prFixture(editCode);
-    git('2026-10-03', 'checkout', '-q', 'main');
-    writeFileSync(join(dir, 'README.md'), 'main moved\n');
-    git('2026-10-03', 'add', '-A');
-    git('2026-10-03', 'commit', '-q', '--no-gpg-sign', '-m', 'main moved');
-    git('2026-10-03', 'checkout', '-q', 'pr');
-    git('2026-10-03', 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', "Merge branch 'main' into pr", 'main');
-    const r = run(dir);
+  test('an update-branch merge of main INTO the PR, carrying the code, is not a change -> GREEN', () => {
+    const h = history({ baseDay: '2026-10-01' });
+    h.commit('2026-10-02', 'the PR changes the code and re-runs its proof', { [SETTINGS_REL]: CHANGED, [DOD_REL]: dated('2026-10-02') });
+    h.git('2026-10-03', 'checkout', '-q', 'main');
+    h.commit('2026-10-03', 'main moved', { 'README.md': 'main moved\n' });
+    h.git('2026-10-03', 'checkout', '-q', 'pr');
+    h.git('2026-10-03', 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', "Merge branch 'main' into pr", 'main');
+    const r = run(h.dir);
     assert.equal(r.code, 0, r.out);
   });
 
-  test('a COMMENT-ONLY edit dated after the record does not expire it -> GREEN', () => {
-    const { dir } = prFixture((d) => writeFileSync(join(d, SETTINGS_REL), `// reworded prose only\n${SETTINGS_DART}`), { codeDay: '2026-10-03' });
-    const r = run(dir, [], PR_ENV);
+  test('a COMMENT-ONLY edit after R does not expire the record -> GREEN', () => {
+    const h = history();
+    h.commit('2026-10-03', 'prose only', { [SETTINGS_REL]: `// reworded prose only\n${SETTINGS_DART}` });
+    const r = run(h.dir);
     assert.equal(r.code, 0, r.out);
+  });
+
+  test('a record edited but not committed is refused — no commit says which code it ran against', () => {
+    const dir = build({ apps: { 'apps/probe': {} }, workspace: ['packages/core', 'apps/subscriptiontracker', 'apps/probe'] });
+    const rec = JSON.parse(record('probe'));
+    rec.features[0].mutation.observedRed = 'edited after the commit';
+    writeFileSync(join(dir, 'apps/probe/dod.json'), JSON.stringify(rec, null, 2));
+    const r = run(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /differs from the one committed at HEAD/);
+  });
+
+  test('(e) a shallow clone that does not hold R -> COVERAGE LOST (exit 2), naming the depth to raise', () => {
+    const h = history();
+    h.commit('2026-10-02', 'a later commit that does not touch the record', { 'README.md': 'later\n' });
+    const shallow = join(TMP, `shallow${seq++}`);
+    const c = spawnSync('git', ['clone', '-q', '--depth', '1', '--branch', 'pr', `file://${h.dir}`, shallow], { encoding: 'utf8' });
+    assert.equal(c.status, 0, c.stderr);
+    const r = run(shallow);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — .*the commit that set the mutation record/);
+    assert.match(r.out, /This checkout holds 1 commit\(s\);\s+raise actions\/checkout `fetch-depth` to 0/);
+    // Control: the full history of the same commit is green.
+    assert.equal(run(h.dir).code, 0);
   });
 });
