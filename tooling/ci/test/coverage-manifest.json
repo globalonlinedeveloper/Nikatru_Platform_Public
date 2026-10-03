@@ -189,7 +189,7 @@
     4,
 
   "built-artifact-pr-lane.test.mjs":
-    27,
+    28,
 
   "built-info-plist.test.mjs":
     15,
@@ -294,7 +294,7 @@
     65,
 
   "connect-origins.test.mjs":
-    38,
+    41,
 
   "consent-anon-id.test.mjs":
     35,
@@ -1014,7 +1014,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    36,
+    39,
 
   "snap-submission.test.mjs":
     48,
