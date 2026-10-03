@@ -1093,7 +1093,7 @@ describe('transport hardening', () => {
       `/repos/${R}/actions/workflows/123/runs?branch=${encodeURIComponent('feat/x')}&per_page=1`,
       `/repos/${R}/actions/workflows/123/runs?branch=main&status=completed&per_page=2`,
       `/repos/${R}/branches?per_page=100&page=2`,
-      `/repos/${R}/pulls?head=${encodeURIComponent('${RECORDED_ORG}:feat/x')}&state=all&per_page=5`,
+      `/repos/${R}/pulls?head=${encodeURIComponent(`${RECORDED_ORG}:feat/x`)}&state=all&per_page=5`,
       '/rate_limit',
     ];
     const refused = [
