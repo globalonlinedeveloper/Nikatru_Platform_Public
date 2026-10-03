@@ -332,7 +332,8 @@ describe('LIMB 3 — the erasure route must not be reachable through the shared 
   // ⏱ 2026-10-03 (review of #1152, minor 2): each carrier's auth.ts is a re-export
   // of the kit, so a fallback added to the kit's erasureAuth exited 0 at review.
   test("FAILS when the KIT's erasureAuth verifies through verifySupabaseToken with the legacy secret (limb 3(c))", () => {
-    const from = '    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE);';
+    // ⏱ 2026-10-03 · merge of main into club/rt-ports: port-auth passes the trusted issuers.
+    const from = '    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, trustedIssuers(c.env));';
     withTree(
       (root) =>
         edit(root, 'services/_shared/src/auth-middleware.ts', (s) => {

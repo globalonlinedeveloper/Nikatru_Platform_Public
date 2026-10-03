@@ -164,11 +164,12 @@
       "tooling/generated/",
       "services/platform/src/generated/",
       "tooling/ci/test/fixtures/land-rollup/",
+      "tooling/ci/test/fixtures/pages-deploy-run/",
       "tooling/ci/test/fixtures/ops-freeze-2026-09-11.json",
       "tooling/review/fixtures/",
       "node_modules/"
     ],
-    "_excludedPathsWhy": "The register itself, this declaration, the two RENDERED outputs (their source is the register), and RECORDED captures — GitHub API answers saved verbatim on a date (land-rollup, the 2026-09-11 freeze, the self-review week), which are history and must not be rewritten. Everything else that names the org imports it.",
+    "_excludedPathsWhy": "The register itself, this declaration, the two RENDERED outputs (their source is the register), and RECORDED captures — GitHub API answers saved verbatim on a date (land-rollup, the 2026-09-11 freeze, the self-review week, the 2026-10-02 pages-deploy-run CI runs — #1166, merged with main 2026-10-03), which are history and must not be rewritten. Everything else that names the org imports it.",
     "fixtureConstant": { "path": "tooling/ci/test/fixtures/recorded-org.mjs", "count": 1 },
     "mentions": [
       { "path": "tooling/ops/register.json", "count": 3, "why": "Three dated `evidence` strings recording live reads of 2026-09-09 (`gh secret list` on the platform repository, and the extensions repository the extensions workflows replaced): what was true when it was read, rewritten by nobody." },
