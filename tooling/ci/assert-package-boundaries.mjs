@@ -11,7 +11,9 @@
 //      [reusability] silently, with every test still green."
 //   C. An app never imports a VENDOR SDK that an adapter package already wraps.
 //      Without this limb the seams are decorative — nothing stops the app going
-//      around them.
+//      around them. (c4): an AI provider is reached only through the AI port's
+//      bring-your-own-key adapters — no provider client package, and no
+//      provider API host, anywhere else in shipped Dart.
 //
 // ── 🔴 WHY THIS CHECKS IMPORTS AND NOT ONLY PUBSPECS (C-5 lock amendment,
 //    PROVEN on the real tree 2026-07-28) ──────────────────────────────────────
@@ -358,6 +360,58 @@ if (processFilesRead === 0) {
   coverageLost('limb (c3) read ZERO .dart files across the shipped roots, so "no WebView, no child process" was asked of nothing.');
 } else {
   ok(`limb (c3) read ${processFilesRead} shipped .dart file(s) across ${shippedRoots.length} root(s): no WebView import, no child process`);
+}
+
+// ── C4 · an AI provider is reached ONLY through the AI port's client half ────
+// ⏱ 2026-10-02 · port-ai (tooling/ports/ai.json). The bring-your-own-key
+// adapters in packages/api_client/lib/src/ai_byok/ are the one place shipped
+// Dart may talk to a model provider: they read the USER's key from SecureStore
+// per call, never log it, and never route it through a Nikatru host. Limb (c)
+// cannot see a bypass, because the adapters wrap no SDK — they speak plain HTTP
+// over dio, which api_client already carries. So the bypass is named twice:
+//   · a provider CLIENT PACKAGE imported anywhere (the adapters import none,
+//     and an app that pulled one in would have its own key handling and its own
+//     logging, outside the port);
+//   · a provider API HOST in shipped Dart outside the adapters (a direct dio or
+//     http call to the provider, which is the same bypass without a package).
+// Comments are stripped first: prose naming a host is not a call.
+const AI_BYOK_DIR = 'packages/api_client/lib/src/ai_byok/';
+const AI_PROVIDER_CLIENTS = [
+  'anthropic_sdk_dart', 'openai_dart', 'dart_openai', 'chat_gpt_sdk', 'google_generative_ai', 'googleai_dart',
+  'firebase_ai', 'firebase_vertexai', 'mistralai_dart', 'ollama_dart',
+  'langchain_anthropic', 'langchain_openai', 'langchain_google', 'langchain_mistralai', 'langchain_ollama',
+];
+const AI_PROVIDER_HOSTS = /\b(?:api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis\.com)\b/;
+let aiFilesRead = 0;
+for (const root of shippedRoots) {
+  for (const [name, files] of packageImports(root)) {
+    if (!AI_PROVIDER_CLIENTS.includes(name)) continue;
+    problems.push(`${root} imports \`package:${name}\` (${files.join(', ')}) — an AI provider's client. A model is reached only through the AI port's client half (AiProvider; ${AI_BYOK_DIR}), which reads the user's key per call and never logs it [c4].`);
+  }
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const de of listDir(d, { withFileTypes: true })) {
+      const full = join(d, de.name);
+      if (de.isDirectory()) walk(full);
+      else if (de.name.endsWith('.dart')) {
+        aiFilesRead += 1;
+        const rel = relative(ROOT, full).replace(/\\/g, '/');
+        if (rel.startsWith(AI_BYOK_DIR)) continue;
+        // A line comment is `//` NOT preceded by `:` — a bare `//` strip also
+        // cuts every `https://` URL, which is the very thing this limb reads
+        // (measured: RC9 went green against a real call with it).
+        const src = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+        const m = AI_PROVIDER_HOSTS.exec(src);
+        if (m) problems.push(`${rel} calls the AI provider host \`${m[0]}\` outside the bring-your-own-key adapters (${AI_BYOK_DIR}). Reach a model through AiProvider [c4].`);
+      }
+    }
+  };
+  walk(join(ROOT, root));
+}
+if (aiFilesRead === 0) {
+  coverageLost('limb (c4) read ZERO .dart files across the shipped roots, so "a model is reached only through the AI port" was asked of nothing.');
+} else {
+  ok(`limb (c4) read ${aiFilesRead} shipped .dart file(s): no AI provider client package, and no provider host outside ${AI_BYOK_DIR}`);
 }
 
 // A grandfathered entry for a bypass that no longer happens is a stale claim,
