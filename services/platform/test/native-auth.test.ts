@@ -319,6 +319,14 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
     expect(h.get('content-type')).toBe('application/json');
   });
 
+  it('forwards the request id this Worker accepted or minted, never the caller\'s unvalidated x-request-id (review of #1152, nit 4)', async () => {
+    // `a@b.c` fails REQUEST_ID_SHAPE, so the middleware mints a uuid; GoTrue must get that, not the email.
+    await call(`${BASE}/token?grant_type=password`, password(), { headers: { 'X-Request-Id': 'a@b.c' } });
+    const sent = gotrue.seen[0]!.headers.get('x-request-id');
+    expect(sent).not.toBe('a@b.c');
+    expect(sent).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
   it('returns GoTrue\'s status and JSON verbatim, so gotrue-dart can map error_code, and drops Set-Cookie', async () => {
     const refusal = { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' };
     gotrue.answer = answerJson(400, refusal, { 'Set-Cookie': 'x=1', 'x-nikatru-shield': '1' });

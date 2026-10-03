@@ -146,8 +146,11 @@ const MARKER = /^[a-z][a-z-]*$/;
  * redirect source), `origin` and the four attestation headers are all dropped
  * without this file naming any of them — tooling/ci/assert-glitchtip-no-ip.mjs
  * refuses a Worker that names a client-address header at all, even to delete it.
+ * `x-request-id` is NOT forwarded as it arrived: GoTrue gets the id this Worker
+ * accepted or minted (lib/request-id.ts), so its logs match our `rid=` and never
+ * carry a caller's unvalidated bytes (review of #1152, nit 4).
  */
-const GOTRUE_BOUND_HEADERS = new Set(['accept', 'accept-language', 'user-agent', 'x-client-info', 'x-request-id', 'x-supabase-api-version']);
+const GOTRUE_BOUND_HEADERS = new Set(['accept', 'accept-language', 'user-agent', 'x-client-info', 'x-supabase-api-version']);
 const sentOn = (name: string) => GOTRUE_BOUND_HEADERS.has(name) || name.startsWith('cf-');
 
 /** Attestation kinds already reported unconfigured in this isolate: one line each, not one per request. */
@@ -379,10 +382,12 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
 
   // Only the allowlisted headers go on (GOTRUE_BOUND_HEADERS), each as it
   // arrived, so the user agent and Cloudflare's own stamps reach GoTrue without
-  // this Worker reading any of them; then our credentials in, exactly as
+  // this Worker reading any of them; then our request id and our credentials in, exactly as
   // sessions.ts builds them.
   const headers = new Headers();
   for (const [name, value] of c.req.raw.headers) if (sentOn(name)) headers.set(name, value);
+  const rid = c.get('requestId');
+  if (rid) headers.set('x-request-id', rid);
   headers.set('Content-Type', 'application/json');
   headers.set('apikey', serviceRoleKey);
   headers.set('Authorization', `Bearer ${serviceRoleKey}`);
