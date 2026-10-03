@@ -1561,13 +1561,26 @@ describe('judgeDeployRun — a stale direct project asks the CI run for its expe
   });
 
   test('🔴 RED CONTROL — the lookup fails, finds nothing, or answers for another commit: RED, UNKNOWN, never pending', async () => {
+    // Page 1 serves the 3 recorded jobs and claims 86; page 2 serves none, so the read stops SHORT
+    // (#1166 review: a fake answering every page alike reached the 1000-job throw instead).
+    const shortJobs = async (url) => {
+      const body = !url.includes('/jobs?')
+        ? fixture('runs-completed.json')
+        : { total_count: 86, jobs: /[?&]page=1(?:&|$)/.test(url) ? fixture('jobs-completed.json').jobs : [] };
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    };
+    await assert.rejects(
+      readDeployRun(SHA, { env: ENV, fetchImpl: shortJobs, sleep: async () => {} }),
+      /37020790032 lists 86 jobs but 3 were served/,
+      'the short-list branch, not the 1000-job ceiling',
+    );
     const cases = [
       ['HTTP 403', async () => ({ ok: false, status: 403, text: async () => '{"message":"Resource not accessible by integration"}' })],
       ['transport', async () => { throw new TypeError('fetch failed'); }],
       ['no run', fakeFetch({ total_count: 0, workflow_runs: [] }, null)],
       ['another sha', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_sha: 'f'.repeat(40) }] }, null)],
       ['another branch', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_branch: 'feature' }] }, null)],
-      ['jobs short of total_count', fakeFetch(fixture('runs-completed.json'), { total_count: 86, jobs: fixture('jobs-completed.json').jobs })],
+      ['jobs short of total_count', shortJobs],
     ];
     for (const [why, fetchImpl] of cases) {
       let deployRun;
