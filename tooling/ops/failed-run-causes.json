@@ -1821,11 +1821,11 @@
     },
     {
       "signature": "rollback:target-is-production",
-      "rootCause": "Two workflow_dispatch runs of rollback.yml (36970520119, 36970542712, 2026-10-02 05:47Z) asked to re-promote subscriptiontracker-web to ledger Deployment 6802136537 (67c5902a, Pages d2461134), which was the deployment already serving production; Cloudflare refuses that (8000039) and rollback.mjs exited 1 with nothing re-promoted.",
-      "fix": "not a defect: the refusal is the correct answer to a rollback onto the live deployment, and production was never touched. rollback.yml has no schedule, so its next green run on main is the next dispatch that names an older deployment (or a dry run).",
+      "rootCause": "Two workflow_dispatch runs of rollback.yml (36970520119, 36970542712, 2026-10-02 05:47Z, PB-09 drills) asked to re-promote subscriptiontracker-web to ledger Deployment 6802136537 (67c5902a, Pages d2461134), the deployment already serving production; Cloudflare refuses that (8000039), and rollback.mjs read the refusal as a failure and exited 1 with nothing re-promoted.",
+      "fix": "Production was never touched. PR #1146 (open on 2026-10-03) makes re-promoting the live Pages build a no-op that still smokes, and reads an 8000039 refusal the same way; when it merges this row becomes {merge, its sha, 1146}. rollback.yml has no schedule, so its next green run on main is the next dispatch.",
       "fixedBy": {
         "kind": "not-a-defect",
-        "reason": "the dispatch named the deployment already in production; Cloudflare refused it and nothing changed"
+        "reason": "Cloudflare refused a re-promote of the build already live, so nothing changed in production; the exit 1 is fixed in PR #1146"
       },
       "firstSeen": "2026-10-02",
       "lastSeen": "2026-10-02"
