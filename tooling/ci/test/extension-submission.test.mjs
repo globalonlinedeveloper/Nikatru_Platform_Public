@@ -588,7 +588,8 @@ describe("assert-publish-steps-guarded limb 2 — a store publish waits for the 
 
   test('EMPTY SUBJECT: zero store publish steps is COVERAGE LOST, exit 2 — never a pass', () => {
     const root = realCopy((r) => {
-      for (const f of ['extensions.yml', 'submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) rmSync(join(r, '.github', 'workflows', f));
+      // ⏱ 2026-10-03: submit-appstore.yml carries store publish steps too (its upload job).
+      for (const f of ['extensions.yml', 'submit-appstore.yml', 'submit-play.yml', 'submit-snap.yml', 'submit-windows-store.yml']) rmSync(join(r, '.github', 'workflows', f));
       writeFileSync(join(r, 'tooling', 'channel-register.json'), JSON.stringify({ channels: [] }));
     });
     const { code, out } = ownerWord(root);
