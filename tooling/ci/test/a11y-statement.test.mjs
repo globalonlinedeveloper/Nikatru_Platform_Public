@@ -140,3 +140,19 @@ test('below 720px the nav is not sticky and the scroll padding is zero (SC 2.4.1
 test('the homepage platforms label sits on an element with a role', () => {
   assert.match(read('sites/nikatru/index.html'), /<div class="plat-row" role="group" aria-label="Platforms we build for">/);
 });
+
+// ── the scan's red-control fixtures (ci.yml's sites job asserts exit 1 on each) ──
+
+test('the unlabeled-button fixture has a button with no accessible name and no register row', () => {
+  const html = read('tooling/a11y/fixtures/unlabeled-button.html');
+  assert.match(html, /<button type="button"><svg[^>]*aria-hidden="true">/);
+  assert.doesNotMatch(html, /<button[^>]*aria-label/);
+  assert.ok(!REGISTER.exceptions.some((r) => r.pages.some((p) => p.startsWith('tooling/a11y/fixtures/'))));
+});
+
+test('the sticky-nav fixture keeps the old homepage nav: sticky at every width over an 84px padding', () => {
+  const html = read('tooling/a11y/fixtures/sticky-nav.html');
+  assert.match(html, /html\{scroll-padding-top:84px\}/);
+  assert.match(html, /nav\{position:sticky;/);
+  assert.doesNotMatch(html, /max-width:720px/);
+});
