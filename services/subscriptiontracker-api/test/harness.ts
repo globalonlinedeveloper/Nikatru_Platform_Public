@@ -29,6 +29,7 @@ import init0006 from '../migrations/0006_idempotency_keys.sql?raw';
 import init0007 from '../migrations/0007_budget_currency.sql?raw';
 import init0008 from '../migrations/0008_preferences.sql?raw';
 import init0009 from '../migrations/0009_tags.sql?raw';
+import init0010 from '../migrations/0010_price_minor_iso_scale.sql?raw';
 import type { AppEnv } from '../src/types';
 
 /**
@@ -63,6 +64,7 @@ export const SUBLY_MIGRATIONS: readonly string[] = [
   init0007,
   init0008,
   init0009,
+  init0010,
 ];
 
 /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for

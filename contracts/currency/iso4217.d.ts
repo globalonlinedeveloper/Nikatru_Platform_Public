@@ -10,3 +10,9 @@ export function isIso4217(code: unknown): code is string;
 export function minorUnitDigits(code: string): number | null;
 
 export function toMinorUnits(price: number, code: string): number | null;
+
+export function legacyClientMinorUnitDigits(code: string): number;
+
+export const LEGACY_SCALE_CODES: readonly string[];
+
+export function legacyMinorUnits(price: number, code: string): number | null;

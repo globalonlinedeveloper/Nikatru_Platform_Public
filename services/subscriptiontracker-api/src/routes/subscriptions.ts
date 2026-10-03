@@ -22,7 +22,7 @@ import {
 } from '../lib/validate';
 import { visibleCategory } from './categories';
 import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
-import { isIso4217, toMinorUnits } from '../../../../contracts/currency/iso4217.js';
+import { isIso4217, legacyMinorUnits, toMinorUnits } from '../../../../contracts/currency/iso4217.js';
 import {
   MAX_REMINDERS,
   MAX_REMINDER_DAY,
@@ -265,8 +265,7 @@ export const PAYMENT_BODY_MAX_BYTES = 1024;
  * (`SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM subscriptions GROUP BY
  * user_id)`) and this re-based if it is within 5× of it.
  *
- * It also bounds GET /: the unpaged list's LIMIT is this number, so it can
- * never truncate a list the cap admitted.
+ * It does NOT bound the unpaged GET /: see UNPAGED_LIST_MAX.
  *
  * @ceiling none — a per-user row count, a product bound; each request writes
  * at most one row.
@@ -279,6 +278,21 @@ export const MAX_SUBSCRIPTIONS_PER_USER = 500;
  * @ceiling none — rows per response, bounded by MAX_SUBSCRIPTIONS_PER_USER.
  */
 export const MAX_PAGE = MAX_SUBSCRIPTIONS_PER_USER;
+/**
+ * The most rows the UNPAGED GET / serves (no `?limit=`, every installed build
+ * before keyset paging).
+ *
+ * ⏱ 2026-10-03 · PR #1174 lead ruling 2, review finding 3. This was the row
+ * cap (500), but the cap only stops NEW rows: an account that already held more
+ * before the cap existed would silently lose the rows past 500 in every client
+ * that does not page. The live per-user maximum is not yet measured (a lead
+ * step), so this is 10× the cap, and a response it cuts short logs one
+ * structured `subscriptions_list_truncated` warning (no user id) so a cut is
+ * seen, not silent. Re-base it if the measured maximum is within 5× of it.
+ *
+ * @ceiling none — rows per response for non-paging clients, a product bound.
+ */
+export const UNPAGED_LIST_MAX = 5000;
 
 /** The closed sets 0003 deliberately did NOT put in a CHECK (see its header):
  *  a new member here is a code change, where in SQL it would be a rebuild. */
@@ -888,6 +902,16 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
   // stored, and Subscription.readPrice (which prefers the exact form) showed
   // ¥649 for a ¥6 plan. The rule is the shared table's: round(price × 10^digits).
   const expected = toMinorUnits(fields.price as number, fields.currency as string);
+  // ⏱ 2026-10-03 · PR #1174 lead ruling 1(b). An installed pre-#1118 build
+  // writes `round(price × 100)` for the 24 codes whose ISO digits are not that
+  // (₩14,900 as 1490000). Refusing it would dead-letter that user's queued edit
+  // (the outbox reads a 400 as `refused`), so exactly that legacy value, for
+  // exactly those codes, is accepted and STORED NORMALISED to the ISO scale.
+  // Anything else still disagrees with `price` and is still a 400.
+  if (expected !== null && expected !== minor && legacyMinorUnits(fields.price as number, fields.currency as string) === minor) {
+    fields.price_minor = expected;
+    return null;
+  }
   if (expected !== minor) {
     return invalid(
       `price_minor must be price in ${String(fields.currency)}'s minor units: ${String(fields.price)} is ${String(expected)}, not ${minor}`,
@@ -930,9 +954,9 @@ async function purgeExpired(db: SqlDb, userId: string): Promise<void> {
 //
 // ⏱ 2026-10-01 · rv2-services-008 — BOUNDED, IN TWO SHAPES.
 //   · NO `limit` (every client before this change): the bare array it always
-//     was, LIMIT MAX_SUBSCRIPTIONS_PER_USER. The row cap admits no more rows than
-//     that per user (live and removed together), so this LIMIT can never cut a
-//     list short — a bare LIMIT below the cap would have truncated silently.
+//     was, at most UNPAGED_LIST_MAX rows (10× the row cap, because rows from
+//     before the cap may exceed it). One row past it is read to KNOW that the
+//     list was cut, and a cut list logs a structured warning.
 //   · `?limit=N[&after=<cursor>]`: KEYSET paging, `{ items, next }`. `next` is
 //     the opaque cursor of the last row served, or null on the last page. The
 //     order is the list's own — price DESC (NULL last), then id — and the cursor
@@ -985,9 +1009,20 @@ app.get('/', async (c) => {
     const rows = await allRows<Subscription>(
       c.env.APP_DB.prepare(
         `SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL
-          ORDER BY price DESC LIMIT ${MAX_SUBSCRIPTIONS_PER_USER}`,
+          ORDER BY price DESC LIMIT ${UNPAGED_LIST_MAX + 1}`,
       ).bind(userId),
     );
+    if (rows.length > UNPAGED_LIST_MAX) {
+      // No user id and no row content: the event, the cap and the request id.
+      console.warn(
+        JSON.stringify({
+          event: 'subscriptions_list_truncated',
+          cap: UNPAGED_LIST_MAX,
+          rid: c.get('requestId') ?? null,
+        }),
+      );
+      rows.length = UNPAGED_LIST_MAX;
+    }
     return c.json(rows.map(serializeSubscription));
   }
 

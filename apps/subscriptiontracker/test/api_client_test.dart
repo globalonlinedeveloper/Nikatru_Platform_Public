@@ -194,7 +194,7 @@ void main() {
       'id': '1',
       'name': 'Netflix',
       'category': 'Streaming',
-      'price': 15.0,
+      'price': 499.0,
       'price_minor': 49900,
       'currency': 'INR',
       'cycle': 'monthly',
@@ -274,7 +274,12 @@ void main() {
 
     test('a row that names its OWN currency keeps it', () async {
       final List<Subscription> subs = await over(<dynamic>[
-        <String, dynamic>{...row('4'), 'currency': 'USD', 'price_minor': 999},
+        <String, dynamic>{
+          ...row('4'),
+          'price': 9.99,
+          'currency': 'USD',
+          'price_minor': 999,
+        },
       ]).getSubscriptions();
       expect(subs.single.price, const Money(999, 'USD'));
     });

@@ -41,6 +41,12 @@
 //     planner said `unchanged`, and this reader said RED forever. A direct row
 //     that does not carry main's commit now asks the planner's own decide();
 //     `unchanged` passes, `changed` and an unreadable answer do not.
+//   · LATE IS NOT FAILED (2026-10-02, ops watch 37016683957 / 37024343900). A
+//     direct row stale past the lane ceiling asks the CI run whose head_sha IS
+//     the expected commit: queued / in progress is PENDING (exit 0) until 3 h,
+//     a failed deploy job is RED naming it, a completed run leaves RED, and a
+//     lookup that fails is RED marked UNKNOWN. Fixtures are recorded API answers
+//     (fixtures/pages-deploy-run/).
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,6 +89,12 @@ import {
   readProject,
   ROLLBACK_ONLY_REL,
   unitUnchangedBetween,
+  judgeDeployRun,
+  readDeployRun,
+  deployJobFor,
+  PENDING_CEILING_MS,
+  CI_WORKFLOW_FILE,
+  DEPLOY_CALLER_JOB,
 } from '../../ops/check-pages-deployments.mjs';
 import { readUnits, UNITS_REL } from '../assert-deploy-triggers-deploy.mjs';
 import { gitAt, PlanRefusal } from '../plan-deploy.mjs';
@@ -1441,5 +1453,164 @@ describe('judgeRollbackOnly — `rollback-only (paused)` only while the account 
     });
     assert.equal(got.name, 'nikatru');
     assert.match(url, /\/accounts\/stub-account\/pages\/projects\/nikatru$/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-10-02. Ops watch 37024343900 (15:04Z) called nikatru-apex RED: it served
+// 7b531c0, not carrying fcf77f1. CI 37020790032 for fcf77f1e was IN PROGRESS —
+// its deploy-web jobs started 15:48Z behind GitHub's runner queue. The fixtures
+// below are that run as the REST API answered it (recorded, trimmed).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('judgeDeployRun — a stale direct project asks the CI run for its expected commit (late is not failed)', () => {
+  const FIX = join(CI_DIR, 'test', 'fixtures', 'pages-deploy-run');
+  const fixture = (name) => JSON.parse(readFileSync(join(FIX, name), 'utf8'));
+  const SHA = 'fcf77f1ea3ad9ca37e013e5ce06f4db2f40bd1bd';
+  const SERVED = '7b531c04' + '0'.repeat(32);
+  const COMMIT_AT = Date.parse('2026-10-02T14:34:11Z');
+  const NOW = Date.parse('2026-10-02T15:04:40Z');
+  const ENV = { GITHUB_TOKEN: 'x', GITHUB_REPOSITORY: 'o/r' };
+  const adHoc = (sha) => deployment({ id: 'fc92f5f5', deployment_trigger: { type: 'ad_hoc', metadata: { branch: 'main', commit_hash: sha } } });
+  /** The stale verdict as judgeProject gives it past the lane ceiling. */
+  const stale = (project) =>
+    judgeProject({
+      project,
+      kind: 'direct',
+      sourceDir: 'the deploy unit',
+      deployments: [adHoc(SERVED)],
+      expectedCommit: SHA,
+      isAncestor: () => false,
+      treeUnchanged: () => false,
+      now: NOW,
+      expectedAt: COMMIT_AT,
+      laneCeilingMs: 20 * 60 * 1000,
+    });
+  /** A fetch that answers the two GitHub reads from recorded fixtures, and records what was asked. */
+  const fakeFetch = (runs, jobs, seen = []) => async (url) => {
+    seen.push(url);
+    const body = url.includes('/jobs?') ? jobs : runs;
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  };
+  const lookup = async (runs, jobs, seen) => {
+    try {
+      return { ok: true, ...(await readDeployRun(SHA, { env: ENV, fetchImpl: fakeFetch(runs, jobs, seen), sleep: async () => {} })) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  const judge = async (project, runs, jobs, now = NOW) =>
+    judgeDeployRun(stale(project), { project, expectedCommit: SHA, expectedAt: COMMIT_AT, now, deployRun: await lookup(runs, jobs) });
+
+  test('precondition — past the lane ceiling the stale direct row is RED and awaits the run', () => {
+    const v = stale('nikatru-apex');
+    assert.equal(v.code, 1);
+    assert.equal(v.awaitsRun, true);
+  });
+
+  test('🔴 THE MEASURED FALSE RED — CI for the expected commit IN PROGRESS: PENDING, exit 0, counted apart', async () => {
+    const seen = [];
+    const deployRun = await lookup(fixture('runs-in-progress.json'), null, seen);
+    const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW, deployRun });
+    assert.equal(v.code, 0, 'a deploy that has not run yet is late, not failed');
+    assert.equal(v.pending, true);
+    assert.match(v.line, /^⏸ {3}nikatru-apex \(direct\) — PENDING: .*CI run 37020790032 for fcf77f1.*`in_progress`/);
+    assert.equal(seen.length, 1, 'an unfinished run needs no jobs read');
+    assert.match(seen[0], new RegExp(`/actions/workflows/${CI_WORKFLOW_FILE.replace('.', '\\.')}/runs\\?branch=main&event=push&head_sha=${SHA}&`));
+    const fold = foldVerdicts([v, { code: 0, line: 'x' }], { projectsSwept: 2, ungraded: 0 });
+    assert.equal(fold.code, 0);
+    assert.equal(fold.pending, 1);
+    assert.equal(fold.inflight, 0, 'PENDING is its own count');
+  });
+
+  test('🔴 RED CONTROL — the same run QUEUED and the commit 4 h old: STUCK, exit 1', async () => {
+    const runs = fixture('runs-in-progress.json');
+    runs.workflow_runs[0].status = 'queued';
+    const v = await judge('nikatru-apex', runs, null, COMMIT_AT + 4 * 60 * 60 * 1000);
+    assert.equal(v.code, 1);
+    assert.match(v.line, /STUCK DEPLOY: .*`queued` 240 min after the commit, past the 3-hour ceiling/);
+    assert.equal(PENDING_CEILING_MS, 3 * 60 * 60 * 1000);
+    const edge = await judge('nikatru-apex', runs, null, COMMIT_AT + PENDING_CEILING_MS);
+    assert.equal(edge.code, 0, 'AT the ceiling is still pending; one ms past is stuck');
+    assert.equal((await judge('nikatru-apex', runs, null, COMMIT_AT + PENDING_CEILING_MS + 1)).code, 1);
+  });
+
+  test('🔴 RED CONTROL — run completed, this project\'s deploy job FAILED: exit 1, naming the job', async () => {
+    const v = await judge('subscriptiontracker', fixture('runs-completed.json'), fixture('jobs-completed.json'));
+    assert.equal(v.code, 1);
+    assert.match(v.line, /DEPLOY FAILED: .*job `deploy-web \/ Build & deploy web to Cloudflare Pages \(subscriptiontracker\)` in CI run 37020790032 .*concluded `failure`/);
+  });
+
+  test('🔴 RED CONTROL — run completed, deploy job succeeded, production still stale: exit 1, the existing meaning', async () => {
+    const v = await judge('nikatru-apex', fixture('runs-completed.json'), fixture('jobs-completed.json'));
+    assert.equal(v.code, 1);
+    assert.match(v.line, /which does NOT carry fcf77f1/);
+    assert.match(v.line, /CI run 37020790032 for fcf77f1 completed `failure` and its job `deploy-web \/ Deploy the apex site to Cloudflare Pages \(nikatru-apex\)` concluded `success`; production still lacks it\.$/);
+    const runs = fixture('runs-completed.json');
+    runs.workflow_runs[0].conclusion = 'success';
+    const ok = await judge('nikatru-apex', runs, fixture('jobs-completed.json'));
+    assert.equal(ok.code, 1, 'completed success but stale is RED');
+  });
+
+  test('🔴 RED CONTROL — the lookup fails, finds nothing, or answers for another commit: RED, UNKNOWN, never pending', async () => {
+    const cases = [
+      ['HTTP 403', async () => ({ ok: false, status: 403, text: async () => '{"message":"Resource not accessible by integration"}' })],
+      ['transport', async () => { throw new TypeError('fetch failed'); }],
+      ['no run', fakeFetch({ total_count: 0, workflow_runs: [] }, null)],
+      ['another sha', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_sha: 'f'.repeat(40) }] }, null)],
+      ['another branch', fakeFetch({ total_count: 1, workflow_runs: [{ ...fixture('runs-in-progress.json').workflow_runs[0], head_branch: 'feature' }] }, null)],
+      ['jobs short of total_count', fakeFetch(fixture('runs-completed.json'), { total_count: 86, jobs: fixture('jobs-completed.json').jobs })],
+    ];
+    for (const [why, fetchImpl] of cases) {
+      let deployRun;
+      try {
+        deployRun = { ok: true, ...(await readDeployRun(SHA, { env: ENV, fetchImpl, sleep: async () => {} })) };
+      } catch (e) {
+        deployRun = { ok: false, error: e.message };
+      }
+      const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW, deployRun });
+      assert.equal(v.code, 1, `${why}: fail closed`);
+      assert.match(v.line, /UNKNOWN: could not read the deploy run for fcf77f1/, why);
+      assert.notEqual(v.pending, true, why);
+    }
+    const other = fixture('runs-in-progress.json');
+    other.workflow_runs.push({ ...other.workflow_runs[0], id: 1, head_sha: 'f'.repeat(40) }, { ...other.workflow_runs[0], id: 2, head_branch: 'feature' });
+    other.workflow_runs.shift();
+    const read = await readDeployRun(SHA, { env: ENV, fetchImpl: fakeFetch(other, null), sleep: async () => {} });
+    assert.deepEqual(read, { run: null, jobs: null }, 'a run for another sha or branch is never taken as this commit\'s run');
+    const none = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW });
+    assert.equal(none.code, 1, 'no lookup at all is RED, UNKNOWN');
+    assert.match(none.line, /UNKNOWN/);
+    await assert.rejects(readDeployRun(SHA, { env: {}, fetchImpl: fakeFetch(null, null) }), CouldNotLook, 'no token is could-not-look');
+  });
+
+  test('a run in progress whose commit age cannot be read is RED, UNKNOWN', async () => {
+    const deployRun = await lookup(fixture('runs-in-progress.json'), null);
+    const v = judgeDeployRun(stale('nikatru-apex'), { project: 'nikatru-apex', expectedCommit: SHA, expectedAt: null, now: NOW, deployRun });
+    assert.equal(v.code, 1);
+    assert.match(v.line, /UNKNOWN/);
+  });
+
+  test('only a direct row RED past the window is re-judged — green, ⏳, git and exit-2 verdicts pass through untouched', () => {
+    const deployRun = { ok: true, run: { ...fixture('runs-in-progress.json').workflow_runs[0] }, jobs: null };
+    const young = judgeProject({ project: 'p', kind: 'direct', sourceDir: 'u', deployments: [adHoc(SERVED)], expectedCommit: SHA, isAncestor: () => false, now: NOW, expectedAt: NOW - 60_000, laneCeilingMs: 20 * 60 * 1000 });
+    const git = judgeProject({ project: 'p', kind: 'git', sourceDir: 'u', deployments: [deployment({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SERVED } } })], expectedCommit: SHA, isAncestor: () => false });
+    for (const r of [young, git, { code: 0, line: 'ok' }, { code: 2, line: '?' }]) {
+      assert.notEqual(r.awaitsRun, true);
+      assert.equal(judgeDeployRun(r, { project: 'p', expectedCommit: SHA, expectedAt: COMMIT_AT, now: NOW, deployRun }), r);
+    }
+    assert.equal(git.code, 1, 'a git-connected stale row stays RED; Cloudflare builds it, no CI run deploys it');
+  });
+
+  test('deployJobFor — the caller job prefix and the project suffix, matching ci.yml\'s real caller', () => {
+    const jobs = fixture('jobs-completed.json').jobs;
+    assert.match(deployJobFor(jobs, 'nikatru-apex').name, /\(nikatru-apex\)$/);
+    assert.equal(deployJobFor(jobs, 'nikatru'), null, 'a prefix of a project name is not that project');
+    assert.equal(deployJobFor([{ name: 'other / X (nikatru-apex)' }], 'nikatru-apex'), null);
+    const ci = parseWorkflow(REPO, `.github/workflows/${CI_WORKFLOW_FILE}`);
+    const caller = ci.jobs.get(DEPLOY_CALLER_JOB);
+    assert.ok(caller, `ci.yml has a job keyed ${DEPLOY_CALLER_JOB}`);
+    const text = caller.lines.map((l) => l.text).join('\n');
+    assert.match(text, /^ {4}name: deploy-web\s*$/m, 'its display name is the prefix GitHub gives the called jobs');
+    assert.match(text, /uses: \.\/\.github\/workflows\/deploy-web\.yml/);
   });
 });

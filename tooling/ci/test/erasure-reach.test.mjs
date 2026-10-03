@@ -329,6 +329,37 @@ describe('LIMB 3 — the erasure route must not be reachable through the shared 
     );
   });
 
+  // ⏱ 2026-10-03 (review of #1152, minor 2): each carrier's auth.ts is a re-export
+  // of the kit, so a fallback added to the kit's erasureAuth exited 0 at review.
+  test("FAILS when the KIT's erasureAuth verifies through verifySupabaseToken with the legacy secret (limb 3(c))", () => {
+    const from = '    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE);';
+    withTree(
+      (root) =>
+        edit(root, 'services/_shared/src/auth-middleware.ts', (s) => {
+          assert.ok(s.includes(from), 'anchor not found in the kit');
+          return s.replace(
+            from,
+            '    const { payload } = await verifySupabaseToken(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, { legacyHs256Secret: (c.env as unknown as { SUPABASE_JWT_SECRET?: string }).SUPABASE_JWT_SECRET });',
+          );
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /auth-middleware\.ts: erasureAuth reaches verifySupabaseToken/);
+        assert.match(r.stderr, /erasureAuth reaches SUPABASE_JWT_SECRET/);
+      },
+    );
+  });
+
+  test("COVERAGE LOST when the kit's erasureAuth can no longer be parsed (limb 3(c))", () => {
+    withTree(
+      (root) => edit(root, 'services/_shared/src/auth-middleware.ts', (s) => s.replace('export async function erasureAuth<', 'export async function erasureAuthRenamed<')),
+      (r) => {
+        assert.equal(r.status, 2, r.stderr);
+        assert.match(r.stderr, /no top-level erasureAuth that reaches verifyAsymmetric was parsed/);
+      },
+    );
+  });
+
   test('FAILS when nothing path-scoped guards the erasure route at all', () => {
     withTree(
       (root) => edit(root, SUBLY_INDEX, (s) => s.replace("app.use('/v1/account', erasureAuth);", '')),

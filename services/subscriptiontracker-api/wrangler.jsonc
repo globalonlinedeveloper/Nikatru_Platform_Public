@@ -260,7 +260,9 @@
         // (rv2-services-022): absent until today, so a sandbox E2E could not see a
         // revoked session refused here — the read fails OPEN without it. The
         // SAME sandbox namespace services/platform's env.sandbox binds
-        // (`session-revoked-sandbox`, tooling/scripts/provision-sandbox-twins.mjs).
+        // (`session-revoked-sandbox`, to be created by
+        // tooling/scripts/provision-sandbox-twins.mjs --apply; not yet run: all
+        // zeros, a `pendingTwins` row in tooling/platform-register.json).
         { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
       ],
       // why: src/middleware/write-limit.ts reads it on every write, as at the top

@@ -135,7 +135,7 @@
     22,
 
   "autopilot-issue-queue.test.mjs":
-    18,
+    20,
 
   "autopilot-land-gate.test.mjs":
     31,
@@ -195,7 +195,7 @@
     4,
 
   "built-artifact-pr-lane.test.mjs":
-    27,
+    28,
 
   "built-info-plist.test.mjs":
     15,
@@ -303,7 +303,7 @@
     65,
 
   "connect-origins.test.mjs":
-    39,
+    42,
 
   "consent-anon-id.test.mjs":
     35,
@@ -423,7 +423,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    36,
+    38,
 
   "ensure-monitors.test.mjs":
     26,
@@ -435,7 +435,7 @@
     4,
 
   "erasure-reach.test.mjs":
-    53,
+    55,
 
   "ext-connect-dom.test.mjs":
     7,
@@ -588,7 +588,7 @@
     16,
 
   "land-next.test.mjs":
-    59,
+    96,
 
   "land-rules.test.mjs":
     23,
@@ -741,7 +741,7 @@
     116,
 
   "ops-register.test.mjs":
-    448,
+    462,
 
   "ops-status.test.mjs":
     53,
@@ -765,7 +765,7 @@
     25,
 
   "pages-deployments.test.mjs":
-    111,
+    120,
 
   "pages-origin.test.mjs":
     26,
@@ -855,7 +855,7 @@
     26,
 
   "prod-provenance-walk.test.mjs":
-    32,
+    34,
 
   "prod-provenance.test.mjs":
     154,
@@ -1005,7 +1005,7 @@
     37,
 
   "session-revocation.test.mjs":
-    22,
+    25,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1050,7 +1050,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    43,
+    46,
 
   "snap-submission.test.mjs":
     48,
@@ -1176,7 +1176,7 @@
     46,
 
   "triage-failed-runs.test.mjs":
-    114,
+    115,
 
   "turnstile-hosts.test.mjs":
     14,
@@ -1251,7 +1251,7 @@
     18,
 
   "workflow-hardening.test.mjs":
-    11,
+    17,
 
   "workflow-readers.test.mjs":
     23,

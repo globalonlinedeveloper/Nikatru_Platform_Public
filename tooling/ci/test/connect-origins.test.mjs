@@ -512,6 +512,51 @@ describe('the compare, on the real tree and on mutated copies of it (red control
     assert.equal(red.stdout, '');
   });
 
+  // ⏱ 2026-10-02 (lane ci-pr-web-smoke): ci.yml `web-artifacts` holds no secret, so it
+  // emits the probe list from _headers alone. Its claim is that the list is the one
+  // --emit-connect prints, whenever the compare --emit-connect needs passes.
+  test('--emit-listed prints the line --emit-connect prints on a passing compare, from _headers alone, with NO environment', () => {
+    const listed = run(tree(), {}, ['--emit-listed']);
+    assert.equal(listed.code, 0, listed.out);
+    const derived = run(tree(), FIXTURE_ENV, ['--check', '--emit-connect']);
+    assert.equal(derived.code, 0, derived.out);
+    const set = (line) => line.trim().slice('connect='.length).split(' ').filter((w) => w !== '--connect').sort();
+    assert.equal(listed.stdout.trim().split('\n').length, 1, listed.stdout);
+    assert.deepEqual(set(listed.stdout), set(derived.stdout));
+    assert.deepEqual(set(listed.stdout), listedOrigins(connectSrcOf(real(HEADERS_REL))).sort());
+    assert.match(listed.stderr, /no compare \(the defines are secrets\)/);
+  });
+
+  test('--emit-listed follows _headers: an origin dropped from connect-src leaves the list (and reds the compare on main)', () => {
+    const drop = (h) => mutate(h, ' https://glitchtip.nikatru.com', '');
+    const listed = run(tree({ headers: drop }), {}, ['--emit-listed']);
+    assert.equal(listed.code, 0, listed.out);
+    assert.doesNotMatch(listed.stdout, /glitchtip/);
+    assert.equal(run(tree({ headers: drop }), FIXTURE_ENV, ['--check', '--emit-connect']).code, 1);
+  });
+
+  test('--emit-listed refuses what it cannot list: no _headers, a template source, an empty connect-src, or a compare flag beside it (exit 2)', () => {
+    const onlySelf = (h) => {
+      const lines = h.split('\n');
+      const at = lines.findIndex((l) => /^\s+Content-Security-Policy:/.test(l));
+      lines[at] = mutate(lines[at], /connect-src [^;]*;/.exec(lines[at])[0], "connect-src 'self';");
+      return lines.join('\n');
+    };
+    const cases = [
+      [tree({ omit: [HEADERS_REL] }), ['--emit-listed'], /could not be read/],
+      [tree({ headers: (h) => mutate(h, ' https://glitchtip.nikatru.com', ' https://*.nikatru.com') }), ['--emit-listed'], /not a bare https origin/],
+      [tree({ headers: onlySelf }), ['--emit-listed'], /nothing to probe/],
+      [tree(), ['--emit-listed', '--check'], /cannot be combined/],
+      [tree(), ['--emit-listed', '--emit-connect'], /cannot be combined/],
+    ];
+    for (const [root, args, why] of cases) {
+      const r = run(root, {}, args);
+      assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}`);
+      assert.match(r.out, why);
+      assert.equal(r.stdout, '', 'a refused list prints no connect= line');
+    }
+  });
+
   test('an unrecognised flag is COVERAGE LOST (exit 2), not a compare', () => {
     const r = run(tree(), FIXTURE_ENV, ['--chek']);
     assert.equal(r.code, 2, r.out);

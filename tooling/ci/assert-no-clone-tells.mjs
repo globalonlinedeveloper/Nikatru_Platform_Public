@@ -132,6 +132,12 @@ const REQUIRED_COVERAGE = [
     // red. 100 is above any single package (core 81) and below the tree less
     // its largest-but-one (268 - design_system 57 = 211), measured with
     // `find packages/*/lib -name '*.dart'`.
+    // ⏱ 2026-10-03 · club-worker-kit-followers: 80 -> 100. ST bounds added
+    // packages/core/lib/src/money/iso4217.g.dart, so core/lib reached 80 .dart and
+    // cleared the floor ALONE again (vacuity-b's "thinned to core" case went red
+    // in CI run 37092405549). Measured: core 80, design_system 53, api_client 27,
+    // tree 259. 100 is above any single package and below the tree less its
+    // largest-but-one (259 - 53 = 206).
     // ⏱ 2026-10-02 · club apply-platform (update_exit + web_page*): 80 -> 100.
     // Measured by `git ls-tree` on the branch: packages/core/lib 78 -> 82 .dart, so
     // core alone cleared 80 and vacuity-b's "thinned to core" case went red again.

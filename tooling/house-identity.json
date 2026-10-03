@@ -294,7 +294,7 @@
       "sameAs": {
         "value": [],
         "ownerGated": true,
-        "why": "The person's OWN public profiles (GitHub, LinkedIn, X …), rendered into his site's JSON-LD `sameAs` by tooling/sites/generate-personal-site.mjs. Empty until the owner names them: `globalonlinedeveloper` is the organisation that holds the code (tooling/github-org.json), not a personal profile. Never the company's site: sameAs asserts identity, and the person-company relation is worksFor/founder."
+        "why": "The person's OWN public profiles (GitHub, LinkedIn, X …), rendered into his site's JSON-LD `sameAs` by tooling/sites/generate-personal-site.mjs. Empty until the owner names them: `globalonlinedeveloper` is a personal GitHub user account named Rajasekar Selvam; OWNER confirms whether to publish it as `sameAs`. Never the company's site: sameAs asserts identity, and the person-company relation is worksFor/founder."
       },
       "careerStartYear": {
         "value": null,

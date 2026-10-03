@@ -384,8 +384,13 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
   // this Worker reading any of them; the port adds our credentials, exactly as
   // the session calls get them. ⏱ 2026-10-03 · port-auth: the request is built
   // by the identity port's adapter (identityFor, src/ports.ts), not here.
+  // x-request-id is the one exception: GoTrue gets the id request-id.ts
+  // accepted or minted, never the caller's raw value, so its logs carry a
+  // validated id that matches our `rid=` (review of #1152, nit 4).
   const headers = new Headers();
-  for (const [name, value] of c.req.raw.headers) if (sentOn(name)) headers.set(name, value);
+  for (const [name, value] of c.req.raw.headers) if (sentOn(name) && name !== 'x-request-id') headers.set(name, value);
+  const rid = c.get('requestId');
+  if (rid) headers.set('x-request-id', rid);
 
   const answer = await identityFor(c.env).credential(op, body, {
     headers,

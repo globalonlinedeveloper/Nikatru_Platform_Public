@@ -58,11 +58,25 @@
 // NAMES only: never a value, a path, a key or a DSN's user part. A value that
 // does not parse is reported by its name alone.
 //
-// Usage:  node tooling/web/connect-origins.mjs --app <app> [--check] [--emit-connect] [--root <dir>]
+// ── --emit-listed: THE SAME PROBE LIST, FOR A JOB THAT HOLDS NO SECRET ──────
+// ⏱ 2026-10-02 (lane ci-pr-web-smoke). #1145 was green on its PR and turned main
+// red: ci.yml `web-artifacts` booted the bundle with NO `--connect` origin, so the
+// connect-src probe (the leg #1145's service worker broke) ran on main alone. A
+// PR job cannot run the compare — D reads the SUPABASE_URL and GLITCHTIP_DSN
+// secrets — so it emits `connect-src` minus 'self' as read from `_headers`. That
+// is the list deploy-web's `--emit-connect` prints whenever its compare passes,
+// because the compare passes only when the derived set EQUALS that list; and the
+// browser grades the probe against `_headers` alone, never against the defines.
+// A source the compare cannot grade, or an empty list, is COVERAGE LOST here too.
+//
+// Usage:  node tooling/web/connect-origins.mjs --app <app> [--check] [--emit-connect | --emit-listed] [--root <dir>]
 //   --check         the compare (the default mode); the report goes to stdout.
 //   --emit-connect  after a passing compare, print `connect=--connect <origin> …`
 //                   on stdout (deploy-web appends it to $GITHUB_OUTPUT for the
 //                   launch smoke) and send the report to stderr.
+//   --emit-listed   no compare and no environment read: print the same
+//                   `connect=` line from `_headers`' connect-src alone (ci.yml
+//                   `web-artifacts` appends it to $GITHUB_OUTPUT); report to stderr.
 // Exit 0 = connect-src equals the derived set. Exit 1 = a finding. Exit 2 =
 // COVERAGE LOST: an input could not be read or modelled, so nothing was graded.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -540,8 +554,19 @@ function lost(lines) {
   process.exit(2);
 }
 
+/** The `connect=` line the launch smoke's step reads, one `--connect` per origin. */
+export const connectLine = (origins) => `connect=${origins.map((o) => `--connect ${o}`).join(' ')}`;
+
+/** `--emit-listed`: `_headers`' connect-src minus 'self', in its own order. An
+ *  empty list is COVERAGE LOST: a probe of nothing would pass and prove nothing. */
+export function listedConnect(headersText) {
+  const listed = listedOrigins(connectSrcOf(headersText));
+  if (listed.length === 0) throw new CoverageLost("connect-src names no origin besides 'self', so there is nothing to probe.");
+  return listed;
+}
+
 function main(argv) {
-  const known = new Set(['--app', '--root', '--check', '--emit-connect']);
+  const known = new Set(['--app', '--root', '--check', '--emit-connect', '--emit-listed']);
   const unknown = argv.filter((a, i) => a.startsWith('--') && !known.has(a) && !['--app', '--root'].includes(argv[i - 1]));
   const value = (name) => {
     const i = argv.indexOf(name);
@@ -551,10 +576,26 @@ function main(argv) {
   if (unknown.length || !app || !/^[a-z0-9_]+$/.test(app)) {
     lost([
       unknown.length ? `unrecognised argument(s): ${unknown.join(' ')}` : 'no --app <app id> given.',
-      'Usage: node tooling/web/connect-origins.mjs --app <app> [--check] [--emit-connect] [--root <dir>]',
+      'Usage: node tooling/web/connect-origins.mjs --app <app> [--check] [--emit-connect | --emit-listed] [--root <dir>]',
     ]);
   }
   const root = resolve(value('--root') ?? REPO);
+  if (argv.includes('--emit-listed')) {
+    if (argv.includes('--check') || argv.includes('--emit-connect')) {
+      lost(['--emit-listed runs no compare, so it cannot be combined with --check or --emit-connect.']);
+    }
+    const rel = `apps/${app}/web/_headers`;
+    let listed;
+    try {
+      listed = listedConnect(readFileSync(join(root, rel), 'utf8'));
+    } catch (e) {
+      lost([e instanceof CoverageLost ? `${rel}: ${e.message}` : `${rel} could not be read (${e.code ?? e.message}), so there is nothing to probe.`]);
+    }
+    console.error(`connect-origins: apps/${app} — ${rel} connect-src lists ${listed.length} origin(s) besides 'self'; no compare (the defines are secrets)`);
+    for (const origin of listed) console.error(`     ${origin}`);
+    console.log(connectLine(listed));
+    return;
+  }
   const emit = argv.includes('--emit-connect');
   const say = emit ? console.error : console.log;
   const rels = {
@@ -584,7 +625,7 @@ function main(argv) {
     process.exit(1);
   }
   say(`ok   connect-src equals the derived set in both directions (${r.derived.size} origin(s)), checked before the build`);
-  if (emit) console.log(`connect=${[...r.derived.keys()].map((o) => `--connect ${o}`).join(' ')}`);
+  if (emit) console.log(connectLine([...r.derived.keys()]));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

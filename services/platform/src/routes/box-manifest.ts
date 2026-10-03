@@ -18,7 +18,9 @@
 // own config, which is the limit of any self-report, and nothing else. The
 // comparison is over SHA-256 digests with `timingSafeEqual`, so neither the
 // length nor a prefix of the secret is timed out of it. A box whose secret is
-// not configured answers 503 BEFORE the body is read, as the money webhooks do.
+// not configured answers 503 BEFORE the bearer is compared — but AFTER the
+// bounded body (BOX_MANIFEST_MAX_BYTES) is read and parsed, because the body is
+// what names the box whose secret is checked.
 //
 // ── WHAT IT ACCEPTS ──────────────────────────────────────────────────────────
 //   { "box": "boxc", "files": { "<logical name>": "<64 lowercase hex>", … } }

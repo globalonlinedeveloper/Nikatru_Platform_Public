@@ -81,3 +81,38 @@ export function toMinorUnits(price, code) {
   const digits = minorUnitDigits(code);
   return digits === null ? null : Math.round(price * 10 ** digits);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE LEGACY CLIENT SCALE. ⏱ 2026-10-03 · PR #1174 lead ruling item 1.
+// Before this table reached packages/core, money.dart knew JPY 0 and KWD 3 and
+// wrote every other code with TWO minor digits. So an installed build sends, and
+// the database already holds, `price_minor = round(price × 100)` for the codes
+// whose ISO digits are not 2 (₩14,900 as 1490000). Those codes, and only those,
+// are LEGACY_SCALE_CODES: the ST API accepts that scale from them and stores it
+// normalised, migration 0010 rewrites the rows already stored, and the app's
+// readPrice prefers the REAL `price` when the two disagree.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The minor-unit digits a pre-#1118 client used for [code]: JPY 0, KWD 3, else 2. */
+export function legacyClientMinorUnitDigits(code) {
+  if (code === 'JPY') return 0;
+  if (code === 'KWD') return 3;
+  return 2;
+}
+
+/** The codes whose ISO digits differ from the legacy client's, sorted. Frozen. */
+export const LEGACY_SCALE_CODES = Object.freeze(
+  Object.keys(MINOR_UNIT_DIGITS)
+    .filter((code) => MINOR_UNIT_DIGITS[code] !== legacyClientMinorUnitDigits(code))
+    .sort(),
+);
+
+/**
+ * round(price × 10^legacyDigits) for a code in LEGACY_SCALE_CODES, else null:
+ * the `price_minor` a pre-#1118 build sends for [price] in [code]. Null for every
+ * code whose scale did not change, so no other value gains a second meaning.
+ */
+export function legacyMinorUnits(price, code) {
+  if (!LEGACY_SCALE_CODES.includes(code)) return null;
+  return Math.round(price * 10 ** legacyClientMinorUnitDigits(code));
+}

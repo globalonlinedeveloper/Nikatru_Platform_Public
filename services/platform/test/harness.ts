@@ -128,8 +128,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   providerTokenClient0024,
   // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
-  // (routes/box-manifest.ts). Renumbered 0024 -> 0025 at the merge of main,
-  // which landed 0024_provider_token_client first.
+  // (routes/box-manifest.ts).
   boxConfigManifest0025,
 ];
 

@@ -401,6 +401,47 @@ describe('signatures', () => {
     assert.equal(eb.line, 'Unable to determine Flutter version for channel: windows-store version: 3.47.5 architecture: x64');
   });
 
+  // ⏱ 2026-10-03: the blocks of the main reds the ledger read for 2026-09-27 07:45Z .. 2026-10-03
+  // 00:00Z listed as UNEXPLAINED (88), each measured from the run named beside it. Every one read
+  // as `other:` or under a wider signature whose cause row described a different fault.
+  test('the 2026-10-03 signatures read the measured blocks of the runs that needed them', () => {
+    const hb = 'Read the heartbeat table from OUTSIDE Cloudflare';
+    const proof = 'The proof — sign in, the gated calls, sign out, the callback';
+    const cases = [
+      // 36859712513 (and 12 more on 2026-10-01): a FRESH row whose job said it FAILED, keyed on the job.
+      [hb, '✗ 1 scheduled duty is not reporting healthy:\nok  supabase_keepalive: the run due 2026-09-30T06:00:00.000Z is recorded — newest row 2026-10-01T06:00:37.098Z (0.0h old), ok=1\n    backup_export: the newest heartbeat is FRESH and says the job FAILED — 1 of 8 target(s): target d1-budget: ok=0, detail: OVER THE WARN LINE: 37 of 42 D1 queries (88%)', 'heartbeat-table:reported-failed:backup_export'],
+      // 36500171179 (and 8 more on 2026-09-28)
+      [hb, '✗ 1 scheduled duty is not reporting healthy:\n    ops_watchdog: the newest heartbeat is FRESH and says the job FAILED — 1 of 5 target(s): target main:ops-watch.yml: ok=0, detail: unreadable: stale page: the page ends at run 35477612056', 'heartbeat-table:reported-failed:ops_watchdog'],
+      // 36929056657 (codeql.yml) and 37057868484 (ci.yml): the same limb, keyed on the alert.
+      ['Every open CodeQL alert on main is fixed in code or carries a disposition', '✗ limb C — 1 code-scanning alert(s) with NO disposition:\n    #551  js/unused-local-variable  note  tooling/ci/assert-mor-adapters.mjs:82\n    Fix it in code (with a `fixed-in-tree` entry until main\'s analysis sees the fix), or add a `by-design`', 'codeql:no-disposition:551'],
+      ['Every alerting firing has a recorded disposition', '✗ limb C — 1 code-scanning alert(s) with NO disposition:\n    #560  js/file-access-to-http  medium  tooling/ops/check-wildcard-dns.mjs:156', 'codeql:no-disposition:560'],
+      // 36939849073, 36940922904: keyed on the field that differs.
+      ['Compare the live Supabase auth config against tooling/mail-transport.json', '✗ auth `uri_allow_list`: register says "https://nikatru.com/subscriptiontracker/**,https://subscriptiontracker-7qg.pages.dev/**", live says "https://nikatru.com/subscriptiontracker/**,https://nikatru.com/app/connect"', 'supabase-auth:drift:uri_allow_list'],
+      // 37020790032, 37029778489, 37033246405
+      ['Launch the built bundle once, before it is published', 'FAIL smoke-web-artifact: 5 probe request(s) were NOT paused by the interception, so they may have reached the host.\n       https://subscriptiontracker-api.nikatru.com/\n       https://glitchtip.nikatru.com/', 'bundle-launch:probe-not-intercepted'],
+      // 36864391489: errorBlock keeps the three lines above the generic exit line.
+      ['Run ./.github/actions/setup-flutter', '  SDK_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.47.5-arm64\n##[endgroup]\nusage: sha256sum [-bctwz] [files ...]\n##[error]Process completed with exit code 1.', 'setup-flutter:sha256sum-bsd'],
+      // 36739638735: an uncaught Node throw in the purge step.
+      ['Purge the throwaway user', '}\n\nNode.js v24.21.0\n##[error]Process completed with exit code 1.', 'purge-throwaway:uncaught-throw'],
+      // 36880654202: a Cloudflare 5xx HTML page where GoTrue's JSON should be.
+      ['Provision throwaway confirmed user', '    </div>\n</body>\n</html>\n##[error]Process completed with exit code 1.\n##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\nWarning: No files were found with the provided path: e2e-diagnostics/. No artifacts will be uploaded.', 'e2e-provision:html-error-page'],
+      // 36525783687 (Android) and 36736302501 (Linux)
+      [proof, '##[error]0 tests passed, 1 failed.\nFAIL flutter test exited 1\nFAIL missing "NK_PROOF step=sign-in outcome=ok" — the real form did not sign the user in and reach Home', 'native-auth-proof:sign-in-not-home'],
+      [proof, 'FAIL flutter test exited 1\nFAIL missing "NK_PROOF step=sign-in outcome=ok" — the real form did not sign the user in and reach Home\nFAIL missing "NK_PROOF step=sign-up-registered" — GoTrue\'s answer was not recorded', 'native-auth-proof:sign-in-not-home'],
+      // 36970520119, 36970542712
+      ['Re-promote the recorded Pages deployment or Worker version', '✗ Cloudflare refused the Pages rollback (HTTP 400): 8000039: You cannot rollback to the deployment that is currently in production. You must rollback to a previous deployment.. Nothing was re-promoted.', 'rollback:target-is-production'],
+    ];
+    for (const [step, block, want] of cases) assert.equal(signatureOf({ step, block }), want, `${step}\n${block}`);
+    // RED CONTROLS — each refinement keeps to its own shape, and the wider row it refines still holds.
+    assert.equal(signatureOf({ step: hb, block: '✗ 1 scheduled duty is not reporting healthy:\n    backup_export: newest ok row 30.1h ago, outside its window' }), 'heartbeat-table:unhealthy', 'a job that STOPPED is not a job that reported a failure');
+    assert.equal(signatureOf({ step: hb, block: '✗ 1 scheduled duty is not reporting healthy:\n    reminder_mail: NO heartbeat row has ever been written, and the first slot ended its grace' }), 'heartbeat-table:never-written:reminder_mail');
+    assert.equal(signatureOf({ step: cases[4][0], block: '✗ auth `sessions_timebox`: register says null, live says 0.' }), 'supabase-auth:session-limit-null-read-as-drift', 'the measured null-vs-0 reading keeps its own row');
+    assert.equal(signatureOf({ step: cases[5][0], block: 'FAIL smoke-web-artifact: the artifact started but requested 1 file(s) the bundle does not contain.\n       404 /subscriptiontracker/fallback-fonts/x.woff2' }), 'bundle-launch:404', 'the step-name row still holds a 404');
+    assert.match(signatureOf({ step: cases[7][0], block: 'purge refused: E2E_USER_ID is not a UUID\n##[error]Process completed with exit code 1.' }), /^other:/, 'a purge that did not throw is not this row');
+    assert.match(signatureOf({ step: cases[8][0], block: 'generate_link failed: HTTP 422 {"msg":"User already registered"}\n##[error]Process completed with exit code 1.' }), /^other:/, 'a provision refusal that answered JSON is not this row');
+    assert.match(signatureOf({ step: cases[11][0], block: '✗ Cloudflare refused the Pages rollback (HTTP 404): 8000007: Project not found.' }), /^other:/, 'only the "already in production" refusal is this row');
+  });
+
   test('every signature id is unique and every pattern is a RegExp', () => {
     const ids = SIGNATURES.map((s) => s.id);
     assert.equal(new Set(ids).size, ids.length);
