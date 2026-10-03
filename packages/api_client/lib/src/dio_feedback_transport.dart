@@ -55,7 +55,9 @@ class DioFeedbackTransport implements core.FeedbackTransport {
         ),
       );
     } on DioException catch (e) {
-      return core.FeedbackSendResult.retryLater(error: 'no_response:${e.type.name}');
+      return core.FeedbackSendResult.retryLater(
+        error: 'no_response:${e.type.name}',
+      );
     }
     final int status = res.statusCode ?? 0;
     final Object? body = res.data;

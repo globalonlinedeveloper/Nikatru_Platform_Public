@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/status_tones.dart';
 import 'app_card.dart';
+import 'sensitive.dart';
 
 /// The chassis FIGURE TILE — one labelled figure on its own card: a price, a
 /// next-charge date, a total (train ST-D5).
@@ -78,12 +79,17 @@ class AppFigureTile extends StatelessWidget {
               style: text.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              figure,
-              style: text.titleLarge?.copyWith(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            // A figure is often money: private in a problem report (Sensitive).
+            Sensitive(
+              child: Text(
+                figure,
+                style: text.titleLarge?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const <FontFeature>[
+                    FontFeature.tabularFigures(),
+                  ],
+                ),
               ),
             ),
             if (under != null)

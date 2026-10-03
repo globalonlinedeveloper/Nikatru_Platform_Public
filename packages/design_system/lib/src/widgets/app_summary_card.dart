@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_spacing.dart';
 import 'app_card.dart';
+import 'sensitive.dart';
 
 /// One labelled figure in an [AppSummaryCard]'s stat row.
 @immutable
@@ -93,15 +94,18 @@ class AppSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    figure,
-                    maxLines: 1,
-                    style: text.displaySmall?.copyWith(
-                      color: scheme.onSurface,
-                      fontFeatures: _tabular,
+                // The figure is money: private in a problem report.
+                Sensitive(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      figure,
+                      maxLines: 1,
+                      style: text.displaySmall?.copyWith(
+                        color: scheme.onSurface,
+                        fontFeatures: _tabular,
+                      ),
                     ),
                   ),
                 ),
@@ -160,15 +164,17 @@ class AppSummaryCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: AppSpacing.xs),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: AlignmentDirectional.centerStart,
-                            child: Text(
-                              stats[i].value,
-                              maxLines: 1,
-                              style: text.titleLarge?.copyWith(
-                                color: scheme.onSurface,
-                                fontFeatures: _tabular,
+                          Sensitive(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(
+                                stats[i].value,
+                                maxLines: 1,
+                                style: text.titleLarge?.copyWith(
+                                  color: scheme.onSurface,
+                                  fontFeatures: _tabular,
+                                ),
                               ),
                             ),
                           ),

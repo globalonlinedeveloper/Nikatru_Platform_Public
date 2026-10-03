@@ -4,6 +4,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'noop_telemetry_client.dart';
 import 'pii_scrubber.dart';
+import 'recent_activity.dart';
 import 'sentry_telemetry_client.dart';
 import 'telemetry_client.dart';
 import 'telemetry_config.dart';
@@ -83,8 +84,22 @@ class TelemetryBootstrap {
     options.tracesSampleRate = config.tracesSampleRate;
     // Belt and braces: never attach default PII (ip address, ...).
     options.sendDefaultPii = false;
-    options.beforeSend =
-        (event, hint) => bound.tryAcquire() ? scrubEvent(event) : null;
+    options.beforeSend = (event, hint) {
+      remember(event);
+      return bound.tryAcquire() ? scrubEvent(event) : null;
+    };
+    // The opt-in "logs" of a "Report a problem" report are these breadcrumbs,
+    // kept on the device (RecentActivity) and scrubbed again when read.
+    options.beforeBreadcrumb = (crumb, hint) {
+      final String? message = crumb?.message;
+      if (message != null) {
+        RecentActivity.instance.recordBreadcrumb(
+          message,
+          category: crumb?.category,
+        );
+      }
+      return crumb;
+    };
   }
 
   /// The options every app gets. A function of [config] and of whether this is
@@ -167,6 +182,24 @@ class TelemetryBootstrap {
   }) {
     options.autoInitializeNativeSdk = false;
     options.transport = WebEnvelopeTransport(options, client: client);
+  }
+
+  /// Keeps what a "Report a problem" report may carry from [event], on the
+  /// device: each exception's TYPE (never its value) into
+  /// [RecentActivity.errorCodes], and the event id as the last crash. This
+  /// hook runs only where crash reporting is on, so without consent nothing
+  /// is kept here (lane feedback-intake, Do 3).
+  @visibleForTesting
+  static void remember(SentryEvent event) {
+    final exceptions = event.exceptions;
+    if (exceptions == null || exceptions.isEmpty) return;
+    for (final e in exceptions) {
+      final String? type = e.type;
+      if (type != null && type.isNotEmpty) {
+        RecentActivity.instance.recordCode(type);
+      }
+    }
+    RecentActivity.instance.lastCrashEventId = event.eventId.toString();
   }
 
   /// Scrubs PII from every user-influenced field of [event]: the message and

@@ -34,12 +34,7 @@ enum FeedbackSendKind {
 
 /// The Worker's answer, reduced to what the sheet and the outbox act on.
 class FeedbackSendResult {
-  const FeedbackSendResult._(
-    this.kind, {
-    this.id,
-    this.error,
-    this.retryAfter,
-  });
+  const FeedbackSendResult._(this.kind, {this.id, this.error, this.retryAfter});
 
   const FeedbackSendResult.sent(String id)
     : this._(FeedbackSendKind.sent, id: id);
