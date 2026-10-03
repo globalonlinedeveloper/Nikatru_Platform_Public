@@ -4595,7 +4595,7 @@
       "keepWhy": "It is the only durable answer to \"which subscription does this refunded or disputed payment belong to\", written once on the signed `subscription.charged` that names both ids. A refund or chargeback can arrive for as long as a payment can be reversed, so a timer here would turn a later refund into an unclaimed one that revokes nothing; the row carries `user_id`, so it already leaves when the account does via the derived erasure sweep — which is a different mechanism from retention.",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0024_provider_payment_links.sql",
+        "anchor": "services/platform/migrations/0025_provider_payment_links.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

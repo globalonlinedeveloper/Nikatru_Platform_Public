@@ -251,7 +251,7 @@
         "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
       },
       "writtenBy": [
-        "services/platform/migrations/0024_provider_payment_links.sql",
+        "services/platform/migrations/0025_provider_payment_links.sql",
         "services/platform/src/lib/mor/store.ts"
       ],
       "disclosure": {
