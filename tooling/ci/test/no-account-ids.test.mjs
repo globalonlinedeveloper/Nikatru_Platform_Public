@@ -2,7 +2,7 @@
 // no-account-ids.test.mjs — tooling/scripts/assert-no-account-ids.mjs must be able
 // to FAIL, and must never print what it found.
 //
-// ⏱ 2026-10-01 · O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE (rv2-business 009). Every value
+// ⏱ 2026-10-03 · rv2-business 009. Every value
 // below is SYNTHETIC — the shape of a real id, the value of none. The real ids live
 // in the business brain and nowhere else; the guard reads them from there at run
 // time. The fixture is a throwaway git repository and a throwaway brain, so the

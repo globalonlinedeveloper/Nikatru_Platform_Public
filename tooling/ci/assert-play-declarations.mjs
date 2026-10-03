@@ -1465,7 +1465,7 @@ function checkApp(app) {
       problems.push(`${DS_REL} maps a Play data type to inventory row ${JSON.stringify(id)}, which does not exist in ${INVENTORY_REL}.`);
     }
   }
-  // ⏱ 2026-10-01 · O-DATA-SAFETY-CITES-A-1-AS-NO-ACCOUNT (rv2-business 025). An exclusion whose reason is
+  // ⏱ 2026-10-03 · rv2-business 025. An exclusion whose reason is
   // a SWITCH STATE names the switch in `notFromThisAppWhile`, and this reads it. The provider_notifications
   // exclusion said "No seller account exists (OWNER_QUEUE A-1)" for a month after the account went live:
   // the real reason was that checkout is closed, which is a flag in the tree and not an owner row.

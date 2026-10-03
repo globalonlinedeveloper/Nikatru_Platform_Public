@@ -970,7 +970,7 @@ describe('assert-play-declarations — the inventory relation, both directions',
   });
 });
 
-// ⏱ 2026-10-01 · O-DATA-SAFETY-CITES-A-1-AS-NO-ACCOUNT (rv2-business 025). The provider_notifications
+// ⏱ 2026-10-03 · rv2-business 025. The provider_notifications
 // exclusion cited an owner row ("no seller account exists") for a reason that was false; its real reason
 // is a switch in the tree, and `notFromThisAppWhile` makes the guard read the switch.
 describe('assert-play-declarations — an exclusion held by a flag fails when the flag flips', () => {

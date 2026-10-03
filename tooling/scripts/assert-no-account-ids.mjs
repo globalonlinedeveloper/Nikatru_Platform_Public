@@ -3,7 +3,7 @@
 // assert-no-account-ids.mjs — no store-account id is written in full in this
 // PUBLIC tree.
 //
-// ⏱ 2026-10-01 · O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE (rv2-business 009). Both
+// ⏱ 2026-10-03 · rv2-business 009. Both
 // Microsoft Partner Center seller ids, the Chrome Web Store publisher id and the
 // Apple Developer Enrollment ID were written in full in tracked files of this
 // public repository — a register note, a guard's `why` string, a compliance
@@ -27,7 +27,7 @@
 //
 // ⚠️ HISTORY IS NOT REWRITTEN. The values remain in git history before
 // 2026-10-01; rewriting a public repository's history is the owner's call and is
-// recorded as such in O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE.
+// recorded as such in rv2-business 009.
 //
 // The last four characters of an id are not a full id and do not match: where an
 // old and a live id must be told apart, the last four may be written.
@@ -158,7 +158,7 @@ function main() {
     console.error(`✗ account ids — ${hits.length} tracked line(s) carry a full store-account id (values not printed):`);
     for (const h of hits) console.error(`    ${h.file}:${h.line}  ${h.kinds.join(', ')}  match`);
     console.error('  Replace each with a pointer to its home in the brain (nikatru/vendors/<vendor>.md, by heading). Keep at most the');
-    console.error('  last four characters, and only where an old and a live id must be told apart. O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE.');
+    console.error('  last four characters, and only where an old and a live id must be told apart. rv2-business 009.');
     process.exit(1);
   }
   console.log(`ok  account ids — ${perKind.map((k) => `${k.kind} (${k.n} value(s)): no match`).join(' · ')} — over the tracked tree of ${repo}, brain from ${via}`);

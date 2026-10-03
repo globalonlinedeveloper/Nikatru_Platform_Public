@@ -535,7 +535,7 @@ const GUARDS = [
   { name: 'assert-business-facts', speed: 'fast', needsPrivate: false,
     rel: ['tooling/scripts/assert-business-facts.mjs'],
     what: 'every printed business fact is the entity source\'s, the source is the brain\'s, and no fact is typed elsewhere' },
-  /* ⏱ ADDED 2026-10-01 · O-STORE-ACCOUNT-IDS-IN-PUBLIC-TREE (rv2-business 009). Its subject is
+  /* ⏱ ADDED 2026-10-03 · rv2-business 009. Its subject is
      PUBLIC — every tracked file of this repo — but its VALUES are not: the store-account ids it
      searches for are read from the business brain at run time and written nowhere in this tree,
      because a list of them here would be the leak. The brain is on this machine and on no CI
