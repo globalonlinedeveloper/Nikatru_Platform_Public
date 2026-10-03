@@ -808,11 +808,15 @@ export function authChecks(root, doc, target, current, add, opts = {}) {
     const r = renderIssuersCheck(root);
     lines.push('    ── trusted issuers today (tooling/ports/auth.json `issuers` → services/_shared/src/generated/ports.ts) ──');
     for (const i of issuers) lines.push(`      ${String(i.id).padEnd(12)} origin \$${i.originEnv}${i.issuerPath} · keys ${i.jwksPath} · ${(i.algorithms ?? []).join(',')} · aud ${i.audience}`);
-    lines.push(`    ── the dual-issuer window adds ONE row (then render.mjs, deploy every Worker), and the cutover removes the old one ──`);
-    lines.push(`      + { id: '${target.id}', originEnv: '<the target origin's Worker variable>', issuerPath, jwksPath, algorithms: ['ES256'], audience: 'authenticated' }`);
+    lines.push(`    ── the dual-issuer window adds ONE row (then render.mjs, deploy every Worker) ──`);
+    lines.push(`      + { id: '${target.id}', originEnv: '<a second Worker variable>', issuerPath, jwksPath, algorithms: ['ES256'], audience: 'authenticated' }`);
+    // ⏱ 2026-10-03 · review of #1182, finding 2: repointing SUPABASE_URL alone would stop trusting the OLD
+    // issuer while app builds in the field (the endpoint is a compile-time --dart-define) still hold its tokens.
+    lines.push(`      at the cutover SUPABASE_URL (row 0, the schema requires it) moves to the target AND the second row's variable is set to the OLD origin: the old issuer stays trusted`);
+    lines.push(`      remove the old issuer only once the OLDEST SUPPORTED app build has rotated (every build that compiles the old endpoint is below the minimum supported version, or has refreshed onto the target) and a further jwt_exp has passed`);
     lines.push('      only the FIRST row keeps the KV key-set fallback (services/_shared/src/auth-middleware.ts): put the row that serves most tokens first');
     if (!r.ok) add(10, 'issuers', r.lost ? 'LOST' : 'FAIL', r.detail);
-    else add(10, 'issuers', 'PASS', `${issuers.length} trusted issuer(s) rendered and current; the window is a second row, the cutover a removal`);
+    else add(10, 'issuers', 'PASS', `${issuers.length} trusted issuer(s) rendered and current; the window is a second row; the old issuer is removed only after the oldest supported build has rotated`);
   }
   // C11 — the client config per channel
   let ch = null;

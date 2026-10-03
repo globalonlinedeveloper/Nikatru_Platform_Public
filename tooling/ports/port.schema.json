@@ -82,6 +82,9 @@
     "issuers": {
       "type": "array",
       "minItems": 1,
+      "prefixItems": [
+        { "properties": { "originEnv": { "const": "SUPABASE_URL", "description": "Row 0 is the PRIMARY, and services/_shared/src/auth.ts issuerAt resolves the primary at SUPABASE_URL whatever the row says (the KV key-set fallback, the legacy issuer, the health probe): a first row reading another variable would make the primary disagree with trustedIssuers(env)[0]. Review of #1182, finding 2." } } }
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,

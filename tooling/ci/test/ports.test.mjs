@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validate, forbiddenValues, evaluate, portLineFor, callsRunner } from '../assert-ports.mjs';
+import { validate, forbiddenValues, evaluate, portLineFor, callsRunner, foldedStrings, identityUrlIn } from '../assert-ports.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -774,6 +774,46 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /`services\/platform\/src\/lib\/reminders\.ts` builds an identity-provider URL \(`\/rest\/v1`\)/);
     });
+  });
+  // ⏱ 2026-10-03 · review of #1182, finding 6 (mutation R3 exited 0): the URL half reads
+  // the strings a module BUILDS, so a path split across a `+` is still a path.
+  it("🔴 red: a route building `'/auth/' + 'v1'` reddens limb 4 — the folded value, not the source text", () => {
+    mutate('services/platform/src/routes/account.ts', (s) => `${s}\nexport const probe = (b: string) => fetch(b + '/auth/' + 'v1/user');\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /`services\/platform\/src\/routes\/account\.ts` builds an identity-provider URL \(`\/auth\/v1`\)/);
+    });
+    mutate('sites/nikatru/js/signin.js', (s) => `${s}\nexport const leak = (b) => fetch(\`\${b}/rest/\${'v1'}/rpc/x\`);\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /the site file `sites\/nikatru\/js\/signin\.js` names an identity-provider path/);
+    });
+  });
+  // ⏱ 2026-10-03 · review of #1182, finding 2: issuerAt resolves the primary at SUPABASE_URL
+  // whatever row 0 says, so the schema requires row 0 to say it.
+  it('🔴 red: an issuers row order whose FIRST row does not read SUPABASE_URL reddens limb 1', () => {
+    mutate('tooling/ports/auth.json', (s) => {
+      const d = JSON.parse(s);
+      d.issuers.unshift({ ...d.issuers[0], id: 'next', originEnv: 'AUTH_ISSUER_NEXT_URL' });
+      return JSON.stringify(d);
+    }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/auth\.json \$\.issuers\[0\]\.originEnv: must be "SUPABASE_URL"/);
+    });
+  });
+  it('the validator applies prefixItems[i] to item i, on top of items', () => {
+    const schema = { type: 'array', prefixItems: [{ const: 1 }], items: { type: 'integer' } };
+    assert.deepEqual(validate([1, 2], schema), []);
+    assert.deepEqual(validate([2, 1], schema), ['$[0]: must be 1']);
+    assert.deepEqual(validate([1, 'x'], schema), ['$[1]: is string, expected integer']);
+  });
+  it('identityUrlIn folds `+`-joined literals and literal interpolations; a variable is a break, never a join', () => {
+    assert.equal(identityUrlIn("fetch(b + '/auth/' + 'v1/user')")?.[0], '/auth/v1');
+    assert.equal(identityUrlIn('fetch(b + "/rest" +\n  "/v1/rpc/f")')?.[0], '/rest/v1');
+    assert.equal(identityUrlIn("x = `/auth/${'v1'}/user`")?.[0], '/auth/v1');
+    assert.equal(identityUrlIn('x = `${base}/auth/v1`')?.[0], '/auth/v1');
+    // Not a path: a variable between the halves, and the app's own native route.
+    assert.equal(identityUrlIn('x = `/auth/${v}1`'), null);
+    assert.equal(identityUrlIn("x = '/v1/auth/native/' + op"), null);
+    assert.deepEqual(foldedStrings("a('x' + 'y', 'z')"), ['xy', 'z']);
   });
   it('🔴 red: a site page naming /auth/v1 outside the identity client reddens limb 4 (port-auth, the site half)', () => {
     mutate('sites/nikatru/js/signin.js', (s) => `${s}\nexport const leak = () => fetch(\`\${SUPABASE_URL}/auth/v1/user\`);\n`, (r) => {

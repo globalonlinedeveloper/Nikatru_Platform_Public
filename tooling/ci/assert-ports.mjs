@@ -57,6 +57,11 @@
 //               is COVERAGE LOST. Its SITE half: no file under sites/ (.js,
 //               .mjs, .html, comments stripped) names such a path except
 //               sites/nikatru/js/identity-client.js, which must.
+//               ⏱ 2026-10-03 · review of #1182, finding 6: in .ts and .js the
+//               pattern is also read against every string the module BUILDS
+//               (`foldedStrings`: literals joined by `+`, literal template
+//               interpolations inlined), so `'/auth/' + 'v1'` is a finding. A
+//               path assembled through a variable is the recorded limit.
 //   5 secrets   every `secrets` NAME is a tooling/worker-secrets.json row when
 //               that file exists, else an `interface Env` member of some
 //               services/*/src/types.ts — printed `manifest absent, read
@@ -233,6 +238,91 @@ export function workerSourceShapes(text) {
  *  GoTrue's `/auth/v1` or PostgREST's `/rest/v1` — as a module building a request
  *  spells it (comments stripped, strings kept: the path IS a string). */
 export const IDENTITY_URL_RE = /\/(?:auth|rest)\/v1(?![\w-])/;
+
+/**
+ * ⏱ 2026-10-03 · review of #1182, finding 6: THE STRINGS A MODULE BUILDS, folded.
+ * A raw match on source text missed `'/auth/' + 'v1'`. Each run of string literals
+ * joined by `+`, with a literal interpolated into a template (`${'v1'}`) inlined,
+ * is folded into the ONE value it builds, and the URL pattern is read against
+ * those values too. A non-literal interpolation is a break (`\u0000`), never a
+ * join. The accepted limit, recorded: a path assembled through a VARIABLE
+ * (`const v = 'v1'; base + '/auth/' + v`) is not resolved — no lexical guard
+ * evaluates code.
+ */
+export function foldedStrings(code) {
+  const out = [];
+  const isQuote = (c) => c === "'" || c === '"' || c === '`';
+  const skipSpace = (j) => {
+    while (j < code.length && /\s/.test(code[j])) j++;
+    return j;
+  };
+  let run = null;
+  let i = 0;
+  while (i < code.length) {
+    if (!isQuote(code[i])) {
+      i++;
+      continue;
+    }
+    const lit = readLiteral(code, i);
+    run = run === null ? lit.value : run + lit.value;
+    i = lit.end;
+    const plus = skipSpace(i);
+    if (code[plus] === '+') {
+      const next = skipSpace(plus + 1);
+      if (isQuote(code[next])) {
+        i = next;
+        continue;
+      }
+    }
+    out.push(run);
+    run = null;
+  }
+  if (run !== null) out.push(run);
+  return out;
+}
+/** One string literal from `start` (its quote): its value and the index after it. */
+function readLiteral(code, start) {
+  const q = code[start];
+  let value = '';
+  let i = start + 1;
+  while (i < code.length) {
+    const c = code[i];
+    if (c === '\\') {
+      value += code.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c === q) return { value, end: i + 1 };
+    if (q !== '`' && c === '\n') return { value, end: i };
+    if (q === '`' && c === '$' && code[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < code.length && depth > 0) {
+        if (code[j] === '{') depth++;
+        else if (code[j] === '}') depth--;
+        j++;
+      }
+      const inner = code.slice(i + 2, j - 1).trim();
+      const quoted = inner.length >= 2 && (inner[0] === "'" || inner[0] === '"') && inner.at(-1) === inner[0] ? inner.slice(1, -1) : null;
+      value += quoted !== null && !/['"\\\n]/.test(quoted) ? quoted : '\u0000';
+      i = j;
+      continue;
+    }
+    value += c;
+    i++;
+  }
+  return { value, end: i };
+}
+/** Limb 4's URL half on comment-stripped code: the source text, then every folded value. */
+export function identityUrlIn(code) {
+  const raw = IDENTITY_URL_RE.exec(code);
+  if (raw) return raw;
+  for (const v of foldedStrings(code)) {
+    const m = IDENTITY_URL_RE.exec(v);
+    if (m) return m;
+  }
+  return null;
+}
 /** The port whose ts adapters may build it. */
 export const IDENTITY_PORT = 'auth';
 /** Modules that name the path without building a call — DECLARED, printed on every
@@ -292,6 +382,7 @@ const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number
 const KNOWN_KEYWORDS = new Set([
   '$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'pattern', 'minLength',
   'minimum', 'maximum', 'minItems', 'minProperties', 'required', 'properties', 'additionalProperties', 'items',
+  'prefixItems',
 ]);
 
 /** Validate `value` against `schema` (resolving `#/$defs/…` in `rootSchema`); returns error strings. */
@@ -324,6 +415,10 @@ export function validate(value, schema, rootSchema = schema, at = '$') {
   }
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${at}: fewer than ${schema.minItems} item(s)`);
+    // `prefixItems`: item i ALSO meets prefixItems[i]. Stricter than JSON Schema 2020-12, where `items`
+    // covers only the items after the prefix: here `items` still applies to every item, so a prefix
+    // schema only ADDS constraints (auth `issuers`: row 0 reads SUPABASE_URL, review of #1182 finding 2).
+    if (Array.isArray(schema.prefixItems)) schema.prefixItems.forEach((s, i) => { if (i < value.length) errors.push(...validate(value[i], s, rootSchema, `${at}[${i}]`)); });
     if (schema.items) value.forEach((v, i) => errors.push(...validate(v, schema.items, rootSchema, `${at}[${i}]`)));
   }
   if (isObj(value)) {
@@ -720,7 +815,7 @@ export function evaluate(root) {
       let homeMatched = 0;
       for (const f of tsFiles) {
         if (/\/src\/generated\//.test(f)) continue;
-        const m = IDENTITY_URL_RE.exec(stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts'));
+        const m = identityUrlIn(stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts'));
         if (homes.has(f)) {
           if (m) homeMatched++;
           continue;
@@ -742,8 +837,9 @@ export function evaluate(root) {
       let siteClientMatched = false;
       for (const f of siteFiles) {
         const text = readFileSync(join(root, f), 'utf8');
-        const code = /\.html$/.test(f) ? stripHtmlComments(text) : stripSourceComments(text, '.js');
-        const m = IDENTITY_URL_RE.exec(code);
+        const html = /\.html$/.test(f);
+        const code = html ? stripHtmlComments(text) : stripSourceComments(text, '.js');
+        const m = html ? IDENTITY_URL_RE.exec(code) : identityUrlIn(code);
         if (f === SITE_IDENTITY_CLIENT) { siteClientMatched = Boolean(m); continue; }
         if (m) {
           find(4, `tooling/ports/${IDENTITY_PORT}.json: the site file \`${f}\` names an identity-provider path (\`${m[0]}\`). Every call a page makes to the identity provider goes through ${SITE_IDENTITY_CLIENT}.`);

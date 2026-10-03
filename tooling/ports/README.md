@@ -33,7 +33,11 @@ port-auth (2026-10-03) grades `tooling/ports/auth.json` apart: the Dart `AuthRep
 (`services/_shared/src/ports/identity.ts`: every call a Worker makes to the identity provider on its own
 credential), at L2 behind `identityFor` (`services/platform/src/ports.ts`). Its `issuers` — the trusted
 issuers, the JWKS path, the algorithm and the audience — are rendered into
-`services/_shared/src/generated/ports.ts`; a cutover's dual-issuer window is a second row.
+`services/_shared/src/generated/ports.ts`; a cutover's dual-issuer window is a second row. The FIRST row must read
+`SUPABASE_URL` (the schema's `prefixItems`): the KV key-set fallback, the legacy issuer and the health probe all resolve
+the primary there. ⏱ 2026-10-03 · review of #1182, finding 2 — at the cutover `SUPABASE_URL` moves to the target and
+the second row's variable is set to the OLD origin, so the old issuer stays trusted until the oldest supported app build
+has rotated (its endpoint is a compile-time `--dart-define`) and a further `jwt_exp` has passed; only then is it removed.
 
 `tooling/ports/codehost.json` (port-codehost, 2026-10-03) makes the CODE HOST config: `tooling/github-org.json` is the
 one file that types the org and the platform's repositories, `render.mjs` writes them into
