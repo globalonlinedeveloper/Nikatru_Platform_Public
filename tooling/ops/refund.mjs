@@ -207,7 +207,7 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     err('✗ --execute needs --ledger <file>: the money event is recorded before this tool says it is done. Nothing was sent.\n');
     return 1;
   }
-  const pathMod = /^[A-Za-z]:[\\/]|\\/.test(a.ledger) ? path.win32 : path;
+  const pathMod = /(?:^[A-Za-z]:[\\/])|\\/.test(a.ledger) ? path.win32 : path;
   if (!pathMod.isAbsolute(a.ledger) || a.ledger.includes('\0')) {
     err('✗ --ledger must be an absolute path (the same file on every run, wherever it is started from). Nothing was sent.\n');
     return 1;
