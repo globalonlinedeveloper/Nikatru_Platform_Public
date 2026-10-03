@@ -81,8 +81,8 @@
 // COMMENT-ONLY edit as a change to proven behaviour: the slug rename ab8a84db
 // reworded doc-comment path citations in four brick files and expired five
 // mutation rows in a record whose code had not moved a byte. The clause now
-// reads `lastCodeChangeDay`, which walks the path's history past commits whose
-// whole effect on that file was comment prose. It is the same definition of
+// reads `codeAt` (⏱ 2026-10-03: once `lastCodeChangeDay`, a date walk), which
+// compares the file with its comment prose stripped. It is the same definition of
 // "code" the effect anchor two limbs above has always used. The full argument,
 // the measurement, and the stated limits live on that function.
 //
@@ -161,9 +161,9 @@ const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url
 //   2. FIVE EXPIRED MUTATION ROWS. Each row's date against `git log -1
 //      --format=%cI <effect file>`, normalised to UTC exactly as `lastCommitDay`
 //      does below — which is how the clause was MEASURED ON 2026-08-12 and is no
-//      longer how it is computed: since 2026-09-09 it reads `lastCodeChangeDay`,
-//      so a comment-only commit no longer appears in this column at all. The
-//      instruction below to re-measure at the moment of the flip covers this:
+//      longer how it is computed: it reads `codeAt` (since 2026-10-03; from
+//      2026-09-09 it was `lastCodeChangeDay`), so a comment-only commit no
+//      longer appears in this column at all. The instruction below to re-measure at the moment of the flip covers this:
 //      these five readings are a snapshot, never a property:
 //        · sign in             2026-08-10 · lib/features/auth/login_screen.dart        2026-08-12
 //        · sign out            2026-08-10 · lib/core/router.dart                       2026-08-11
@@ -234,7 +234,7 @@ function coverageLost(lines) {
 //    bytes of a .dart file are code: that guard hashes the comment-stripped
 //    effect file, and a hash computed by a second stripper would disagree with
 //    the two limbs below that already read this one — the effect anchor, and
-//    lastCodeChangeDay comparing historical blobs. That module header says why.
+//    `codeAt` comparing historical blobs. That module header says why.
 
 // ── workflow parsing ─────────────────────────────────────────────────────────
 // ⏱ 2026-09-08 — THE HAND-ROLLED PARSER IS GONE; THIS READS `workflow-scan.mjs`.
@@ -712,57 +712,79 @@ const isGraft = (sha) => {
   return raw.status === 0 && /^parent [0-9a-f]+$/m.test(raw.stdout.split('\n\n')[0]);
 };
 
-/** The row's `mutation` record in the record file at one commit, as canonical
- *  JSON, or null when the commit does not hold the file, it does not parse, or
- *  the row is absent. `key` is the row's name plus its occurrence among rows of
- *  that name, so a renamed or reordered duplicate is a different row. */
-const rowMemo = new Map();
-function mutationRowAt(sha, recFile, key) {
-  const memoKey = `${sha}\0${recFile}\0${key.name}\0${key.nth}`;
-  if (!rowMemo.has(memoKey)) {
-    let value = null;
+/** JSON with every object's keys sorted, so a record whose keys were only
+ *  reordered is the same record. */
+const canonical = (v) =>
+  JSON.stringify(v, (_k, x) =>
+    x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x,
+  );
+
+/** The record file's `features` rows at one commit, or null when the commit
+ *  does not hold the file or it does not parse. */
+const featuresMemo = new Map();
+function featuresAt(sha, recFile) {
+  const memoKey = `${sha}\0${recFile}`;
+  if (!featuresMemo.has(memoKey)) {
+    let rows = null;
     const blob = git(['show', `${sha}:${recFile}`]);
     if (blob.status === 0) {
       try {
-        const rows = JSON.parse(blob.stdout)?.features;
-        const row = Array.isArray(rows) ? rows.filter((f) => f && f.name === key.name)[key.nth] : undefined;
-        if (row && row.mutation !== undefined) value = JSON.stringify(row.mutation);
+        const parsed = JSON.parse(blob.stdout)?.features;
+        rows = Array.isArray(parsed) ? parsed : null;
       } catch {
-        value = null;
+        rows = null;
       }
     }
-    rowMemo.set(memoKey, value);
+    featuresMemo.set(memoKey, rows);
   }
-  return rowMemo.get(memoKey);
+  return featuresMemo.get(memoKey);
 }
 
+/** The row's `mutation` record at one commit, canonical, or null when the
+ *  commit does not hold the file, it does not parse, or the row is absent.
+ *  `key` (the row's name plus its occurrence among rows of that name) only
+ *  SELECTS the record at HEAD; the walk below follows the record's VALUE. */
+function mutationRowAt(sha, recFile, key) {
+  const rows = featuresAt(sha, recFile);
+  const row = rows ? rows.filter((f) => f && f.name === key.name)[key.nth] : undefined;
+  return row && row.mutation !== undefined ? canonical(row.mutation) : null;
+}
+
+/** True when ANY row of the record file at one commit holds a mutation record
+ *  canonically equal to `value`. ⏱ 2026-10-03 (lead 7185eb, review 25ecf44f
+ *  finding 1): "carried" is the record's VALUE, not the row's name — a commit
+ *  that only renames or reorders a row did not set its record, and treating it
+ *  as R re-anchored a stale proof to the rename and passed it. */
+const carriesRecord = (sha, recFile, value) =>
+  (featuresAt(sha, recFile) ?? []).some((f) => f && f.mutation !== undefined && canonical(f.mutation) === value);
+
 /** R: `{ sha, day }` of the newest commit reachable from `rev` that SET the
- *  row's current value, `{ shallow: sha }` when the walk reached a graft of a
+ *  record `value` (in any row, under any name), `{ shallow: sha }` when the walk reached a graft of a
  *  shallow clone before finding where it was set, or null when git holds no
- *  history of the record file or the row at `rev` is not `value`.
+ *  history of the record file or no row at `rev` holds `value`.
  *
  *  `git log -1 <rev> -- <file>` is the newest commit that changed the file on
  *  the simplified history (a merge TREESAME to a parent is followed down that
- *  parent). If a parent already holds the same row value, the row was set
+ *  parent). If a parent already holds the same record value in any row, it was set
  *  further back and that parent's history answers — the NEWEST such answer
  *  when several parents carry it (a row set on two lines of history counts
  *  from the later setting). Otherwise this commit set it. */
 const setMemo = new Map();
-function recordSetAt(rev, recFile, key, value) {
+function recordSetAt(rev, recFile, value) {
   const log = git(['log', '-1', '--format=%H%x09%P%x09%cI', rev, '--', recFile]);
   if (log.status !== 0 || log.stdout.trim() === '') return null;
   const [sha, parentList, iso] = log.stdout.trim().split('\t');
-  const memoKey = `${sha}\0${recFile}\0${key.name}\0${key.nth}\0${value}`;
+  const memoKey = `${sha}\0${recFile}\0${value}`;
   if (setMemo.has(memoKey)) return setMemo.get(memoKey);
   let answer;
-  if (mutationRowAt(sha, recFile, key) !== value) answer = null;
+  if (!carriesRecord(sha, recFile, value)) answer = null;
   else {
     const parents = parentList.split(' ').filter(Boolean);
     if (parents.length === 0 && isGraft(sha)) answer = { shallow: sha };
     else {
       const carried = parents
-        .filter((p) => mutationRowAt(p, recFile, key) === value)
-        .map((p) => recordSetAt(p, recFile, key, value))
+        .filter((p) => carriesRecord(p, recFile, value))
+        .map((p) => recordSetAt(p, recFile, value))
         .filter((a) => a !== null);
       const lost = carried.find((a) => a.shallow);
       if (lost) answer = lost;
@@ -775,6 +797,25 @@ function recordSetAt(rev, recFile, key, value) {
   }
   setMemo.set(memoKey, answer);
   return answer;
+}
+
+/** True when the working tree's copy of a tracked path differs from HEAD's (a
+ *  local run with uncommitted edits). ⏱ 2026-10-03 (lead 7185eb, review
+ *  25ecf44f nit 2): such a run compares the WORKING TREE's code, so preflight
+ *  reds the way CI will once the edit is committed. CI's tree is clean, so
+ *  there this is always false and HEAD's blob is read. */
+const codeIsEdited = (relPath) => git(['diff', '--quiet', 'HEAD', '--', relPath]).status === 1;
+
+/** The working tree's code for a path, read the way `codeAt` reads a blob, or
+ *  null when it cannot be read. */
+function codeInTree(relPath) {
+  let text;
+  try {
+    text = read(relPath);
+  } catch {
+    return null;
+  }
+  return relPath.endsWith('.dart') ? dartCode(text) : text;
 }
 
 /** True when git holds any history of the path (the brick-source fallback). */
@@ -796,7 +837,13 @@ function dartCodeAt(sha, relPath) {
   // Added here, renamed into place, or unreadable: all three are a change, and
   // returning null makes the walk stop rather than step over something unseen.
   if (blob.status !== 0) return null;
-  return stripDartComments(blob.stdout)
+  return dartCode(blob.stdout);
+}
+
+/** A .dart source's code: comment prose blanked, trailing whitespace and blank
+ *  lines dropped (see `dartCodeAt`). */
+function dartCode(text) {
+  return stripDartComments(text)
     .split('\n')
     .map((l) => l.replace(/\s+$/, ''))
     .filter((l) => l !== '')
@@ -1055,14 +1102,14 @@ for (const appDir of domain) {
         );
         return;
       }
-      if (recFile === recRel && committed !== JSON.stringify(mut)) {
+      if (recFile === recRel && committed !== canonical(mut)) {
         fail(
           `${at}: the mutation record in ${recRel} differs from the one committed at HEAD. Freshness is the code at ` +
             'the commit that records the proof, so an uncommitted record proves nothing yet — commit it.',
         );
         return;
       }
-      const r = recordSetAt('HEAD', recFile, key, committed);
+      const r = recordSetAt('HEAD', recFile, committed);
       if (r === null) {
         unverifiable.push(`${at}: git holds no history of ${recFile}, so the commit that set the mutation record could not be found.`);
         return;
@@ -1075,10 +1122,12 @@ for (const appDir of domain) {
           'raise actions/checkout `fetch-depth` to 0 (full history). A proof whose commit cannot be read is not evidence.',
         ]);
       }
-      if (codeAt(r.sha, subject) !== codeAt('HEAD', subject)) {
+      const local = codeIsEdited(subject);
+      if (codeAt(r.sha, subject) !== (local ? codeInTree(subject) : codeAt('HEAD', subject))) {
         fail(
           `${at}: the mutation recorded ${mut.date} was set by ${r.sha.slice(0, 12)} (committed ${r.day}), and the ` +
-            `CODE in ${subject} at ${r.sha.slice(0, 12)} is not the code at HEAD (comment prose is ignored; every ` +
+            `CODE in ${subject} at ${r.sha.slice(0, 12)} is not the code at HEAD` +
+            `${local ? ' (read from the working tree, which has uncommitted edits to it)' : ''} (comment prose is ignored; every ` +
             'other byte counts). The record now describes code that is no longer there — re-run the mutation against ' +
             'the code at HEAD and re-record it in this change. This is what turns "proven once in a terminal" into ' +
             'a state rather than an event.',

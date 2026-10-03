@@ -630,6 +630,58 @@ describe('assert-app-dod · the code at the commit that set the record must be t
     assert.match(r.out, /differs from the one committed at HEAD/);
   });
 
+  // ⏱ 2026-10-03 (lead 7185eb, review 25ecf44f finding 1): "carried" is the
+  // record's VALUE. Looking the row up by name made a rename-only commit R.
+  const renamed = (day, name, reorder = false) => {
+    const rec = JSON.parse(dated(day));
+    rec.features[0].name = name;
+    if (reorder) rec.features[0].mutation = Object.fromEntries(Object.entries(rec.features[0].mutation).reverse());
+    return JSON.stringify(rec, null, 2);
+  };
+
+  test('a RENAME-ONLY commit after a code change does not launder the stale proof -> RED, naming the commit that set it', () => {
+    const h = history();
+    const base = h.git('2026-09-27', 'rev-parse', 'HEAD');
+    h.commit('2026-10-02', 'the PR changes the code', { [SETTINGS_REL]: CHANGED });
+    h.commit('2026-10-02', 'and renames the row, mutation untouched', { [DOD_REL]: renamed('2026-09-27', 'delete my account') });
+    const r = run(h.dir);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(base.slice(0, 12)), `names R ${base}: ${r.out}`);
+    h.prMerge('2026-10-03');
+    const asPr = run(h.dir);
+    assert.equal(asPr.code, 1, asPr.out);
+  });
+
+  test('a commit that only REORDERS the mutation record\'s keys is not where it was set -> RED', () => {
+    const h = history();
+    h.commit('2026-10-02', 'the PR changes the code', { [SETTINGS_REL]: CHANGED });
+    h.commit('2026-10-02', 'and reorders the record', { [DOD_REL]: renamed('2026-09-27', 'delete account', true) });
+    const r = run(h.dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not the code at HEAD/);
+  });
+
+  test('RED CONTROL for the rename: a rename with the code untouched -> GREEN', () => {
+    const h = history();
+    h.commit('2026-10-02', 'renames the row, mutation untouched', { [DOD_REL]: renamed('2026-09-27', 'delete my account', true) });
+    const r = run(h.dir);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  // ⏱ 2026-10-03 (lead 7185eb, review 25ecf44f nit 2): a local run with an
+  // uncommitted code edit reds the way CI will once it is committed.
+  test('an UNCOMMITTED code edit is compared from the working tree -> RED, and saying so', () => {
+    const h = history();
+    assert.equal(run(h.dir).code, 0, 'control: the committed tree is green');
+    writeFileSync(join(h.dir, SETTINGS_REL), CHANGED);
+    const r = run(h.dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /read from the working tree, which has uncommitted edits to it/);
+    writeFileSync(join(h.dir, SETTINGS_REL), `// an uncommitted prose edit\n${SETTINGS_DART}`);
+    const prose = run(h.dir);
+    assert.equal(prose.code, 0, prose.out);
+  });
+
   test('(e) a shallow clone that does not hold R -> COVERAGE LOST (exit 2), naming the depth to raise', () => {
     const h = history();
     h.commit('2026-10-02', 'a later commit that does not touch the record', { 'README.md': 'later\n' });
