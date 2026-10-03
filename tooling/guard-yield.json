@@ -4125,6 +4125,11 @@
       "firstSeen": "2026-09-20",
       "evidence": []
     },
+    "tooling/store/capture-iap-review.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
+    },
     "tooling/store/capture-play-screenshots.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",

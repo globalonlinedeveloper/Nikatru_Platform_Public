@@ -491,7 +491,7 @@ The workflows read **52** secret names (`GITHUB_TOKEN` is not counted: GitHub is
 | `APP_STORE_CONNECT_ISSUER_ID` | `apple-expiry-write.yml`, `ops-watch.yml`, `submit-appstore.yml` |
 | `APP_STORE_CONNECT_KEY_ID` | `apple-expiry-write.yml`, `ops-watch.yml`, `submit-appstore.yml` |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | `apple-expiry-write.yml`, `ops-watch.yml`, `submit-appstore.yml` |
-| `CLOUDFLARE_ACCOUNT_ID` | `build-platforms.yml`, `ci.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `migrate-platform-db.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
+| `CLOUDFLARE_ACCOUNT_ID` | `build-platforms.yml`, `ci.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `migrate-platform-db.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
 | `CLOUDFLARE_API_TOKEN` | `ci.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `migrate-platform-db.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `rollback.yml`, `store-screenshots.yml` |
 | `CLOUDFLARE_D1_TOKEN` | `e2e.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `store-screenshots.yml` |
 | `CLOUDFLARE_READ_TOKEN` | `ops-watch.yml` |
@@ -507,8 +507,8 @@ The workflows read **52** secret names (`GITHUB_TOKEN` is not counted: GitHub is
 | `MS_STORE_SELLER_ID` | `submit-windows-store.yml` |
 | `MS_STORE_TENANT_ID` | `submit-windows-store.yml` |
 | `PLAY_SERVICE_ACCOUNT_JSON` | `ops-watch.yml`, `submit-play.yml` |
-| `R2_RELEASE_ACCESS_KEY_ID` | `build-platforms.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
-| `R2_RELEASE_SECRET_ACCESS_KEY` | `build-platforms.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
+| `R2_RELEASE_ACCESS_KEY_ID` | `build-platforms.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
+| `R2_RELEASE_SECRET_ACCESS_KEY` | `build-platforms.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml` |
 | `RENOVATE_TOKEN` | `name-clearance.yml`, `renovate.yml` |
 | `REVENUECAT_PUBLIC_KEY_APPLE` | `build-platforms.yml`, `submit-appstore.yml` |
 | `REVENUECAT_PUBLIC_KEY_GOOGLE` | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
@@ -615,7 +615,7 @@ The tree uses **4** third-party actions and **11** GitHub-owned ones, read from 
 | `actions/cache/restore` | GitHub | `ci.yml` |
 | `actions/cache/save` | GitHub | `ci.yml` |
 | `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `regen-gradle-verify.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
-| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
+| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
 | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `regen-gradle-verify.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
 | `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `regen-gradle-verify.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
@@ -932,7 +932,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/review-gate.yml` | Review gate | `pull_request_target` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
 | [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | Store screenshots | `workflow_dispatch` | 5 |
-| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch`, `schedule` | 2 |
+| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch`, `schedule` | 3 |
 | [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch`, `schedule` | 3 |
 | [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch`, `schedule` | 3 |
 | [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | Store submit: Microsoft Store | `workflow_dispatch`, `schedule` | 3 |

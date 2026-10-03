@@ -376,6 +376,11 @@
       "reads": "build-platforms.yml (BUILD_WORKFLOW), through parseWorkflow and shellSegments"
     },
     {
+      "path": "tooling/release/submit-appstore.mjs",
+      "property": "workflow-scan",
+      "reads": "the submission workflow the channel register names (default submit-appstore.yml), through parseWorkflow — PG-4: the upload job declares environment: and runs assert-artifact-signed-apple.mjs before --submit"
+    },
+    {
       "path": "tooling/release/submit-play.mjs",
       "property": "workflow-scan",
       "reads": "the submission workflow the channel register names (default submit-play.yml), through parseWorkflow"

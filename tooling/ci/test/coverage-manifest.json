@@ -96,7 +96,7 @@
     25,
 
   "appstore-submission.test.mjs":
-    52,
+    63,
 
   "artifact-shape.test.mjs":
     32,
@@ -233,6 +233,9 @@
   "capture-fallback-fonts.test.mjs":
     12,
 
+  "capture-iap-review.test.mjs":
+    6,
+
   "capture-precheck.test.mjs":
     16,
 
@@ -258,7 +261,7 @@
     55,
 
   "channel-register.test.mjs":
-    376,
+    377,
 
   "channel-surface.test.mjs":
     7,
@@ -891,7 +894,7 @@
     136,
 
   "rail-prices.test.mjs":
-    71,
+    72,
 
   "redeploy-stranded.test.mjs":
     50,
