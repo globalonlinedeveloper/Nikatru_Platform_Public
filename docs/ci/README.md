@@ -570,7 +570,7 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from 
 
 | action | owner | used by |
 |---|---|---|
-| `cloudflare/wrangler-action` | third-party | `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `migrate-platform-db.yml` |
+| `cloudflare/wrangler-action` | third-party | `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `migrate-platform-db.yml`, `ops-watch.yml` |
 | `nanasess/setup-chromedriver` | third-party | `e2e.yml`, `store-screenshots.yml` |
 | `renovatebot/github-action` | third-party | `renovate.yml` |
 | `subosito/flutter-action` | third-party | `.github/actions/setup-flutter/action.yml` |
@@ -827,7 +827,7 @@ naming the job it belonged to and the line it sat above.
 | this page | `.github/workflows/ci.yml` | CI | `push`, `workflow_dispatch`, `pull_request` | 44 |
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 3 |
-| [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
+| [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 4 |
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 5 |
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 29 |
@@ -839,7 +839,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/mutation-proofs.yml` | Mutation proofs | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/native-auth-proof.yml` | Native auth proof | `workflow_dispatch` | 6 |
-| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 14 |
+| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 15 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |

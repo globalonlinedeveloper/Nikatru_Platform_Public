@@ -544,7 +544,6 @@ jobs:
   # carries the current states. ops-watch.yml's `status-page` job publishes state changes between pushes.
   status-site:
     name: Deploy the status page to Cloudflare Pages (nikatru-status)
-    if: vars.STATUS_PAGE_LIVE == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
@@ -571,11 +570,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node tooling/ci/plan-deploy.mjs status-site
 
+      # why: decided inside a step, never as a job `if:` (assert-green-means-ran): until the lead has
+      # created the project and the DNS record and set STATUS_PAGE_LIVE, every step below is skipped and
+      # this one says so in the log. `live` gates them together with the plan's own decision.
+      - name: Is the status page live yet?
+        id: live
+        env:
+          STATUS_PAGE_LIVE: ${{ vars.STATUS_PAGE_LIVE }}
+        run: |
+          if [ "$STATUS_PAGE_LIVE" = "true" ] && [ "${{ steps.plan.outputs.deploy }}" = "true" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=status-site::not deployed — STATUS_PAGE_LIVE is '${STATUS_PAGE_LIVE}' (the lead sets it after creating nikatru-status and its DNS record), plan deploy=${{ steps.plan.outputs.deploy }}"
+          fi
+
       - uses: ./.github/actions/setup-node
-        if: steps.plan.outputs.deploy == 'true'
+        if: steps.live.outputs.go == 'true'
 
       - name: Grade the committed status site
-        if: steps.plan.outputs.deploy == 'true'
+        if: steps.live.outputs.go == 'true'
         run: |
           node tooling/ci/check-site-integrity.mjs . sites/status
           node tooling/status/build-status.mjs --check
@@ -584,7 +598,7 @@ jobs:
       # build carries the current states and keeps each component's `since`. A probe exit 1 or 2 is a
       # reading too (a surface down, a surface unreached): the page shows it, it does not stop the deploy.
       - name: Read the surfaces and the live document, and build the site
-        if: steps.plan.outputs.deploy == 'true'
+        if: steps.live.outputs.go == 'true'
         run: |
           set -uo pipefail
           node tooling/ops/status.mjs --json "$RUNNER_TEMP/readings.json" > "$RUNNER_TEMP/status.log" 2>&1
@@ -597,7 +611,7 @@ jobs:
           node tooling/status/build-status.mjs --out build/status --readings "$RUNNER_TEMP/readings.json" --prev "$RUNNER_TEMP/prev.json"
 
       - name: Deploy the status page to nikatru-status
-        if: steps.plan.outputs.deploy == 'true'
+        if: steps.live.outputs.go == 'true'
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
@@ -608,7 +622,7 @@ jobs:
           command: pages deploy . --project-name=nikatru-status --branch=main
 
       - name: Smoke — status.nikatru.com serves THIS build
-        if: steps.plan.outputs.deploy == 'true'
+        if: steps.live.outputs.go == 'true'
         run: node tooling/status/build-status.mjs --smoke https://status.nikatru.com --built build/status/status.json
 
       - name: Record the deployed SHA

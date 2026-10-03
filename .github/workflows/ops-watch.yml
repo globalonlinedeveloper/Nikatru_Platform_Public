@@ -280,6 +280,9 @@ jobs:
     environment: production
     permissions:
       contents: read
+      actions: read
+      checks: read
+      deployments: write
     concurrency:
       group: status-page-publish
       cancel-in-progress: false
@@ -309,8 +312,16 @@ jobs:
           cp -R sites/status/. build/status/
           node tooling/status/build-status.mjs --out build/status --readings "$RUNNER_TEMP/readings.json" --prev "$RUNNER_TEMP/prev.json" --github-output "$GITHUB_OUTPUT"
 
+      # why: the page is published from main's HEAD, so it ships only bytes ci-gate passed.
+      - name: ci-gate passed for this commit
+        if: steps.build.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
       - name: Deploy the status page to nikatru-status
         if: steps.build.outputs.publish == 'true'
+        id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -322,6 +333,13 @@ jobs:
       - name: Smoke — status.nikatru.com serves THIS build
         if: steps.build.outputs.publish == 'true'
         run: node tooling/status/build-status.mjs --smoke https://status.nikatru.com --built build/status/status.json
+
+      - name: Record the deployed SHA
+        if: always() && steps.deploy.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGES_DEPLOYMENT_ID: ${{ steps.deploy.outputs.pages-deployment-id }}
+        run: node tooling/ci/record-deployment.mjs status-site https://status.nikatru.com --pages-deployment-id "$PAGES_DEPLOYMENT_ID"
 
   supabase-drift:
     name: The live auth config still matches what the repo recorded

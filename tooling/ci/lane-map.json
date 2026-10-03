@@ -85,7 +85,8 @@
         "contracts/tokens/**",
         "catalog/apps-landing.json",
         "tooling/sites/**",
-        "tooling/content_pipeline/**"
+        "tooling/content_pipeline/**",
+        "ops/incidents/**"
       ]
     },
     "apps": {
