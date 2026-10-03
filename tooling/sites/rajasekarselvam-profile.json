@@ -1,10 +1,9 @@
 {
   "_readme": [
-    "THE PERSONAL-PROFILE SOURCE of rajasekarselvam.com. Every personal fact any page of this site prints is rendered from this file by tooling/sites/generate-personal-site.mjs, and its --check refuses a page that types one of these values outside a generated region. Company facts are NOT here: Nikatru's are read from tooling/house-identity.json.",
+    "THE PERSONAL-PROFILE SOURCE of rajasekarselvam.com. Every personal fact any page of this site prints is rendered from this file by tooling/sites/generate-personal-site.mjs, and its --check refuses a page that types one of these values outside a generated region. Company facts are NOT here: Nikatru's are read from tooling/house-identity.json, and so is the person's name (people.founder.name).",
     "These are the owner's own facts, supplied 2026-10-02. Add nothing the owner has not given; change a value here and re-run the generator, never on a page.",
     "Kept OUTSIDE the deploy root (sites/rajasekarselvam/ is served whole): these notes are internal, and the public facts reach the web only as the pages render them."
   ],
-  "name": "Rajasekar Selvam",
   "headline": "I love creating software that makes everyday life a little easier.",
   "role": {
     "title": "Associate Projects",

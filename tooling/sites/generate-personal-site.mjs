@@ -135,9 +135,14 @@ export function readInputs(root) {
   }
   const ctx = identity ? entityContext(identity) : null;
   const sameAs = identity?.people?.founder?.sameAs?.value ?? [];
-  const profile = readJson(root, PROFILE, problems, lost);
+  const source = readJson(root, PROFILE, problems, lost);
   const surfaces = readJson(root, ENTITY_SURFACES, problems, lost);
-  if (profile !== null) problems.push(...profileProblems(profile, ctx));
+  let profile = null;
+  if (source !== null) {
+    const r = profileFromSource(source, ctx);
+    profile = r.profile;
+    problems.push(...r.problems, ...profileProblems(profile, ctx));
+  }
   const msme = surfaces?.facts?.['msme-established']?.template;
   if (surfaces !== null && typeof msme !== 'string') problems.push(`${ENTITY_SURFACES}: facts["msme-established"].template is missing; the founder line names the business through it`);
   return { live, channels, ctx, sameAs: Array.isArray(sameAs) ? sameAs : [], profile, msme, problems, lost };
@@ -151,6 +156,20 @@ export const PROFILE_FIELDS = [
   'location.countryCode', 'experience.label', 'education.degree', 'education.field', 'links.linkedin',
 ];
 const at = (o, path) => path.split('.').reduce((v, k) => (v == null ? undefined : v[k]), o);
+
+/**
+ * The profile the pages render: the source file's facts plus the person's NAME, read from
+ * ${IDENTITY} people.founder.name and never typed into the profile. The source lives outside
+ * the served root, so assert-business-facts' personal-site exemption does not reach it, and
+ * the founder name is one guarded literal with one home (lead ruling on #1172, item 4). Pure.
+ */
+export function profileFromSource(source, ctx) {
+  const problems = [];
+  if (source && typeof source === 'object' && Object.hasOwn(source, 'name')) {
+    problems.push(`${PROFILE}: carries "name"; the person's name is read from ${IDENTITY} people.founder.name, one spelling in one place`);
+  }
+  return { profile: { ...source, name: ctx?.founder?.name }, problems };
+}
 
 /** Refusals for a profile that cannot be rendered as the owner asked. Pure. */
 export function profileProblems(profile, ctx) {

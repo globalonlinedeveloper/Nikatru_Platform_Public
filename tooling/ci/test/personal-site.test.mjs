@@ -26,7 +26,7 @@ import {
   workGrid, statusLine, llmsWork, personGraph, applyRegion, pageContract,
   structuredDataFindings, closedMenuFindings, jsonLdNodes, CONTRAST_PAIRS,
   PROFILE, CV_PAGE, MANIFEST, ENTITY_SURFACES, profileProblems, typedFactFindings, profileGraphFindings,
-  cvPage, withoutRegions, REGIONS, ROOT_DIR, headBlock, imageAlt,
+  cvPage, withoutRegions, profileFromSource, REGIONS, ROOT_DIR, headBlock, imageAlt,
 } from '../../sites/generate-personal-site.mjs';
 import { contrastFindings, deadDeclarations, inlineCss, parseRules, winning } from '../../sites/css-cascade.mjs';
 import { entityContext } from '../../entity/facts.mjs';
@@ -37,7 +37,7 @@ const read = (rel) => readFileSync(join(REPO, ...rel.split('/')), 'utf8');
 const REAL = read(PAGE);
 const CHANNEL_ROWS = JSON.parse(read(CHANNELS)).channels;
 const CTX = entityContext(JSON.parse(read(IDENTITY)));
-const OWNER = JSON.parse(read(PROFILE));
+const OWNER = profileFromSource(JSON.parse(read(PROFILE)), CTX).profile;
 const MSME = JSON.parse(read(ENTITY_SURFACES)).facts['msme-established'].template;
 
 const APP = { slug: 'fixture-app', name: 'Fixture App', tagline: 'A fixture tagline', status: 'live', listings: { web: 'https://example.test/app', play: null, appstore: null, mac: null, microsoft: null, linux: null } };
@@ -198,6 +198,16 @@ describe('every personal fact renders from the profile (site-rs-wave2)', () => {
 
   test('the REAL profile is renderable and carries no year', () => {
     assert.deepEqual(profileProblems(OWNER, CTX), []);
+  });
+
+  test('RED CONTROL: the name is read from the entity source; a profile that types it is REFUSED', () => {
+    const source = JSON.parse(read(PROFILE));
+    assert.equal(Object.hasOwn(source, 'name'), false, 'the committed profile types the founder name');
+    assert.deepEqual(profileFromSource(source, CTX).problems, [], 'green control');
+    assert.equal(OWNER.name, CTX.founder.name);
+    const typed = profileFromSource({ ...source, name: CTX.founder.name }, CTX).problems;
+    assert.equal(typed.length, 1, typed.join('\n'));
+    assert.match(typed[0], /carries "name"; the person's name is read from/);
   });
 
   test('RED CONTROL: a profile carrying a start year is REFUSED — the site shows no start year or date', () => {
