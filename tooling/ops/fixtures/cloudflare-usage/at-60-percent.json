@@ -1,0 +1,6 @@
+{
+  "_why": "RED CONTROL for tooling/ops/check-cloudflare-usage.mjs --usage-file: KV writes at 600 of the 1000/day ceiling (60%, headroom 40%), every other metric at 40%. Exit 1.",
+  "workers": { "platform": 30000, "subscriptiontracker-api": 10000 },
+  "d1": { "rowsRead": 250000, "rowsWritten": 40000 },
+  "kv": { "read": 40000, "write": 600, "delete": 3 }
+}

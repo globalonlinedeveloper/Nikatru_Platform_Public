@@ -86,14 +86,24 @@ because a caller can get them wrong in ways the others do not offer.)
    The account is on **Workers Paid**, where the ceiling is **250 per account**
    ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
    Consolidating was forced; it is now a choice, kept because one place to look
-   beats a Worker per job:
+   beats a Worker per job.
+   ⏱ **2026-10-01 — ten triggers, and the heavy limbs left 06:00.** One
+   invocation ran every nightly limb on one D1 statement budget while each cap was
+   checked as if it ran alone. `10 6` runs the reminder digest, `20 6` the money
+   re-derivation, `30 6` the erasure retry, and `40 6` the events rollup then the
+   retention sweep — each alone, on its own invocation (`SPLIT_FIRINGS` in
+   `src/scheduled.ts`). `JOB_STATEMENT_BUDGET` declares what each job may spend,
+   and `test/scheduled-crons.test.ts` sums it per trigger against
+   `d1.queriesPerInvocation` and counts each heavy firing on the database. The
+   06:00 firing keeps the light limbs:
    - **keepAliveSupabase** — cheap daily GET to `${SUPABASE_URL}/auth/v1/health`
      (Supabase pauses free-tier projects after ~7 days idle).
    - **renewals fan-out** — for each app in `appTargets(env)`, rolls past-due
      `next_renewal` forward one cycle and records a `payment_history` row per
      crossed charge, over that app's bound `APP_DB`. Relocated here from
      subscriptiontracker-api's per-app cron. Add an app by binding its DB + a target entry.
-   - **reminder mail** (`reminder_mail`, ST-R1) — right after the renewals pass:
+   - **reminder mail** (`reminder_mail`, ST-R1) — on `10 6 * * *` since
+     2026-10-01, after the renewals pass:
      one digest per opted-in person per app per day, listing renewals inside
      their lead days, to a CONFIRMED address read at send time and never stored
      (`src/lib/reminders.ts`). Capped at `MAX_REMINDER_MAILS_PER_DAY` because

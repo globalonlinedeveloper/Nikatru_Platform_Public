@@ -47,6 +47,8 @@ import {
   EVENTS_RETENTION_DAYS,
   EVENTS_DAILY_RETENTION_DAYS,
   MAX_ROWS_PER_SWEEP,
+  MAX_SWEEP_STATEMENTS_PER_RUN,
+  JOB_STATEMENT_BUDGET,
   PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
   RETENTION_SWEEP_JOB,
   SIGNUPS_RETENTION_DAYS,
@@ -339,31 +341,62 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('BOUNDED — the sweep is a catch-up job, never one unbounded DELETE', () => {
-  it(`removes at most MAX_ROWS_PER_SWEEP (${MAX_ROWS_PER_SWEEP}) per store per run, and says it was capped`, async () => {
-    const db = realPlatformDb();
-    const overflow = MAX_ROWS_PER_SWEEP + 5;
+  // ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED. Until then a store
+  // lost at most MAX_ROWS_PER_SWEEP rows a NIGHT, so past ~1,000 expired rows a
+  // day the declared period silently stopped being true. A pass that removes a
+  // full batch is now followed by another, inside MAX_SWEEP_STATEMENTS_PER_RUN.
+  const eventsOnly = { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_redeemed: null, native_attest_keys: null, native_attest_counters: null };
+  const seedExpired = (db: ReturnType<typeof realPlatformDb>, n: number) => {
     db.db.exec(
       `INSERT INTO events (event_id, app_id, anon_id, event, server_ts)
        SELECT 'bulk-' || n, 'subscriptiontracker', 'a1', 'app_launch', '2020-01-01T00:00:00.000Z'
-       FROM (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${overflow}) SELECT n FROM c)`,
+       FROM (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${n}) SELECT n FROM c)`,
     );
     db.db.exec(
       `INSERT INTO events (event_id, app_id, anon_id, event, server_ts)
        VALUES ('keep-me', 'subscriptiontracker', 'a1', 'app_launch', '2026-08-10T00:00:00.000Z')`,
     );
-    expect(db.count('events')).toBe(overflow + 1);
+  };
+
+  it('🔴 2,500 expired rows are cleared in ONE run — it was 1,000 a night', async () => {
+    const db = realPlatformDb();
+    seedExpired(db, 2500);
     caughtUp(db);
+    expect(MAX_ROWS_PER_SWEEP).toBe(1000);
+    await retentionSweep(envOf(db), eventsOnly, NOW);
+    expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'keep-me' }]);
+    const detail = String(heartbeat(db)[0].detail);
+    expect(detail).toContain('deleted=2500 capped=0 passes=3');
+    expect(detail).toContain('events=30d:2500');
+  });
 
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_redeemed: null, native_attest_keys: null, native_attest_counters: null }, NOW);
-    expect(db.count('events')).toBe(overflow + 1 - MAX_ROWS_PER_SWEEP);
-    const first = String(heartbeat(db)[0].detail);
-    expect(first).toContain('capped=1');
-    expect(first).toContain(`events=30d:${MAX_ROWS_PER_SWEEP}`);
-
-    // The next night finishes the backlog and stops reporting capped.
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_redeemed: null, native_attest_keys: null, native_attest_counters: null }, NOW);
+  it(`a store still full when the statement budget runs out is CAPPED, and the next night finishes it`, async () => {
+    const db = realPlatformDb();
+    seedExpired(db, 2500);
+    caughtUp(db);
+    // A budget of two passes: 2,000 rows, and the second pass was still full.
+    await retentionSweep(envOf(db), eventsOnly, NOW, 2);
+    expect(db.count('events')).toBe(2500 + 1 - 2 * MAX_ROWS_PER_SWEEP);
+    expect(String(heartbeat(db)[0].detail)).toContain('deleted=2000 capped=1 passes=2');
+    await retentionSweep(envOf(db), eventsOnly, NOW);
     expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'keep-me' }]);
     expect(String(heartbeat(db)[1].detail)).toContain('capped=0');
+  });
+
+  it('a store the budget never reached counts as capped — it was not swept tonight', async () => {
+    const db = realPlatformDb();
+    seedExpired(db, 1500);
+    caughtUp(db);
+    db.db.exec("INSERT INTO signups (email, signed_up_at) VALUES ('old@example.com', '2020-01-01T00:00:00.000Z')");
+    await retentionSweep(envOf(db), { ...eventsOnly, signups: 400 }, NOW, 2);
+    // Both passes went to `events` (1,000 then 500): `events` is clean, `signups` untouched.
+    expect(db.count('signups')).toBe(1);
+    expect(String(heartbeat(db)[0].detail)).toContain('deleted=1500 capped=1 passes=2');
+  });
+
+  it('the shipped budget is the one JOB_STATEMENT_BUDGET counts', () => {
+    expect(MAX_SWEEP_STATEMENTS_PER_RUN).toBeGreaterThan(0);
+    expect(JOB_STATEMENT_BUDGET[RETENTION_SWEEP_JOB]).toBe(2 + MAX_SWEEP_STATEMENTS_PER_RUN);
   });
 });
 
@@ -574,16 +607,21 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
     expect(db.count('ext_devices', 'link_id = ?', 'l-never-61d')).toBe(0);
   });
 
-  it('the expired limb is bounded per run like every other store (LIMIT ?)', async () => {
+  it('the expired limb is bounded per PASS like every other store (LIMIT ?), and swept again while full', async () => {
     const db = realPlatformDb();
     const rows: string[] = [];
     for (let i = 0; i < MAX_ROWS_PER_SWEEP + 5; i++) {
       rows.push(`('l-bulk-${i}', 'u7', 'fullshot', 'amo', 'th-bulk-${i}', '${iso(NOW - 300 * DAY)}', NULL, NULL)`);
     }
     db.db.exec(`INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at) VALUES ${rows.join(',')}`);
-    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    // One pass: the LIMIT holds it to a batch, and the store is still full.
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW, 1);
     expect(db.count('ext_devices')).toBe(5);
     expect(String(heartbeat(db)[0].detail)).toContain('capped=1');
+    // ⏱ 2026-10-01: the shipped budget sweeps it again and finishes it.
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    expect(db.count('ext_devices')).toBe(0);
+    expect(String(heartbeat(db)[1].detail)).toContain('capped=0');
   });
 
   it('binds an ISO-8601 TEXT cutoff, never a number', async () => {

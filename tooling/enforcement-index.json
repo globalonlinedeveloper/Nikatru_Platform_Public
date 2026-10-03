@@ -1481,6 +1481,16 @@
       ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-main-rows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-mechanism-claims.mjs",
     "references": [],
     "state": "WIRED"
@@ -3597,6 +3607,16 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [
+      "D-8"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/update-exit.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
@@ -3622,7 +3642,8 @@
     "invokedBy": [
       ".github/workflows/deploy-sandbox.yml#workers",
       ".github/workflows/deploy-workers.yml#workers",
-      ".github/workflows/lane-workers.yml#detect"
+      ".github/workflows/lane-workers.yml#detect",
+      ".github/workflows/time-travel.yml#plan"
     ],
     "kind": "guard",
     "ref": "tooling/ci/worker-set.mjs",
@@ -3911,9 +3932,12 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "D-8"
+    ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app-brick"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/time-travel.yml#brick-worker"
     ],
     "kind": "script",
     "ref": "tooling/kit/stamp-app.mjs",
@@ -3962,6 +3986,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-box-config-drift.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#pages-deployments"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-cloudflare-usage.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4159,6 +4193,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-wildcard-dns.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#pages-deployments"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-worker-versions.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4594,10 +4638,21 @@
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
       ".github/workflows/extensions-ci.yml#ops-tooling",
-      ".github/workflows/extensions-ci.yml#selftest"
+      ".github/workflows/extensions-ci.yml#selftest",
+      ".github/workflows/time-travel.yml#tooling"
     ],
     "kind": "script",
     "ref": "tooling/scripts/spawn-ceiling.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/time-travel.yml#tooling"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/test-clock.mjs",
     "references": [],
     "state": "WIRED"
   },
