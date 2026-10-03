@@ -2341,8 +2341,11 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  lead/heartbeat, the contents API), made only when a duty.laptop.* row is
    *  failing, so the outage rule can grade it DEGRADED during a proven outage
    *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read; a
-   *  healthy run makes none. */
-  const OPS_GITHUB_REQUEST_CEILING = 31;
+   *  healthy run makes none.
+   *  2026-10-03: 31 → 33, the same documented "a scheduled workflow costs 2"
+   *  raise, for duty.workflow.rehearse-app2.yml (app2-dryrun). The replay
+   *  measured 33 after the row (its history is answered by replayWorld's derived run). */
+  const OPS_GITHUB_REQUEST_CEILING = 33;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
