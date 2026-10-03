@@ -25,7 +25,7 @@
 //                                                                     from the draft; only on a passing sheet
 // Exit 0 clean (identical-to-English is information) · 1 findings · 2 COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { compareMessage } from '../i18n/translation-qa.mjs';
 import { DEFAULT_ROOT, SHEET_HEAD, readSheet, registerLocales } from './listing-locales.mjs';
@@ -33,6 +33,15 @@ import { DEFAULT_ROOT, SHEET_HEAD, readSheet, registerLocales } from './listing-
 const tsv = (s) => String(s).replace(/\t/g, ' ').replace(/\r?\n/g, '\\n');
 const chars = (s) => [...String(s).replace(/\n+$/, '')].length;
 const bytes = (s) => Buffer.byteLength(String(s).replace(/\n+$/, ''), 'utf8');
+// Read once; ONLY a missing file is null, every other error is rethrown (no exists-then-read race).
+const readOrNull = (abs) => {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    throw err;
+  }
+};
 
 /** The rows of a listing review: one per drafted field, with its flags. */
 export function listingQa(root, app, code) {
@@ -41,15 +50,16 @@ export function listingQa(root, app, code) {
   if (!row) return { coverage: `"${code}" is not a row of tooling/i18n/locales.json.` };
   if (code === sourceLocale) return { coverage: `"${code}" is the source locale; there is nothing to translate into it.` };
   const draftRel = `apps/${app}/aso/pending/${code}.json`;
-  if (!existsSync(join(root, draftRel))) return { coverage: `${draftRel} does not exist; there is no draft to check.` };
-  const draft = JSON.parse(readFileSync(join(root, draftRel), 'utf8'));
+  const draftText = readOrNull(join(root, draftRel));
+  if (draftText === null) return { coverage: `${draftRel} does not exist; there is no draft to check.` };
+  const draft = JSON.parse(draftText);
   const per = JSON.parse(readFileSync(join(root, 'tooling/channel-register.json'), 'utf8')).storeMetadataContract.perChannel;
   const rows = [];
   const findings = [];
   for (const [key, v] of Object.entries(draft.fields ?? {})) {
     const [channel, file] = key.split('/');
     const enRel = `apps/${app}/store/${channel}/${file}`;
-    const en = existsSync(join(root, enRel)) ? readFileSync(join(root, enRel), 'utf8').replace(/\n+$/, '') : null;
+    const en = readOrNull(join(root, enRel))?.replace(/\n+$/, '') ?? null;
     const tr = String(v?.text ?? '');
     const flags = [];
     if (en === null) flags.push(['source', `${enRel} does not exist, so this field has no English to be a translation of`]);
@@ -97,7 +107,8 @@ if (process.argv[1] && process.argv[1].endsWith('listing-qa.mjs')) {
   }
   const sheetRel = `apps/${app}/aso/review/${code}.tsv`;
   const sheetAbs = join(DEFAULT_ROOT, sheetRel);
-  const previous = existsSync(sheetAbs) ? readSheet(readFileSync(sheetAbs, 'utf8')) : null;
+  const priorText = readOrNull(sheetAbs);
+  const previous = priorText === null ? null : readSheet(priorText);
   console.log(`listing-qa: ${app} ${code} — ${r.rows.length} field(s) drafted in ${r.draftRel}, ${r.findings.length} finding(s)`);
   for (const f of r.findings) console.log(`  ✗ ${f.key}: ${f.kind} — ${f.why}`);
   if (argv.includes('--sheet')) {
