@@ -7,7 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import '../account/email_change_sign_out.dart';
 import '../add/add_subscription_sheet.dart';
 import '../home/home_search.dart';

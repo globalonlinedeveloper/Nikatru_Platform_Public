@@ -2,13 +2,14 @@
   "pack_id": "subscriptiontracker",
   "version": "2.0.0",
   "key_id": "test-k1",
-  "content_hash": "73d4cb8e86d7a291f0ad7fdce2410aa3b1cdfb8d9a3bad6baefeab7bfc8d54d8",
+  "content_hash": "4f5efe3537c402b17347d5f86a076cca2af1aee6fbcf5123d79930f5b504d28f",
   "assets": [],
   "generators": [
     "none/hand-authored"
   ],
   "locales": [
     "en",
-    "ta"
+    "ta",
+    "hi"
   ]
 }

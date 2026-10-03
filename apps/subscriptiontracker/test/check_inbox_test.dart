@@ -40,7 +40,7 @@ import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_actions.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 const String _address = 'newcomer@b.test';

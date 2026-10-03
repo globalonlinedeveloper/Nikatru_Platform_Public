@@ -439,7 +439,7 @@ describe('assert-supabase-templates — the subjects record has exactly the thre
 });
 
 describe('assert-supabase-templates — the shared mail names the house, never one app (O-MAIL-TEMPLATES-NAME-ONE-APP)', () => {
-  test('X1 — "Subscription Tracker" re-inserted at confirm-signup.html:8 of a copy of the REAL tree: exit 1; restored: exit 0', () => {
+  test('X1 — "Subscription Tracker" re-inserted at the brand line of confirm-signup.html in a copy of the REAL tree: exit 1; restored: exit 0', () => {
     const root = copyOfRealTree();
     const target = join(root, 'docs', 'platform', 'supabase', 'email-templates', 'confirm-signup.html');
     const servedCopy = join(root, 'sites', 'nikatru', 'auth-mail', 'confirm-signup.html');
@@ -448,16 +448,20 @@ describe('assert-supabase-templates — the shared mail names the house, never o
     assert.equal(control.status, 0, `green control first — the unmutated copy must pass:\n${out(control)}`);
 
     const lines = original.split('\n');
-    const mutated = lines[7].replace('>Nikatru</span>', '>Nikatru Subscription Tracker</span>');
-    assert.notEqual(mutated, lines[7], 'the mutation changed no bytes: a no-op mutation is a broken test');
-    lines[7] = mutated;
+    // The brand line, found rather than numbered: the generated header above it
+    // (tooling/i18n/auth-mail.mjs) grows when a locale is added.
+    const at = lines.findIndex((l) => l.includes('>Nikatru</span>'));
+    assert.ok(at >= 0, 'the brand line is gone');
+    const mutated = lines[at].replace('>Nikatru</span>', '>Nikatru Subscription Tracker</span>');
+    assert.notEqual(mutated, lines[at], 'the mutation changed no bytes: a no-op mutation is a broken test');
+    lines[at] = mutated;
     // The served copy gets the same bytes, as gen-auth-mail.mjs would write them, so the
     // one-app limb is the only thing left to turn the run red.
     writeFileSync(target, lines.join('\n'));
     writeFileSync(servedCopy, lines.join('\n'));
     const red = run(root);
     assert.equal(red.status, 1, out(red));
-    assert.match(out(red), /confirm-signup\.html:8 — "Nikatru Subscription Tracker" — the shared templates name the house, not one app \(O-MAIL-TEMPLATES-NAME-ONE-APP\)/);
+    assert.match(out(red), new RegExp(`confirm-signup\\.html:${at + 1} — "Nikatru Subscription Tracker" — the shared templates name the house, not one app \\(O-MAIL-TEMPLATES-NAME-ONE-APP\\)`));
     assert.doesNotMatch(out(red), /SERVED DRIFT/);
 
     writeFileSync(target, original);

@@ -334,7 +334,7 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
   });
 
   it('validates, builds with the TEST key, and loads as the subscriptiontracker pack', async () => {
-    const { CATEGORIES, factsProblems } = await import('../examples/service-catalogue/make-recipe.mjs');
+    const { CATEGORIES, LOCALES: SC_LOCALES, factsProblems } = await import('../examples/service-catalogue/make-recipe.mjs');
     assert.equal(runCli('validate', '--recipe', SC_RECIPE).status, 0);
     const d = mkdtempSync(join(tmpdir(), 'nikatru-sc-'));
     try {
@@ -351,9 +351,10 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
       const contentBytes = readFileSync(join(d, 'content.json'));
       assert.equal(sha256Hex(contentBytes), manifest.content_hash);
       const content = JSON.parse(contentBytes.toString('utf8'));
-      assert.deepEqual(Object.keys(content), ['en', 'ta']);
-      // The two shard files, named so a reader of this test sees both inputs.
-      for (const l of ['en', 'ta']) {
+      // One shard per supported locale of the locale register (make-recipe's
+      // LOCALES reads it), in register order.
+      assert.deepEqual(Object.keys(content), [...SC_LOCALES]);
+      for (const l of SC_LOCALES) {
         assert.deepEqual(content[l], JSON.parse(readFileSync(join(SC, 'content', `${l}.json`), 'utf8')));
       }
       const ids = content.en['catalogue.services'].split(',');
@@ -364,8 +365,8 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
       const inFirst = ids.slice(0, 20).map((id) => JSON.parse(content.en[`svc.${id}.facts`]).regions);
       assert.ok(inFirst.filter((r) => r.includes('IN') || r.includes('*')).length === 20, 'the first rows are India-first');
       assert.equal(new Set(ids).size, ids.length, 'duplicate id in the index');
-      assert.equal(content.ta['catalogue.services'], content.en['catalogue.services']);
-      for (const l of ['en', 'ta']) {
+      for (const l of SC_LOCALES) assert.equal(content[l]['catalogue.services'], content.en['catalogue.services']);
+      for (const l of SC_LOCALES) {
         for (const id of ids) {
           const name = content[l][`svc.${id}.name`];
           assert.ok(typeof name === 'string' && name.trim(), `${l}/${id}: no name`);

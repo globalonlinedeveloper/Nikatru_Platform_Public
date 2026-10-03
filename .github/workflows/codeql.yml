@@ -69,6 +69,9 @@ run-name: "CodeQL (${{ github.event_name }})"
 on:
   # why: every base (2026-09-30) — a stacked PR must carry its own analysis for assert-codeql-pr-no-new-high.mjs.
   pull_request:
+    # why: GitHub's three defaults, plus `ready_for_review`: a draft PR is not analysed
+    # (analyze's `if:`), and ci.yml's CodeQL PR rule needs this run on the event that readies it.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   schedule:
@@ -101,6 +104,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze JavaScript and TypeScript
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     # A job-level block REPLACES the workflow-level one outright, so `contents:
     # read` is restated here rather than inherited — dropping it would leave the

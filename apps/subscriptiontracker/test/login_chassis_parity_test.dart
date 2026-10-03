@@ -123,7 +123,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/width_harness.dart';

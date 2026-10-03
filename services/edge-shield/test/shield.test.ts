@@ -29,6 +29,8 @@ import worker, {
   JWKS_REVALIDATE_TIMEOUT_MS,
   JWKS_STORE_SECONDS,
   JWKS_TTL_SECONDS,
+  ORIGIN_RETRY_BUDGET_MS,
+  ORIGIN_RETRY_MIN_MS,
   RETRY_AT_HEADER,
   REVALIDATE_UA,
   STALE_HEADER,
@@ -797,6 +799,137 @@ describe('JWKS at the edge', () => {
     const res = await worker.fetch(req(CANONICAL), env, ctx());
     expect(res.status).toBe(200);
     for (const b of Object.values(env)) expect(b.calls).toHaveLength(0);
+  });
+});
+
+describe('one retry on an origin fault (520/522), only where a repeat is safe', () => {
+  // 2026-09-30 15:30:59Z POST /logout and 2026-10-01 15:00:51Z POST
+  // /admin/generate_link: 520s with no line in Box C's logs — lost in transit.
+  const faultThenOk = (status: number) => {
+    let n = 0;
+    reply = () => (++n === 1 ? new Response('origin fault', { status }) : new Response('ok', { status: 200 }));
+  };
+
+  for (const status of [520, 522]) {
+    it(`a GET answered ${status} is asked once more, and the client gets the second answer`, async () => {
+      faultThenOk(status);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const res = await worker.fetch(req(`${AUTH}/auth/v1/user`, { headers: { authorization: 'Bearer t' } }), fullEnv(), ctx());
+      expect(originCalls).toHaveLength(2);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('ok');
+      expect(res.headers.get('x-nikatru-shield')).toBe('1');
+      expect(log.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/"event":"shield_origin_retry".*"first":/);
+    });
+  }
+
+  it('POST /logout and POST /admin/generate_link are retried, with the SAME body on both attempts', async () => {
+    for (const path of ['/auth/v1/logout', '/auth/v1/admin/generate_link']) {
+      originCalls = [];
+      faultThenOk(520);
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+      const body = '{"type":"magiclink","email":"e2e@example.com"}';
+      const res = await worker.fetch(req(`${AUTH}${path}`, { method: 'POST', body, headers: { 'content-type': 'application/json' } }), fullEnv(), ctx());
+      expect(res.status).toBe(200);
+      expect(originCalls).toHaveLength(2);
+      expect(await originCalls[0].text()).toBe(body);
+      expect(await originCalls[1].text()).toBe(body);
+    }
+  });
+
+  it('🔴 never retried: the refresh grant, a password sign-in, /verify, /otp, /signup, /recover, and the crash intake', async () => {
+    const posts = [
+      `${AUTH}/auth/v1/token?grant_type=refresh_token`,
+      `${AUTH}/auth/v1/token?grant_type=password`,
+      `${AUTH}/auth/v1/verify`,
+      `${AUTH}/auth/v1/otp`,
+      `${AUTH}/auth/v1/signup`,
+      `${AUTH}/auth/v1/recover`,
+      `${GT}/api/1/envelope/`,
+    ];
+    for (const url of posts) {
+      originCalls = [];
+      reply = () => new Response('origin fault', { status: 520 });
+      const res = await worker.fetch(req(url, { method: 'POST', body: '{}' }), fullEnv(), ctx());
+      expect({ url, calls: originCalls.length, status: res.status }).toEqual({ url, calls: 1, status: 520 });
+    }
+  });
+
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 6: 524 joined this list. It
+  // arrives after ~100 s, past the 30 s budget, and the origin had the request.
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 5 — the e-mail link and the OAuth
+  // return are GETs that SPEND a one-time code; the never-retried case above
+  // covered POST /verify only.
+  it('🔴 never retried: GET /verify (an e-mail link) and GET /callback (an OAuth return), in any spelling', async () => {
+    for (const url of [
+      `${AUTH}/auth/v1/verify?token=x&type=signup&redirect_to=https://nikatru.com/`,
+      `${AUTH}//AUTH/v1/Verify/?token=x&type=recovery`,
+      `${AUTH}/auth/v1/callback?code=x&state=y`,
+    ]) {
+      for (const method of ['GET', 'HEAD']) {
+        originCalls = [];
+        reply = () => new Response('origin fault', { status: 520 });
+        const res = await worker.fetch(req(url, { method }), fullEnv(), ctx());
+        expect({ url, method, calls: originCalls.length, status: res.status }).toEqual({ url, method, calls: 1, status: 520 });
+      }
+    }
+  });
+
+  it('a definite answer is never retried: 500, 502, 503, 524 and 404 reach the client after ONE request', async () => {
+    for (const status of [500, 502, 503, 524, 404]) {
+      originCalls = [];
+      reply = () => new Response('no', { status });
+      const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
+      expect(res.status).toBe(status);
+      expect(originCalls).toHaveLength(1);
+    }
+  });
+
+  it('a second fault returns the FIRST answer, after exactly two requests', async () => {
+    let n = 0;
+    reply = () => new Response(`fault ${++n}`, { status: n === 1 ? 520 : 522 });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
+    expect(originCalls).toHaveLength(2);
+    expect(res.status).toBe(520);
+    expect(await res.text()).toBe('fault 1');
+  });
+
+  it('🔴 bounded: no retry once the budget is spent, and the retry is cut at what is left', async () => {
+    expect(ORIGIN_RETRY_BUDGET_MS).toBe(30_000);
+    const t0 = 1_000_000;
+    const now = vi.spyOn(Date, 'now');
+    // The first attempt "took" the whole budget less a second: below the floor, no retry.
+    now.mockReturnValueOnce(t0).mockReturnValue(t0 + ORIGIN_RETRY_BUDGET_MS - 1_000);
+    reply = () => new Response('fault', { status: 520 });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
+    expect(res.status).toBe(520);
+    expect(originCalls).toHaveLength(1);
+    expect(ORIGIN_RETRY_MIN_MS).toBeGreaterThan(1_000);
+  });
+
+  it('a retry that THROWS (its deadline, or the network) returns the first answer', async () => {
+    let n = 0;
+    vi.stubGlobal('fetch', async (input: Request | string, init?: RequestInit) => {
+      const r = input instanceof Request && init === undefined ? input : new Request(input, init);
+      originCalls.push(r);
+      if (++n === 1) return new Response('fault', { status: 522 });
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
+    expect(res.status).toBe(522);
+    expect(originCalls).toHaveLength(2);
+  });
+
+  it('the retry log names a route, never an account id', async () => {
+    faultThenOk(520);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await worker.fetch(req(`${AUTH}/auth/v1/admin/users/0f8fad5b-d9cb-469f-a165-70867728950e`), fullEnv(), ctx());
+    const line = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(line).toContain('/auth/v1/admin/users/<id>');
+    expect(line).not.toContain('0f8fad5b');
   });
 });
 
