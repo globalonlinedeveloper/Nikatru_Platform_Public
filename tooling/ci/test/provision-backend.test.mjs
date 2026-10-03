@@ -54,6 +54,9 @@ let seq = 0;
 
 const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const PLATFORM_ID = '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351';
+const PLATFORM_SBX_ID = 'ead92001-03e1-4f71-9b92-c64963a24925';
+const SBX_JWKS = 'b2acb786d12f4e36b339dd19f8812bbe';
+const SBX_REVOKED = '5e55105e55105e55105e55105e55105e';
 
 /** The stamped shape, comments and all — the comments matter, because a check
  *  that grepped instead of parsing would read them. APP_DB first, as the brick
@@ -75,16 +78,46 @@ const goodConfig = (appId) => `{
       "database_name": "platform_db",
       "database_id": "${PLATFORM_ID}"
     }
-  ]
+  ],
+  // ⏱ 2026-10-01 (rv2-services-011): the brick stamps a sandbox block too, and
+  // step [5s] writes its ids. Every binding name repeats here, which is the point.
+  "env": {
+    "sandbox": {
+      "d1_databases": [
+        { "binding": "APP_DB", "database_name": "${appId}_db_sandbox", "database_id": "${PLACEHOLDER}", "migrations_dir": "migrations" },
+        { "binding": "PLATFORM_DB", "database_name": "platform_db_sandbox", "database_id": "${PLATFORM_SBX_ID}" }
+      ],
+      "kv_namespaces": [
+        { "binding": "JWKS_CACHE", "id": "00000000000000000000000000000000" },
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
+      ]
+    }
+  }
 }
 `;
 
-function tree(appId, { config = goodConfig(appId) } = {}) {
+/** services/platform/wrangler.jsonc as far as step [5s] and --self-check read it:
+ *  the env.sandbox block where the shared sandbox namespace ids are recorded. */
+const platformConfig = ({ sessionRevoked = SBX_REVOKED } = {}) => `{
+  "name": "platform",
+  "env": { "sandbox": { "kv_namespaces": [
+    { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" },
+    { "binding": "JWKS_CACHE", "id": "${SBX_JWKS}" },
+    { "binding": "SESSION_REVOKED", "id": "${sessionRevoked}" }
+  ] } }
+}
+`;
+
+function tree(appId, { config = goodConfig(appId), platform = platformConfig() } = {}) {
   const root = join(TMP, `r${seq++}`);
   const p = join(root, 'services', `${appId}-api`, 'wrangler.jsonc');
   mkdirSync(dirname(p), { recursive: true });
   if (config !== null) writeFileSync(p, config);
   else mkdirSync(dirname(p), { recursive: true });
+  if (platform !== null) {
+    mkdirSync(join(root, 'services', 'platform'), { recursive: true });
+    writeFileSync(join(root, 'services', 'platform', 'wrangler.jsonc'), platform);
+  }
   return root;
 }
 
@@ -258,6 +291,7 @@ const BRICK_API = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/nee
 const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
 const render = (rel, appId) => readFileSync(join(REPO, BRICK_API, rel), 'utf8').replaceAll('{{app_id}}', appId);
 const LIVE_UUID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const SBX_UUID = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 
 /** The service's own wrangler, faked: every call is appended to wrangler-calls.log. */
 const FAKE_WRANGLER = `import { appendFileSync } from 'node:fs';
@@ -266,7 +300,7 @@ import { fileURLToPath } from 'node:url';
 const a = process.argv.slice(2);
 appendFileSync(join(dirname(fileURLToPath(import.meta.url)), 'wrangler-calls.log'), a.join(' ') + '\\n');
 const is = (...w) => w.every((x, i) => a[i] === x);
-if (is('d1', 'info')) { console.log(JSON.stringify({ uuid: '${LIVE_UUID}' })); process.exit(0); }
+if (is('d1', 'info')) { console.log(JSON.stringify({ uuid: String(a[2]).endsWith('_sandbox') ? '${SBX_UUID}' : '${LIVE_UUID}' })); process.exit(0); }
 if (is('d1', 'migrations', 'apply')) { console.log('applied'); process.exit(0); }
 if (is('d1', 'execute')) { console.log(JSON.stringify([{ results: [{ name: 'd1_migrations' }, { name: 'records' }] }])); process.exit(0); }
 console.error('fake wrangler: unexpected call ' + a.join(' '));
@@ -312,6 +346,7 @@ function stampedTree(appId, { lockfile = true, wrangler = true, index = (s) => s
     put(`${svc}/node_modules/wrangler/package.json`, '{ "type": "module" }\n');
   }
   put(ROUTE_CLIENTS, readFileSync(join(REPO, ROUTE_CLIENTS), 'utf8'));
+  put('services/platform/wrangler.jsonc', platformConfig());
   put('tooling/platform-register.json', `${JSON.stringify(stampRegister(), null, 2)}\n`);
   // Step [7]'s two files, copied from the REAL tree: the template row it copies is the
   // real one, and the host row is spliced into the real, hand-formatted register.
@@ -603,5 +638,86 @@ describe('E-a1 --check — every Worker directory has a register row', () => {
     const { code, out } = run(checkTree(provisioned({ inventory: false })), '--check');
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — tooling\/legal\/data-inventory\.json is missing/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · rv2-services-010 / -011. `--register-only` (step [6] alone,
+// offline, for ci.yml's app-brick job), the sandbox half of `--self-check`, and the
+// live step [5s] that writes a stamped Worker's sandbox ids.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('rv2-services-010/011 — --register-only, the sandbox self-check, and step [5s]', () => {
+  const sbxField = (root, section, binding, field) => {
+    const raw = readFileSync(join(root, 'services', 'probeapi-api', 'wrangler.jsonc'), 'utf8');
+    const strip = raw.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1');
+    const cfg = JSON.parse(strip);
+    return (cfg.env.sandbox[section] ?? []).find((x) => x.binding === binding)?.[field];
+  };
+
+  test('--register-only writes the appWorkers row with NO credentials, NO wrangler and NO step [7] file', () => {
+    const root = stampedTree('probeapi');
+    const inv = readFileSync(join(root, INVENTORY), 'utf8');
+    const mon = readFileSync(join(root, MONITORS), 'utf8');
+    const { code, out } = run(root, 'probeapi', '--register-only');
+    assert.equal(code, 0, out);
+    assert.match(out, /\[6\] Writing probeapi-api's appWorkers row/);
+    assert.match(out, /--register-only: step \[6\] only\. No token, no install, no network/);
+    const reg = registerOf(root);
+    assert.deepEqual(reg.appWorkers.map((w) => w.name), ['probeapi-api']);
+    assert.deepEqual(reg.appWorkers[0].routes.map((r) => `${r.method} ${r.path}`), ['GET /v1/health', 'DELETE /v1/account']);
+    assert.deepEqual(wranglerCalls(root, 'probeapi'), [], 'wrangler ran under --register-only');
+    assert.equal(readFileSync(join(root, INVENTORY), 'utf8'), inv, 'step [7] wrote the inventory');
+    assert.equal(readFileSync(join(root, MONITORS), 'utf8'), mon, 'step [7] wrote the monitor register');
+    // …and it is the SAME step: a second run leaves the row as it is.
+    const again = run(root, 'probeapi', '--register-only');
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.out, /already has a row \(probeapi-api\); left unchanged/);
+  });
+
+  test('🔴 RED: --self-check refuses a stamped config with NO env.sandbox — the brick as it was before 2026-10-01', () => {
+    const noSandbox = goodConfig('probeapi').replace(/,\n {2}\/\/ ⏱ 2026-10-01[\s\S]*\n\}\n$/, '\n}\n');
+    assert.ok(!noSandbox.includes('"env"'), 'fixture anchor: the env block is still there');
+    const { code, out } = run(tree('probeapi', { config: noSandbox }), 'probeapi', '--self-check');
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `env\.sandbox` block, so the Worker is born with no sandbox/);
+  });
+
+  test('🔴 RED: --self-check refuses a sandbox namespace the platform\'s env.sandbox does not record', () => {
+    const platform = platformConfig().replace(/,\n {4}\{ "binding": "SESSION_REVOKED"[^\n]*/, '');
+    const { code, out } = run(tree('probeapi', { platform }), 'probeapi', '--self-check');
+    assert.equal(code, 1, out);
+    assert.match(out, /env\.sandbox binds SESSION_REVOKED, which services\/platform\/wrangler\.jsonc env\.sandbox does not/);
+  });
+
+  test('the real brick template passes the sandbox half of --self-check against the real platform config', () => {
+    const root = tree('probeapi', { config: render('wrangler.jsonc', 'probeapi'), platform: readFileSync(join(REPO, 'services/platform/wrangler.jsonc'), 'utf8') });
+    const { code, out } = run(root, 'probeapi', '--self-check');
+    assert.equal(code, 0, out);
+    assert.match(out, /the sandbox patch rewrites env\.sandbox APP_DB\.database_id only/);
+    assert.match(out, /every shared sandbox namespace the stamp binds \(JWKS_CACHE, SESSION_REVOKED\)/);
+  });
+
+  test('step [5s] creates nothing shared: it writes the sandbox D1 id and COPIES the shared namespace ids, then migrates --env sandbox', () => {
+    const root = stampedTree('probeapi');
+    const { code, out } = provision(root, 'probeapi');
+    assert.equal(code, 0, out);
+    assert.match(out, /\[5s\] Ensuring the sandbox twin: D1 "probeapi_db_sandbox"/);
+    assert.equal(sbxField(root, 'd1_databases', 'APP_DB', 'database_id'), SBX_UUID);
+    assert.equal(sbxField(root, 'kv_namespaces', 'JWKS_CACHE', 'id'), SBX_JWKS);
+    assert.equal(sbxField(root, 'kv_namespaces', 'SESSION_REVOKED', 'id'), SBX_REVOKED);
+    const calls = wranglerCalls(root, 'probeapi');
+    assert.ok(calls.includes('d1 info probeapi_db_sandbox --json'), calls.join(' | '));
+    assert.ok(calls.includes('d1 migrations apply APP_DB --env sandbox --remote'), calls.join(' | '));
+    assert.ok(!calls.some((c) => /^kv\b/.test(c)), `step [5s] touched KV itself: ${calls.join(' | ')}`);
+    assert.ok(!calls.some((c) => /^(deploy|versions|secret)\b/.test(c)), `step [5s] must deploy nothing: ${calls.join(' | ')}`);
+  });
+
+  test('🔴 RED: step [5s] stops when the platform has not recorded a shared sandbox id yet (the twins script runs first)', () => {
+    const root = stampedTree('probeapi');
+    writeFileSync(join(root, 'services/platform/wrangler.jsonc'), platformConfig({ sessionRevoked: '0'.repeat(32) }));
+    const { code, out } = provision(root, 'probeapi');
+    assert.equal(code, 1, out);
+    assert.match(out, /records no id for the shared namespace SESSION_REVOKED[\s\S]*provision-sandbox-twins\.mjs --apply/);
+    assert.equal(registerOf(root).appWorkers.length, 0, 'the register row was written past a failed step [5s]');
   });
 });

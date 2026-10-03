@@ -645,6 +645,14 @@
       "disposition": "by-design",
       "host": "127.0.0.1",
       "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
+    },
+    {
+      "alert": 584,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-box-config-drift.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "A SELECT-only read of box_config_manifest through the Cloudflare D1 HTTP API with the Cloudflare token is intended. The host is a literal; services/platform/wrangler.jsonc supplies only the database id, and d1QueryUrl() refuses (CouldNotLook) any database_id that is not a UUID before it enters the URL (tooling/ci/test/box-config-drift.test.mjs feeds x/../../user and sees no fetch made)."
     }
   ]
 }

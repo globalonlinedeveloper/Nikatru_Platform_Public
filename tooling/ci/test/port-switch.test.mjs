@@ -6,7 +6,8 @@
 // margin check over a copy of the REAL fee, channel and price registers.
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -417,6 +418,110 @@ describe('port-switch — a MAIL switch moves more than code (C9–C14)', () => 
     assert.match(r.out, /PASS\s+C9 dns: `fake` is a fake/);
     const live = run(['mail', '--to', 'fake', '--dry-run', '--root', root]);
     assert.match(live.first, /FAIL — C1 target: `fake` is a fake/);
+  });
+});
+
+describe('port-switch — the telemetry plan (C9) over the REAL registers', () => {
+  // Run against the repository itself: the plan reads four registers and the two
+  // uploaders, and every one of them is read-only here.
+  it('green control: --to sentry --env sandbox --from noop passes, and C9 lists every channel, Worker, uploader and monitor', () => {
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^PASS  C9 plan: \d+ app build\(s\) need a release if the app sink moves; 2 Worker\(s\) a redeploy; 2 uploader\(s\); \d+ monitor\(s\) to recreate/m);
+    assert.match(r.out, /GLITCHTIP_DSN is COMPILE-TIME .* APP RELEASE on every channel below/);
+    const channels = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8')).channels;
+    for (const c of channels.filter((x) => (x.crashSink?.layers ?? []).includes('dart'))) {
+      assert.match(r.out, new RegExp(`^ +${c.id} +GLITCHTIP_DSN \\(--dart-define\\) → release this channel$`, 'm'), `channel ${c.id} is not named`);
+    }
+    assert.match(r.out, /^ +platform +GLITCHTIP_DSN \(deploy var\) → set it and REDEPLOY/m);
+    assert.match(r.out, /^ +subscriptiontracker-api +GLITCHTIP_DSN \(deploy var\)/m);
+    assert.match(r.out, /node tooling\/ops\/upload-native-symbols\.mjs/);
+    assert.match(r.out, /node tooling\/ops\/upload-web-sourcemaps\.mjs/);
+    assert.match(r.out, /^ +#1 +GET +glitchtip\.nikatru\.com$/m);
+    assert.match(r.out, /export it optionally; never block the switch on it/);
+    assert.match(r.out, /cost delta: noop: no unit cost recorded → sentry: no unit cost recorded/);
+  });
+  it('red: a missing uploader is LOST (exit 2), never a pass', () => {
+    const root = mkdtempSync(join(tmpdir(), 'port-switch-tel-'));
+    for (const rel of ['tooling/ports', 'tooling/channel-register.json', 'tooling/platform-register.json', 'tooling/monitor-register.json',
+      'tooling/ops/upload-native-symbols.mjs', 'packages/telemetry/test']) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run', '--root', root]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C9 plan: tooling\/ops\/upload-web-sourcemaps\.mjs does not exist/);
+  });
+  it('red: a Worker target fails C5 — the ts half has no registered suite (it claims L2)', () => {
+    const r = run(['telemetry', '--to', 'webhook', '--from', 'ntfy', '--dry-run']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: services\/_shared\/test\/notifier\.test\.ts does not CALL runTelemetryClientConformance/m);
+    assert.match(r.out, /Workers \(TOUCHED by this switch\)/);
+  });
+});
+
+// ⏱ 2026-10-02 · port-sql — C9, the export dry run, over the REAL sql.json and the
+// REAL migrations. The export here is built at test time from the migrations in
+// the dump's JSON-lines shape, so this block grades the TOOL (flags, gzip, exit
+// codes, the deciding line); services/platform/test/sql-export-replay.test.ts
+// feeds the replay the shipped dumpD1Database's own output.
+describe('port-switch sql — C9 replays one export into node:sqlite', () => {
+  let dir;
+  const exportOf = (database, migDir, { dropTable = null } = {}) => {
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
+    const db = new DatabaseSync(':memory:');
+    for (const f of readdirSync(join(REPO, migDir)).filter((x) => x.endsWith('.sql')).sort()) db.exec(readFileSync(join(REPO, migDir, f), 'utf8'));
+    if (database === 'platform_db') db.exec("INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('nightly-export', 'platform_db', 1, NULL, '2026-10-02T02:30:00Z')");
+    const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter((t) => t.name !== dropTable);
+    const lines = [{ kind: 'meta', database, exportedAt: '2026-10-02T02:30:00Z', generator: 'platform-worker-backup/2' }];
+    let rows = 0;
+    for (const t of tables) lines.push({ kind: 'schema', table: t.name, sql: t.sql });
+    for (const t of tables) {
+      const data = db.prepare(`SELECT * FROM "${t.name}" ORDER BY rowid`).all();
+      for (const d of data) lines.push({ kind: 'row', table: t.name, data: { ...d } });
+      lines.push({ kind: 'table-end', table: t.name, rows: data.length, truncated: false });
+      rows += data.length;
+    }
+    lines.push({ kind: 'end', tables: tables.length, rows, truncated: false, queries: 3 });
+    db.close();
+    return lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+  };
+  const write = (name, text, gz = true) => {
+    const file = join(dir, name);
+    writeFileSync(file, gz ? gzipSync(Buffer.from(text)) : text);
+    return file;
+  };
+  before(() => { dir = mkdtempSync(join(tmpdir(), 'sql-export-')); });
+
+  it('green control: a gzipped platform_db export replays — every check PASS, exit 0', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('platform_db.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.first, /^port-switch: PASS — all 9 checks pass/);
+    assert.match(r.out, /PASS  C9 replay: platform_db: \d+ migration\(s\) of services\/platform\/migrations replayed; \d+ table\(s\) and \d+ row\(s\) match the export/);
+    assert.match(r.out, /cron_heartbeat\s+1 row\(s\)/);
+  });
+  it('…and so does subscriptiontracker_db, found by the wrangler config that owns its migrations, uncompressed', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('st.jsonl', exportOf('subscriptiontracker_db', 'services/subscriptiontracker-api/migrations'), false)]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /PASS  C9 replay: subscriptiontracker_db: \d+ migration\(s\) of services\/subscriptiontracker-api\/migrations replayed/);
+  });
+  it('red: an export MISSING a table is FAIL (exit 1), and the first line names C9 and the table', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('missing.jsonl.gz', exportOf('platform_db', 'services/platform/migrations', { dropTable: 'signups' }))]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C9 replay: platform_db: 1 mismatch\(es\) — first: table `signups` is created by the migrations and is missing from the export/);
+  });
+  it('LOST: no --export is exit 2 — the export duty unrehearsed is never a pass', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C9 replay: no --export <file>/);
+  });
+  it('the sqlite engine is never a live target (C1), export or not', () => {
+    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--export', write('live.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C1 target: `sqlite` is a fake; a fake is never selectable in live/);
+  });
+  it('--export belongs to the sql port alone', () => {
+    assert.match(parseArgs(['payments', '--to', 'paddle', '--dry-run', '--export', 'x.gz']).error, /--export is for sql/);
+    assert.equal(parseArgs(['sql', '--to', 'sqlite', '--dry-run', '--export', 'x.gz']).export, 'x.gz');
   });
 });
 

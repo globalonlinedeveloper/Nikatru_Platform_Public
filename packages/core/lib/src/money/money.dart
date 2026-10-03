@@ -1,3 +1,5 @@
+import 'iso4217.g.dart';
+
 /// Thrown when two amounts in DIFFERENT currencies are added, subtracted or
 /// compared as if they were the same unit.
 ///
@@ -100,20 +102,21 @@ class Money implements Comparable<Money> {
     'CAD': r'C$',
   };
 
-  /// Decimal places per currency. ISO 4217 is NOT uniform — the yen has none
-  /// and the Kuwaiti dinar has three — so a hardcoded division by a hundred
-  /// misprices a yen plan by a factor of a hundred. Two is the default and
-  /// covers everything these apps sell today.
-  static const Map<String, int> _minorUnitDigits = <String, int>{
-    'JPY': 0,
-    'KWD': 3,
-  };
-
-  /// The default, named so the two lookups below read as one rule.
+  /// Decimal places per currency. ISO 4217 is NOT uniform — the yen and the won
+  /// have none and the Kuwaiti and Bahraini dinars have three — so a hardcoded
+  /// division by a hundred misprices a yen plan by a factor of a hundred.
+  ///
+  /// ⏱ 2026-10-01 · #1118 review finding 3. This was a two-entry map (JPY 0,
+  /// KWD 3) while the platform Worker printed reminder prices from ISO's full
+  /// list, so a KRW plan written here as won × 100 mailed 100× too high and a
+  /// BHD plan 10× too low. It now reads [iso4217MinorUnitDigits], GENERATED
+  /// from `contracts/currency/iso4217.js` — the table the subscriptiontracker
+  /// Worker validates `price_minor` against and the platform Worker formats
+  /// with. A code not in it (never a real currency) still reads as two.
   static const int defaultMinorUnitDigits = 2;
 
   static int minorUnitDigitsFor(String code) =>
-      _minorUnitDigits[code] ?? defaultMinorUnitDigits;
+      iso4217MinorUnitDigits[code] ?? defaultMinorUnitDigits;
 
   /// The symbol for [code], or null when there is none. NULL IS A REAL ANSWER
   /// and callers must render the code instead: a wrong symbol on a real charge

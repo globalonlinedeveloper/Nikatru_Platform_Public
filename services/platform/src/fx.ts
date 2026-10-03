@@ -21,6 +21,7 @@
 // publish is never better than yesterday's, so nothing here ever deletes one.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Env } from './types';
+import type { KvStore } from '../../_shared/src/ports/kv';
 
 /** The ECB's daily reference-rate document: one `Cube time` and one
  *  `Cube currency/rate` per quoted currency, units per ONE euro. */
@@ -223,7 +224,7 @@ export async function refreshFxRates(
   const nowMs = opts.nowMs ?? Date.now();
   // Declared required in types.ts, but a deploy can still lack it; an unbound
   // namespace is a failure row, never a throw that skips the rest of the chain.
-  const kv = (env as unknown as { CONFIG_KV?: KVNamespace }).CONFIG_KV;
+  const kv = (env as unknown as { CONFIG_KV?: KvStore }).CONFIG_KV;
   if (!kv) return { target: FX_TARGET, ok: false, detail: 'no CONFIG_KV binding: nowhere to keep the table' };
 
   let last: FxTable | null = null;

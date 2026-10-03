@@ -12,6 +12,7 @@
 //   ·  user_id   → the row IS this person's        → DELETE the row
 //   · *_user_id  → the row REFERENCES this person  → NULL the column
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
 
 export type PlatformErasureResult =
@@ -22,7 +23,7 @@ export type PlatformErasureResult =
 // round trips) and the write is `eraseTargets` (one batch, one transaction), both
 // from the shared home. What stays HERE is this Worker's own envelope and its own
 // words for the refusals. A thrown write still propagates, exactly as before.
-export async function erasePlatformRows(db: D1Database, userId: string): Promise<PlatformErasureResult> {
+export async function erasePlatformRows(db: SqlDb, userId: string): Promise<PlatformErasureResult> {
   let targets: ErasureTargets;
   try {
     targets = await erasureTargets(db);
@@ -75,7 +76,7 @@ export type SignupPurgeOutcome =
   | { kind: 'failed'; why: string };
 
 export async function purgeVerifiedSignups(
-  db: D1Database,
+  db: SqlDb,
   supabaseUrl: string | undefined,
   serviceRoleKey: string,
   userId: string,

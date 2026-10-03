@@ -596,6 +596,43 @@ export function parseJsonc(text) {
  */
 export const SHARED_SRC = 'services/_shared/src';
 
+/** The port registries `fakeEngineFiles` reads. */
+export const PORTS_DIR = 'tooling/ports';
+
+/**
+ * ⏱ 2026-10-02 · port-sql. THE SHARED-HOME FILES THAT NEVER SEND A STATEMENT TO
+ * D1, DERIVED FROM THE PORT REGISTRIES, NEVER LISTED HERE.
+ *
+ * A port's fakes live in services/_shared/src/ports/fakes/ (tooling/ports/
+ * README.md), so the SQL port's `sqlite` adapter — the node:sqlite engine the
+ * Worker suites and the export dry run run their SQL through — sits in the shared
+ * home this inventory attributes to every Worker. It is not Worker code: no
+ * services/<w>/src module may import an adapter's impl.file (assert-ports limb 4)
+ * and a fake is never selectable in live (limb 7). Its `.prepare(sql)` takes the
+ * CALLER's statement, and every caller's statement is already read at the call
+ * site, so grading the engine's plumbing as if it were a route would be a finding
+ * about nothing.
+ *
+ * The set is every `status: "fake"` adapter's `impl.file` under SHARED_SRC in
+ * tooling/ports/*.json. A registry that cannot be read contributes nothing, so
+ * the failure mode is the loud one: the fake is scanned and reddens R2.
+ */
+export function fakeEngineFiles(root) {
+  const out = new Set();
+  const dir = join(root, ...PORTS_DIR.split('/'));
+  if (!existsSync(dir)) return out;
+  for (const f of listDir(dir)) {
+    if (!f.endsWith('.json') || f === 'port.schema.json' || f.startsWith('_')) continue;
+    let doc;
+    try { doc = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch { continue; }
+    for (const a of Array.isArray(doc?.adapters) ? doc.adapters : []) {
+      const file = a?.impl?.file;
+      if (a?.status === 'fake' && typeof file === 'string' && file.startsWith(`${SHARED_SRC}/`)) out.add(file);
+    }
+  }
+  return out;
+}
+
 /**
  * THE DOMAIN, DERIVED FROM THE DEPLOYABLE CONFIGS.
  *
@@ -619,6 +656,7 @@ export function inventoryServices(root) {
   const servicesDir = join(root, 'services');
   const out = [];
   if (!existsSync(servicesDir)) return out;
+  const fakes = fakeEngineFiles(root);
   for (const e of listDir(servicesDir, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
     const cfgPath = join(servicesDir, e.name, 'wrangler.jsonc');
@@ -638,7 +676,7 @@ export function inventoryServices(root) {
         id: d.database_id,
         owns: typeof d.migrations_dir === 'string',
       }));
-    const files = [...sourceFilesUnder(root, SHARED_SRC), ...sourceFilesUnder(root, `services/${e.name}/src`)];
+    const files = [...sourceFilesUnder(root, SHARED_SRC).filter((f) => !fakes.has(f)), ...sourceFilesUnder(root, `services/${e.name}/src`)];
     const statements = [];
     const unparsed = [];
     let compositions = 0;

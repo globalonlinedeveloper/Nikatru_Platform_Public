@@ -6,7 +6,7 @@
     "The nikatru.com zone (DNS records, WAF custom rules, Access apps, tunnel ingress) is DECLARED, NOT PORTED: tooling/edge/zone.json, read by tooling/ops/check-edge-zone.mjs, whose --export is the DNS-provider move's worklist."
   ],
   "rows": [
-    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },
+    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "KV, R2, the rate limiters and D1 are ported (tooling/ports/kv.json, objects.json, ratelimit.json; port-storage — and sql.json; port-sql). What is left is the substrate README section 7 keeps: the Workers runtime and Pages, the execution and hosting substrate, and the nikatru.com zone. Kept on a train only because the vendor's one C-8 seam (ConfigTransport) is still to be re-seated across its four ports.", "until": "port-c8-cloudflare", "remaining": ["Workers", "Pages", "the nikatru.com zone"] },
     { "vendor": "cloudflare-turnstile", "registers": ["capability-register"], "reason": "The captcha is the platform's abuse authority for sign-up; a gate, not a replaceable service.", "nonPort": true },
     { "vendor": "github", "registers": ["capability-register"], "reason": "The workflow-dispatch call from the Worker cron (dispatchGithubWorkflows); the code host is ported by port-codehost.", "until": "port-codehost" },
     { "vendor": "apple", "registers": ["capability-register"], "reason": "Sign in with Apple token revocation: Apple is the platform authority for its own identities.", "nonPort": true },
@@ -19,7 +19,7 @@
     { "vendor": "lemon-squeezy", "registers": ["provider-register"], "reason": "A retired rail ([ADR 039] D4): no adapter exists and none will be built; kept in the provider register for disclosure history.", "nonPort": true },
     { "vendor": "sign-in-with-apple", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
     { "vendor": "sign-in-with-google", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
-    { "vendor": "sentry-cdn", "registers": ["provider-register"], "reason": "The CDN the Sentry browser SDK would load from; a delivery path of the telemetry adapter, placed by port-telemetry.", "until": "port-telemetry" },
+    { "vendor": "sentry-cdn", "registers": ["provider-register"], "reason": "The CDN the Sentry browser SDK would load from. Placed by port-telemetry as NOT an adapter: the egress is closed (provider-register sentry-cdn row, 2026-09-12) — the web build posts envelopes with the Dart SDK's HTTP transport (packages/telemetry/lib/src/web_envelope_transport.dart), so no telemetry adapter loads anything from it.", "nonPort": true },
     { "vendor": "google-gstatic", "registers": ["provider-register"], "reason": "Static content delivery (fonts, platform scripts) the web build references; content delivery, not a capability with an adapter.", "nonPort": true }
   ]
 }

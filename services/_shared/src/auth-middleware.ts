@@ -53,16 +53,19 @@
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
 import {
   JWKS_KV_KEY,
+  JWKS_LKG_KV_KEY,
   JWKS_TTL_SECONDS,
   authRecencyOf,
   bearer,
   isKeySetUnavailable,
+  lastKnownGoodNeedsWrite,
   revocationKey,
   revocationRefusal,
   usableJwksDocument,
   verifyOptions,
   type AuthRecency,
 } from './auth';
+import type { KvStore } from './ports/kv';
 
 /** How a token was verified. 'symmetric' exists ONLY on an app Worker's
  *  permissive boundary bound with a legacy secret, and every erasure route
@@ -103,16 +106,28 @@ export function remoteJwks(supabaseUrl: string): JWTVerifyGetKey {
  * miss: KV Free allows 1,000 writes/day account-wide (`tooling/ceilings.json` →
  * `kv.writesPerDay`), and a cache that re-put on every cold isolate would spend
  * that budget on itself.
+ *
+ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES. The same successful fetch
+ * also keeps the LAST-KNOWN-GOOD copy ([JWKS_LKG_KV_KEY], no expiry) equal to
+ * what the server publishes: it is read, and re-put only when the fetched set
+ * differs (`lastKnownGoodNeedsWrite`), so a rotation replaces it and a steady
+ * key set spends no write. That read is the warm path deciding whether to write,
+ * never a verification: only `verifyAsymmetric`'s outage branch verifies
+ * against it.
  */
-export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace | undefined): Promise<void> {
+export async function warmJwksCache(supabaseUrl: string, jwksCache: KvStore | undefined): Promise<void> {
   try {
     if (!jwksCache) return;
     if (await jwksCache.get(JWKS_KV_KEY)) return; // still warm
     const res = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
     if (!res.ok) return;
-    await jwksCache.put(JWKS_KV_KEY, await res.text(), {
+    const body = await res.text();
+    await jwksCache.put(JWKS_KV_KEY, body, {
       expirationTtl: JWKS_TTL_SECONDS,
     });
+    if (lastKnownGoodNeedsWrite(body, await jwksCache.get(JWKS_LKG_KV_KEY))) {
+      await jwksCache.put(JWKS_LKG_KV_KEY, body);
+    }
   } catch {
     // Non-fatal by construction: verification still works via jose's own fetch.
   }
@@ -136,11 +151,17 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace 
  * a PUBLIC document, so caching it adds no secret to this scope. The parse and
  * the empty-key-set refusal are `usableJwksDocument` in auth.ts; only the
  * key-set construction, which needs `jose`, is here.
+ *
+ * `kvKey` names WHICH copy: the 10-minute one (the default) or the
+ * last-known-good one ([JWKS_LKG_KV_KEY]) — the same parse, the same refusals.
  */
-export async function localSetFromCache(jwksCache: KVNamespace | undefined): Promise<JWTVerifyGetKey | null> {
+export async function localSetFromCache(
+  jwksCache: KvStore | undefined,
+  kvKey: typeof JWKS_KV_KEY | typeof JWKS_LKG_KV_KEY = JWKS_KV_KEY,
+): Promise<JWTVerifyGetKey | null> {
   try {
     if (!jwksCache) return null;
-    const doc = usableJwksDocument(await jwksCache.get(JWKS_KV_KEY));
+    const doc = usableJwksDocument(await jwksCache.get(kvKey));
     if (doc === null) return null;
     return createLocalJWKSet(doc as Parameters<typeof createLocalJWKSet>[0]);
   } catch {
@@ -158,7 +179,7 @@ export async function localSetFromCache(jwksCache: KVNamespace | undefined): Pro
  * property of the SIGNATURE — checkable by reading four lines — rather than a
  * claim about the body that a later edit could quietly falsify.
  */
-export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KVNamespace): Promise<JWTPayload> {
+export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KvStore): Promise<JWTPayload> {
   const opts = verifyOptions(supabaseUrl);
   try {
     const { payload } = await jwtVerify(token, remoteJwks(supabaseUrl), opts);
@@ -169,8 +190,13 @@ export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksC
     // the two cannot drift into a weaker one an attacker reaches by making the
     // JWKS endpoint unreachable. A bad token still fails here and now.
     if (!isKeySetUnavailable(err)) throw err;
-    const local = await localSetFromCache(jwksCache);
-    // No usable cache ⇒ behave exactly as before: rethrow, fail closed.
+    // ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES. The 10-minute copy
+    // first; the last-known-good copy ONLY when that one is unusable (expired,
+    // empty or corrupt). Never both against one token: a usable 10-minute copy
+    // is the newer set, so a `kid` it lacks has been rotated out and the
+    // ERR_JWKS_NO_MATCHING_KEY it raises below is the answer.
+    const local = (await localSetFromCache(jwksCache)) ?? (await localSetFromCache(jwksCache, JWKS_LKG_KV_KEY));
+    // No usable copy at all ⇒ behave exactly as before: rethrow, fail closed.
     if (!local) throw err;
     const { payload } = await jwtVerify(token, local, opts);
     return payload;
@@ -201,7 +227,7 @@ export const NO_SYMMETRIC_FALLBACK: SymmetricFallback = Object.freeze({ legacyHs
 export async function verifySupabaseToken(
   token: string,
   supabaseUrl: string,
-  jwksCache: KVNamespace | undefined,
+  jwksCache: KvStore | undefined,
   fallback: SymmetricFallback,
 ): Promise<{ payload: JWTPayload; assurance: TokenAssurance }> {
   try {
@@ -243,7 +269,7 @@ export async function verifySupabaseToken(
  * Takes the ONE binding it needs, not `Env` — the `localSetFromCache` rule.
  */
 export async function sessionRevoked(
-  revoked: KVNamespace | undefined,
+  revoked: KvStore | undefined,
   sub: string,
   payload: Record<string, unknown>,
   logPrefix: string,
@@ -271,8 +297,8 @@ export async function sessionRevoked(
 /** The bindings the two boundaries read. Each carrier's `Env` satisfies it. */
 export interface AuthBindings {
   readonly SUPABASE_URL: string;
-  readonly JWKS_CACHE?: KVNamespace;
-  readonly SESSION_REVOKED?: KVNamespace;
+  readonly JWKS_CACHE?: KvStore;
+  readonly SESSION_REVOKED?: KvStore;
   readonly APP_ID?: string;
 }
 

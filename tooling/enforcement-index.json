@@ -227,6 +227,7 @@
       "E-3"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
@@ -3827,6 +3828,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-apple-signing-expiry.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-box-config-drift.mjs",
     "references": [],
     "state": "WIRED"
   },
