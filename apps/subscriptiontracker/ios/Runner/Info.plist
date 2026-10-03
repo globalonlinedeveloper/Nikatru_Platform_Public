@@ -101,6 +101,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- ⏱ 2026-10-01 · XP-03 app lock. iOS terminates an app that asks
+	     LAContext for Face ID without this sentence; Touch ID does not need it. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock Nikatru Subscription Tracker with Face ID instead of typing your PIN.</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

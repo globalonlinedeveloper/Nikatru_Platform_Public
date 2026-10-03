@@ -1,0 +1,298 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "ai",
+  "level": {
+    "claimed": 3,
+    "target": 3
+  },
+  "interface": {
+    "ts": {
+      "file": "services/_shared/src/ports/ai.ts",
+      "symbols": ["AiProvider", "AiRequest", "AiOutcome", "AiBeforeCall", "AiCostModel"]
+    },
+    "dart": {
+      "file": "packages/core/lib/src/ai/ai_provider.dart",
+      "symbols": ["AiProvider", "AiRequest", "AiOutcome"]
+    }
+  },
+  "adapters": [
+    {
+      "id": "anthropic",
+      "vendor": "anthropic",
+      "status": "built",
+      "half": "server",
+      "impl": {
+        "file": "services/platform/src/adapters/ai/anthropic.ts",
+        "symbol": "createAnthropicAi"
+      },
+      "capabilities": ["structured", "vision", "cache"],
+      "secrets": ["NIKATRU_ANTHROPIC_API_KEY"],
+      "identity": [],
+      "environments": ["sandbox", "live"],
+      "cost": {
+        "feeCells": [],
+        "unit": null,
+        "models": {
+          "claude-haiku-4-5": {
+            "inputUsdPerMTok": 1,
+            "outputUsdPerMTok": 5,
+            "cacheReadUsdPerMTok": 0.1,
+            "cacheWriteUsdPerMTok": 1.25,
+            "asOf": "2026-10-02",
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+            "verify": "curl -sL https://platform.claude.com/docs/en/about-claude/pricing.md | tr -s ' ' | grep -o '| Claude Haiku 4.5 | $1 / MTok | $1.25 / MTok | $2 / MTok | $0.10 / MTok | $5 / MTok |'"
+          },
+          "claude-sonnet-5-5": {
+            "inputUsdPerMTok": 2,
+            "outputUsdPerMTok": 10,
+            "cacheReadUsdPerMTok": 0.2,
+            "cacheWriteUsdPerMTok": 2.5,
+            "asOf": "2026-10-02",
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+            "verify": "curl -sL https://platform.claude.com/docs/en/about-claude/pricing.md | tr -s ' ' | grep -o '| Claude Sonnet 5.5 | $2 / MTok | $2.50 / MTok | $4 / MTok | $0.20 / MTok | $10 / MTok |'"
+          },
+          "claude-opus-5-5": {
+            "inputUsdPerMTok": 4,
+            "outputUsdPerMTok": 20,
+            "cacheReadUsdPerMTok": 0.2,
+            "cacheWriteUsdPerMTok": 5,
+            "asOf": "2026-10-02",
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+            "verify": "curl -sL https://platform.claude.com/docs/en/about-claude/pricing.md | tr -s ' ' | grep -o '| Claude Opus 5.5 | $4 / MTok | $5 / MTok | $8 / MTok | $0.20 / MTok<sup>2</sup> | $20 / MTok |'",
+            "fallbacks": ["claude-opus-4-8", "claude-opus-5"]
+          },
+          "claude-opus-4-8": {
+            "inputUsdPerMTok": 5,
+            "outputUsdPerMTok": 25,
+            "cacheReadUsdPerMTok": 0.5,
+            "cacheWriteUsdPerMTok": 6.25,
+            "asOf": "2026-10-02",
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+            "verify": "curl -sL https://platform.claude.com/docs/en/about-claude/pricing.md | tr -s ' ' | grep -o '| Claude Opus 4.8 | $5 / MTok | $6.25 / MTok | $10 / MTok | $0.50 / MTok | $25 / MTok |'"
+          },
+          "claude-opus-5": {
+            "inputUsdPerMTok": 5,
+            "outputUsdPerMTok": 25,
+            "cacheReadUsdPerMTok": 0.5,
+            "cacheWriteUsdPerMTok": 6.25,
+            "asOf": "2026-10-02",
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+            "verify": "curl -sL https://platform.claude.com/docs/en/about-claude/pricing.md | tr -s ' ' | grep -o '| Claude Opus 5 | $5 / MTok | $6.25 / MTok | $10 / MTok | $0.50 / MTok | $25 / MTok |'"
+          }
+        }
+      },
+      "conformance": {
+        "file": "services/platform/test/ai-anthropic.conformance.test.ts"
+      },
+      "exportDuty": "Leaves with us: nothing needs to — the adapter keeps no state at the provider (no stored prompt, no file, no batch), and every input and output is the caller's, held in our own tables by the feature that asked. What the provider holds: API inputs and outputs, deleted on its backend within 30 days of receipt or generation (read 2026-10-02, https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data); no zero-data-retention agreement is in place. Cannot move: the prompt cache (minutes; the first calls on a target rebuild it) and the account's rate-limit tier.",
+      "readAt": {
+        "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+        "on": "2026-10-02"
+      }
+    },
+    {
+      "id": "stub",
+      "vendor": null,
+      "status": "fake",
+      "half": "server",
+      "impl": {
+        "file": "services/_shared/src/ports/fakes/ai.ts",
+        "symbol": "createStubAi"
+      },
+      "capabilities": ["structured", "vision", "cache"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox"],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "services/_shared/test/ai-stub.conformance.test.ts"
+      },
+      "exportDuty": "Nothing leaves: the stub answers from a queue a test filled, records requests in memory for the life of the test, and calls no model.",
+      "readAt": null
+    },
+    {
+      "id": "anthropic-byok",
+      "vendor": "anthropic",
+      "status": "built",
+      "half": "client",
+      "impl": {
+        "file": "packages/api_client/lib/src/ai_byok/anthropic_byok.dart",
+        "symbol": "AnthropicByok"
+      },
+      "capabilities": ["structured", "vision", "cache"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox", "live"],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/api_client/test/ai_byok_conformance_test.dart"
+      },
+      "exportDuty": "Nothing of ours leaves: the key and the account are the USER's, read from SecureStore per call and sent only to the provider; no request touches a Nikatru host and nothing is logged. What the provider retains of the user's inputs is governed by the user's own account with it, to which we are not a party. Switching is the user entering another provider's key.",
+      "readAt": {
+        "url": "https://platform.claude.com/docs/en/api/overview",
+        "on": "2026-10-02"
+      }
+    },
+    {
+      "id": "openai-byok",
+      "vendor": "openai",
+      "status": "built",
+      "half": "client",
+      "impl": {
+        "file": "packages/api_client/lib/src/ai_byok/openai_byok.dart",
+        "symbol": "OpenAiByok"
+      },
+      "capabilities": ["structured", "vision"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox", "live"],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/api_client/test/ai_byok_conformance_test.dart"
+      },
+      "exportDuty": "Nothing of ours leaves: the key and the account are the USER's, read from SecureStore per call and sent only to the provider; no request touches a Nikatru host and nothing is logged. What the provider retains of the user's inputs is governed by the user's own account with it, to which we are not a party. Switching is the user entering another provider's key.",
+      "readAt": {
+        "url": "https://developers.openai.com/api/docs/guides/structured-outputs",
+        "on": "2026-10-02"
+      }
+    },
+    {
+      "id": "gemini-byok",
+      "vendor": "google-gemini",
+      "status": "built",
+      "half": "client",
+      "impl": {
+        "file": "packages/api_client/lib/src/ai_byok/gemini_byok.dart",
+        "symbol": "GeminiByok"
+      },
+      "capabilities": ["structured", "vision"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox", "live"],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/api_client/test/ai_byok_conformance_test.dart"
+      },
+      "exportDuty": "Nothing of ours leaves: the key and the account are the USER's, read from SecureStore per call and sent only to the provider; no request touches a Nikatru host and nothing is logged. What the provider retains of the user's inputs is governed by the user's own account with it, to which we are not a party. Switching is the user entering another provider's key.",
+      "readAt": {
+        "url": "https://ai.google.dev/api/generate-content",
+        "on": "2026-10-02"
+      }
+    },
+    {
+      "id": "byok-fake",
+      "vendor": null,
+      "status": "fake",
+      "half": "client",
+      "impl": {
+        "file": "packages/api_client/lib/src/ai_byok/fake_ai_provider.dart",
+        "symbol": "FakeAiProvider"
+      },
+      "capabilities": ["structured", "vision"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox"],
+      "cost": {
+        "feeCells": [],
+        "unit": null
+      },
+      "conformance": {
+        "file": "packages/api_client/test/ai_byok_conformance_test.dart"
+      },
+      "exportDuty": "Nothing leaves: the fake answers from a queue a test filled and holds no key and no account.",
+      "readAt": null
+    }
+  ],
+  "features": {
+    "import": {
+      "adapter": "anthropic",
+      "model": null,
+      "effort": null,
+      "maxInputTokens": 24000,
+      "candidates": ["claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+      "tokensPerCall": {
+        "input": 3000,
+        "output": 500,
+        "basis": "declared",
+        "asOf": "2026-10-02",
+        "why": "DECLARED, not measured: a pasted receipt, statement or CSV page with the extraction instructions (about 3,000 tokens) and the subscription rows that come back (about 500). train-st-ai-customer-pays (T17) measures it and sets basis: measured."
+      },
+      "why": "Turning a paste or a screenshot into subscription rows. The model is NULL until T17 measures the cheapest candidate that meets the import quality bar; until then aiFor('import') answers 'no model yet' and nothing can call a model. Its input cap, 24,000 tokens, is bounded from bytes (ports/ai.ts estimateInputTokens: 1 token per UTF-8 byte, the safe side) and sized so the declared call plus one screenshot fits: the 3,000 declared tokens at about 4 bytes per token (the claude-api skill: '100,000 characters (roughly 25,000 tokens)') are 12,000 bytes, a screenshot 4,784, the framing 2,048, leaving 5,168 for the schema (the sum is at services/platform/src/ports.ts AI_FEATURE_TABLE). It is what every call is reserved at; a bigger input is refused before the wire."
+    },
+    "review": {
+      "adapter": "anthropic",
+      "model": null,
+      "effort": null,
+      "maxInputTokens": null,
+      "candidates": ["claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+      "tokensPerCall": null,
+      "why": "Reviewing a user's subscriptions. No shape is fixed yet, so neither the model, the tokens per call nor an input cap is declared: all three are T17's measurement. With no cap every call is refused, and the dry run prints this feature LOST."
+    }
+  },
+  "selection": {
+    "by": "per-call",
+    "source": "services/platform/src/ports.ts#AI_FEATURE_TABLE",
+    "default": {
+      "live": "anthropic",
+      "sandbox": "anthropic",
+      "test": "stub"
+    },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [
+    {
+      "file": "services/platform/src/ports.ts",
+      "anchor": "export const AI_FEATURE_TABLE",
+      "until": "train-st-ai-customer-pays",
+      "why": "The feature → adapter, model and effort table is a hand copy of this file's `features`: tooling/ports/render.mjs (port-pay-core) renders the payments table only, and T17, the first caller, renders this one. services/platform/test/ai-port.test.ts fails on any difference until then."
+    },
+    {
+      "file": "services/platform/src/ports.ts",
+      "anchor": "export const AI_COST_MODEL",
+      "until": "train-st-ai-customer-pays",
+      "why": "The per-model prices the meter reads are a hand copy of the anthropic row's `cost.models`: tooling/ports/render.mjs renders payments only, and T17 — whose meter reads these prices — renders them. services/platform/test/ai-port.test.ts fails on any difference until then."
+    },
+    {
+      "file": "services/platform/src/ports.ts",
+      "anchor": "export const AI_FALLBACKS",
+      "until": "train-st-ai-customer-pays",
+      "why": "Each model's refusal-fallback chain is a hand copy of the anthropic row's `cost.models.<m>.fallbacks`; services/platform/test/ai-port.test.ts fails on any difference until T17 renders it."
+    }
+  ],
+  "conformance": {
+    "suite": {
+      "file": "services/_shared/test/conformance/ai.ts",
+      "runner": "runAiConformance"
+    },
+    "clientSuite": {
+      "file": "packages/api_client/lib/src/ai_byok/ai_provider_conformance.dart",
+      "runner": "runAiProviderConformance"
+    },
+    "pending": []
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#ai",
+    "dryRun": "node tooling/ops/port-switch.mjs ai --to <adapter> --dry-run"
+  },
+  "_why": [
+    "L3: the server half is AiProvider (services/_shared/src/ports/ai.ts) with the Anthropic adapter on the official SDK and a counting stub, both passing runAiConformance with nothing pending; the client half is the Dart AiProvider seam in packages/core with three bring-your-own-key adapters and a fake, all passing runAiProviderConformance. No route calls the port yet: the feature and the meter are train-st-ai-customer-pays (T17).",
+    "CUSTOMER-PAYS (owner lock, 2026-10-01): no code path can make a call we pay for without T17's meter. aiFor builds no provider without a beforeCall, the adapter refuses without one, and every feature's model is null — three locks, each tested.",
+    "Selection is per call, keyed by FEATURE: the composition root reads AI_FEATURE_TABLE (a hand copy of `features`). The model is config, never a constant in an adapter; choosing it is T17's measurement over `candidates`.",
+    "The bring-your-own-key adapters live in packages/api_client (lib/ai_byok.dart), not a new package: [pipeline C-4] (assert-package-earned.mjs) admits a new package only on a native binary, a licence exposure, a codegen step or a measured chassis move, and plain HTTP over dio carries none of them. They call each provider's documented endpoint with the USER's key from SecureStore, per call; no request may target a Nikatru host.",
+    "Export duty: no data of ours is at a provider. The server adapter stores nothing there; Anthropic deletes API inputs and outputs within 30 days. A provider switch is a registry edit plus a deploy (server) or an app release (a new client adapter).",
+    "Review 1 of #1136 (2026-10-02): every attempt of a fallback chain is metered at its own model's price (usage.iterations); a model with no price can never be called; every call reserves its WORST CASE (each attempt at the feature's input cap and the output cap) and a call with no answer settles at that reservation. Opus 5.5 falls back through an explicit, priced chain (claude-opus-4-8, claude-opus-5); Sonnet 5.5 sends no fallback, because \"default\" routing is unpublished and could not be priced."
+  ]
+}

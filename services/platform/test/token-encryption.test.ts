@@ -113,8 +113,8 @@ describe('round trip — AES-256-GCM, a fresh IV per write, the row as authentic
     await putProviderToken(env, 'user-1', 'google', 'subscriptiontracker', 'g-token-for-user-1', '2026-10-01T00:00:00.000Z');
     await putProviderToken(env, 'user-1', 'apple', 'subscriptiontracker', 'a-token-for-user-1', '2026-10-01T00:00:00.000Z');
 
-    expect(await storedProviderToken(env, 'user-1', 'google')).toEqual({ kind: 'token', token: 'g-token-for-user-1' });
-    expect(await storedProviderToken(env, 'user-1', 'apple')).toEqual({ kind: 'token', token: 'a-token-for-user-1' });
+    expect(await storedProviderToken(env, 'user-1', 'google')).toEqual({ kind: 'token', token: 'g-token-for-user-1', clientId: null });
+    expect(await storedProviderToken(env, 'user-1', 'apple')).toEqual({ kind: 'token', token: 'a-token-for-user-1', clientId: null });
     expect(await storedProviderToken(env, 'user-2', 'google')).toEqual({ kind: 'none' });
 
     const row = rowOf(db, 'user-1', 'google');
@@ -182,7 +182,7 @@ describe('🔴 a wrong or absent key fails CLOSED', () => {
     expect(db.count('provider_tokens', 'subject_ref = ?', 'user-g'), 'the row is kept for the right key').toBe(1);
 
     // GREEN CONTROL: the same row, the right key — it is the key that decided.
-    expect(await storedProviderToken(envOf(db), 'user-g', 'google')).toEqual({ kind: 'token', token: 'g-live-token-value' });
+    expect(await storedProviderToken(envOf(db), 'user-g', 'google')).toEqual({ kind: 'token', token: 'g-live-token-value', clientId: null });
     expect(await revokeGoogleToken(envOf(db), 'user-g', 'rid-right')).toEqual({ kind: 'revoked' });
     expect(googleCalls.map((b) => b.get('token'))).toEqual(['g-live-token-value']);
   });
@@ -247,7 +247,7 @@ describe('🔴 a tampered ciphertext fails', () => {
     }
     // GREEN CONTROL: the original bytes put back read again.
     setCt(db, 'user-1', 'google', ct);
-    expect(await storedProviderToken(env, 'user-1', 'google')).toEqual({ kind: 'token', token: 'g-token-one' });
+    expect(await storedProviderToken(env, 'user-1', 'google')).toEqual({ kind: 'token', token: 'g-token-one', clientId: null });
   });
 
   it('a truncated value, an empty one and one that is not base64url read `unreadable`', async () => {
@@ -268,7 +268,7 @@ describe('🔴 a tampered ciphertext fails', () => {
     setCt(db, 'user-1', 'apple', userOnesGoogle);
     expect((await storedProviderToken(env, 'user-1', 'apple')).kind, 'a Google token relabelled Apple').toBe('unreadable');
     // And user-2's own row, untouched, still reads: the refusal is the move, not the bytes.
-    expect(await storedProviderToken(env, 'user-2', 'google')).toEqual({ kind: 'token', token: 'g-token-two' });
+    expect(await storedProviderToken(env, 'user-2', 'google')).toEqual({ kind: 'token', token: 'g-token-two', clientId: null });
   });
 
   it('a relabelled key id reads `unreadable`: an unknown id names no secret, and never falls back to v1', async () => {
@@ -371,7 +371,7 @@ describe('the backfill — idempotent, resumable, bounded, window-bound', () => 
     expect(run.detail).toContain('sealed=0 raced=1 ');
     expect(await decryptRow(db, 'user-r', 'google'), 'the newer token stands').toBe('g-new-sealed-token');
     expect(run.ok).toBe(true);
-    expect(await storedProviderToken(env, 'user-r', 'google')).toEqual({ kind: 'token', token: 'g-new-sealed-token' });
+    expect(await storedProviderToken(env, 'user-r', 'google')).toEqual({ kind: 'token', token: 'g-new-sealed-token', clientId: null });
   });
 
   it('🔴 NO KEY: REFUSED, red, naming the secret — and not one row touched', async () => {
@@ -576,7 +576,7 @@ const norm = (sql: string) => sql.replace(/\s+/g, ' ').trim();
  * the moment the two disagree.)
  */
 const READING_SQL = [
-  'SELECT token_ct, token_key_id, refresh_token FROM provider_tokens WHERE subject_ref = ? AND provider = ?',
+  'SELECT token_ct, token_key_id, client_id, refresh_token FROM provider_tokens WHERE subject_ref = ? AND provider = ?',
   "INSERT INTO provider_tokens (subject_ref, provider, app_id, refresh_token, stored_at) SELECT subject_ref, 'apple', app_id, refresh_token, stored_at FROM apple_provider_tokens WHERE refresh_token <> '' ON CONFLICT (subject_ref, provider) DO NOTHING",
   "UPDATE apple_provider_tokens SET refresh_token = '' WHERE refresh_token <> '' AND EXISTS (SELECT 1 FROM provider_tokens p WHERE p.subject_ref = apple_provider_tokens.subject_ref AND p.provider = 'apple')",
   "SELECT subject_ref, provider, refresh_token FROM provider_tokens WHERE refresh_token <> '' ORDER BY subject_ref, provider LIMIT ?",
@@ -585,7 +585,7 @@ const READING_SQL = [
 ];
 /** PINNED: the one other statement naming it — a write of the literal ''. */
 const EMPTYING_SQL = [
-  "INSERT INTO provider_tokens (subject_ref, provider, app_id, refresh_token, token_ct, token_key_id, stored_at) VALUES (?,?,?,'',?,?,?) ON CONFLICT (subject_ref, provider) DO UPDATE SET app_id = excluded.app_id, refresh_token = '', token_ct = excluded.token_ct, token_key_id = excluded.token_key_id, stored_at = excluded.stored_at",
+  "INSERT INTO provider_tokens (subject_ref, provider, app_id, refresh_token, token_ct, token_key_id, client_id, stored_at) VALUES (?,?,?,'',?,?,?,?) ON CONFLICT (subject_ref, provider) DO UPDATE SET app_id = excluded.app_id, refresh_token = '', token_ct = excluded.token_ct, token_key_id = excluded.token_key_id, client_id = excluded.client_id, stored_at = excluded.stored_at",
 ];
 
 describe('🔴 THE GUARD — once the window is closed, no plain-text column is read', () => {

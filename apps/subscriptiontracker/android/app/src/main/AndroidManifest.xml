@@ -198,6 +198,21 @@
              C1 goes red the day such a rail sits beside this line. -->
         <receiver android:name="com.amazon.device.iap.ResponseReceiver" tools:node="remove" />
 
+        <!-- ⏱ 2026-10-01 · XP-04 · the home-screen glance (GlanceWidgetProvider.kt).
+             NOT EXPORTED: AppWidgetManager delivers APPWIDGET_UPDATE from the
+             system, which reaches a non-exported receiver, so no other app can
+             poke it (assert-android-vapt-manifest.mjs V5). -->
+        <receiver
+            android:name=".GlanceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_widget_info" />
+        </receiver>
+
         <!-- ⏱ 2026-10-01 · THE NDK CRASH HANDLER IS OFF, full review AA-08.
              The native crash layer is off on every target by decision, and
              packages/telemetry/lib/src/telemetry_bootstrap.dart says why: no
