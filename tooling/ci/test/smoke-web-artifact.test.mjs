@@ -768,7 +768,7 @@ describe('ci.yml web-artifacts — the PR smoke probes the list --emit-listed pr
     const copy = join(TMP, `smoke-${seq++}`, 'tooling', 'smoke', 'smoke-web-artifact.mjs');
     mkdirSync(dirname(copy), { recursive: true });
     writeFileSync(copy, src.replace(seam, '    const bypass = {};\n'));
-    const r = await smokeInChrome(workerFetchingBundle(), prLaneConnect(), copy);
+    const r = await smokeInChrome(workerFetchingBundle(), prLaneConnect(), FIXTURE_BUILD_NAME, copy);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /\d+ probe request\(s\) were NOT paused by the interception/);
   });
