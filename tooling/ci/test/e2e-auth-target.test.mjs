@@ -562,6 +562,7 @@ const NEEDS = new Map([
   ['tooling/e2e/assert_one_issuer.mjs', ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']],
   ['tooling/e2e/verify_purged.mjs', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']],
   ['tooling/e2e/purge.mjs', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']],
+  ['tooling/e2e/purge_stale.mjs', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']],
 ]);
 
 /** FINDING for every step that runs a script needing a name it does not bind. */

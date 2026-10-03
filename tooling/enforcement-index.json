@@ -3691,6 +3691,16 @@
       ".github/workflows/e2e.yml#e2e"
     ],
     "kind": "script",
+    "ref": "tooling/e2e/purge_stale.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
     "ref": "tooling/e2e/sign_in_via.mjs",
     "references": [],
     "state": "WIRED"

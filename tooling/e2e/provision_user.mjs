@@ -12,6 +12,7 @@
 import { appendFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { MagicLinkRefused, mintMagicLinkTokenHash } from './magic_link.mjs';
+import { e2eEmail } from './e2e_email.mjs';
 import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
@@ -28,6 +29,14 @@ try {
   process.exit(1);
 }
 
+// Checked BEFORE the user is created: an account made with nowhere to write its
+// id is an account no purge can find.
+const out = process.env.GITHUB_OUTPUT;
+if (!out) {
+  console.error('GITHUB_OUTPUT is not set — cannot pass credentials to the run');
+  process.exit(1);
+}
+
 /** The shape GoTrue issues a user id in: a UUID. user_id is written into
  *  $GITHUB_OUTPUT, one output per line, and the purge deletes by it — so an id
  *  carrying a newline would forge outputs of its own (a second `user_id=`, a
@@ -36,7 +45,9 @@ try {
 const USER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GoTrue rejects @example.com; use a clearly-labelled @nikatru.com test address.
-const email = `subscriptiontracker-e2e+${Date.now()}@nikatru.com`;
+// Its shape is tooling/e2e/e2e_email.mjs's, the one tooling/e2e/purge_stale.mjs
+// matches when it sweeps a user no always() purge could reach.
+const email = e2eEmail();
 const password = `E2e${randomBytes(24).toString('hex')}`; // 51 chars, alphanumeric
 console.log(`::add-mask::${password}`);
 
@@ -67,11 +78,18 @@ if (typeof userId !== 'string' || !USER_ID_SHAPE.test(userId)) {
   process.exit(1);
 }
 
-const out = process.env.GITHUB_OUTPUT;
-if (!out) {
-  console.error('GITHUB_OUTPUT is not set — cannot pass credentials to the run');
-  process.exit(1);
-}
+// ⏱ 2026-10-03 — 🔴 THE ID IS WRITTEN THE MOMENT THE USER EXISTS, BEFORE THE MINT.
+// E2E run 37076032926 created the delete-leg user, then died on a 520 from
+// generate_link; `user_id=` was written only after the mint, so the step had no
+// such output, both `if: always()` purges got an empty E2E_USER_ID, purged
+// nothing, and a confirmed throwaway user stayed in production auth (twice,
+// 2026-10-02T23:09Z and 2026-10-03T00:16Z). Writing it here hands the always()
+// purge every user this step created, whatever fails after. GitHub reads the
+// file when the step ends, success or failure. The password and token stay
+// below the mint: neither is any use to a purge.
+appendFileSync(out, `email=${email}\n`);
+appendFileSync(out, `user_id=${userId}\n`);
+
 // ── THE CAPTCHA-PROOF LOGIN PATH ────────────────────────────────────────────
 // 🔴 WHY A TOKEN AND NOT THE PASSWORD, MEASURED 2026-09-04. Box A enforces
 // Cloudflare Turnstile, and `token?grant_type=password` is one of the six gated
@@ -107,9 +125,7 @@ try {
 }
 console.log(`::add-mask::${tokenHash}`);
 
-appendFileSync(out, `email=${email}\n`);
 appendFileSync(out, `password=${password}\n`);
-appendFileSync(out, `user_id=${userId}\n`);
 appendFileSync(out, `token_hash=${tokenHash}\n`);
 
 console.log(`Provisioned confirmed E2E user ${email} (id ${userId}).`);
