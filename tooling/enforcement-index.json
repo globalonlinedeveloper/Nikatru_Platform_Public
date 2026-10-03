@@ -2179,6 +2179,7 @@
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare",
       ".github/workflows/native-auth-proof.yml#gate",
+      ".github/workflows/regen-gradle-verify.yml#gate",
       ".github/workflows/store-screenshots.yml#gate",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
@@ -2395,7 +2396,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/regen-gradle-verify.yml#regenerate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-signing-inputs-pinned.mjs",
