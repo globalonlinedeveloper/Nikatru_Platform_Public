@@ -3620,6 +3620,8 @@
         "listing URL. That is the increment that flips this field, adds the key to catalog/apps.json,",
         "and regenerates the two derived files — one change, with a URL in it."
       ],
+      "updateListingUrl": null,
+      "_updateListingUrlPending": "⏱ 2026-10-01 · O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the portal assigns this listing URL at the owner's first manual upload (Private/runbooks/store-submission-apps-gov-in.md step 6, due in the 7-10 Oct window). It is the ONLY exit the force-update wall of a build installed from this storefront has: the .apk is sideloaded, so `openStoreListing()` would open Play, which cannot update that install (packages/core/lib/src/config/update_exit.dart leaves this channel out of kStoreListingChannels). The upload that yields the URL records it here and serves it as `update_url.apps-gov-in` in services/platform/src/app-config-data.json, in one change; assert-stamp-properties.mjs [10]D-8 (tooling/ci/update-exit.mjs) fails this row the moment it is served or armed without both.",
       "served": false,
       "nativeAuth": false,
       "submittable": false,

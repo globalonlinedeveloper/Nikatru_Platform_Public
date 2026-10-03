@@ -62,6 +62,16 @@ on:
 permissions:
   contents: read
 
+# why: PB-04, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY. This lane grades what
+# ci.yml's post-gate deploy-web and deploy-workers jobs ship, so its fix reaches
+# production only after ci-gate passes on the push. tooling/ci/assert-ops-register.mjs
+# (`servedUnitsOf`) reads this declaration, checks each name is a post-gate job of
+# ci.yml and that this file declares workflow_dispatch, and then PRINTS a red
+# duty.workflow.e2e.yml in ci.yml instead of skipping the deploy of its own fix.
+# ops-watch.yml still blocks and pages on it. No step reads the variable.
+env:
+  NIKATRU_GRADES_SERVED_UNITS: deploy-web deploy-workers
+
 jobs:
   prepare:
     name: Derive the app set from the pub workspace

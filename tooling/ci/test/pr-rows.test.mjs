@@ -25,6 +25,10 @@
 //   C10 (2026-09-29) Renovate writes its own body; renovate.json's prBodyNotes is
 //       what puts the line in it. A Renovate-shaped body with the configured note
 //       passes, and the same body without it is missing (the red control).
+//   C11 (2026-10-01, SYN-C1) the singular `Row:` is refused by name — alone, bold,
+//       bulleted, and beside a valid `Rows:` line — because main's reader reads
+//       `^Rows:` only; 7 merges wrote it. And name-clearance's auto-merge
+//       squashes with the body it opened the PR with, whose line is bare.
 //
 // Every case builds its repository with `git init` in a temp directory: no
 // network, no real history.
@@ -36,7 +40,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { GUARD_REL, MIN_REASON, parseRows, visibleLines } from '../assert-pr-rows.mjs';
+import { GUARD_REL, MIN_REASON, describeVerdict, parseRows, visibleLines } from '../assert-pr-rows.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -570,5 +574,59 @@ describe('a Renovate body carries a valid line', () => {
     const red = run(root, { PR_BODY: renovateBody([]), PR_CREATED_AT: LATER, BASE_SHA: sha });
     assert.equal(red.code, 1, red.out);
     assert.match(red.out, /no `Rows:` line/);
+  });
+});
+
+// ── C11 ──────────────────────────────────────────────────────────────────────
+describe('C11 — the singular `Row:` is refused by name', () => {
+  test('green control: the plural line passes', () => {
+    const v = parseRows('Rows: O-SQUASH-DROPS-THE-ROWS-LINE\n');
+    assert.equal(v.ok, true, JSON.stringify(v));
+    assert.deepEqual(v.ids, ['O-SQUASH-DROPS-THE-ROWS-LINE']);
+  });
+
+  test('`Row: <id>` alone is refused as singular, not as missing', () => {
+    const v = parseRows('Row: O-SQUASH-DROPS-THE-ROWS-LINE\n');
+    assert.equal(v.ok, false);
+    assert.equal(v.problem, 'singular', JSON.stringify(v));
+    assert.deepEqual(v.lines, [1]);
+    assert.match(describeVerdict(v), /singular `Row:` line \(line 1\)/);
+  });
+
+  test('`- **Row:** <id>` is the same singular line', () => {
+    const v = parseRows('intro\n- **Row:** O-A\n');
+    assert.equal(v.problem, 'singular', JSON.stringify(v));
+    assert.deepEqual(v.lines, [2]);
+  });
+
+  test('a `Row:` line beside a valid `Rows:` line is still refused: the reader would miss what it names', () => {
+    const v = parseRows('Rows: O-A\nRow: O-B\n');
+    assert.equal(v.ok, false);
+    assert.equal(v.problem, 'singular');
+    assert.deepEqual(v.lines, [2]);
+  });
+
+  test('a `Row:` inside a comment or a fence is not read, so it is not refused', () => {
+    const v = parseRows('Rows: O-A\n<!-- Row: O-B -->\n```\nRow: O-C\n```\n');
+    assert.equal(v.ok, true, JSON.stringify(v));
+  });
+
+  test('the CLI: a singular body exits 1 and names the singular', () => {
+    const { root, sha } = baseRepo();
+    const r = run(root, { PR_BODY: 'Row: O-A\n', PR_CREATED_AT: LATER, BASE_SHA: sha });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAIL the pull request body has a singular `Row:` line/);
+  });
+
+  test('name-clearance arms its auto-merge with the PR body and a subject, at the head it pushed', () => {
+    const src = readFileSync(NAME_CLEARANCE, 'utf8');
+    const at = src.indexOf('gh pr merge "$PR_URL" --auto --squash');
+    assert.ok(at > 0, 'name-clearance.yml no longer arms gh pr merge --auto --squash');
+    const cmd = src.slice(at, src.indexOf('> "$OUT/gh-pr-merge.log"', at));
+    assert.match(cmd, /--body-file "\$\{RUNNER_TEMP\}\/pr-body\.md"/);
+    assert.match(cmd, /--subject "\$\{TITLE\} \(#\$\{PR_NUMBER\}\)"/);
+    assert.match(cmd, /--match-head-commit "\$\(git rev-parse HEAD\)"/);
+    // the file it passes holds the line bare, the form main's reader reads
+    assert.match(printfBody(src).join(''), /^Rows: none - /m);
   });
 });

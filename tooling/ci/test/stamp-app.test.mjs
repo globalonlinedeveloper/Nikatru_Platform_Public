@@ -24,7 +24,7 @@
 //     apps/<id> (O-BRICK-STAMPS-WEB-ONLY, D30) under the same tree keeper, and it
 //     owns NO tracked file: a run that rewrote the root lock from the
 //     subdirectory fails the stamp by name;
-//   · the five post-conditions exist, in order, and a failing one makes the
+//   · the seven post-conditions exist, in order, and a failing one makes the
 //     exit non-zero;
 //   · no workflow stamps with a raw `mason make`: a stamp step that skips this
 //     file skips its post-conditions too. The one raw `mason make` a workflow
@@ -47,7 +47,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
 import { PRODUCT_REGISTERS } from '../../../contracts/entitlement/bundle.js';
-import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, STAMP_SHARED, STAMP_NATIVE } from '../../kit/stamp-app.mjs';
+import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, STAMP_SHARED, STAMP_NATIVE, SNAP_UPDATE_ROW } from '../../kit/stamp-app.mjs';
 
 let ROOT;
 const GOOD = 'good-vars.json';
@@ -152,7 +152,7 @@ const pubGetWrites = (root, extra = () => {}) => (command) => {
 };
 
 describe('stamp-app.mjs — one command, and loud about what it left behind', () => {
-  test('mason get, mason make, the root pub get, the launcher icons and the licence rows run in that order; only the icons run in the app', () => {
+  test('mason get, mason make, the root pub get, the launcher icons, the licence rows and the snap update row run in that order; only the icons run in the app', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -163,10 +163,11 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         ['flutter', 'pub', 'get'],
         ['dart', 'run', 'flutter_launcher_icons'],
         [process.execPath, join(ROOT, ...APP_LICENCE_ROWS.split('/')), '--write', '--app', 'habittracker'],
+        [process.execPath, join(ROOT, ...SNAP_UPDATE_ROW.split('/')), '--write', '--app', 'habittracker'],
       ],
     );
     // flutter_launcher_icons reads ./pubspec.yaml, so it runs in the app; nothing else does.
-    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, join(ROOT, 'apps', 'habittracker'), ROOT]);
+    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, join(ROOT, 'apps', 'habittracker'), ROOT, ROOT]);
   });
 
   test('🔴 on Windows no step is cmd.exe: each .bat is replaced by the executable it runs, with the same arguments (CodeQL #578)', () => {
@@ -189,6 +190,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.ok(p.steps.every((s) => s.command !== 'cmd.exe' && !s.args.includes('/c')), 'a step still goes through cmd.exe');
     assert.ok(p.steps.slice(0, 4).every((s) => s.env.FLUTTER_ROOT === sdk), 'the SDK tools are told their root');
     assert.equal(p.steps[4].command, process.execPath, 'the licence-row generator is node, spawned without a shell');
+    assert.equal(p.steps[5].command, process.execPath, 'the snap update row is node, spawned without a shell');
 
     // A mason.exe on PATH is used as it is.
     files.add('C:\\tools\\mason.exe');
@@ -230,7 +232,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
   test('NIKATRU_ALLOW_OVERWRITE=1 is set only by --overwrite, and an inherited one is stripped', () => {
     const without = plan(['--vars', GOOD], { env: { PATH: '/bin', NIKATRU_ALLOW_OVERWRITE: '1' } });
     assert.deepEqual(without.problems, []);
-    assert.equal(without.steps.length, 5);
+    assert.equal(without.steps.length, 6);
     assert.ok(without.steps.every((s) => !('NIKATRU_ALLOW_OVERWRITE' in s.env)), 'a stamp without --overwrite carries NIKATRU_ALLOW_OVERWRITE');
     assert.ok(without.steps.every((s) => s.env.PATH === '/bin'), 'the caller environment is not passed through');
 
@@ -271,7 +273,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.match(noVars.problems.join('\n'), /--vars <file\.json> is required/);
   });
 
-  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows, the shared files --check and the native stamp --check, in that order', () => {
+  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows, the shared files --check, the native stamp --check and the snap update row --check, in that order', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -283,6 +285,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         `node ${APP_LICENCE_ROWS} --check --app habittracker`,
         `node ${STAMP_SHARED} --check`,
         `node ${STAMP_NATIVE} --check --app habittracker`,
+        `node ${SNAP_UPDATE_ROW} --check --app habittracker`,
       ],
     );
     assert.equal(p.post[0].path, join(ROOT, 'apps', 'habittracker', 'pubspec.yaml'));
@@ -294,6 +297,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.deepEqual(p.post[4].args, [join(ROOT, 'tooling', 'kit', 'stamp-shared.mjs'), '--check', '--root', ROOT]);
     // ⏱ 2026-10-01 (O-BRICK-STAMPS-WEB-ONLY, D30): the five native folders the native stamp writes.
     assert.deepEqual(p.post[5].args, [join(ROOT, 'tooling', 'kit', 'stamp-native.mjs'), '--check', '--app', 'habittracker']);
+    assert.deepEqual(p.post[6].args, [join(ROOT, 'tooling', 'kit', 'snap-update-row.mjs'), '--check', '--app', 'habittracker']);
   });
 
   test('a stamp whose licence rows check red exits 1 and names the generator', () => {
@@ -316,7 +320,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const red = runStamp(p, { run: regenFails, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(red, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/sites\/regen\.mjs --check/);
-    assert.equal(calls.length, 10, `expected mason get, mason make, pub get, the launcher icons, the --write and the five --check runs; got ${calls.join(' | ')}`);
+    assert.equal(calls.length, 12, `expected mason get, mason make, pub get, the launcher icons, the two --write and the six --check runs; got ${calls.join(' | ')}`);
 
     const green = runStamp(p, { run: () => 0, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(green, 0);
