@@ -423,5 +423,13 @@
   "optionsDeleteAllDesc": "Poistaa kaikki historiasi kuvakaappaukset ja kaiken, mitä keskeytyneet kuvaukset ovat jättäneet. Asetuksesi jäävät ennalleen.",
   "optionsDeleteAllConfirm": "Poistetaanko kaikki, mitä FullShot on tallentanut tälle laitteelle?\n\nKuvakaappauksia historiassasi: $COUNT$\nKeskeytyneiden kuvausten jäänteitä: $LEFTOVER$\nVapautuva tila: $SIZE$\n\nAsetuksiisi tämä ei vaikuta. Tätä ei voi perua.",
   "optionsDeleteAllDone": "Poistettu. FullShot ei enää säilytä kuvakaappauksia tällä laitteella.",
-  "errStorageFull": "Tilaa ei ole enää jäljellä tämän kuvauksen tallentamiseen. Poista joitakin kuvakaappauksia historiastasi ja yritä uudelleen."
+  "errStorageFull": "Tilaa ei ole enää jäljellä tämän kuvauksen tallentamiseen. Poista joitakin kuvakaappauksia historiastasi ja yritä uudelleen.",
+  "optionsSectionReport": "Ilmoita ongelmasta",
+  "optionsReport": "Kerro meille, mikä meni vikaan",
+  "optionsReportDesc": "Avaa nikatru.comin ilmoituslomakkeen uudelle välilehdelle, ja siihen on täytetty vain FullShotin versio, kieli ja selain.",
+  "optionsReportBtn": "Avaa ilmoituslomake",
+  "optionsSectionHelp": "Ohje",
+  "optionsHelpSearch": "Hae ohjeesta",
+  "optionsHelpNone": "Vastaavaa vastausta ei löytynyt.",
+  "optionsHelpAsk": "Etkö vieläkään löydä apua? Kysy meiltä"
 }

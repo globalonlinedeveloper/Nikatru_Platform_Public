@@ -441,5 +441,13 @@
   "optionsDeleteAllDesc": "Odstrani vse posnetke zaslona iz zgodovine in vse, kar so pustila prekinjena zajemanja. Vaše nastavitve ostanejo take, kot so.",
   "optionsDeleteAllConfirm": "Ali želite izbrisati vse, kar je FullShot shranil v tej napravi?\n\nPosnetki zaslona v zgodovini: $COUNT$\nOstanki prekinjenih zajemanj: $LEFTOVER$\nProstor, ki se sprosti: $SIZE$\n\nNa vaše nastavitve to ne vpliva. Tega ni mogoče razveljaviti.",
   "optionsDeleteAllDone": "Izbrisano. FullShot zdaj v tej napravi ne hrani nobenega posnetka zaslona.",
-  "errStorageFull": "Za shranjevanje tega zajema ni več prostora. Izbrišite nekaj posnetkov zaslona iz zgodovine in poskusite znova."
+  "errStorageFull": "Za shranjevanje tega zajema ni več prostora. Izbrišite nekaj posnetkov zaslona iz zgodovine in poskusite znova.",
+  "optionsSectionReport": "Prijavi težavo",
+  "optionsReport": "Povejte nam, kaj je šlo narobe",
+  "optionsReportDesc": "Odpre obrazec za prijavo na nikatru.com v novem zavihku, v katerem so izpolnjeni samo različica FullShot, jezik in brskalnik.",
+  "optionsReportBtn": "Odpri obrazec",
+  "optionsSectionHelp": "Pomoč",
+  "optionsHelpSearch": "Iskanje po pomoči",
+  "optionsHelpNone": "Ni ustreznega odgovora.",
+  "optionsHelpAsk": "Še vedno ne gre? Vprašajte nas"
 }

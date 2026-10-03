@@ -439,6 +439,34 @@
     "message": "Bygger en liten fil som beskriver tilläggets tillstånd. Du ser exakt vad som finns i den innan den sparas, och ingenting skickas någonstans.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Skicka en rapport till supporten",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Öppnar rapportformuläret på nikatru.com i en ny flik, där bara tilläggets egna uppgifter är ifyllda: namn, version, språk och webbläsare.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Öppna rapportformuläret",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Hjälp",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Sök i hjälpen",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Inget matchande svar.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Fortfarande fast? Fråga oss",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Förbered en rapport",
     "description": "en: Prepare a report"

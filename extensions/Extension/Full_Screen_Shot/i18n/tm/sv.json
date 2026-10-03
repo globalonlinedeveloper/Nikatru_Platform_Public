@@ -423,5 +423,13 @@
   "optionsDeleteAllDesc": "Tar bort alla skärmbilder i din historik och allt som avbrutna inspelningar har lämnat efter sig. Dina inställningar förblir som de är.",
   "optionsDeleteAllConfirm": "Vill du radera allt som FullShot har lagrat på den här enheten?\n\nSkärmbilder i din historik: $COUNT$\nRester från avbrutna inspelningar: $LEFTOVER$\nUtrymme som frigörs: $SIZE$\n\nDina inställningar påverkas inte. Detta går inte att ångra.",
   "optionsDeleteAllDone": "Raderat. FullShot lagrar nu inga skärmbilder på den här enheten.",
-  "errStorageFull": "Det finns inget utrymme kvar för att lagra den här inspelningen. Radera några skärmbilder från din historik och försök igen."
+  "errStorageFull": "Det finns inget utrymme kvar för att lagra den här inspelningen. Radera några skärmbilder från din historik och försök igen.",
+  "optionsSectionReport": "Rapportera ett problem",
+  "optionsReport": "Berätta vad som gick fel",
+  "optionsReportDesc": "Öppnar rapportformuläret på nikatru.com i en ny flik, där bara FullShots version, språk och webbläsare är ifyllda.",
+  "optionsReportBtn": "Öppna rapportformuläret",
+  "optionsSectionHelp": "Hjälp",
+  "optionsHelpSearch": "Sök i hjälpen",
+  "optionsHelpNone": "Inget matchande svar.",
+  "optionsHelpAsk": "Fortfarande fast? Fråga oss"
 }

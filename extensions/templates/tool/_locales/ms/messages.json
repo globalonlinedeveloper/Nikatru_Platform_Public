@@ -439,6 +439,34 @@
     "message": "Membina fail kecil yang menerangkan keadaan sambungan ini. Anda nampak dengan tepat apa yang ada di dalamnya sebelum ia disimpan, dan tiada apa-apa dihantar ke mana-mana.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Hantar laporan kepada sokongan",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Membuka borang laporan di nikatru.com dalam tab baharu, dengan hanya maklumat sambungan ini diisi: nama, versi, bahasa dan pelayar.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Buka borang laporan",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Bantuan",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Cari bantuan",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Tiada jawapan yang sepadan.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Masih buntu? Tanya kami",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Sediakan laporan",
     "description": "en: Prepare a report"

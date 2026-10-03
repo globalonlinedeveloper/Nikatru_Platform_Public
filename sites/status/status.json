@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "checkedAt": null,
+  "publishedAt": null,
+  "overall": "partial",
+  "components": [
+    {
+      "name": "nikatru.com website",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "Subscription Tracker web app",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "rajasekarselvam.com website",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "Subscription Tracker sync",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "Accounts, reminders and problem reports",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "App settings service",
+      "state": "not monitored",
+      "since": null
+    },
+    {
+      "name": "Sign-in",
+      "state": "not monitored",
+      "since": null
+    }
+  ]
+}

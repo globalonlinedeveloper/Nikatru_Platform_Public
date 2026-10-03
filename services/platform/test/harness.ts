@@ -63,6 +63,7 @@ import providerPaymentLinks0026 from '../migrations/0026_provider_payment_links.
 import aiMeter0027 from '../migrations/0027_ai_meter.sql?raw';
 import refundRequests0028 from '../migrations/0028_refund_requests.sql?raw';
 import cancelAttempts0029 from '../migrations/0029_cancel_attempts.sql?raw';
+import feedback0030 from '../migrations/0030_feedback.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -149,6 +150,10 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-10-02 · refund-finish — the cancel executor's retry state. ADD
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   cancelAttempts0029,
+  // ⏱ 2026-10-03 · lane feedback-intake — the "Report a problem" intake's tables,
+  // WRITTEN by src/routes/feedback.ts and src/feedback/ (lane feedback-intake).
+  // Renumbered 0027 -> 0030 by the merge of main into #1191 (main's 0027-0029).
+  feedback0030,
 ];
 
 /**
@@ -208,6 +213,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   aiMeter0027,
   // 0028 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   refundRequests0028,
+  // 0030 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  feedback0030,
 ];
 
 /**

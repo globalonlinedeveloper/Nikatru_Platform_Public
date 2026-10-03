@@ -439,6 +439,34 @@
     "message": "產生一個描述本擴充功能狀態的小檔案。儲存之前你會看到裡面的全部內容，而且不會傳送到任何地方。",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "傳送回報給支援團隊",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "在新分頁中開啟 nikatru.com 上的回報表單，只預先填入此擴充功能的資訊：名稱、版本、語言和瀏覽器。",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "開啟回報表單",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "說明",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "搜尋說明",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "沒有相符的答案。",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "仍未解決？向我們提問",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "準備報告",
     "description": "en: Prepare a report"

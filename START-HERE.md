@@ -14,12 +14,12 @@ it, and every build runs on GitHub-hosted runners.
 set are the sibling private corpus, cited as the stable logical prefix `Private/...`. The
 legal and tax identity is a third repo this one has no path to at all.
 
-## The tree — 10 tracked top-level directories
+## The tree — 12 tracked top-level directories
 
-`_playwright` · `apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
+`_playwright` · `apps` · `catalog` · `content` · `contracts` · `docs` · `extensions` · `ops` · `packages` · `services` · `sites` · `tooling`
 
-1 app(s) (`subscriptiontracker`) · 14 shared Dart packages · 3 Cloudflare Worker(s) ·
-2 static site(s) · 1 extension(s). The guards are `tooling/ci/*.mjs` and their tests
+1 app(s) (`subscriptiontracker`) · 16 shared Dart packages · 3 Cloudflare Worker(s) ·
+3 static site(s) · 1 extension(s). The guards are `tooling/ci/*.mjs` and their tests
 are `tooling/ci/test/*.test.mjs` — counted on every run, deliberately not written down here.
 
 🔴 **`sites/` is the live deploy source and the only copy.** Cloudflare Pages builds both

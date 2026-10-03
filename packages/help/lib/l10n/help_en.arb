@@ -1,0 +1,48 @@
+{
+  "@@locale": "en",
+  "helpCentreTitle": "Help",
+  "@helpCentreTitle": {
+    "description": "The help centre's title, and the Settings row that opens it."
+  },
+  "helpSearchLabel": "Search help",
+  "@helpSearchLabel": {
+    "description": "The help centre's search box label."
+  },
+  "helpNoResults": "No article matches. Ask us below.",
+  "@helpNoResults": {
+    "description": "Shown when a search finds no article."
+  },
+  "helpKnownIssuesTitle": "Known issues",
+  "@helpKnownIssuesTitle": {
+    "description": "Heading of the published known issues list."
+  },
+  "helpNoKnownIssues": "No known issues",
+  "@helpNoKnownIssues": {
+    "description": "Shown when there is no published known issue. Never a blank list."
+  },
+  "helpFixedIn": "Fixed in {version}",
+  "@helpFixedIn": {
+    "description": "A known issue that is fixed, with the app version that fixes it.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "helpStillStuck": "Still stuck?",
+  "@helpStillStuck": {
+    "description": "Above the button that opens the report form with the search text."
+  },
+  "helpAskUs": "Ask us",
+  "@helpAskUs": {
+    "description": "Opens the Report a problem sheet, category question, with the search text filled in."
+  },
+  "helpAccessibility": "Accessibility statement",
+  "@helpAccessibility": {
+    "description": "Opens nikatru.com/accessibility."
+  },
+  "helpArticlesInEnglish": "Help articles are in English for now.",
+  "@helpArticlesInEnglish": {
+    "description": "Shown when the app's language has no translated articles yet."
+  }
+}

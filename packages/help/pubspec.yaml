@@ -1,0 +1,35 @@
+name: nikatru_help
+description: >-
+  The help centre every stamped app, the brick and the shipping app adopt
+  through the chassis Settings Help row (lane help-search): the articles of
+  content/help/, searched on the device by the Dart twin of
+  tooling/help/search.mjs (BM25, stemming, synonyms, one-edit typos), the
+  published known issues, a link to the accessibility statement, and "Still
+  stuck? Ask us" into packages/feedback's report sheet. The index is compiled
+  into lib/src/help_index.g.dart by tooling/help/build-index.mjs; its strings
+  are its own ARB set (lib/l10n), compiled by tooling/i18n/locales.mjs.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.47.5"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_design_system:
+    path: ../design_system
+  nikatru_feedback:
+    path: ../feedback
+
+dev_dependencies:
+  nikatru_core:
+    path: ../core
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

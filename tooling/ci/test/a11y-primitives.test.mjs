@@ -152,7 +152,7 @@ describe('the real tree', () => {
       // password field its autofill hint and deleted its ST-Y3 row.
       assert.equal(known.length, 2, r.stdout);
       for (const l of known) assert.match(l, /; owner [A-Z]\d+ — /);
-      assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt/);
+      assert.match(r.stdout, /ST-Y2: 4 gesture detector\(s\), 1 without a tap callback, 3 in scope, 3 exempt/); // ⏱ 2026-10-03 feedback-intake: +1, the markup editor's drawing surface (onPan, no tap: it is a canvas, not a control)
       // 10 -> 11 on 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): the chassis
       // ReauthDialog's password field, which carries its hint (still 1 without).
       // 11 -> 9 on 2026-10-01 (train st-entry): the app's private reset-password
@@ -272,7 +272,7 @@ Semantics(button: true, child: GestureDetector(onTap: () {}))
     )`)),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /ST-Y2: 5 gesture detector\(s\), 2 without a tap callback, 3 in scope/);
+        assert.match(r.stdout, /ST-Y2: 6 gesture detector\(s\), 3 without a tap callback, 3 in scope/); // ⏱ 2026-10-03: +1, the markup editor canvas
       },
     );
   });

@@ -87,6 +87,9 @@ type MailSecret = 'RESEND_API_KEY' | 'RESEND_REMINDERS_API_KEY';
 export const MAIL_STREAM_TABLE: Readonly<Record<MailStream, { adapter: 'resend'; secrets: readonly MailSecret[] }>> = {
   reports: { adapter: 'resend', secrets: ['RESEND_API_KEY'] },
   reminders: { adapter: 'resend', secrets: ['RESEND_REMINDERS_API_KEY', 'RESEND_API_KEY'] },
+  // The feedback Worker's stream (services/platform/src/ports.ts); listed because the
+  // table mirrors every mail.json stream. The platform sends nothing on it.
+  feedback: { adapter: 'resend', secrets: ['RESEND_API_KEY'] },
 };
 
 /** The From of every stream, from the entity source. */

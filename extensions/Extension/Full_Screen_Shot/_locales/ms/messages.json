@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Membuang setiap tangkapan skrin dalam sejarah anda dan semua yang ditinggalkan oleh tangkapan yang terputus. Tetapan anda kekal seperti sedia ada."
   },
+  "optionsSectionReport": {
+    "message": "Laporkan masalah"
+  },
+  "optionsReport": {
+    "message": "Beritahu kami apa yang tidak kena"
+  },
+  "optionsReportDesc": {
+    "message": "Membuka borang laporan di nikatru.com dalam tab baharu, dengan hanya versi FullShot, bahasa dan pelayar yang diisi."
+  },
+  "optionsReportBtn": {
+    "message": "Buka borang laporan"
+  },
+  "optionsSectionHelp": {
+    "message": "Bantuan"
+  },
+  "optionsHelpSearch": {
+    "message": "Cari bantuan"
+  },
+  "optionsHelpNone": {
+    "message": "Tiada jawapan yang sepadan."
+  },
+  "optionsHelpAsk": {
+    "message": "Masih buntu? Tanya kami"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Padam semua yang disimpan FullShot pada peranti ini?\n\nTangkapan skrin dalam sejarah anda: $COUNT$\nSisa daripada tangkapan yang terputus: $LEFTOVER$\nRuang yang dilapangkan: $SIZE$\n\nTetapan anda tidak terjejas. Tindakan ini tidak boleh dibatalkan.",
     "placeholders": {

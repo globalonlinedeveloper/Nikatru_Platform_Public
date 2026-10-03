@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Fjerner alle skjermbilder i historikken din og alt som avbrutte opptak har lagt igjen. Innstillingene dine forblir som de er."
   },
+  "optionsSectionReport": {
+    "message": "Rapporter et problem"
+  },
+  "optionsReport": {
+    "message": "Fortell oss hva som gikk galt"
+  },
+  "optionsReportDesc": {
+    "message": "Åpner rapportskjemaet på nikatru.com i en ny fane, der bare FullShot-versjonen, språket og nettleseren er fylt ut."
+  },
+  "optionsReportBtn": {
+    "message": "Åpne rapportskjemaet"
+  },
+  "optionsSectionHelp": {
+    "message": "Hjelp"
+  },
+  "optionsHelpSearch": {
+    "message": "Søk i hjelp"
+  },
+  "optionsHelpNone": {
+    "message": "Ingen svar samsvarer."
+  },
+  "optionsHelpAsk": {
+    "message": "Står du fortsatt fast? Spør oss"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vil du slette alt FullShot har lagret på denne enheten?\n\nSkjermbilder i historikken din: $COUNT$\nRester etter avbrutte opptak: $LEFTOVER$\nPlass dette frigjør: $SIZE$\n\nInnstillingene dine påvirkes ikke. Dette kan ikke angres.",
     "placeholders": {

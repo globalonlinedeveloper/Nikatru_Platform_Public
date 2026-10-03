@@ -56,6 +56,15 @@ const INPUT_ROOTS = [
   // security.txt: its Contact is the brick's AppConfig.supportEmail and its Policy a
   // copy of SECURITY.md.
   'SECURITY.md',
+  // ⏱ 2026-10-03 · lane a11y-statement — gen-accessibility-statement.mjs renders /accessibility from the register.
+  'tooling/a11y/exceptions.json',
+  // ⏱ 2026-10-03 · lane help-search — gen-help-centre.mjs reads the articles, the known issues and,
+  // for each article's gate, the fact it names: the app config, the DoD rows and ARBs (under apps/),
+  // the chassis ARB, FullShot's English messages and the site's pages (under sites/).
+  'content',
+  'tooling/i18n/locales.json',
+  'packages/design_system/lib/src/l10n/chassis_en.arb',
+  'extensions/Extension/Full_Screen_Shot/_locales/en/messages.json',
   'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart',
 ];
 const PRIVACY_DECLARATIONS = ['apps/subscriptiontracker/privacy.yaml', 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml'];
@@ -191,11 +200,15 @@ describe('regen.mjs — one ordered chain over the site surface', () => {
     // Discovery walks sites/nikatru, the tree auth-mail and render-privacy write into.
     assert.ok(at('tooling/sites/gen-auth-mail.mjs') < at('tooling/sites/generate-discovery.mjs'), 'auth-mail must precede discovery');
     assert.ok(at('tooling/app-yaml/render-privacy.mjs') < at('tooling/sites/generate-discovery.mjs'), 'render-privacy must precede discovery');
+    // Discovery splices chrome into /accessibility and puts it in the sitemap.
+    assert.ok(at('tooling/sites/gen-accessibility-statement.mjs') < at('tooling/sites/generate-discovery.mjs'), 'a11y-statement must precede discovery');
+    // Discovery splices chrome into the /help/ pages and puts them in the sitemap.
+    assert.ok(at('tooling/sites/gen-help-centre.mjs') < at('tooling/sites/generate-discovery.mjs'), 'help-centre must precede discovery');
     // The site feed is also the founder's site's work list (generate-personal-site.mjs).
     assert.ok(at('tooling/sites/generate-apps-data.mjs') < at('tooling/sites/generate-personal-site.mjs'), 'apps-data must precede personal-site');
     assert.deepEqual(
       ORDER.map((e) => `${e.id}:${e.kind}`),
-      ['render:check', 'render-privacy:check', 'apps-data:check', 'landing-payload:check', 'auth-mail:check', 'discovery:git-dated', 'well-known:plan', 'personal-site:check'],
+      ['render:check', 'render-privacy:check', 'apps-data:check', 'landing-payload:check', 'auth-mail:check', 'a11y-statement:check', 'help-centre:check', 'discovery:git-dated', 'well-known:plan', 'personal-site:check'],
     );
   });
 

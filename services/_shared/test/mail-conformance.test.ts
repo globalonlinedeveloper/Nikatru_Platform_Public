@@ -9,7 +9,7 @@ import { createFakeMail } from '../src/ports/fakes/mail';
 import type { MailSenders, MailTransport } from '../src/ports/mail';
 import { CONFORMANCE_RECIPIENT, checkMailScenario, runMailConformance, type MailHarness } from './conformance/mail';
 
-const SENDERS: MailSenders = { reports: 'Fixture reports <reports@fixture.test>', reminders: 'Fixture reminders <reminders@fixture.test>' };
+const SENDERS: MailSenders = { reports: 'Fixture reports <reports@fixture.test>', reminders: 'Fixture reminders <reminders@fixture.test>', feedback: 'Fixture support <support@fixture.test>' };
 
 /** A harness over `transport`, counted by the fake underneath it. */
 function over(transport: MailTransport, f: ReturnType<typeof createFakeMail>): MailHarness {
@@ -80,7 +80,7 @@ describe('the mail conformance suite reddens', () => {
   });
 
   it('🔴 a fake built with the wrong senders fails `from-stream`', async () => {
-    const f = createFakeMail({ reports: SENDERS.reminders, reminders: SENDERS.reminders });
+    const f = createFakeMail({ reports: SENDERS.reminders, reminders: SENDERS.reminders, feedback: SENDERS.feedback });
     await expect(checkMailScenario('from-stream', over(f, f), SENDERS)).rejects.toThrow(/reports stream's From is no match/);
   });
 

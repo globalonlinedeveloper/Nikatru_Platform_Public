@@ -147,7 +147,18 @@
       "code",
       "payments", "ai", "status", "import", "review", "refund",
       "ops",
-      "box-manifest"
+      "box-manifest",
+      "feedback",
+      "move"
+    ],
+    "_feedback": [
+      "🟢 `feedback` and `move` ADDED 2026-10-03 (lanes feedback-intake, feedback-triage), AND THIS LIMB",
+      "CAUGHT THEM. POST /v1/feedback on services/platform is \"Report a problem\" from our own apps, our",
+      "own site's Pages Function and our extensions' link; /v1/feedback/unsubscribe is the one-click",
+      "unsubscribe of the feedback mail stream; POST /v1/ops/feedback/move is the lead's triage tool",
+      "(tooling/feedback/move.mjs) behind FEEDBACK_OPS_SECRET, refused to any request carrying `Origin`. All",
+      "three are RESOURCES OF OURS: no provider posts to them and none moves money. If anything external",
+      "ever posts here, this entry becomes false and a provider row is owed instead."
     ],
     "_box-manifest": [
       "🟢 `ops` and `box-manifest` ADDED 2026-10-03 (PB-27), AND THIS LIMB CAUGHT THEM. POST",

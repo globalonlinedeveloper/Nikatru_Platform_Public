@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Elimina totes les captures de l’historial i tot allò que hagin deixat les captures interrompudes. La vostra configuració es manté tal com és."
   },
+  "optionsSectionReport": {
+    "message": "Informa d'un problema"
+  },
+  "optionsReport": {
+    "message": "Explica'ns què ha fallat"
+  },
+  "optionsReportDesc": {
+    "message": "Obre el formulari d'informe de nikatru.com en una pestanya nova, amb només la versió de FullShot, l'idioma i el navegador emplenats."
+  },
+  "optionsReportBtn": {
+    "message": "Obre el formulari"
+  },
+  "optionsSectionHelp": {
+    "message": "Ajuda"
+  },
+  "optionsHelpSearch": {
+    "message": "Cerca a l'ajuda"
+  },
+  "optionsHelpNone": {
+    "message": "No hi ha cap resposta que coincideixi."
+  },
+  "optionsHelpAsk": {
+    "message": "Encara teniu problemes? Pregunteu-nos"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Voleu esborrar tot el que el FullShot ha desat en aquest dispositiu?\n\nCaptures a l’historial: $COUNT$\nRestes de captures interrompudes: $LEFTOVER$\nEspai que s’allibera: $SIZE$\n\nLa vostra configuració no es veu afectada. Això no es pot desfer.",
     "placeholders": {

@@ -647,6 +647,46 @@ expect('a new SharedWorker() in a shipped file fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'SharedWorker',
   root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'const w = new SharedWorker("w.js");\n'); })
 });
+/* Gate 10, 2026-10-03 (lane feedback-intake): a problem report carries no page.
+   The real core/v1/report-link.js passes; a copy that lets the page's URL ride
+   through the payload is refused. */
+const REPORT_LINK = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'v1', 'report-link.js'), 'utf8');
+expect('the shipped report-link.js keeps the page out of a problem report', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'a problem report carries no page URL',
+  root: fixture(root => { w(root, TOOL + '/popup/report-link.js', REPORT_LINK); })
+});
+expect('🔴 a report payload carrying the page URL fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'payload key `url`',
+  root: fixture(root => {
+    w(root, TOOL + '/popup/report-link.js', REPORT_LINK.replace(
+      'return out;\n  }',
+      'if (s.url) out.url = String(s.url);\n    return out;\n  }'));
+  })
+});
+expect('🔴 a report link that drops a plain-words query fails (lane help-search)', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'a plain-words query does not reach the link',
+  root: fixture(root => { w(root, TOOL + '/popup/report-link.js', REPORT_LINK.replace("var KEYS = ['app', 'v', 'loc', 'plat', 'category', 'q'];", "var KEYS = ['app', 'v', 'loc', 'plat', 'category'];")); })
+});
+expect('🔴 a report link that passes a URL typed as the query fails (lane help-search)', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'carries the page',
+  root: fixture(root => { w(root, TOOL + '/popup/report-link.js', REPORT_LINK.replace(/    q: \/.*\/i\n/, '    q: /^[\\s\\S]{1,200}$/\n')); })
+});
+/* Gate 11, 2026-10-03 (lane help-search): a Help panel ships its index. */
+const HELP_SEARCH = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'tooling', 'help', 'search.mjs'), 'utf8');
+const HELP_INDEX = 'export default ' + JSON.stringify({ version: 1, locale: 'en', avgdl: 3, docs: [{ id: 'x/y', scope: 'x', slug: 'y', title: 'T', summary: 'S', url: '/help/#x-y', len: 3, text: 't' }], postings: { t: [[0, 3]] }, synonyms: {}, knownIssues: [] }) + ';\n';
+const HELP_PANEL = "import { search } from './help-search.js';\nimport index from './help-index.js';\nexport const n = search(index, 't').length;\n";
+expect('a Help panel with its bundled index and ranker passes', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'the Help panel ships its index',
+  root: fixture(root => { w(root, TOOL + '/popup/help-panel.js', HELP_PANEL); w(root, TOOL + '/popup/help-search.js', HELP_SEARCH); w(root, TOOL + '/popup/help-index.js', HELP_INDEX); })
+});
+expect('🔴 a Help panel whose bundled index is absent fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'is not in the package',
+  root: fixture(root => { w(root, TOOL + '/popup/help-panel.js', HELP_PANEL); w(root, TOOL + '/popup/help-search.js', HELP_SEARCH); })
+});
+expect('🔴 a Help panel whose bundled index carries no article fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'carries no article',
+  root: fixture(root => { w(root, TOOL + '/popup/help-panel.js', HELP_PANEL); w(root, TOOL + '/popup/help-search.js', HELP_SEARCH); w(root, TOOL + '/popup/help-index.js', HELP_INDEX.replace(/"docs":\[.*?\],"postings"/, '"docs":[],"postings"')); })
+});
 /* Inline CSS in a shipped page, 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). */
 expect('a style="" attribute in a shipped page fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'no inline CSS in packaged HTML',

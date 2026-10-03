@@ -16,12 +16,13 @@
 //
 // ── WHAT IT READS ───────────────────────────────────────────────────────────
 //   · the `| kind | binding | target |` table in sites/nikatru/README.md — the one place
-//     a person states which bindings the site has. Kinds: D1, KV, secret.
+//     a person states which bindings the site has. Kinds: D1, KV, service, secret.
 //   · tooling/sites/nikatru-apex/wrangler.jsonc — JSONC, comments blanked by
 //     tooling/ci/text-reductions.mjs. A file that does not parse is COVERAGE LOST.
 //   · every `env.NAME` read in sites/nikatru/functions/**/*.js, comments blanked, so a
 //     name in a SETUP comment is not a read.
-//   · services/*/wrangler.jsonc — the Workers' own D1 declarations, for the id.
+//   · services/*/wrangler.jsonc — the Workers' own D1 declarations, for the id, and
+//     their top-level `name`s, for a service binding's target.
 //   · .github/workflows/deploy-web.yml, through workflow-scan.mjs (comments blanked) — the
 //     `--fill-kv-id --out` step, the `pages deploy .` line, its `workingDirectory`, and
 //     each `pages secret put`.
@@ -46,6 +47,11 @@
 //      and Pages reads a root config carrying `pages_build_output_dir` as that project's
 //      configuration: the placeholder KV id and the name `nikatru-apex` would reach the
 //      live site. The D3a design put the file there; this limb is why it is not.
+//   8b. ⏱ 2026-10-03 · lane feedback-intake. A `service` row with no `services` entry
+//      of that binding and that service in wrangler.jsonc, or the reverse, or a service
+//      no Worker under services/ is named (the "Report a problem" form's Function
+//      forwards to the platform Worker over a binding, so the reporter's network
+//      reaches the intake's anonymous limit; a fetch to a public host would not).
 //   8. A job that does not fill the config INTO the directory it deploys: no
 //      `assert-site-bindings.mjs --fill-kv-id --out <dir>` in deploy-web.yml, or no
 //      `workingDirectory: <dir>` for the `pages deploy .` to run from.
@@ -91,8 +97,8 @@ export const KV_ID = /^[0-9a-f]{32}$/;
 export const PLATFORM_BINDINGS = new Set(['ASSETS']);
 /** The top-level keys the site's config may carry. A binding kind outside these is one
  *  the README table has no kind for, so it would reach the project ungraded. */
-export const ALLOWED_KEYS = new Set(['name', 'pages_build_output_dir', 'compatibility_date', 'd1_databases', 'kv_namespaces']);
-const KINDS = new Set(['D1', 'KV', 'secret']);
+export const ALLOWED_KEYS = new Set(['name', 'pages_build_output_dir', 'compatibility_date', 'd1_databases', 'kv_namespaces', 'services']);
+const KINDS = new Set(['D1', 'KV', 'service', 'secret']);
 
 /** A refusal to grade: the check could not read enough to be evidence. */
 export class CoverageLost extends Error {}
@@ -131,6 +137,20 @@ export function envReads(source) {
 }
 
 /** PURE. database_name → Set of database_id, from the Workers' wrangler.jsonc texts. */
+/** The top-level `name` of every Worker config: what a service binding may target. */
+export function workerNames(configTexts) {
+  const names = new Set();
+  for (const text of configTexts) {
+    try {
+      const cfg = JSON.parse(stripSourceComments(text, '.jsonc').replace(/,(\s*[}\]])/g, '$1'));
+      if (typeof cfg?.name === 'string' && cfg.name) names.add(cfg.name);
+    } catch {
+      // A config that does not parse names no Worker; the D1 walk below reports it.
+    }
+  }
+  return names;
+}
+
 export function workerDatabaseIds(configTexts) {
   const ids = new Map();
   for (const text of configTexts) {
@@ -197,7 +217,7 @@ export function gradeBindings({ readme, config, functions, workerConfigs, workfl
     problems.push(`${CONFIG_REL}: pages_build_output_dir is ${JSON.stringify(cfg.pages_build_output_dir ?? null)}, not "." — the job deploys this directory from itself.`);
   }
   const declared = [];
-  for (const [key, kind] of [['d1_databases', 'D1'], ['kv_namespaces', 'KV']]) {
+  for (const [key, kind] of [['d1_databases', 'D1'], ['kv_namespaces', 'KV'], ['services', 'service']]) {
     const entries = list(cfg[key]);
     if (entries === null) {
       problems.push(`${CONFIG_REL}: \`${key}\` is not a list.`);
@@ -228,6 +248,16 @@ export function gradeBindings({ readme, config, functions, workerConfigs, workfl
       const id = d.entry.database_id;
       if (!known) problems.push(`${CONFIG_REL}: no Worker under ${SERVICES_REL}/ declares database \`${r.target}\`, so its id has no source.`);
       else if (!known.has(id)) problems.push(`${CONFIG_REL}: \`${r.binding}\` has database_id ${JSON.stringify(id ?? null)}, and ${SERVICES_REL}/ declares \`${r.target}\` as ${[...known].join(', ')}.`);
+    } else if (r.kind === 'service') {
+      const d = declared.find((x) => x.kind === 'service' && x.binding === r.binding);
+      if (!d) {
+        problems.push(`${README_REL} names service \`${r.binding}\` → \`${r.target}\` and ${CONFIG_REL} declares no services binding \`${r.binding}\`.`);
+        continue;
+      }
+      if (d.entry.service !== r.target) {
+        problems.push(`${CONFIG_REL}: \`${r.binding}\` binds service ${JSON.stringify(d.entry.service ?? null)}, and the table says \`${r.target}\`.`);
+      }
+      if (!workerNames(workerConfigs).has(r.target)) problems.push(`${CONFIG_REL}: no Worker under ${SERVICES_REL}/ is named \`${r.target}\`, so the binding \`${r.binding}\` reaches nothing.`);
     } else if (r.kind === 'KV') {
       const d = declared.find((x) => x.kind === 'KV' && x.binding === r.binding);
       if (!d) {

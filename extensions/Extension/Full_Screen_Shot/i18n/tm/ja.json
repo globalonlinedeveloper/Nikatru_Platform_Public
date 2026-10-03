@@ -414,5 +414,13 @@
   "optionsDeleteAllDesc": "履歴にあるすべてのスクリーンショットと、中断されたキャプチャが残したものをすべて削除します。設定はそのまま残ります。",
   "optionsDeleteAllConfirm": "FullShot がこのデバイスに保存したものをすべて削除しますか？\n\n履歴のスクリーンショット: $COUNT$\n中断されたキャプチャの残り: $LEFTOVER$\n解放される容量: $SIZE$\n\n設定には影響しません。この操作は取り消せません。",
   "optionsDeleteAllDone": "削除しました。FullShot はこのデバイスにスクリーンショットを保存していません。",
-  "errStorageFull": "このキャプチャを保存する空き容量がありません。履歴からスクリーンショットをいくつか削除してから、もう一度お試しください。"
+  "errStorageFull": "このキャプチャを保存する空き容量がありません。履歴からスクリーンショットをいくつか削除してから、もう一度お試しください。",
+  "optionsSectionReport": "問題を報告",
+  "optionsReport": "何が起きたか教えてください",
+  "optionsReportDesc": "nikatru.com の報告フォームを新しいタブで開きます。入力済みなのは FullShot のバージョン、言語、ブラウザーだけです。",
+  "optionsReportBtn": "報告フォームを開く",
+  "optionsSectionHelp": "ヘルプ",
+  "optionsHelpSearch": "ヘルプを検索",
+  "optionsHelpNone": "一致する回答はありません。",
+  "optionsHelpAsk": "解決しない場合はお問い合わせください"
 }

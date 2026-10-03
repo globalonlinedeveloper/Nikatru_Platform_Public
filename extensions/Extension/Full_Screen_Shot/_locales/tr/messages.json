@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Geçmişinizdeki tüm ekran görüntülerini ve yarıda kesilen yakalamalardan kalan her şeyi kaldırır. Ayarlarınız olduğu gibi kalır."
   },
+  "optionsSectionReport": {
+    "message": "Sorun bildir"
+  },
+  "optionsReport": {
+    "message": "Neyin yanlış gittiğini bize anlatın"
+  },
+  "optionsReportDesc": {
+    "message": "nikatru.com'daki bildirim formunu yeni bir sekmede açar; formda yalnızca FullShot sürümü, dil ve tarayıcı doldurulmuştur."
+  },
+  "optionsReportBtn": {
+    "message": "Bildirim formunu aç"
+  },
+  "optionsSectionHelp": {
+    "message": "Yardım"
+  },
+  "optionsHelpSearch": {
+    "message": "Yardımda ara"
+  },
+  "optionsHelpNone": {
+    "message": "Eşleşen yanıt yok."
+  },
+  "optionsHelpAsk": {
+    "message": "Hâlâ takıldınız mı? Bize sorun"
+  },
   "optionsDeleteAllConfirm": {
     "message": "FullShot’ın bu cihazda sakladığı her şey silinsin mi?\n\nGeçmişinizdeki ekran görüntüleri: $COUNT$\nYarıda kesilen yakalamalardan kalanlar: $LEFTOVER$\nAçılacak yer: $SIZE$\n\nAyarlarınız bundan etkilenmez. Bu geri alınamaz.",
     "placeholders": {

@@ -1,0 +1,10 @@
+# Nikatru status
+
+> Whether Nikatru's apps, sign-in and websites are working right now, and the history of past incidents. Generated from Nikatru's own monitors; a service our checks cannot see is shown as "not monitored", never as working.
+
+## Key pages
+- Status: https://status.nikatru.com/ — every public service and its state, last checked time, incident history
+- Machine-readable status: https://status.nikatru.com/status.json
+- Incident feed (Atom): https://status.nikatru.com/feed.xml
+- Nikatru: https://nikatru.com/
+- Help centre: https://nikatru.com/help/

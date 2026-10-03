@@ -16,31 +16,42 @@
      platform repo as the only dissenting declaration on the whole site.
      Source of these values: sites/_shared/assets/tokens.css, generated from
      packages/tokens/tokens/*.json. */
-  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2563EB; }
+  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2563EB;
+          --strong:#0B1220; --text:#1E293B; --card:#FFFFFF; --soft:#F6F8FC; --primary:#2563EB; }
+  @media (prefers-color-scheme: dark) {
+    :root { --strong:#F1F5F9; --text:#C7D2E3; --card:#111C33; --soft:#0E1830; --muted:#93A1BC; --line:#22304D; --primary:#6E9BFF; }
+  }
   * { box-sizing: border-box; }
   body { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px;
          font: 16px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-         color: var(--ink); background: #fff; }
+         color: var(--strong); background: var(--card); }
   h1 { font-size: 30px; margin: 0 0 4px; }
   h2 { font-size: 20px; margin: 34px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
   h3 { font-size: 16px; margin: 20px 0 4px; }
-  p, li { color: var(--ink); }
+  p, li { color: var(--strong); }
   .meta { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
-  .lead { font-size: 17px; color: #333; }
+  .lead { font-size: 17px; color: var(--text); }
   ul { padding-left: 22px; }
   li { margin: 5px 0; }
-  code { background: #f4f4f6; padding: 1px 5px; border-radius: 4px; font-size: 14px; }
-  .callout { background: #f0f6ff; border: 1px solid #cfe0fb; border-radius: 8px;
+  code { background: var(--soft); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .callout { background: var(--soft); border: 1px solid var(--line); border-radius: 8px;
              padding: 14px 16px; margin: 16px 0; }
-  .tag { display:inline-block; background:#e8f0fe; color:var(--accent);
+  .tag { display:inline-block; background:var(--card); color:var(--primary);
          border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; }
   footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 14px; }
-  a { color: var(--accent); }
+  a { color: var(--primary); }
+  nav { margin: 0 0 24px; font-size: 14px; }
+  nav a { display: inline-block; padding: 4px 0; }
+  :focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 6px; }
+  .skip-link { position: absolute; left: -9999px; top: 0; background: var(--primary); color: var(--card);
+               padding: 10px 18px; border-radius: 0 0 8px 0; text-decoration: none; font-weight: 600; }
+  .skip-link:focus { left: 0; }
 </style>
 </head>
 <body>
 
+<main id="main">
 <h1>FullShot — Privacy Policy</h1>
 <p class="meta">Effective date: 2026-08-21 &nbsp;·&nbsp; Last updated: 2026-09-05 &nbsp;·&nbsp; Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.</p>
 
@@ -135,6 +146,7 @@
 <h2>12. Contact</h2>
 <p>Questions about this policy or FullShot's privacy practices: <a href="mailto:support@nikatru.com">support@nikatru.com</a>.</p>
 
+</main>
 <footer>
 FullShot processes all data locally on your device and transmits nothing. FullShot is published by Rajasekar Selvam, trading as NIKATRU.
 </footer>

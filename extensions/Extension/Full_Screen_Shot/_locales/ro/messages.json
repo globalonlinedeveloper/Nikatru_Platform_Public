@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Elimină toate capturile din istoricul tău și tot ce au lăsat în urmă capturile întrerupte. Setările tale rămân așa cum sunt."
   },
+  "optionsSectionReport": {
+    "message": "Raportează o problemă"
+  },
+  "optionsReport": {
+    "message": "Spune-ne ce nu a mers"
+  },
+  "optionsReportDesc": {
+    "message": "Deschide formularul de raportare de pe nikatru.com într-o filă nouă, cu doar versiunea FullShot, limba și browserul completate."
+  },
+  "optionsReportBtn": {
+    "message": "Deschide formularul"
+  },
+  "optionsSectionHelp": {
+    "message": "Ajutor"
+  },
+  "optionsHelpSearch": {
+    "message": "Caută în ajutor"
+  },
+  "optionsHelpNone": {
+    "message": "Niciun răspuns potrivit."
+  },
+  "optionsHelpAsk": {
+    "message": "Încă aveți probleme? Întrebați-ne"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ștergi tot ce a stocat FullShot pe acest dispozitiv?\n\nCapturi în istoricul tău: $COUNT$\nRămășițe de la capturi întrerupte: $LEFTOVER$\nSpațiul eliberat: $SIZE$\n\nSetările tale nu sunt afectate. Această acțiune nu poate fi anulată.",
     "placeholders": {

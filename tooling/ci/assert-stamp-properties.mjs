@@ -1738,7 +1738,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // domain, all four ADMITTED gaps in UNASSERTED with their reason (the stamped
 // test/offline_cache_test.dart drives them; no chassis property does), in the
 // same PR as the providers.
-const MIN_DOMAIN = 70;
+// 70 -> 71 on 2026-10-03 (lane feedback-intake): `feedbackHostProvider` joined the
+// domain, an ADMITTED gap in UNASSERTED with its reason. Measured by this guard's
+// own ok line: "tracked domain: 71 chassis behaviour(s)".
+const MIN_DOMAIN = 71;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -2007,6 +2010,7 @@ const UNASSERTED = {
   // The money rail's remaining gaps. Each is exercised in packages/purchases'
   // own suite; what is missing is a STAMPED-APP assertion, which is a different
   // and stronger claim.
+  feedbackHostProvider: '2026-10-03 · lane feedback-intake. The brick builds the "Report a problem" host (packages/feedback buildFeedbackHost: the sheet, the on-device blur, the outbox, the transport) so a stamped app inherits it, and the Settings Help card opens it. The sheet, the blur and the outbox are driven in packages/feedback/test (report_page_test.dart, capture_test.dart, outbox_test.dart), the transport in packages/api_client/test/dio_feedback_transport_test.dart, and the route against a real SQL engine in services/platform/test/feedback-intake.test.ts; what is missing is a STAMPED-APP property that a tap on the row opens the sheet — a widget test the brick does not run today.',
   contentReportTransportProvider: '2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. The wire is driven in packages/api_client/test/dio_content_report_transport_test.dart and against a real SQL engine in services/platform/test/report.test.ts; the dialog and the Settings tile in packages/chassis_screens/test/report_content_dialog_test.dart. A stamped-app property needs a stamp with AppConfig.generatesAiContent = true, and every stamp is false until an app generates content',
   cancellationTransportProvider: '2026-08-01 · the ROSCA cancel call. Driven end-to-end in packages/purchases/test/hosted_checkout_rail_test.dart and against a real SQL engine in services/platform/test/cancellation.test.ts; a stamped-app property would need the manage screen pumped with a fake host, which is a widget test worth writing and is not written',
   // [pipeline 2]C-13 wired `OfflineNotice` in 2026-08-06 — it had ZERO consumers

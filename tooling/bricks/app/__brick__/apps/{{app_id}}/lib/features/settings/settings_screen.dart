@@ -6,9 +6,14 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:nikatru_feedback/nikatru_feedback.dart'
+    show openReportProblem, reportProblemLabelOf;
+import 'package:nikatru_help/nikatru_help.dart'
+    show helpCentreLabelOf, openHelpCentre;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 import '../../core/app_config.dart';
+import '../../help/help_index.g.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../auth/captcha.dart';
@@ -120,6 +125,20 @@ class SettingsScreen extends ConsumerWidget {
       onOpenRefundPolicy: () => _openUrl(AppConfig.refundUrl),
       supportEmail: AppConfig.supportEmail,
       onContactSupport: _contactSupport,
+      // Lane feedback-intake: packages/feedback's sheet; the mail stays above.
+      onReportProblem: () =>
+          openReportProblem(context, ref.read(feedbackHostProvider)),
+      reportProblemLabel: reportProblemLabelOf(context),
+      // Lane help-search: packages/help's centre; its "Ask us" opens the sheet above.
+      onOpenHelp: () => openHelpCentre(
+        context,
+        host: ref.read(feedbackHostProvider),
+        appId: AppConfig.appId,
+        indexTable: kHelpIndexJson,
+        sourceLocale: kHelpSourceLocale,
+        openUrl: _openUrl,
+      ),
+      helpLabel: helpCentreLabelOf(context),
       // O-PLAY-AI-CONTENT-REPORTING: only in an app that generates AI content.
       onReportContent: AppConfig.generatesAiContent
           ? () => showReportContentDialog(context, ref)

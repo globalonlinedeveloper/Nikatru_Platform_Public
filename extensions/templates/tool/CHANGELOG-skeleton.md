@@ -23,6 +23,12 @@ not your tool's.
 
 ---
 
+## [Unreleased] — "Send a report to support" opens the nikatru.com report form (2026-10-03)
+
+- `lib/report-link.js` (new) — a copy of `core/v1/report-link.js` (`SKREPORT`): the link to nikatru.com's `/support#report-a-problem` form carrying a closed list (tool id, version, UI locale, coarse platform, category) and nothing about any page. `scripts/policy-check.mjs` gate 10 grades it in every tool that packages it.
+- `pages/options.html`, `pages/options.js` — a second row in "Report a problem" that opens that link in a new tab (`openReportForm`, `PLACEHOLDER(id)` = `tool.json` id). The local "Prepare a report" file stays. No permission and no network call is added.
+- `_locales/en/messages.json` + `_locales/tm/*.json` — `optReportSendTitle`, `optReportSendDesc`, `optReportSendButton`; `node _locales/make-locales.mjs` rebuilt the catalogues. `TEMPLATE.md` explains `PLACEHOLDER(id)`.
+
 ## [Unreleased] — the Firefox manifest is a merge patch, and the version is said once (2026-09-25)
 
 - `publish/manifest.firefox.json` — an RFC 7386 merge patch over `manifest.json` now: the five documented delta keys (`background.scripts`, `browser_specific_settings.gecko`, `options_ui`, and `null` for `minimum_chrome_version` and `options_page`), computed from the old full file. It no longer drops `content_security_policy` and `incognito` for Firefox; both are inherited from `manifest.json`.

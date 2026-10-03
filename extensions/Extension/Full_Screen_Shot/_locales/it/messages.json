@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Rimuove tutti gli screenshot dalla cronologia e tutto ciò che le catture interrotte hanno lasciato. Le tue impostazioni restano invariate."
   },
+  "optionsSectionReport": {
+    "message": "Segnala un problema"
+  },
+  "optionsReport": {
+    "message": "Dicci cosa non ha funzionato"
+  },
+  "optionsReportDesc": {
+    "message": "Apre il modulo di segnalazione su nikatru.com in una nuova scheda, con solo la versione di FullShot, la lingua e il browser compilati."
+  },
+  "optionsReportBtn": {
+    "message": "Apri il modulo"
+  },
+  "optionsSectionHelp": {
+    "message": "Aiuto"
+  },
+  "optionsHelpSearch": {
+    "message": "Cerca nella guida"
+  },
+  "optionsHelpNone": {
+    "message": "Nessuna risposta corrispondente."
+  },
+  "optionsHelpAsk": {
+    "message": "Ancora bloccato? Chiedici"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Eliminare tutto ciò che FullShot ha archiviato su questo dispositivo?\n\nScreenshot nella cronologia: $COUNT$\nResidui di catture interrotte: $LEFTOVER$\nSpazio che verrà liberato: $SIZE$\n\nLe tue impostazioni non vengono modificate. L’operazione non può essere annullata.",
     "placeholders": {

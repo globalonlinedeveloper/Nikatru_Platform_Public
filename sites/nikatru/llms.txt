@@ -21,6 +21,8 @@
 - Terms of Service: https://nikatru.com/terms
 - Refund & Cancellation Policy: https://nikatru.com/refund
 - Contact: https://nikatru.com/contact
+- Help centre: https://nikatru.com/help/ — answers for every app and the account, with known issues; FullShot's own support page is https://nikatru.com/help/fullshot/
+- Accessibility statement: https://nikatru.com/accessibility — the standard we build to, how it is tested, and the gaps we know about
 - FullShot Privacy Policy: https://nikatru.com/fullshot/privacy — the browser extension; all capture is processed locally and nothing is transmitted
 - Nikatru Subscription Tracker — what the app collects: https://nikatru.com/subscriptiontracker/privacy — the per-app notice, itemised from the app's own privacy declaration; the policy a user agrees to is /privacy
 - Developer site: https://rajasekarselvam.com/

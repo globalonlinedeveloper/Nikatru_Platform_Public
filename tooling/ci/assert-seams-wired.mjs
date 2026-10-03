@@ -1015,6 +1015,12 @@ function stripJsonc(src) {
   return out;
 }
 
+/** The register roles that say a bucket is NOT the pack shelf, named one by one
+ *  so the gate stays fail-closed: `backup` (the nightly D1/KV export, 2026-09-05)
+ *  and `feedback-screenshots` (the private report screenshots, lane
+ *  feedback-intake, 2026-10-03). A bucket with no role, or any other, counts. */
+const NON_SHELF_ROLES = new Set(['backup', 'feedback-screenshots']);
+
 /** How many object-storage bindings the platform Worker declares — i.e. whether
  *  the pack SHELF exists at all. `null` when the file cannot be read, which is
  *  deliberately not the same value as a measured zero. */
@@ -1054,7 +1060,7 @@ function packShelfBindings() {
     return buckets;
   }
   if (bindings.length !== buckets) return buckets; // a shape this parse does not understand
-  return bindings.filter((b) => roles.get(b) !== 'backup').length;
+  return bindings.filter((b) => !NON_SHELF_ROLES.has(roles.get(b))).length;
 }
 
 /** Dart files under SCAN_ROOTS that this guard's scan deliberately DROPS — the
@@ -1115,7 +1121,7 @@ function checkPackHasAShippedConsumer() {
     shelf === null
       ? `${PACK_SHELF_FILE} could not be read, so the shelf gate is UNKNOWN`
       : shelf === 0
-        ? `${PACK_SHELF_FILE} declares no r2_bucket that is a PACK SHELF (a bucket whose tooling/platform-register.json row declares \`role: backup\` is not one — since 2026-09-05 the nightly D1/KV export binds one), so the shelf does not exist ([4]B-18: no bucket, no packs.nikatru.com binding, no latest.json) and no pack has ever been published — a consumer built today could only ever render the fallback`
+        ? `${PACK_SHELF_FILE} declares no r2_bucket that is a PACK SHELF (a bucket whose tooling/platform-register.json row declares a role in NON_SHELF_ROLES — ${[...NON_SHELF_ROLES].join(", ")} — is not one: the nightly D1/KV export since 2026-09-05, the private report screenshots since 2026-10-03), so the shelf does not exist ([4]B-18: no bucket, no packs.nikatru.com binding, no latest.json) and no pack has ever been published — a consumer built today could only ever render the fallback`
         : `${PACK_SHELF_FILE} declares ${shelf} object-storage binding(s), so the pack shelf EXISTS`;
 
   if (shelf !== null && shelf > 0) {

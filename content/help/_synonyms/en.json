@@ -1,0 +1,107 @@
+{
+  "_why": "The English synonym table for the help search (lane help-search). A query word also searches each word in its list, at search.mjs SYNONYM_WEIGHT. build-index.mjs stems both sides with the search's own tokenizer and carries the table in the index, so the apps, the site and the extensions expand a query identically. Add a row when the eval set shows people asking in a word the articles do not use.",
+  "synonyms": {
+    "unsubscribe": [
+      "cancel",
+      "stop"
+    ],
+    "stop": [
+      "cancel"
+    ],
+    "end": [
+      "cancel"
+    ],
+    "remove": [
+      "delete"
+    ],
+    "erase": [
+      "delete"
+    ],
+    "alert": [
+      "reminder",
+      "notification"
+    ],
+    "notify": [
+      "reminder",
+      "notification"
+    ],
+    "cost": [
+      "price"
+    ],
+    "amount": [
+      "price"
+    ],
+    "spending": [
+      "budget",
+      "spend"
+    ],
+    "limit": [
+      "budget"
+    ],
+    "screenshot": [
+      "capture"
+    ],
+    "screengrab": [
+      "capture"
+    ],
+    "snip": [
+      "capture"
+    ],
+    "bug": [
+      "problem",
+      "report"
+    ],
+    "broken": [
+      "problem"
+    ],
+    "crash": [
+      "problem",
+      "report"
+    ],
+    "login": [
+      "sign"
+    ],
+    "logon": [
+      "sign"
+    ],
+    "logout": [
+      "log",
+      "out"
+    ],
+    "rupee": [
+      "currency"
+    ],
+    "backup": [
+      "export"
+    ],
+    "download": [
+      "export"
+    ],
+    "spreadsheet": [
+      "csv"
+    ],
+    "excel": [
+      "csv"
+    ],
+    "trial": [
+      "free"
+    ],
+    "calendar": [
+      "feed"
+    ],
+    "phone": [
+      "device"
+    ],
+    "laptop": [
+      "device"
+    ],
+    "talk": [
+      "contact",
+      "ask"
+    ],
+    "outage": [
+      "down",
+      "status"
+    ]
+  }
+}

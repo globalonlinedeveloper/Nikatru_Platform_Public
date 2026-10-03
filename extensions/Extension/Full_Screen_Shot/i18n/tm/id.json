@@ -414,5 +414,13 @@
   "optionsDeleteAllDesc": "Menghapus setiap tangkapan layar di riwayat Anda dan semua yang ditinggalkan pengambilan yang terputus. Pengaturan Anda tetap seperti apa adanya.",
   "optionsDeleteAllConfirm": "Hapus semua yang disimpan FullShot di perangkat ini?\n\nTangkapan layar di riwayat Anda: $COUNT$\nSisa dari pengambilan yang terputus: $LEFTOVER$\nRuang yang dibebaskan: $SIZE$\n\nPengaturan Anda tidak terpengaruh. Tindakan ini tidak dapat dibatalkan.",
   "optionsDeleteAllDone": "Dihapus. FullShot kini tidak menyimpan tangkapan layar di perangkat ini.",
-  "errStorageFull": "Tidak ada ruang tersisa untuk menyimpan pengambilan ini. Hapus beberapa tangkapan layar dari riwayat Anda, lalu coba lagi."
+  "errStorageFull": "Tidak ada ruang tersisa untuk menyimpan pengambilan ini. Hapus beberapa tangkapan layar dari riwayat Anda, lalu coba lagi.",
+  "optionsSectionReport": "Laporkan masalah",
+  "optionsReport": "Beri tahu kami apa yang salah",
+  "optionsReportDesc": "Membuka formulir laporan di nikatru.com di tab baru, hanya dengan versi FullShot, bahasa, dan browser yang terisi.",
+  "optionsReportBtn": "Buka formulir laporan",
+  "optionsSectionHelp": "Bantuan",
+  "optionsHelpSearch": "Cari bantuan",
+  "optionsHelpNone": "Tidak ada jawaban yang cocok.",
+  "optionsHelpAsk": "Masih bingung? Tanyakan kepada kami"
 }

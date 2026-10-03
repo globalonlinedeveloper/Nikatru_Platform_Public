@@ -423,5 +423,13 @@
   "optionsDeleteAllDesc": "Geçmişinizdeki tüm ekran görüntülerini ve yarıda kesilen yakalamalardan kalan her şeyi kaldırır. Ayarlarınız olduğu gibi kalır.",
   "optionsDeleteAllConfirm": "FullShot’ın bu cihazda sakladığı her şey silinsin mi?\n\nGeçmişinizdeki ekran görüntüleri: $COUNT$\nYarıda kesilen yakalamalardan kalanlar: $LEFTOVER$\nAçılacak yer: $SIZE$\n\nAyarlarınız bundan etkilenmez. Bu geri alınamaz.",
   "optionsDeleteAllDone": "Silindi. FullShot artık bu cihazda hiçbir ekran görüntüsü saklamıyor.",
-  "errStorageFull": "Bu yakalamayı saklamak için yer kalmadı. Geçmişinizden birkaç ekran görüntüsü silip yeniden deneyin."
+  "errStorageFull": "Bu yakalamayı saklamak için yer kalmadı. Geçmişinizden birkaç ekran görüntüsü silip yeniden deneyin.",
+  "optionsSectionReport": "Sorun bildir",
+  "optionsReport": "Neyin yanlış gittiğini bize anlatın",
+  "optionsReportDesc": "nikatru.com'daki bildirim formunu yeni bir sekmede açar; formda yalnızca FullShot sürümü, dil ve tarayıcı doldurulmuştur.",
+  "optionsReportBtn": "Bildirim formunu aç",
+  "optionsSectionHelp": "Yardım",
+  "optionsHelpSearch": "Yardımda ara",
+  "optionsHelpNone": "Eşleşen yanıt yok.",
+  "optionsHelpAsk": "Hâlâ takıldınız mı? Bize sorun"
 }

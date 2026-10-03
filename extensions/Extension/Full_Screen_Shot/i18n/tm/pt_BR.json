@@ -432,5 +432,13 @@
   "optionsDeleteAllDesc": "Remove todas as capturas do seu histórico e tudo o que ficou de capturas interrompidas. Suas configurações permanecem como estão.",
   "optionsDeleteAllConfirm": "Apagar tudo o que o FullShot guardou neste dispositivo?\n\nCapturas no seu histórico: $COUNT$\nRestos de capturas interrompidas: $LEFTOVER$\nEspaço que isto libera: $SIZE$\n\nSuas configurações não são afetadas. Isto não pode ser desfeito.",
   "optionsDeleteAllDone": "Apagado. O FullShot agora não guarda nenhuma captura neste dispositivo.",
-  "errStorageFull": "Não há mais espaço para guardar esta captura. Apague algumas capturas do seu histórico e tente de novo."
+  "errStorageFull": "Não há mais espaço para guardar esta captura. Apague algumas capturas do seu histórico e tente de novo.",
+  "optionsSectionReport": "Relatar um problema",
+  "optionsReport": "Conte o que deu errado",
+  "optionsReportDesc": "Abre o formulário de relato em nikatru.com em uma nova guia, com apenas a versão do FullShot, o idioma e o navegador preenchidos.",
+  "optionsReportBtn": "Abrir o formulário",
+  "optionsSectionHelp": "Ajuda",
+  "optionsHelpSearch": "Pesquisar na ajuda",
+  "optionsHelpNone": "Nenhuma resposta corresponde.",
+  "optionsHelpAsk": "Ainda com dúvidas? Pergunte para nós"
 }

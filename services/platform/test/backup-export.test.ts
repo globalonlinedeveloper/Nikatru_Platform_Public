@@ -190,7 +190,7 @@ function withD1ValueCap(real: RealDb): CappedD1 {
  *  counted as a call with one argument per table, so the platform schema reaching
  *  33 tables read as 33 > 32. D1's 32 is per SQL FUNCTION; a VALUES row list or an
  *  IN list is not one. */
-const NOT_A_CALL = new Set(['FROM', 'VALUES', 'IN', 'JOIN', 'ON', 'WHERE', 'AND', 'OR', 'NOT', 'SELECT', 'AS', 'EXISTS', 'USING']);
+const NOT_A_CALL = new Set(['FROM', 'VALUES', 'IN', 'JOIN', 'ON', 'WHERE', 'AND', 'OR', 'NOT', 'SELECT', 'AS', 'EXISTS', 'USING', 'INTO']);
 function widestCall(sql: string): number {
   let widest = 0;
   for (const m of sql.matchAll(/\b([A-Za-z_]+)\s*\(/g)) {
@@ -725,6 +725,16 @@ describe('the export costs the same whatever the table count', () => {
     expect(SQL_FUNCTION_ARGS).toBeLessThanOrEqual(32);
     expect(Math.max(...platform.sql.map(widestCall))).toBeLessThanOrEqual(32);
     expect(Math.max(...platform.sql.map(widestCall))).toBeGreaterThan(1);
+  });
+
+  // ⏱ 2026-10-03 · club-rt-support (ci-gate on 545b1678): the four feedback tables
+  // took the column read's VALUES list to 35 rows, and widestCall read `FROM (` as a
+  // 35-argument call. A VALUES row list is not a function's arguments.
+  it('🔴 widestCall counts a function\'s arguments, never a FROM (VALUES …) row list', () => {
+    const rows = Array.from({ length: 40 }, (_, i) => `('t${i}')`).join(', ');
+    expect(widestCall(`SELECT v.column1 FROM (VALUES ${rows}) AS v JOIN pragma_table_info(v.column1) AS p`)).toBe(1);
+    const args = Array.from({ length: 33 }, (_, i) => `c${i}`).join(', ');
+    expect(widestCall(`SELECT json_array(${args}) FROM (VALUES ${rows}) AS v`)).toBe(33);
   });
 });
 

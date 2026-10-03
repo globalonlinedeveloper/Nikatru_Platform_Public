@@ -1010,7 +1010,48 @@
           "note": "The URL the connect page POSTs to, at its one declaration: a constant per app (MINT_URLS), never built from the address bar."
         },
         "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded anyway by SESSIONS_LIMITER keyed `handoff:<user>`, and it writes no row."
+      },
+    {
+      "id": "feedback-submit",
+      "method": "POST",
+      "path": "/v1/feedback",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback.ts",
+      "purpose": "⏱ 2026-10-03 · lane feedback-intake (O-FEEDBACK-INTAKE-UNBUILT, O-FEEDBACK-HAS-NO-DIAGNOSTICS). One \"Report a problem\" report: JSON, or multipart with a `report` part and at most one PNG/WebP `screenshot` (≤ 2 MB, metadata chunks stripped before storage). AUTHED with the app's session token (JWKS, the KV-cached set on a fetch failure, the revocation list; a present token that does not verify is a 401) or ANONYMOUS — so `auth: public`. Bounded three ways, every one FAIL CLOSED: FEEDBACK_EDGE_LIMITER per network (strictEdgeCeiling, 30/min), an hourly window per account (10) or, signed out, per network (20; the Cloudflare colo and ASN, edgeCeilingKey — never an address), and a daily global cap (2000), the two windows in D1 through strictRateLimit (services/platform/src/feedback/window-limiter.ts). Plus a honeypot (accepted-and-dropped), a minimum time-to-submit, size caps (4,000 characters each for description and steps, 2 MB image, 64 KB report JSON) and a link cap. The free text is PII-masked before storage; a key named `url` anywhere is refused; an unknown key is refused. Closed (503 intake_closed) until INTAKE_OPEN is \"true\".",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_feedback_transport.dart",
+        "expression": "'$_base/v1/feedback'",
+        "note": "The real `_dio.post` inside DioFeedbackTransport.submit: every app and the brick send through it (packages/feedback's sheet and outbox). nikatru.com's support form reaches the same route through its Pages Function (sites/nikatru/functions/api/report.js) over a Service Binding, and the extensions' Report a problem page posts to the same URL."
       }
+    },
+    {
+      "id": "feedback-unsubscribe-get",
+      "method": "GET",
+      "path": "/v1/feedback/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback.ts",
+      "purpose": "⏱ 2026-10-03 · lane feedback-triage (O-FEEDBACK-NOTIFY-FIXED-UNBUILT). The page a person reaches from the unsubscribe link in the one \"fixed in version X\" notice: one button that POSTs to the same URL. It CHANGES NOTHING by itself — mail scanners fetch every link. The `t` token is 256 random bits minted per notice; only its SHA-256 is stored, on the report row (`unsubscribe_hash`). Behind FEEDBACK_EDGE_LIMITER (strictEdgeCeiling), keyed on the edge, never an address.",
+      "unconsumedReason": "Consumed by EMAIL, not by an app: every \"fixed in\" notice links here (services/platform/src/feedback/notify.ts). No app code calls it."
+    },
+    {
+      "id": "feedback-unsubscribe-post",
+      "method": "POST",
+      "path": "/v1/feedback/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback.ts",
+      "purpose": "⏱ 2026-10-03 · lane feedback-triage. RFC 8058 one-click unsubscribe: the URL each \"fixed in\" notice carries in `List-Unsubscribe` (with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The token names one report through its hash; the report's contact address is then added to `feedback_mail_suppressed` as a SHA-256 (never the address), after which the feedback stream mails it nothing, ever. An unknown or malformed token is 404. Behind FEEDBACK_EDGE_LIMITER.",
+      "unconsumedReason": "Consumed by MAIL CLIENTS from the List-Unsubscribe header, and by the button on the GET page. No app code calls it."
+    },
+    {
+      "id": "feedback-ops-move",
+      "method": "POST",
+      "path": "/v1/ops/feedback/move",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/feedback-ops.ts",
+      "purpose": "⏱ 2026-10-03 · lane feedback-triage (O-FEEDBACK-TRIAGE-UNSPECIFIED). Moves ONE report's status along the lifecycle services/platform/src/feedback/lifecycle.ts declares (new -> triaged -> duplicate | known | in-fix -> fixed -> notified, plus wontfix and spam); a move it does not list is 409 `illegal_move`, `notified` is 409 `cron_only` (the cron's alone, after it mails), and every move is appended with its time and writer to `status_history`. No JWT: the bearer is compared, over SHA-256 digests with timingSafeEqual, with FEEDBACK_OPS_SECRET; unconfigured is 503 before the body is read. No `Origin` (403): middleware/cors.ts grants the `/v1/ops/` prefix no CORS.",
+      "noLimiterReason": "Nothing an unauthenticated caller can reach costs more than the Worker invocation itself, which the account-wide request ceiling already bounds: an unset secret is a 503 and a wrong bearer a 401 after two SHA-256 digests, before the body is read; the body is cut off at MOVE_MAX_BYTES (1 KiB). The D1 reads and the one conditional UPDATE are reachable only with the secret, held by the lead's laptop.",
+      "unconsumedReason": "NO CLIENT IN THIS REPO'S APPS, BY CONSTRUCTION — the caller is tooling/feedback/move.mjs on the lead's laptop (docs/ops/feedback-triage.md). Pinned server-side by services/platform/test/feedback-triage.test.ts."
+    }
   ],
   "bindings": [
     {
@@ -1293,6 +1334,27 @@
       "readers": [
         "services/platform/src/routes/calendar.ts",
         "services/platform/src/routes/reminders.ts"
+      ]
+    },
+    {
+      "binding": "SCREENSHOTS",
+      "kind": "r2_buckets",
+      "scope": "shared",
+      "role": "feedback-screenshots",
+      "purpose": "⏱ 2026-10-03 · lane feedback-intake. The PRIVATE screenshot bucket `nikatru-feedback` (sandbox `nikatru-feedback-sandbox`): one stripped PNG/WebP per report that attached one, keyed shots/<report id>. ⚠️ A SECOND BUCKET ON PURPOSE, not a prefix of `nikatru-backups`: that bucket is the backup chain's, written only by the 02:30 cron with a 30-day sweep, and user screenshots in it would be copied off-vendor and outlive their 90-day purge. No public access, no custom domain, no r2.dev URL, and no route of this Worker's fetch reads it: the read path is the FeedbackInternal Service Binding entrypoint. It must exist before the first deploy (a lead step).",
+      "readers": [
+        "services/platform/src/routes/feedback.ts",
+        "services/platform/src/feedback/cron.ts",
+        "services/platform/src/feedback/internal.ts"
+      ]
+    },
+    {
+      "binding": "FEEDBACK_EDGE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-10-03 · lane feedback-intake. The feedback intake's per-NETWORK burst bound, keyed by edgeCeilingKey (Cloudflare colo and ASN, never an address), `simple: { limit: 30, period: 60 }`, checked first on POST /v1/feedback through strictEdgeCeiling: FAILS CLOSED (503) when absent or throwing, because it stands where a captcha would on an anonymous intake. Over it is a 429 with Retry-After: 60. Its OWN namespace (1201; the sandbox's is 1202).",
+      "readers": [
+        "services/platform/src/routes/feedback.ts"
       ]
     }
   ],

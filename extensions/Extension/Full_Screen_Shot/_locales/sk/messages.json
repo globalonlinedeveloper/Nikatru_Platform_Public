@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Odstráni všetky snímky obrazovky z histórie aj všetko, čo po sebe zanechali prerušené snímania. Vaše nastavenia zostanú nezmenené."
   },
+  "optionsSectionReport": {
+    "message": "Nahlásiť problém"
+  },
+  "optionsReport": {
+    "message": "Povedzte nám, čo sa pokazilo"
+  },
+  "optionsReportDesc": {
+    "message": "Otvorí formulár na nahlásenie na nikatru.com na novej karte, v ktorom je vyplnená iba verzia FullShot, jazyk a prehliadač."
+  },
+  "optionsReportBtn": {
+    "message": "Otvoriť formulár"
+  },
+  "optionsSectionHelp": {
+    "message": "Pomocník"
+  },
+  "optionsHelpSearch": {
+    "message": "Hľadať v pomocníkovi"
+  },
+  "optionsHelpNone": {
+    "message": "Žiadna zodpovedajúca odpoveď."
+  },
+  "optionsHelpAsk": {
+    "message": "Stále neviete? Opýtajte sa nás"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vymazať všetko, čo FullShot uložil v tomto zariadení?\n\nSnímky obrazovky v histórii: $COUNT$\nZvyšky po prerušených snímaniach: $LEFTOVER$\nUvoľnené miesto: $SIZE$\n\nVašich nastavení sa to nedotkne. Túto akciu nemožno vrátiť späť.",
     "placeholders": {

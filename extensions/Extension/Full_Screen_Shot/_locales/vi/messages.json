@@ -605,6 +605,30 @@
   "optionsDeleteAllDesc": {
     "message": "Xoá mọi ảnh chụp trong lịch sử và mọi thứ do các lần chụp bị gián đoạn để lại. Cài đặt của bạn vẫn giữ nguyên."
   },
+  "optionsSectionReport": {
+    "message": "Báo cáo sự cố"
+  },
+  "optionsReport": {
+    "message": "Cho chúng tôi biết điều gì đã xảy ra"
+  },
+  "optionsReportDesc": {
+    "message": "Mở biểu mẫu báo cáo trên nikatru.com trong thẻ mới, chỉ điền sẵn phiên bản FullShot, ngôn ngữ và trình duyệt."
+  },
+  "optionsReportBtn": {
+    "message": "Mở biểu mẫu báo cáo"
+  },
+  "optionsSectionHelp": {
+    "message": "Trợ giúp"
+  },
+  "optionsHelpSearch": {
+    "message": "Tìm trong trợ giúp"
+  },
+  "optionsHelpNone": {
+    "message": "Không có câu trả lời phù hợp."
+  },
+  "optionsHelpAsk": {
+    "message": "Vẫn gặp khó khăn? Hãy hỏi chúng tôi"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Xoá mọi thứ FullShot đã lưu trên thiết bị này?\n\nẢnh chụp trong lịch sử: $COUNT$\nPhần sót lại từ các lần chụp bị gián đoạn: $LEFTOVER$\nDung lượng được giải phóng: $SIZE$\n\nCài đặt của bạn không bị ảnh hưởng. Không thể hoàn tác.",
     "placeholders": {

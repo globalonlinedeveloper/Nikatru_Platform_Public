@@ -26,6 +26,8 @@ workspace:
   - packages/chassis_screens
   - packages/design_system
   - packages/external_links
+  - packages/feedback
+  - packages/help
   - packages/notifications
   - packages/platform_storage
   - packages/purchases

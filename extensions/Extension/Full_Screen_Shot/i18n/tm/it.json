@@ -432,5 +432,13 @@
   "optionsDeleteAllDesc": "Rimuove tutti gli screenshot dalla cronologia e tutto ciò che le catture interrotte hanno lasciato. Le tue impostazioni restano invariate.",
   "optionsDeleteAllConfirm": "Eliminare tutto ciò che FullShot ha archiviato su questo dispositivo?\n\nScreenshot nella cronologia: $COUNT$\nResidui di catture interrotte: $LEFTOVER$\nSpazio che verrà liberato: $SIZE$\n\nLe tue impostazioni non vengono modificate. L’operazione non può essere annullata.",
   "optionsDeleteAllDone": "Eliminato. FullShot ora non archivia alcuno screenshot su questo dispositivo.",
-  "errStorageFull": "Non c’è più spazio per archiviare questa cattura. Elimina qualche screenshot dalla cronologia e riprova."
+  "errStorageFull": "Non c’è più spazio per archiviare questa cattura. Elimina qualche screenshot dalla cronologia e riprova.",
+  "optionsSectionReport": "Segnala un problema",
+  "optionsReport": "Dicci cosa non ha funzionato",
+  "optionsReportDesc": "Apre il modulo di segnalazione su nikatru.com in una nuova scheda, con solo la versione di FullShot, la lingua e il browser compilati.",
+  "optionsReportBtn": "Apri il modulo",
+  "optionsSectionHelp": "Aiuto",
+  "optionsHelpSearch": "Cerca nella guida",
+  "optionsHelpNone": "Nessuna risposta corrispondente.",
+  "optionsHelpAsk": "Ancora bloccato? Chiedici"
 }

@@ -1,0 +1,35 @@
+name: nikatru_feedback
+description: >-
+  "Report a problem" — the ONE feedback sheet every stamped app, the brick and
+  the shipping app adopt (lane feedback-intake): a category, a description,
+  optional steps, an optional screenshot of the current screen with every text
+  field and every Sensitive-marked widget blurred BEFORE it leaves the device,
+  markup, privacy-minimal diagnostics, opt-in logs, and an exact preview of
+  what will be sent. Reports queue in core's durable outbox when offline and
+  send once. Its strings are its own ARB set (lib/l10n), compiled by
+  tooling/i18n/locales.mjs from the locale register.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.47.5"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../core
+  nikatru_design_system:
+    path: ../design_system
+  nikatru_telemetry:
+    path: ../telemetry
+
+dev_dependencies:
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

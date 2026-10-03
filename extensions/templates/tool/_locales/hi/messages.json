@@ -439,6 +439,34 @@
     "message": "इस एक्सटेंशन की स्थिति बताने वाली एक छोटी फ़ाइल बनाता है। सहेजने से पहले आप ठीक-ठीक देखते हैं कि उसमें क्या है, और कुछ भी कहीं नहीं भेजा जाता।",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "सहायता को रिपोर्ट भेजें",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "nikatru.com पर रिपोर्ट फ़ॉर्म नए टैब में खोलता है, जिसमें केवल इस एक्सटेंशन की जानकारी भरी होती है: नाम, संस्करण, भाषा और ब्राउज़र।",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "रिपोर्ट फ़ॉर्म खोलें",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "सहायता",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "सहायता में खोजें",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "कोई मिलता-जुलता उत्तर नहीं।",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "अब भी अटके हैं? हमसे पूछें",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "रिपोर्ट तैयार करें",
     "description": "en: Prepare a report"

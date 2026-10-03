@@ -1,0 +1,11 @@
+{
+  "_why": "The triage routine's caps (docs/ops/feedback-triage.md §Caps; lane feedback-triage, Do 1). The routine reads them from here at the start of every run and stops at whichever comes first; pull.mjs never pulls more than perRun.reports. tooling/feedback/lib.mjs loadConfig refuses a missing or non-positive cap, and a run cap above the day cap. The routine runs on the lead's subscription (no per-report charge), so these bound attention and wall-clock, not money.",
+  "perRun": {
+    "reports": 25,
+    "wallClockMinutes": 20
+  },
+  "perDay": {
+    "reports": 100,
+    "runs": 2
+  }
+}

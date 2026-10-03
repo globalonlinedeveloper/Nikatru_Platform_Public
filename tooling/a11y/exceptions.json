@@ -1,0 +1,51 @@
+{
+  "$comment": "The ONE list of known accessibility gaps (lane a11y-statement, Do 1). Read by tooling/a11y/scan.mjs (a serious or critical axe violation fails CI unless a row here names its rule on its page, and a row whose rule no longer fires on its scanned pages is STALE and fails too) and by tooling/sites/gen-accessibility-statement.mjs, which publishes every row on nikatru.com/accessibility. tooling/ci/assert-a11y-statement.mjs holds the published page and this file to the same ids both ways. `axe` lists the axe-core rule ids the row tolerates (empty when the scan cannot see the gap); `pages` is repo-relative, or [] for a surface the site scan does not cover. `owner` is the lane that may fix it; `until` is the date the row is reviewed by, never a promise the page makes.",
+  "reviewed": "2026-10-03",
+  "reviewEveryMonths": 3,
+  "exceptions": [
+    {
+      "id": "A11Y-EX-APPS-DARK-LINK-CONTRAST",
+      "surface": "nikatru.com app pages",
+      "pages": ["sites/nikatru/apps/index.html", "sites/nikatru/apps/subscriptiontracker.html"],
+      "criterion": "1.4.3 Contrast (Minimum)",
+      "what": "In the dark colour scheme some links on the app pages are below the 4.5:1 contrast ratio.",
+      "why": "The app pages are generated from the catalogue by another lane that is changing them now; the fix lands with that change.",
+      "owner": "india-rail",
+      "until": "2026-11-30",
+      "axe": ["color-contrast"]
+    },
+    {
+      "id": "A11Y-EX-PRICING-HEADINGS",
+      "surface": "nikatru.com pricing page",
+      "pages": ["sites/nikatru/pricing.html"],
+      "criterion": "1.3.1 Info and Relationships",
+      "what": "Each product's name and its \"Plans\" heading are both level-2 headings; the second should be level 3.",
+      "why": "The pricing page's text is being changed by another lane; the heading level changes with it.",
+      "owner": "india-rail",
+      "until": "2026-11-30",
+      "axe": []
+    },
+    {
+      "id": "A11Y-EX-ST-PRIVACY-NOTICE",
+      "surface": "nikatru.com/subscriptiontracker/privacy",
+      "pages": ["sites/nikatru/subscriptiontracker/privacy.html"],
+      "criterion": "2.4.1 Bypass Blocks; 1.4.3 Contrast (Minimum) in a dark system theme",
+      "what": "The per-app privacy notice has no navigation landmark and no dark colour scheme.",
+      "why": "The notice is a legal page whose next change belongs to the data-rights lane.",
+      "owner": "dpdp-rights",
+      "until": "2026-11-30",
+      "axe": []
+    },
+    {
+      "id": "A11Y-EX-NO-APPLE-SCREEN-READER-PASS",
+      "surface": "the native apps on Apple devices",
+      "pages": [],
+      "criterion": "4.1.2 Name, Role, Value (manual verification)",
+      "what": "No one has yet tested the apps with VoiceOver on an iPhone, iPad or Mac.",
+      "why": "No Apple device is available to us yet. The apps' accessibility tree is tested automatically on every change, which is not the same as a person using a screen reader.",
+      "owner": "lead",
+      "until": "2026-12-31",
+      "axe": []
+    }
+  ]
+}

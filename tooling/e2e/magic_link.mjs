@@ -28,14 +28,14 @@ import { REQUEST_TIMEOUT_MS } from '../ops/bounded-retry.mjs';
 // returning an unknown error" page for auth-api.nikatru.com, nine seconds after
 // the first user's mint passed. Run 37081275953 died on the same 520 an hour
 // later, and a run at 00:42Z was green: the ORIGIN was briefly unhealthy. So a
-// 502/503/504/520-524 is asked once more after RETRY_GAP_MS, and a second one
+// 502/503/504/520-529 is asked once more after RETRY_GAP_MS, and a second one
 // fails naming BOTH statuses. Every other answer is final on first sight: a 4xx
 // is GoTrue's verdict, not a blip. A retried mint is safe: generate_link REPLACES
 // the user's one live token (the 🔴 above), so a lost first answer leaves only
 // the second token live.
 
 /** The statuses that are the edge's report of an unhealthy origin, not GoTrue's answer. */
-export const EDGE_RETRY_STATUSES = Object.freeze([502, 503, 504, 520, 521, 522, 523, 524]);
+export const EDGE_RETRY_STATUSES = Object.freeze([502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529]);
 /** The gap before the one retry: long enough for a blip to pass, short beside a step. */
 export const RETRY_GAP_MS = 5_000;
 
@@ -44,6 +44,19 @@ const nap = (ms) => new Promise((r) => setTimeout(r, ms));
 /** The shape GoTrue issues a `hashed_token` in: lowercase hex (a SHA-224 digest
  *  today, 56 characters; the range leaves room for another digest). */
 export const TOKEN_HASH_SHAPE = /^[0-9a-f]{40,128}$/;
+
+/**
+ * ⏱ 2026-10-02 — Cloudflare's origin-fault answers (520-529): the request was
+ * lost between the edge and the identity server, and the server never saw it.
+ * Measured 2026-10-01 15:00:51Z: `POST /admin/generate_link` answered 520 after
+ * 12.9 s with no line in Box C's GoTrue or envoy log, and main's E2E went red on
+ * it. The user is a throwaway and a second mint replaces the first token, so the
+ * mint is asked ONCE more on one of these, and says so in the log.
+ * ⏱ 2026-10-03 · merged over main's EDGE_RETRY_STATUSES (the same incident,
+ * fixed twice): every origin fault is in that list, so one retry path serves
+ * both, with main's gap and its both-statuses refusal.
+ */
+export const ORIGIN_FAULT = (status) => status >= 520 && status <= 529;
 
 /** Thrown for every way the mint can fail, with the message a caller prints. */
 export class MagicLinkRefused extends Error {
@@ -71,7 +84,15 @@ export class MagicLinkRefused extends Error {
  * attempt carries a REQUEST_TIMEOUT_MS ceiling. `sleep` and `timeoutMs` are the
  * test seams; production passes neither.
  */
-export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl = fetch, sleep = nap, timeoutMs = REQUEST_TIMEOUT_MS }) {
+export async function mintMagicLinkTokenHash({
+  url,
+  serviceKey,
+  email,
+  fetchImpl = fetch,
+  log = (line) => console.error(line),
+  sleep = nap,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+}) {
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
     if (typeof v !== 'string' || v === '') throw new MagicLinkRefused(`cannot mint a magic-link token: ${name} is empty`);
   }
@@ -106,6 +127,9 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
   let res = await post();
   if (EDGE_RETRY_STATUSES.includes(res.status)) {
     const first = res.status;
+    // Nothing from the response, and never the key or the address: the status is the fact.
+    log(`generate_link answered HTTP ${first}, ${ORIGIN_FAULT(first) ? 'an origin fault (the request was lost before the identity server)' : 'an edge 5xx'}; retrying once`);
+    await res.body?.cancel().catch(() => {});
     await sleep(RETRY_GAP_MS);
     // The retry's own timeout or network error keeps the FIRST status in its
     // message (PR #1177 review, finding 4): both attempts are named, always.

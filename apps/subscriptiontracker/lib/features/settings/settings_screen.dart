@@ -64,6 +64,7 @@ import 'app_lock_setup.dart' show AppLockSettingsRow;
 import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'delete_account_billing.dart';
 import 'reminder_settings.dart';
+import 'settings_help_card.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -835,7 +836,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
 
             _sectionLabel(context, l10n.settingsHelpSection),
-            _helpCard(context, ref, l10n),
+            settingsHelpCard(context, ref, l10n, row: _LinkRow.new),
 
             // ── LEGAL (chassis). Both stores require these to be reachable
             //    IN-APP, not only from a store listing. [pipeline C-13]
@@ -1109,28 +1110,6 @@ class SettingsScreen extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(text)));
     }
   }
-
-  Widget _helpCard(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n,
-  ) => helpCard(
-    context,
-    decoration: cardDecoration(context),
-    row: _LinkRow.new,
-    contactPageLabel: l10n.helpAndSupport,
-    openContactPage: () => openExternalUrl(AppConfig.contactUrl),
-    contactSupportLabel: l10n.contactSupport,
-    supportEmail: AppConfig.supportEmail,
-    supportSubject: '${AppConfig.appName} support',
-    feedbackLabel: l10n.sendFeedback,
-    feedbackSubject: l10n.feedbackMailSubject(AppConfig.appName),
-    openMail: externalLinks.open,
-    canRate: ref.watch(storeListingAvailableProvider),
-    rateLabel: l10n.rateApp(AppConfig.appName),
-    openStoreListing: () => ref.read(reviewPrompterProvider).openStoreListing(),
-    rateUnavailable: l10n.rateAppUnavailable,
-  );
 
   /// [pipeline C-13] EDIT DISPLAY NAME.
   ///

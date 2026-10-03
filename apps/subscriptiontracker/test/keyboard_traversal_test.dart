@@ -193,6 +193,10 @@ import 'support/width_harness.dart';
 // ⏱ 2026-10-02 · club-st-singles T16 XP-03: 3080 -> 3130. The App lock row
 // joined the privacy card on top of every growth above, and Settings scrolled
 // by 41 px at 3080 — measured by [_everythingIsLaidOut].
+// ⏱ 2026-10-03 · help-search: the Help card's "Help centre" row was 28 px
+// short at 3080 on its own branch. Merged over T16 XP-03 the two growths
+// together are 38 px short at 3080 — measured by [_everythingIsLaidOut] on the
+// merged tree — so 3130 holds both and stays.
 const Size kKeyboardSurface = Size(1079, 3130);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
@@ -709,8 +713,10 @@ void main() {
         // ⏱ 2026-10-02 · club-st-singles SE-04: unchanged — the inert
         // "Connected accounts" row (never a control) left this signed-out
         // sweep for the signed-in account rows, where it is wired.
-        controls: 36 + core.Money.symbols.length,
-        reachable: 33 + core.Money.symbols.length,
+        // ⏱ 2026-10-03 · help-search: 36 -> 37 and 33 -> 34 — the Help card's
+        // "Help centre" _LinkRow, wired and in the orbit.
+        controls: 37 + core.Money.symbols.length,
+        reachable: 34 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

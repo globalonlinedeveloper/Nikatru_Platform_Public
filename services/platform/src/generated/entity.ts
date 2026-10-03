@@ -6,6 +6,7 @@
 export const MAIL_FROM = {
   reports: "Nikatru reports <alerts@mail.nikatru.com>",
   reminders: "Nikatru reminders <reminders@mail.nikatru.com>",
+  feedback: "Nikatru support <support@mail.nikatru.com>",
 } as const;
 
 /** The published support inbox — `supportEmail`. */

@@ -21,6 +21,10 @@ import 'package:nikatru_chassis_screens/settings/help_section.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show kSupportedLocaleCodes;
+import 'package:nikatru_feedback/nikatru_feedback.dart'
+    show FeedbackCategory, FeedbackKeys, FeedbackStrings, ReportProblemPage;
+import 'package:nikatru_help/nikatru_help.dart'
+    show HelpCentreKeys, HelpCentrePage;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
@@ -143,7 +147,7 @@ void main() {
 
   group('D12/F53 · one Help section', () {
     testWidgets('Help holds the contact page, the support mail, Rate and '
-        'Feedback — and the support mail appears once', (
+        'Report a problem — and the support mail appears once', (
       WidgetTester tester,
     ) async {
       await _pump(tester);
@@ -155,10 +159,11 @@ void main() {
       final double legalY = tester.getTopLeft(legal).dy;
 
       for (final Finder row in <Finder>[
+        find.byKey(HelpKeys.helpCentre),
         find.text(en.helpAndSupport),
         find.byKey(HelpKeys.contactSupport),
         find.byKey(HelpKeys.rate),
-        find.byKey(HelpKeys.feedback),
+        find.byKey(HelpKeys.reportProblem),
       ]) {
         expect(row, findsOneWidget);
         final double y = tester.getTopLeft(row).dy;
@@ -176,7 +181,7 @@ void main() {
         reason: 'the mailto moved to Help; a second copy in Legal is the split',
       );
       expect(find.text(en.rateApp(AppConfig.appName)), findsOneWidget);
-      expect(find.text(en.sendFeedback), findsOneWidget);
+      expect(find.text('Report a problem'), findsOneWidget);
     });
 
     testWidgets('no Rate row where there is no store listing (web, Linux)', (
@@ -190,11 +195,49 @@ void main() {
       );
       expect(find.byKey(HelpKeys.rate), findsNothing);
       expect(
-        find.byKey(HelpKeys.feedback),
+        find.byKey(HelpKeys.reportProblem),
         findsOneWidget,
-        reason: 'feedback is a mail, and a mail works everywhere',
+        reason: 'Report a problem needs no store listing: it works everywhere',
       );
     });
+
+    // Lane help-search: Settings > Help opens packages/help, whose "Ask us"
+    // opens the report sheet with category question and the search text.
+    testWidgets(
+      '🔴 Help opens the help centre, and "Ask us" opens the report sheet with the query',
+      (WidgetTester tester) async {
+        await _pump(tester);
+        await tester.ensureVisible(find.byKey(HelpKeys.helpCentre));
+        await tester.tap(find.byKey(HelpKeys.helpCentre));
+        await tester.pumpAndSettle();
+        expect(find.byType(HelpCentrePage), findsOneWidget);
+        await tester.enterText(
+          find.byKey(HelpCentreKeys.search),
+          'renewal reminder late',
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(HelpCentreKeys.askUs));
+        await tester.tap(find.byKey(HelpCentreKeys.askUs));
+        await tester.pumpAndSettle();
+        final ReportProblemPage sheet = tester.widget<ReportProblemPage>(
+          find.byType(ReportProblemPage),
+        );
+        expect(sheet.initialCategory, FeedbackCategory.question);
+        expect(sheet.initialDescription, 'renewal reminder late');
+      },
+    );
+
+    testWidgets(
+      'Report a problem opens packages/feedback\'s page, not a mail',
+      (WidgetTester tester) async {
+        await _pump(tester);
+        await tester.ensureVisible(find.byKey(HelpKeys.reportProblem));
+        await tester.tap(find.byKey(HelpKeys.reportProblem));
+        await tester.pumpAndSettle();
+        expect(find.byType(ReportProblemPage), findsOneWidget);
+        expect(find.byKey(FeedbackKeys.send), findsOneWidget);
+      },
+    );
 
     testWidgets('Rate opens the store listing', (WidgetTester tester) async {
       final _Prompter prompter = _Prompter(core.StoreListingOutcome.opened);
@@ -232,30 +275,15 @@ void main() {
       );
     });
 
-    test('Feedback is a mail to the support address, subject translated', () {
-      final Uri enMail = supportMailUri(
-        AppConfig.supportEmail,
-        en.feedbackMailSubject(AppConfig.appName),
-      );
-      expect(enMail.scheme, 'mailto');
-      expect(enMail.path, AppConfig.supportEmail);
-      expect(
-        enMail.queryParameters['subject'],
-        en.feedbackMailSubject(AppConfig.appName),
-      );
-      final AppLocalizations ta = lookupAppLocalizations(const Locale('ta'));
-      expect(
-        supportMailUri(
-          AppConfig.supportEmail,
-          ta.feedbackMailSubject(AppConfig.appName),
-        ).queryParameters['subject'],
-        ta.feedbackMailSubject(AppConfig.appName),
-      );
-      expect(
-        ta.feedbackMailSubject(AppConfig.appName),
-        isNot(en.feedbackMailSubject(AppConfig.appName)),
-      );
-    });
+    test(
+      'Report a problem is translated: its label is its own package\'s, per locale',
+      () {
+        expect(
+          FeedbackStrings.of(const Locale('ta')).reportProblem,
+          isNot(FeedbackStrings.of(const Locale('en')).reportProblem),
+        );
+      },
+    );
   });
 
   group('D14 · the © year is the clock\'s', () {

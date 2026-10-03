@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red control: a sticky nav taller than the scroll padding</title>
+<style>
+  /* The homepage's nav before lane a11y-statement: sticky at every width, and
+     wrapping to about 145px at 375px over an 84px scroll-padding-top. */
+  html{scroll-padding-top:84px}
+  nav{position:sticky;top:0;background:#0B1220;color:#fff}
+  nav a{color:#fff;display:inline-block;padding:8px;font-size:15px}
+</style>
+</head>
+<body>
+<!-- RED CONTROL for tooling/a11y/scan.mjs's focus-not-obscured-sticky rule
+     (WCAG 2.2 SC 2.4.11): at 375px the scan must exit 1 here. -->
+<nav aria-label="Site"><a href="#a">Apps</a> <a href="#a">Pricing</a> <a href="#a">About</a> <a href="#a">Support</a> <a href="#a">Contact</a> <a href="#a">Privacy</a> <a href="#a">Terms</a> <a href="#a">Refunds</a> <a href="#a">Shipping</a> <a href="#a">Delete account</a> <a href="#a">Sign in</a></nav>
+<main>
+  <h1>Sticky nav</h1>
+  <p id="a">Target.</p>
+</main>
+</body>
+</html>

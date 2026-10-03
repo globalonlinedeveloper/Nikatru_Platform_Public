@@ -439,6 +439,34 @@
     "message": "Cria um ficheiro pequeno que descreve o estado desta extensão. Vê exatamente o que há nele antes de o guardar, e nada é enviado para lado nenhum.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Enviar uma comunicação ao suporte",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Abre o formulário de comunicação em nikatru.com num novo separador, com apenas os dados desta extensão preenchidos: nome, versão, idioma e navegador.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Abrir o formulário",
+    "description": "en: Open the report form"
+  },
+  "optHelpSection": {
+    "message": "Ajuda",
+    "description": "en: Help"
+  },
+  "optHelpSearch": {
+    "message": "Pesquisar na ajuda",
+    "description": "en: Search help"
+  },
+  "optHelpNone": {
+    "message": "Nenhuma resposta corresponde.",
+    "description": "en: No matching answer."
+  },
+  "optHelpAsk": {
+    "message": "Ainda com dúvidas? Pergunte-nos",
+    "description": "en: Still stuck? Ask us"
+  },
   "optReportButton": {
     "message": "Preparar um relatório",
     "description": "en: Prepare a report"

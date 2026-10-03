@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red control: a button with no name</title>
+</head>
+<body>
+<!-- RED CONTROL for tooling/a11y/scan.mjs (lane a11y-statement, Do 3): axe's
+     `button-name` rule is critical, and no register row names this page, so the
+     scan must exit 1 here. ci.yml's sites job asserts that exit. -->
+<main>
+  <h1>A page with one unlabeled button</h1>
+  <button type="button"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16"/></svg></button>
+</main>
+</body>
+</html>

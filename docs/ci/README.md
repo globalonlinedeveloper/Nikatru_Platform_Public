@@ -833,54 +833,6 @@ without ever opening a pull request, and nothing would say so. The workflow
 fires **daily** and `renovate.json`'s own schedule decides when it does work:
 give the *evidence* margin, not the duty.
 
-### 8.2 Regenerate Gradle verification
-
-`apps/<app>/android/gradle/verification-metadata.xml` lists the sha256 of every
-artefact Gradle fetches, and Gradle refuses one it does not list ("Dependency
-verification failed … N artifacts failed verification"). So **every Android
-dependency change** (a Flutter, AGP, Kotlin, Gradle or plugin bump; a Flutter bump
-alone is a new engine artefact set) is red in `ci.yml` android-artifacts until the
-file is regenerated, and that needs Gradle and the Android SDK on Linux, which no
-laptop or cloud sandbox here has. `.github/workflows/regen-gradle-verify.yml`
-regenerates it on the runner:
-
-1. **Dispatch** ON the branch that carries the dependency change, with `--ref`:
-
-   ```
-   gh workflow run regen-gradle-verify.yml -R globalonlinedeveloper/Nikatru_Platform_Public \
-     --ref <branch> -f app=subscriptiontracker
-   ```
-
-   `--ref` is the only form: the workflow takes no `ref` input and refuses
-   `main`. A dispatch runs in the cache scope of the ref it is dispatched on, and
-   this job runs the branch's unreviewed build code, so it must never run in
-   `main`'s scope, which every branch and the keystore jobs restore. It writes no
-   cache either (`setup-flutter` and `setup-java` caches off, no `actions/cache`).
-   A branch cut before the workflow reached `main` must merge `main` first.
-
-   It builds that branch with the same JDK, Flutter and runner image as
-   android-artifacts, no cache and no secret, verification lenient in
-   `~/.gradle` only, and runs `./gradlew --write-verification-metadata sha256`
-   over bundleDebug + assembleDebug, then bundleRelease + assembleRelease (the
-   procedure `tooling/ci/assert-signing-inputs-pinned.mjs` limb V names). Gradle
-   MERGES into the committed file, so an entry no build uses any more stays.
-   **Before the upload** it puts verification back to strict, re-runs those
-   four tasks against the new file (Gradle, not the release composer: a composer
-   call outside ci-gate is refused by `assert-release-provenance`) and runs
-   `node tooling/ci/assert-signing-inputs-pinned.mjs`, so a file a build refuses
-   never becomes an artifact.
-2. **Download** the artifact `verification-metadata-<app>-<sha8>` (`<sha8>` is the
-   commit the run built):
-   `gh run download <run id> -R globalonlinedeveloper/Nikatru_Platform_Public -n verification-metadata-<app>-<sha8>`.
-3. **Commit** it at `apps/<app>/android/gradle/verification-metadata.xml` on the
-   same branch, read the diff (new components should match the bump, nothing
-   else), and push. android-artifacts on the pull request is the proof: it builds
-   with verification on, against the committed file. If the branch moved after
-   the dispatch, dispatch again on the new head.
-
-The workflow pushes nothing and holds `contents: read` only; its duty row is
-`duty.workflow.regen-gradle-verify.yml` in `tooling/ops/register.json`.
-
 ---
 
 ## 9. One page per workflow
@@ -910,7 +862,7 @@ naming the job it belonged to and the line it sat above.
 | this page | `.github/workflows/ci.yml` | CI | `push`, `workflow_dispatch`, `pull_request` | 44 |
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 3 |
-| [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
+| [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 4 |
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 5 |
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 29 |

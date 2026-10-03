@@ -423,5 +423,13 @@
   "optionsDeleteAllDesc": "Fjerner alle skjermbilder i historikken din og alt som avbrutte opptak har lagt igjen. Innstillingene dine forblir som de er.",
   "optionsDeleteAllConfirm": "Vil du slette alt FullShot har lagret på denne enheten?\n\nSkjermbilder i historikken din: $COUNT$\nRester etter avbrutte opptak: $LEFTOVER$\nPlass dette frigjør: $SIZE$\n\nInnstillingene dine påvirkes ikke. Dette kan ikke angres.",
   "optionsDeleteAllDone": "Slettet. FullShot lagrer nå ingen skjermbilder på denne enheten.",
-  "errStorageFull": "Det er ikke mer plass til å lagre dette opptaket. Slett noen skjermbilder fra historikken din og prøv igjen."
+  "errStorageFull": "Det er ikke mer plass til å lagre dette opptaket. Slett noen skjermbilder fra historikken din og prøv igjen.",
+  "optionsSectionReport": "Rapporter et problem",
+  "optionsReport": "Fortell oss hva som gikk galt",
+  "optionsReportDesc": "Åpner rapportskjemaet på nikatru.com i en ny fane, der bare FullShot-versjonen, språket og nettleseren er fylt ut.",
+  "optionsReportBtn": "Åpne rapportskjemaet",
+  "optionsSectionHelp": "Hjelp",
+  "optionsHelpSearch": "Søk i hjelp",
+  "optionsHelpNone": "Ingen svar samsvarer.",
+  "optionsHelpAsk": "Står du fortsatt fast? Spør oss"
 }
