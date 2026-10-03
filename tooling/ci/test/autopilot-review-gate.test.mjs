@@ -6,7 +6,7 @@
 // Run:  node --test "tooling/ci/test/autopilot-review-gate.test.mjs"
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -55,6 +55,42 @@ describe('the classes', () => {
       }
     }
     assert.ok(classify(['services/platform/queries/x.sql']).classes.includes('api'), 'Worker queries are api');
+  });
+  // The brick's backend template: `{{/needs_backend}}` holds a `/`, so the path is the REAL tracked one, never hand-typed.
+  const BRICK_API = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api';
+  test('🔴 the Worker configs, the edge rate-limit rule and the brick backend template are classed (round 2 of #1171, finding 1)', () => {
+    const real = {
+      'services/platform/wrangler.jsonc': ['api', 'auth'],
+      'services/edge-shield/wrangler.jsonc': ['api'],
+      'tooling/edge-ratelimit-rule.json': ['auth'],
+      'tooling/ops/edge-ratelimit-rule.mjs': ['auth'],
+      [`${BRICK_API}/src/middleware/auth.ts`]: ['auth', 'api'],
+      [`${BRICK_API}/src/routes/account.ts`]: ['api'],
+    };
+    for (const [f, classes] of Object.entries(real)) {
+      assert.ok(existsSync(join(ROOT, f)), `${f} is not a real file any more: re-point this control at its successor`);
+      for (const cls of classes) assert.ok(classify([f]).classes.includes(cls), `${f} should be ${cls}, got ${classify([f]).classes.join(',') || 'nothing'}`);
+    }
+  });
+  // NOT_REVIEWED: what may sit under services/ or the brick's *-api template OUTSIDE every class. Each entry says why.
+  const NOT_REVIEWED = [
+    ['**/test/**', 'a test changes no deployed behaviour; the code it tests is classed'],
+    ['**/README.md', 'prose'],
+    // A dependency bump is not an auth, money, user-data or API change in the sense of the owner rule of 2026-09-29;
+    // supply-chain risk is held by osv-scanner and CI, and classing these would queue every Dependabot bump behind the
+    // reviewer and stall keeping deps current (lead ruling on #1171 round 2, item 2).
+    ['**/package.json', 'dependency manifest: osv-scanner and CI hold it'],
+    ['**/package-lock.json', 'lockfile: osv-scanner and CI hold it'],
+    ['**/tsconfig.json', 'type-check config, no runtime effect'],
+    ['**/vitest.config.ts', 'test-runner config, no runtime effect'],
+    ['**/.dev.vars.example', 'a local-dev example, never deployed'],
+  ].map(([g]) => globToRegExp(g));
+  test('🔴 every TRACKED file under services/ and the brick *-api template is classed or on NOT_REVIEWED', () => {
+    const tracked = execFileSync('git', ['ls-files', '-z', '--', 'services', `${BRICK_API}`], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean);
+    assert.ok(tracked.some((f) => f.startsWith('services/platform/')), 'the sweep read services/');
+    assert.ok(tracked.some((f) => f.startsWith(`${BRICK_API}/`)), 'the sweep read the brick template');
+    const unclassed = tracked.filter((f) => !classify([f]).classes.length && !NOT_REVIEWED.some((r) => r.test(f)));
+    assert.deepEqual(unclassed, [], `unclassed and not on NOT_REVIEWED: ${unclassed.join(', ')}`);
   });
   test('the four classes exist and each glob compiles; `subscription` alone is not money', () => {
     assert.deepEqual(Object.keys(CLASSES).sort(), ['api', 'auth', 'money', 'user-data']);

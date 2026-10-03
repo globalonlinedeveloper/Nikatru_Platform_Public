@@ -1,5 +1,5 @@
 {
-  "_header": "The review classes (lane autopilot-reviews, O-REVIEWS-DEPEND-ON-THE-LAPTOP). Owner rule 2026-09-29: an auth, money, user-data or API pull request gets an INDEPENDENT review before it may merge. .github/workflows/review-gate.yml runs tooling/autopilot/review-paths.mjs over a PR's file list and adds `needs-review` when any path matches a glob below; tooling/ci/land-next.mjs then waits for an owner's `VERDICT: APPROVE` on the head. Name globs are scoped to the product roots (apps, packages, services, sites, extensions) so a tooling test named after a class is not a review. Globs: `**` any depth, `*` within one segment, `{a,b}` alternatives; matched case-insensitively against the repo-relative path. Seeded from the brief, refined from this tree (packages/, services/*/src/routes, services/*/migrations, contracts/). ⏱ 2026-10-02 (review of #1171, finding 3): ALL Worker source is api (services/*/src/**, queries/**, migrations/**), the store-receipt verifiers and packages/core money are money, token-crypto and provider-revoke are auth, the D1 backup and the mail adapters are user-data; a red control classifies one REAL tracked file from each. A test fixture per class is in tooling/ci/test/autopilot-review-gate.test.mjs.",
+  "_header": "The review classes (lane autopilot-reviews, O-REVIEWS-DEPEND-ON-THE-LAPTOP). Owner rule 2026-09-29: an auth, money, user-data or API pull request gets an INDEPENDENT review before it may merge. .github/workflows/review-gate.yml runs tooling/autopilot/review-paths.mjs over a PR's file list and adds `needs-review` when any path matches a glob below; tooling/ci/land-next.mjs then waits for an owner's `VERDICT: APPROVE` on the head. Name globs are scoped to the product roots (apps, packages, services, sites, extensions) so a tooling test named after a class is not a review. Globs: `**` any depth, `*` within one segment, `{a,b}` alternatives; matched case-insensitively against the repo-relative path. Seeded from the brief, refined from this tree (packages/, services/*/src/routes, services/*/migrations, contracts/). ⏱ 2026-10-02 (review of #1171, finding 3): ALL Worker source is api (services/*/src/**, queries/**, migrations/**), the store-receipt verifiers and packages/core money are money, token-crypto and provider-revoke are auth, the D1 backup and the mail adapters are user-data; a red control classifies one REAL tracked file from each. ⏱ 2026-10-03 (round 2 of #1171, finding 1): the Worker configs `services/*/wrangler.*` (the auth issuer, the native-attestation policy, CORS, the limiters) are api AND auth; `tooling/edge-ratelimit-rule.json` and its applier `tooling/ops/edge-ratelimit-rule.mjs` are auth; the app brick's backend template `tooling/bricks/app/__brick__/**/*-api/**` is api and its `*-api/src/middleware/**` is auth. A sweep in the test classes every tracked file under services/ and the brick's *-api template, bar a commented NOT_REVIEWED list. A test fixture per class is in tooling/ci/test/autopilot-review-gate.test.mjs.",
   "classes": {
     "auth": [
       "packages/auth_supabase/**",
@@ -11,6 +11,10 @@
       "services/_shared/src/auth*.ts",
       "services/platform/src/routes/{native-auth,native-handoff,provider-token}.ts",
       "services/platform/src/lib/{token-crypto,provider-revoke}.ts",
+      "services/*/wrangler.*",
+      "tooling/edge-ratelimit-rule.json",
+      "tooling/ops/edge-ratelimit-rule.mjs",
+      "tooling/bricks/app/__brick__/**/*-api/src/middleware/**",
       "tooling/bricks/app/__brick__/**/features/auth/**",
       "{apps,packages,services,sites,extensions}/**/*{session,oauth,jwks,siwa,signin,sign_in,sign-in,captcha,turnstile}*"
     ],
@@ -43,7 +47,9 @@
       "services/_shared/src/**",
       "services/*/src/**",
       "services/*/queries/**",
-      "services/*/migrations/**"
+      "services/*/migrations/**",
+      "services/*/wrangler.*",
+      "tooling/bricks/app/__brick__/**/*-api/**"
     ]
   }
 }
