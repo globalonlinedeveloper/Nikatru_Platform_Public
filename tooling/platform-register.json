@@ -1259,6 +1259,7 @@
       "binding": "SCREENSHOTS",
       "kind": "r2_buckets",
       "scope": "shared",
+      "role": "feedback-screenshots",
       "purpose": "⏱ 2026-10-03 · lane feedback-intake. The PRIVATE screenshot bucket `nikatru-feedback` (sandbox `nikatru-feedback-sandbox`): one stripped PNG/WebP per report that attached one, keyed shots/<report id>. ⚠️ A SECOND BUCKET ON PURPOSE, not a prefix of `nikatru-backups`: that bucket is the backup chain's, written only by the 02:30 cron with a 30-day sweep, and user screenshots in it would be copied off-vendor and outlive their 90-day purge. No public access, no custom domain, no r2.dev URL, and no route of this Worker's fetch reads it: the read path is the FeedbackInternal Service Binding entrypoint. It must exist before the first deploy (a lead step).",
       "readers": [
         "services/platform/src/routes/feedback.ts",

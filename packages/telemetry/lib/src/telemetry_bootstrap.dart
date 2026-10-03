@@ -81,8 +81,8 @@ class TelemetryBootstrap {
     options.tracesSampleRate = config.tracesSampleRate;
     // Belt and braces: never attach default PII (ip address, ...).
     options.sendDefaultPii = false;
-    options.beforeSend = (event, hint) =>
-        bound.tryAcquire() ? scrubEvent(event) : null;
+    options.beforeSend =
+        (event, hint) => bound.tryAcquire() ? scrubEvent(event) : null;
     // What a "Report a problem" report may carry is read by an event
     // processor, BEFORE beforeSend — so beforeSend stays the one PII choke
     // point (assert-glitchtip-no-ip), and the processor keeps only an
