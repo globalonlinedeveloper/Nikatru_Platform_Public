@@ -11,14 +11,10 @@
     "recorded as such in the corpus runbooks (runbooks/boxb-services.md, runbooks/boxes/hostinger.md, runbooks/ntfy.md,",
     "runbooks/vaultwarden.md, runbooks/beszel-dozzle.md, runbooks/boxes/boxc.md). Box B's names were a placeholder",
     "(`compose`, `override`, `tunnel`): the corpus vendors SIX Box B compose files, one per stack, and NO override, so each stack is declared",
-    "by its own name and `override` is not declared. boxc/override and boxc/compose carry NO hash ON PURPOSE (lead",
-    "7185eb, read from Box C's own post): the corpus's override is STALE, the copy from before the deliberate",
-    "2026-09-27 Google sign-in change (the live file is right), and Supabase's upstream docker-compose.yml was never",
-    "vendored. Both are re-vendored from the live box in a Private follow-up; then run --refresh-vendored. ⚠️ DO NOT",
-    "REFRESH BEFORE THAT LANDS: the override path below still names the stale copy, and its hash would come back.",
-    "`firstDue` + `firstDueWhy` on a box is THE BOOTSTRAP (the reader's header says how it is bounded): until that",
-    "instant the box's NO ROW, and each of its entries with no hash, prints KNOWN-PENDING and does not block; from it",
-    "they are red again. Every entry that HAS a hash is graded in full against the box's post, whatever firstDue says."
+    "by its own name and `override` is not declared.",
+    "⏱ 2026-10-03 08:20Z (lead 7185eb): Box C override RE-VENDORED from the live box (the corpus copy predated the deliberate 2026-09-27",
+    "Google sign-in change) and Supabase's docker-compose.yml VENDORED for the first time (both secret-free: every credential is a ${VAR});",
+    "hashes refreshed with --refresh-vendored and equal to Box C's own 07:59Z post."
   ],
   "maxPostAgeHours": 50,
   "boxes": {
@@ -61,12 +57,12 @@
       "firstDueWhy": "⚠️ THE BOOTSTRAP (2026-10-03, ops-watch 37103985999). (1) NO ROW: Box C posts only once its cron is installed, which needs the box-scoped secret BOX_MANIFEST_SECRET_BOXC (`wrangler secret put` on the platform Worker, the same value in /etc/nikatru/box-manifest.secret on Box C, mode 0600) — an OWNER step, because it CREATES A CREDENTIAL — plus tooling/ops/boxes/post-config-manifest.sh under /etc/cron.d with /etc/nikatru/box-manifest.conf (BOX=boxc) and /etc/nikatru/box-manifest.files listing exactly this box's logical names in tooling/ops/box-config-vendored.json. ⏱ 2026-10-03, lead 7185eb: installed; Box C posts, and `tunnel` matches. (2) `override` and `compose` carry NO hash on purpose: the corpus's override is STALE (the copy from before the deliberate 2026-09-27 Google sign-in change; the live file is right) and compose was never vendored. Both are re-vendored from the live box in a Private follow-up, then --refresh-vendored; never refresh before that lands. ⬜ DELETE THIS FIELD AND `firstDue` once both carry a hash and an ops-watch run on main has graded this box green.",
       "files": {
         "compose": {
-          "vendored": null,
-          "sha256": null
+          "vendored": "runbooks/config/supabase-docker-compose.yml",
+          "sha256": "3de522ea29cab3bea95da5287554efe73e6241c15e121cbfdf648835e4ba33a8"
         },
         "override": {
           "vendored": "runbooks/config/supabase-docker-compose.override.yml",
-          "sha256": null
+          "sha256": "4ad7110c3e3049b4f4e5aa795dbae9029555a0525c18b3ec68d1a9f5b6b000ba"
         },
         "tunnel": {
           "vendored": "runbooks/config/supabase-cloudflared-config.yml",

@@ -318,7 +318,7 @@ describe('a withdrawn duty names the decision that withdrew it', () => {
       status: 'withdrawn',
       trigger: 'the day that decision is superseded',
       verification: 'decision',
-      decisionRecord: 'Private/decisions/068-x.md — LOCKED',
+      decisionRecord: 'Private/decisions/068-x.md — LOCKED', // fixture path Private/decisions/068-x.md (does not exist)
       ...row,
     });
     return m;
