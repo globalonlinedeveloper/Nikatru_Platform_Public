@@ -2,7 +2,7 @@
   "_readme": [
     "THE PERSONAL-PROFILE SOURCE of rajasekarselvam.com. Every personal fact any page of this site prints is rendered from this file by tooling/sites/generate-personal-site.mjs, and its --check refuses a page that types one of these values outside a generated region. Company facts are NOT here: Nikatru's are read from tooling/house-identity.json.",
     "These are the owner's own facts, supplied 2026-10-02. Add nothing the owner has not given; change a value here and re-run the generator, never on a page.",
-    "Served as a static file under the deploy root like everything else in it: it holds only what the pages already print."
+    "Kept OUTSIDE the deploy root (sites/rajasekarselvam/ is served whole): these notes are internal, and the public facts reach the web only as the pages render them."
   ],
   "name": "Rajasekar Selvam",
   "headline": "I love creating software that makes everyday life a little easier.",

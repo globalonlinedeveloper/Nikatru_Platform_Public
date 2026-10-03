@@ -51,6 +51,8 @@ const INPUT_ROOTS = [
   'tooling/house-identity.json',
   // ⏱ 2026-10-02 (site-rs-wave2) — and its founder line's MSME clause from the entity's FACT template.
   'tooling/entity/surfaces.json',
+  // ⏱ 2026-10-03 (lead ruling on #1172, item 4) — and the owner's profile, moved out of the served root.
+  'tooling/sites/rajasekarselvam-profile.json',
   'tooling/legal',
   'extensions/Extension/Full_Screen_Shot/publish',
   'extensions/templates/tool/publish',

@@ -26,7 +26,7 @@ import {
   workGrid, statusLine, llmsWork, personGraph, applyRegion, pageContract,
   structuredDataFindings, closedMenuFindings, jsonLdNodes, CONTRAST_PAIRS,
   PROFILE, CV_PAGE, MANIFEST, ENTITY_SURFACES, profileProblems, typedFactFindings, profileGraphFindings,
-  cvPage, withoutRegions,
+  cvPage, withoutRegions, REGIONS, ROOT_DIR, headBlock, imageAlt,
 } from '../../sites/generate-personal-site.mjs';
 import { contrastFindings, deadDeclarations, inlineCss, parseRules, winning } from '../../sites/css-cascade.mjs';
 import { entityContext } from '../../entity/facts.mjs';
@@ -218,6 +218,69 @@ describe('every personal fact renders from the profile (site-rs-wave2)', () => {
     assert.ok(li.some((x) => /profile links\.linkedin/.test(x)), li.join('\n'));
   });
 
+  // Lead ruling on #1172, item 2: withoutRegions once cut ANY `<!-- PS:<name> -->` span from
+  // EVERY hand page, so a fact wrapped in invented markers in 404.html read as "contract holds".
+  test('RED CONTROL: only the eight owned regions, only in index.html, are cut — the REAL 404.html is read whole', () => {
+    const NOT_FOUND = read(`${ROOT_DIR}/404.html`);
+    const fact = `<p>${OWNER.role.title} at ${OWNER.role.employer}, ${OWNER.location.locality}</p>`;
+    const at = NOT_FOUND.lastIndexOf('</body>');
+    const put = (html) => NOT_FOUND.slice(0, at) + html + '\n' + NOT_FOUND.slice(at);
+    const rel = `${ROOT_DIR}/404.html`;
+    assert.deepEqual(typedFactFindings(new Map([[rel, NOT_FOUND]]), OWNER), [], 'green control: the real 404.html');
+
+    const wrapped = typedFactFindings(new Map([[rel, put(`<!-- PS:x -->${fact}<!-- /PS:x -->`)]]), OWNER);
+    assert.ok(wrapped.some((x) => x.includes('"Cognizant" (profile role.employer) is typed outside')), `invented markers hid the fact:\n${wrapped.join('\n')}`);
+    assert.ok(wrapped.some((x) => x.includes('<!-- PS:x --> marks a region this generator does not own')), wrapped.join('\n'));
+
+    const plain = typedFactFindings(new Map([[rel, put(fact)]]), OWNER);
+    assert.ok(plain.some((x) => x.includes('"Cognizant" (profile role.employer) is typed outside')), plain.join('\n'));
+
+    // An OWNED name is still not owned outside index.html.
+    const owned = typedFactFindings(new Map([[rel, put(`<!-- PS:about -->${fact}<!-- /PS:about -->`)]]), OWNER);
+    assert.ok(owned.some((x) => x.includes('"Cognizant" (profile role.employer) is typed outside')), owned.join('\n'));
+    assert.ok(owned.some((x) => x.includes('<!-- PS:about --> marks a region this generator does not own')), owned.join('\n'));
+
+    // In index.html an invented name is refused too, and its fact is read.
+    const idx = typedFactFindings(new Map([[PAGE, REAL.replace('</main>', `<!-- PS:x -->${fact}<!-- /PS:x -->\n</main>`)]]), OWNER);
+    assert.ok(idx.some((x) => x.includes('"Cognizant" (profile role.employer) is typed outside')), idx.join('\n'));
+    assert.ok(idx.some((x) => x.includes('<!-- PS:x --> marks a region this generator does not own')), idx.join('\n'));
+  });
+
+  test('the generator\'s own eight regions in index.html are accepted, and each one is cut', () => {
+    assert.equal(REGIONS.length, 8);
+    for (const name of REGIONS) assert.equal(REAL.split(`<!-- PS:${name} -->`).length, 2, `index.html lacks PS:${name}`);
+    const rest = withoutRegions(REAL);
+    assert.doesNotMatch(rest, /<!-- \/?PS:/, 'an owned marker survived the cut');
+    assert.equal(rest.includes(OWNER.role.employer), false, 'a fact inside an owned region survived the cut');
+    assert.deepEqual(typedFactFindings(new Map([[PAGE, REAL]]), OWNER), []);
+  });
+
+  // Lead ruling on #1172, item 3: setting the LinkedIn host check to `if (false)` left this file green.
+  test('RED CONTROL: a links.linkedin that is not on linkedin.com is REFUSED', () => {
+    const li = (url) => profileProblems({ ...OWNER, links: { linkedin: url } }, CTX).filter((x) => x.includes('links.linkedin is not a linkedin.com URL'));
+    assert.deepEqual(li(OWNER.links.linkedin), [], 'green control: the real profile');
+    assert.deepEqual(li('https://linkedin.com/in/x'), [], 'the bare host is linkedin.com too');
+    for (const bad of ['https://example.test/in/x', 'https://www.linkedin.com.example.test/in/x', 'https://evil-linkedin.com/in/x', 'not a url']) {
+      assert.equal(li(bad).length, 1, `${bad} was accepted`);
+    }
+  });
+
+  // Lead ruling on #1172, item 4: what the deploy root publishes.
+  test('the profile source is NOT under the served root, the card alt is the title wording, and alumniOf is left out', () => {
+    assert.ok(!PROFILE.startsWith(`${ROOT_DIR}/`), `${PROFILE} is served under ${ROOT_DIR}/ with its internal notes`);
+    assert.ok(OWNER._readme && OWNER.experience.why, 'the source still carries its internal notes (they belong here, not on the site)');
+    for (const prop of ['property="og:image:alt"', 'name="twitter:image:alt"']) {
+      assert.ok(REAL.includes(`<meta ${prop} content="${imageAlt(OWNER)}">`), `${prop} is not the title wording`);
+    }
+    assert.ok(headBlock(OWNER).includes('og:image:alt') && headBlock(OWNER).includes('twitter:image:alt'), 'the alt is not generated');
+    assert.equal(imageAlt(OWNER), `${OWNER.name} — ${OWNER.role.title} at ${OWNER.role.employer}, founder of Nikatru.`);
+    const person = personGraph(CTX, [], OWNER)['@graph'].find((n) => n['@type'] === 'Person');
+    assert.equal(person.alumniOf, undefined, 'the page names no institution, so alumniOf is a guess');
+    assert.equal(person.hasCredential.name, `${OWNER.education.degree}, ${OWNER.education.field}`);
+    const ld = REAL.replace('"hasCredential": {', '"alumniOf": { "@type": "EducationalOrganization" },\n      "hasCredential": {');
+    assert.ok(profileGraphFindings(ld, OWNER).some((x) => /carries alumniOf/.test(x)), 'red control: a nameless alumniOf is refused');
+  });
+
   test('the hero, about, contact and footer are generated regions holding the profile', () => {
     for (const name of ['head', 'hero', 'about', 'contact', 'footer']) {
       const body = REAL.slice(REAL.indexOf(`<!-- PS:${name} -->`), REAL.indexOf(`<!-- /PS:${name} -->`));
@@ -229,8 +292,8 @@ describe('every personal fact renders from the profile (site-rs-wave2)', () => {
       assert.ok(region('about').includes(v), `about lacks ${v}`);
     }
     assert.ok(region('contact').includes(OWNER.links.linkedin) && region('footer').includes(OWNER.links.linkedin));
-    // The og:image alt describes the social card as drawn (a re-cut card is a follow-up); nothing else may say it.
-    assert.doesNotMatch(withoutRegions(REAL).replace(/<meta (property|name)="(og|twitter):image:alt"[^>]*>/g, ''), /Independent software developer/i, 'the retired role survives outside the image alt');
+    // The retired role is gone everywhere, the social card's alt text included (lead ruling on #1172, item 4).
+    assert.doesNotMatch(REAL, /Independent software developer/i, 'the retired role survives on the page');
   });
 
   test('RED CONTROL: the Person node carries jobTitle, worksFor, alumniOf, locality/region and sameAs from the profile', () => {

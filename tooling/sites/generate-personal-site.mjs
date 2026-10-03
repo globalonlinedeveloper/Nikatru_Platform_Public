@@ -3,7 +3,8 @@
 // generate-personal-site.mjs — the generated spans of sites/rajasekarselvam, the
 // founder's own site, and the page contract that site is held to.
 //
-//   sites/rajasekarselvam/profile.json ─┐
+//   tooling/sites/rajasekarselvam-profile.json  (the profile; NOT under the served root)
+//                                       ┐
 //   sites/_shared/_data/apps.json ──────┤
 //   tooling/channel-register.json ──────┼─▶ index.html  <!-- PS:head --> <!-- PS:hero -->
 //   tooling/house-identity.json ────────┤   <!-- PS:about --> <!-- PS:status --> <!-- PS:work -->
@@ -18,7 +19,7 @@
 // ── THE OWNER'S OWN FACTS, IN ONE PLACE (site-rs-wave2, 2026-10-02) ─────────
 // Every PERSONAL fact the site prints — role, employer, location, experience,
 // education, the LinkedIn profile, the one-line description — is read from
-// sites/rajasekarselvam/profile.json and nothing else. The experience is a
+// tooling/sites/rajasekarselvam-profile.json and nothing else. The experience is a
 // LABEL ("7+ years"), never a number derived from a date: the owner asked that no
 // start year or date ever show, so the profile is refused if any value carries a
 // year, and nothing here reads a date to compute it. Company facts (the MSME
@@ -91,7 +92,9 @@ export const SITEMAP = `${ROOT_DIR}/sitemap.xml`;
 export const REGISTRY = 'sites/_shared/_data/apps.json';
 export const CHANNELS = 'tooling/channel-register.json';
 export const IDENTITY = 'tooling/house-identity.json';
-export const PROFILE = `${ROOT_DIR}/profile.json`;
+// The profile source lives OUTSIDE the deploy root (lead ruling on #1172, item 4): its `_readme`
+// and `experience.why` are internal notes, and everything under sites/rajasekarselvam/ is served.
+export const PROFILE = 'tooling/sites/rajasekarselvam-profile.json';
 export const CV_PAGE = `${ROOT_DIR}/cv.html`;
 export const MANIFEST = `${ROOT_DIR}/site.webmanifest`;
 export const ENTITY_SURFACES = 'tooling/entity/surfaces.json';
@@ -186,23 +189,49 @@ export function profileValues(profile) {
     .filter((f) => typeof f.value === 'string' && f.value.trim());
 }
 
-/** `text` with every PS region (markers and body) removed. */
+/**
+ * `text` with the generator's OWN regions (markers and body) removed: only the
+ * eight `REGIONS`, by their exact names, each cut only when exactly one ordered
+ * pair exists (which applyRegion already demands of index.html). Every other
+ * `PS:` marker — an invented name, an unbalanced or reversed pair — stays in the
+ * text, and so does everything it wraps (lead ruling on #1172, item 2: a fact
+ * wrapped in `<!-- PS:x -->` once hid from the typed-fact check).
+ */
 export function withoutRegions(text) {
-  // Split on the markers rather than replace a `<!--…-->` span (CodeQL
-  // js/incomplete-multi-character-sanitization): the even pieces lie outside every region.
-  return text.split(/<!-- \/?PS:[a-z-]+ -->/).filter((_, i) => i % 2 === 0).join('');
+  let rest = text;
+  for (const name of REGIONS) {
+    const open = regionOpen(name);
+    const close = regionClose(name);
+    if (rest.split(open).length !== 2 || rest.split(close).length !== 2) continue;
+    const a = rest.indexOf(open);
+    const b = rest.indexOf(close);
+    if (b < a) continue;
+    rest = rest.slice(0, a) + rest.slice(b + close.length);
+  }
+  return rest;
+}
+
+/** Every `PS:` marker left in `text`, as `<!-- PS:name -->` / `<!-- /PS:name -->`. */
+export function strayRegionMarkers(text) {
+  return [...new Set(text.match(/<!-- \/?PS:[^ >]* -->/g) ?? [])];
 }
 
 /**
  * THE RED CONTROL for "every personal fact renders from the profile": a profile
  * value found in a page OUTSIDE the generated regions is a typed fact. Pure.
- * `pages` maps rel → text; a fully generated page is not passed.
+ * `pages` maps rel → text; a fully generated page is not passed. The generator
+ * owns its eight regions in index.html ONLY, so only there are they cut out:
+ * every other page is read whole, and a `PS:` marker the generator does not own
+ * (in any page) is itself a finding.
  */
 export function typedFactFindings(pages, profile) {
   const out = [];
   const vals = profileValues(profile);
   for (const [rel, text] of pages) {
-    const rest = withoutRegions(text);
+    const rest = rel === PAGE ? withoutRegions(text) : text;
+    for (const marker of strayRegionMarkers(rest)) {
+      out.push(`${rel}: ${marker} marks a region this generator does not own (it renders only ${REGIONS.map((n) => `PS:${n}`).join(', ')}, and only in ${PAGE}). The text it wraps is read as hand-typed.`);
+    }
     for (const { path, value } of vals) {
       for (const form of new Set([value, esc(value)])) {
         if (rest.includes(form)) {
@@ -263,10 +292,14 @@ export function llmsWork(live, channels) {
     .join('\n');
 }
 
-/** The homepage's text metas: title, description, Open Graph and Twitter. */
+/** The social card's alt text: the page title's wording, so it never says a retired role. */
+export const imageAlt = (profile) => `${pageTitle(profile)}.`;
+
+/** The homepage's text metas: title, description, Open Graph and Twitter, and the card's alt. */
 export function headBlock(profile) {
   const t = esc(pageTitle(profile));
   const d = esc(describe(profile));
+  const alt = esc(imageAlt(profile));
   return [
     `<title>${t}</title>`,
     `<meta name="description" content="${d}">`,
@@ -274,6 +307,8 @@ export function headBlock(profile) {
     `<meta property="og:description" content="${d}">`,
     `<meta name="twitter:title" content="${t}">`,
     `<meta name="twitter:description" content="${d}">`,
+    `<meta property="og:image:alt" content="${alt}">`,
+    `<meta name="twitter:image:alt" content="${alt}">`,
   ].join('\n');
 }
 
@@ -497,8 +532,8 @@ export function personGraph(ctx, sameAs = [], profile = null) {
     email: ctx.supportEmail,
     address: { '@type': 'PostalAddress', addressLocality: profile.location.locality, addressRegion: profile.location.region, addressCountry: profile.location.countryCode },
     worksFor: { '@type': 'Organization', name: profile.role.employer },
-    // No institution name: the owner gave none, so the node carries the credential alone.
-    alumniOf: { '@type': 'EducationalOrganization', hasCredential: { '@type': 'EducationalOccupationalCredential', credentialCategory: 'degree', name: `${profile.education.degree}, ${profile.education.field}` } },
+    // No alumniOf: the page names no institution, and a nameless EducationalOrganization is a
+    // guess a validator warns on (lead ruling on #1172, item 4). The degree is the credential alone.
     hasCredential: { '@type': 'EducationalOccupationalCredential', credentialCategory: 'degree', name: `${profile.education.degree}, ${profile.education.field}` },
   };
   if (sameAs.length) person.sameAs = [...sameAs];
@@ -650,7 +685,8 @@ export function profileGraphFindings(html, profile) {
   const want = (cond, what) => { if (!cond) out.push(`${PAGE}: the Person's ${what} is not what ${PROFILE} says`); };
   want(person.jobTitle === profile.role.title, 'jobTitle');
   want(person.worksFor?.name === profile.role.employer, 'worksFor');
-  want(JSON.stringify(person.alumniOf ?? '').includes(`${profile.education.degree}, ${profile.education.field}`), 'alumniOf (the degree)');
+  want(person.hasCredential?.name === `${profile.education.degree}, ${profile.education.field}`, 'hasCredential (the degree)');
+  if (person.alumniOf !== undefined) out.push(`${PAGE}: the Person carries alumniOf, but ${PROFILE} names no institution; leave it out rather than guess one`);
   want(person.address?.addressLocality === profile.location.locality && person.address?.addressRegion === profile.location.region, 'address locality and region');
   want([].concat(person.sameAs ?? []).includes(profile.links.linkedin), 'sameAs (the LinkedIn profile)');
   return out;
