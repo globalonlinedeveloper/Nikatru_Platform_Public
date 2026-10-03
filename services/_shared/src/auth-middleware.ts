@@ -45,9 +45,12 @@
 //   · `erasureAuth` and `verifyAsymmetric` take no environment and no secret, so
 //     "the erasure boundary cannot fall back to a shared secret" is still a
 //     property of a SIGNATURE, checkable by reading four lines;
-//   · `tooling/ci/assert-erasure-reach.mjs` limb 3 still finds which middleware
-//     can reach SUPABASE_JWT_SECRET in each carrier's `middleware/auth.ts`,
-//     because that file is where the secret is named.
+//   · `tooling/ci/assert-erasure-reach.mjs` limb 3 finds which middleware can
+//     reach SUPABASE_JWT_SECRET in each carrier's `middleware/auth.ts` (where a
+//     carrier names the secret), and limb 3(c) reads THIS file: `erasureAuth`
+//     must reach none of `verifySupabaseToken`, `legacyHs256Secret` and
+//     `SUPABASE_JWT_SECRET`. A carrier's file alone, now a re-export, would not
+//     show a fallback added here (review of #1152, minor 2).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
