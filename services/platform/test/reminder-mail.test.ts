@@ -617,6 +617,38 @@ describe('R1 — the digest speaks the person\u2019s stored language', () => {
     }
   });
 
+  // ⏱ 2026-10-03 · club-nits-b (#1161 nit 7c). RED before: the read's catch
+  // returned null like a person with no preference, so a schema rename made
+  // every digest English with nothing in the run's detail.
+  it('🔴 a locale read that throws is English, and the run detail counts it', async () => {
+    for (const [db, seed] of [
+      [appDb, null], // no preferences table: the prepare throws
+      [prefsDb, 'not json'], // a value JSON.parse refuses
+    ] as const) {
+      const platform = realPlatformDb();
+      const app = db();
+      const people: Person[] = [{ id: 'u-l', optIn: true }];
+      seedPerson(platform, people[0]);
+      seedSub(app, 'u-l', 's-l', 'Netflix', '2026-10-03');
+      if (seed !== null) {
+        app.db
+          .prepare('INSERT INTO preferences (user_id, key, value, version, updated_at) VALUES (?, ?, ?, 1, ?)')
+          .run('u-l', 'locale', seed, '2026-10-01T00:00:00Z');
+      }
+      const net = network(people);
+      const [row] = await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+      expect(String(net.sends()[0].body!.subject)).toBe('Netflix renews on Sat, 3 Oct 2026');
+      expect(row).toMatchObject({ ok: true, detail: expect.stringContaining(' locale_fallback=1 ') });
+    }
+    const platform = realPlatformDb();
+    const app = prefsDb();
+    seedPerson(platform, { id: 'u-l', optIn: true });
+    seedSub(app, 'u-l', 's-l', 'Netflix', '2026-10-03');
+    seedLocale(app, 'u-l', 'ta');
+    const [row] = await runReminderMail(envOf(platform, app), target(app), NOW, network([{ id: 'u-l', optIn: true }]).fetchImpl);
+    expect(row.detail).toContain(' locale_fallback=0 '); // a read that worked is not a fallback
+  });
+
   it('a regional tag resolves to its language; every supported locale has a digest block', () => {
     expect(resolveLocale('ta-IN')).toBe('ta');
     expect(resolveLocale('hi_IN')).toBe('hi');

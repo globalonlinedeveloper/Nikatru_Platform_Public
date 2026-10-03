@@ -77,9 +77,12 @@ export function localDateLabel(ymd: string, locale: string): string {
  * The person's stored `locale` preference in this app's database, or null.
  * The value column is JSON (`"ta"`). A database without the table — every app
  * before subscriptiontracker-api migration 0008 — answers null, never an error:
- * a digest in English beats no digest.
+ * a digest in English beats no digest. A read that THROWS — no table, a renamed
+ * column, a value that is not JSON — also answers null, and calls `onFallback`
+ * so the run counts it: without the count a schema rename would make every
+ * digest English with nothing in the heartbeat detail (#1161 nit 7c).
  */
-export async function readStoredLocale(db: SqlDb, userId: string): Promise<string | null> {
+export async function readStoredLocale(db: SqlDb, userId: string, onFallback?: () => void): Promise<string | null> {
   try {
     const row = await firstRow<{ value: string }>(
       db.prepare("SELECT value FROM preferences WHERE user_id = ? AND key = 'locale'").bind(userId),
@@ -88,6 +91,7 @@ export async function readStoredLocale(db: SqlDb, userId: string): Promise<strin
     const v: unknown = JSON.parse(row.value);
     return typeof v === 'string' && v !== '' ? v : null;
   } catch {
+    onFallback?.();
     return null;
   }
 }
