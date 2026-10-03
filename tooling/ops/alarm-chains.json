@@ -333,7 +333,21 @@
       "ntfyRouteEvidence": "2026-09-05 — proven end to end, not wired: a synthetic event fired into the `ops` DSN at 13:18:39 arrived on the `nikatru-page` topic at 13:19:37, 58 seconds later. Read back out of the topic's cache, not inferred from a 200. The webhook recipient is id 3 on alert rule id 2; the pre-existing email recipient id 2 survived the PUT unchanged."
     },
     "subscriptiontracker": {
-      "date": "2026-08-05",
+      "date": "2026-10-03",
+      "⏱ theDateMovedOn2026-10-03AndNOTHINGBELOWWASREWRITTEN": [
+        "`date` points at the MOST RECENT observation, `⏱ reObserved2026-10-03` immediately below. Every",
+        "other field — `monitor`, `how`, `evidence` and the 🔴 block — is the 2026-08-05 record kept VERBATIM",
+        "(a frozen record is superseded, never rewritten, [ADR 053] rule 2). The re-drill was owed: ops-watch",
+        "run 37137496614 (2026-10-03) went red on this chain's 59-day-old record against the 30-day ceiling",
+        "(OBSERVATION_MAX_AGE_DAYS, tooling/ops/monitor-register.mjs)."
+      ],
+      "⏱ reObserved2026-10-03": {
+        "monitor": "platform.nikatru.com — monitor id 11, a REAL monitor in project `subscriptiontracker` (alert rule 1: email recipient id 1, webhook recipient id 8 to ntfy `nikatru-page`), not a throwaway",
+        "how": "The documented forced-down drill (Private runbooks/boxes/hostinger.md, monitor 32): a PUT moved `url` to https://platform.nikatru.com/v1/health-forced-down-drill-2026-10-03 (404) at 17:27:17Z — the body was the WRITE shape (monitorType, name, url, interval, confirmationThreshold, expectedBody, expectedStatus, timeout, project) and the object was diffed before and after: `url` was the only field that moved. Failing checks 17:27:18Z and 17:27:57Z (reason 2, confirmationThreshold 2) → `isUp` false at 17:27:57Z. Restored with the same shape at 17:27:59Z → `isUp` true at 17:28:00Z; after it only `lastChange` differs from the pre-drill object. The platform Worker was never touched.",
+        "evidence": "Two Resend delivery records to support@nikatru.com, both last_event=delivered: 01a102ce-f7c7-7055-9826-79e823c4c1f3 ('GlitchTip: platform.nikatru.com is down', 17:28:00Z) and 01a102cf-03e4-7b87-8aa3-07d605e7b20c ('… is back up', 17:28:03Z). And read out of the `nikatru-page` ntfy topic cache with the `nikatru` account: message cnad3gIUqQcr at 17:28:01Z ('platform.nikatru.com: The monitored site has gone down.') and nhEUmradNjJ8 at 17:28:04Z ('… is back up.').",
+        "🔴 theFirstAttemptReproducedTheMonitor6Defect": "A first attempt at 17:24:29Z PUT the GET object with only `url` changed. GET answers `projectID`; the writable field is `project`, so that full-replace PUT NULLED the monitor's project. Its Down transition at 17:24:56Z delivered NOTHING — no Resend record, no ntfy message (both read back) — the exact silent no-project chain this file exists for. Restored with `project` at 17:26:26Z (only `lastChange` then differed from the pre-drill object), ~2 minutes project-less. The drill above ran after that, on the restored monitor.",
+        "🔴 whatItDoesNOTProve": "Nothing here narrows [pipeline E-9b]: the monitor, the alert evaluation, the Resend hop and ntfy are all on Box B. It proves the uptime chain of this project while the box is alive. The issue chain (`issuePathEvidence` below) was not re-drilled."
+      },
       "monitor": "a throwaway monitor, deleted after the run",
       "🔴 issuePathWasDeadUntilToday": [
         "THE UPTIME CHAIN BELOW WAS PROVEN, AND THE ISSUE CHAIN WAS DEAD — in the project that receives",
