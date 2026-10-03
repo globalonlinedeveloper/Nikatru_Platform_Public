@@ -439,6 +439,18 @@
     "message": "이 확장 프로그램의 상태를 설명하는 작은 파일을 만듭니다. 저장하기 전에 안에 무엇이 있는지 그대로 볼 수 있고, 어디로도 전송되지 않습니다.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "지원팀에 신고 보내기",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "nikatru.com의 신고 양식을 새 탭에서 엽니다. 이 확장 프로그램의 이름, 버전, 언어, 브라우저만 미리 입력됩니다.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "신고 양식 열기",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "보고서 준비",
     "description": "en: Prepare a report"

@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Menghapus setiap tangkapan layar di riwayat Anda dan semua yang ditinggalkan pengambilan yang terputus. Pengaturan Anda tetap seperti apa adanya."
   },
+  "optionsSectionReport": {
+    "message": "Laporkan masalah"
+  },
+  "optionsReport": {
+    "message": "Beri tahu kami apa yang salah"
+  },
+  "optionsReportDesc": {
+    "message": "Membuka formulir laporan di nikatru.com di tab baru, hanya dengan versi FullShot, bahasa, dan browser yang terisi."
+  },
+  "optionsReportBtn": {
+    "message": "Buka formulir laporan"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Hapus semua yang disimpan FullShot di perangkat ini?\n\nTangkapan layar di riwayat Anda: $COUNT$\nSisa dari pengambilan yang terputus: $LEFTOVER$\nRuang yang dibebaskan: $SIZE$\n\nPengaturan Anda tidak terpengaruh. Tindakan ini tidak dapat dibatalkan.",
     "placeholders": {

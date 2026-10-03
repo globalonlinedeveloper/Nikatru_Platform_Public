@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Verwijdert elke schermafbeelding uit uw geschiedenis en alles wat onderbroken opnamen hebben achtergelaten. Uw instellingen blijven zoals ze zijn."
   },
+  "optionsSectionReport": {
+    "message": "Een probleem melden"
+  },
+  "optionsReport": {
+    "message": "Vertel ons wat er misging"
+  },
+  "optionsReportDesc": {
+    "message": "Opent het meldformulier op nikatru.com in een nieuw tabblad, waarin alleen de versie van FullShot, de taal en de browser zijn ingevuld."
+  },
+  "optionsReportBtn": {
+    "message": "Meldformulier openen"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Alles verwijderen wat FullShot op dit apparaat heeft opgeslagen?\n\nSchermafbeeldingen in uw geschiedenis: $COUNT$\nResten van onderbroken opnamen: $LEFTOVER$\nRuimte die dit vrijmaakt: $SIZE$\n\nUw instellingen worden niet geraakt. Dit kan niet ongedaan worden gemaakt.",
     "placeholders": {

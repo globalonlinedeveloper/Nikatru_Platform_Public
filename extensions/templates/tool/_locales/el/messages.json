@@ -439,6 +439,18 @@
     "message": "Δημιουργεί ένα μικρό αρχείο που περιγράφει την κατάσταση αυτής της επέκτασης. Βλέπετε ακριβώς τι περιέχει πριν αποθηκευτεί, και δεν στέλνεται τίποτα πουθενά.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Αποστολή αναφοράς στην υποστήριξη",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Ανοίγει τη φόρμα αναφοράς στο nikatru.com σε νέα καρτέλα, με συμπληρωμένα μόνο τα στοιχεία αυτής της επέκτασης: όνομα, έκδοση, γλώσσα και πρόγραμμα περιήγησης.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Άνοιγμα φόρμας αναφοράς",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Προετοιμασία αναφοράς",
     "description": "en: Prepare a report"

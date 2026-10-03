@@ -439,6 +439,18 @@
     "message": "Створює невеликий файл з описом стану цього розширення. Ви бачите точно те, що в ньому є, ще до збереження, і нікуди нічого не надсилається.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Надіслати повідомлення в підтримку",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Відкриває форму повідомлення на nikatru.com у новій вкладці, де заповнено лише дані цього розширення: назву, версію, мову та браузер.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Відкрити форму",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Підготувати звіт",
     "description": "en: Prepare a report"

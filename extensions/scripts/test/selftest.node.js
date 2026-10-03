@@ -647,6 +647,22 @@ expect('a new SharedWorker() in a shipped file fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'SharedWorker',
   root: fixture(root => { edit(root, TOOL + '/background.js', s => s + 'const w = new SharedWorker("w.js");\n'); })
 });
+/* Gate 10, 2026-10-03 (lane feedback-intake): a problem report carries no page.
+   The real core/v1/report-link.js passes; a copy that lets the page's URL ride
+   through the payload is refused. */
+const REPORT_LINK = fs.readFileSync(path.join(__dirname, '..', '..', 'core', 'v1', 'report-link.js'), 'utf8');
+expect('the shipped report-link.js keeps the page out of a problem report', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'a problem report carries no page URL',
+  root: fixture(root => { w(root, TOOL + '/popup/report-link.js', REPORT_LINK); })
+});
+expect('🔴 a report payload carrying the page URL fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'payload key `url`',
+  root: fixture(root => {
+    w(root, TOOL + '/popup/report-link.js', REPORT_LINK.replace(
+      'return out;\n  }',
+      'if (s.url) out.url = String(s.url);\n    return out;\n  }'));
+  })
+});
 /* Inline CSS in a shipped page, 2026-09-24 (O-FULLSHOT-CSP-HAS-NO-DEFAULT-SRC). */
 expect('a style="" attribute in a shipped page fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'no inline CSS in packaged HTML',

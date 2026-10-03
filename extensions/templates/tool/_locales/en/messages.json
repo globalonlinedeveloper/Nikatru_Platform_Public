@@ -438,7 +438,19 @@
   "optReportDesc": {
     "message": "Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere.",
     "description": "[privacy] Explanation under \"Prepare a problem report\". Two promises that must both survive: the user reviews the contents BEFORE anything is written, and NOTHING is transmitted. This product has no server to send a report to, and the sentence must not imply that it does."
+  },  "optReportSendTitle": {
+    "message": "Send a report to support",
+    "description": "Title of the row that opens the report form on nikatru.com."
   },
+  "optReportSendDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser.",
+    "description": "[privacy] Explains the second report button: it opens a web form on nikatru.com in a new tab, filled in only with this extension's own facts. It must not imply that anything is sent before the user sends the form."
+  },
+  "optReportSendButton": {
+    "message": "Open the report form",
+    "description": "The button that opens the report form in a new tab."
+  },
+
   "optReportButton": {
     "message": "Prepare a report",
     "description": "The button text that starts building the report. Shorter than optReportTitle on purpose."

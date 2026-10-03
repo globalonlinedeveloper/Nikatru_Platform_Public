@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Remove todas as capturas do seu histórico e tudo o que ficou de capturas interrompidas. Suas configurações permanecem como estão."
   },
+  "optionsSectionReport": {
+    "message": "Relatar um problema"
+  },
+  "optionsReport": {
+    "message": "Conte o que deu errado"
+  },
+  "optionsReportDesc": {
+    "message": "Abre o formulário de relato em nikatru.com em uma nova guia, com apenas a versão do FullShot, o idioma e o navegador preenchidos."
+  },
+  "optionsReportBtn": {
+    "message": "Abrir o formulário"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Apagar tudo o que o FullShot guardou neste dispositivo?\n\nCapturas no seu histórico: $COUNT$\nRestos de capturas interrompidas: $LEFTOVER$\nEspaço que isto libera: $SIZE$\n\nSuas configurações não são afetadas. Isto não pode ser desfeito.",
     "placeholders": {

@@ -43,5 +43,9 @@
   "errFrameHandover": "El navegador dejó de entregar la pantalla a mitad de camino. Espere unos segundos e inténtelo de nuevo.",
   "errLostTab": "La captura perdió el rastro de esta pestaña. Recargue la página e inténtelo de nuevo.",
   "reasonGeneric": "no se indicó ningún motivo. Inténtelo de nuevo.",
-  "resultAiOverviewOnly": "Esta captura es demasiado alta para pegarla como una sola imagen legible, por eso $COPY$ pone en el portapapeles una vista general reducida de toda la página. El texto pequeño no se va a poder leer."
+  "resultAiOverviewOnly": "Esta captura es demasiado alta para pegarla como una sola imagen legible, por eso $COPY$ pone en el portapapeles una vista general reducida de toda la página. El texto pequeño no se va a poder leer.",
+  "optionsSectionReport": "Reportar un problema",
+  "optionsReport": "Cuéntanos qué salió mal",
+  "optionsReportDesc": "Abre el formulario de reporte de nikatru.com en una pestaña nueva, con solo la versión de FullShot, el idioma y el navegador completados.",
+  "optionsReportBtn": "Abrir el formulario"
 }

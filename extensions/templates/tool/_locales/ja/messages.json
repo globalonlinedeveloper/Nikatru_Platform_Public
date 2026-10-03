@@ -439,6 +439,18 @@
     "message": "この拡張機能の状態を記した小さなファイルを作ります。保存する前に中身をそのまま確認でき、どこにも送信されません。",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "サポートに報告を送る",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "nikatru.com の報告フォームを新しいタブで開きます。入力済みなのはこの拡張機能の名前、バージョン、言語、ブラウザーだけです。",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "報告フォームを開く",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "レポートを準備",
     "description": "en: Prepare a report"

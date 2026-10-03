@@ -439,6 +439,15 @@
     "message": "Izveido nelielu failu, kas apraksta šī paplašinājuma stāvokli. Jūs redzat, kas tieši tajā ir, pirms tas tiek saglabāts, un nekas netiek nekur nosūtīts.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Open the report form"
+  },
   "optReportButton": {
     "message": "Sagatavot ziņojumu",
     "description": "en: Prepare a report"

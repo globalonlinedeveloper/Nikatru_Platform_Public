@@ -3,11 +3,12 @@
   "channel": "v1",
   "coreVersion": "0.3.0",
   "pin": null,
-  "syncedAt": "2026-10-01",
+  "syncedAt": "2026-10-03",
   "files": {
     "entitlement-client.js": "sha256-dc1b36c0425176840ef13565fd9706db3c43f833622c7ac92cf6837193f6d69a",
     "entitlement-contract.js": "sha256-2b26eaef53f31688ca2e19e8624f1c5a1b4fc77ad1a3c588a17251754d62f425",
     "jobs.js": "sha256-a9c2d613dd1019888a217b678ae2190088068020861a2d66f0b4bb8e3716dbfc",
+    "report-link.js": "sha256-a13903105af4275e2b3f3cbd5080d76042b7014d127801a3785e509e73d87ef2",
     "settings.js": "sha256-e541d4ee009ff15bca0d78dcb1cf1dfbc9cf2ba44f37dc3fcfd619c1de7e239b",
     "storage.js": "sha256-db8de09c86e8c1a4346c14ad9326d9b5460ae00ed1ffc86b35a650b0c1899da4"
   }

@@ -423,5 +423,9 @@
   "optionsDeleteAllDesc": "Inaalis ang bawat screenshot sa iyong history at lahat ng naiwan ng mga naantalang pagkuha. Mananatili ang iyong mga setting.",
   "optionsDeleteAllConfirm": "Burahin ang lahat ng iniimbak ng FullShot sa device na ito?\n\nMga screenshot sa iyong history: $COUNT$\nMga natira mula sa naantalang pagkuha: $LEFTOVER$\nEspasyong mababakante: $SIZE$\n\nHindi maaapektuhan ang iyong mga setting. Hindi ito maibabalik.",
   "optionsDeleteAllDone": "Nabura na. Wala nang iniimbak na screenshot ang FullShot sa device na ito.",
-  "errStorageFull": "Wala nang espasyo para itago ang pagkuhang ito. Magbura ng ilang screenshot sa iyong history, pagkatapos ay subukan muli."
+  "errStorageFull": "Wala nang espasyo para itago ang pagkuhang ito. Magbura ng ilang screenshot sa iyong history, pagkatapos ay subukan muli.",
+  "optionsSectionReport": "Mag-ulat ng problema",
+  "optionsReport": "Sabihin sa amin kung ano ang nagkamali",
+  "optionsReportDesc": "Binubuksan ang report form sa nikatru.com sa bagong tab, na ang bersyon ng FullShot, wika at browser lang ang nakalagay.",
+  "optionsReportBtn": "Buksan ang report form"
 }

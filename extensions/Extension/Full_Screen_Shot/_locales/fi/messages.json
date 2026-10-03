@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Poistaa kaikki historiasi kuvakaappaukset ja kaiken, mitä keskeytyneet kuvaukset ovat jättäneet. Asetuksesi jäävät ennalleen."
   },
+  "optionsSectionReport": {
+    "message": "Ilmoita ongelmasta"
+  },
+  "optionsReport": {
+    "message": "Kerro meille, mikä meni vikaan"
+  },
+  "optionsReportDesc": {
+    "message": "Avaa nikatru.comin ilmoituslomakkeen uudelle välilehdelle, ja siihen on täytetty vain FullShotin versio, kieli ja selain."
+  },
+  "optionsReportBtn": {
+    "message": "Avaa ilmoituslomake"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Poistetaanko kaikki, mitä FullShot on tallentanut tälle laitteelle?\n\nKuvakaappauksia historiassasi: $COUNT$\nKeskeytyneiden kuvausten jäänteitä: $LEFTOVER$\nVapautuva tila: $SIZE$\n\nAsetuksiisi tämä ei vaikuta. Tätä ei voi perua.",
     "placeholders": {

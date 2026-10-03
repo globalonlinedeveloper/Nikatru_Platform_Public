@@ -96,5 +96,9 @@
   "reasonDecodeFailed": "não foi possível descodificar essa captura.",
   "toastSavedFile": "$FILENAME$ guardado",
   "toastSavedFileSize": "$FILENAME$ guardado  ·  $SIZE$",
-  "resultAiOverviewOnly": "Esta captura é demasiado alta para ser colada como uma única imagem legível, por isso $COPY$ coloca na área de transferência uma vista geral reduzida da página inteira. O texto pequeno nela não será legível."
+  "resultAiOverviewOnly": "Esta captura é demasiado alta para ser colada como uma única imagem legível, por isso $COPY$ coloca na área de transferência uma vista geral reduzida da página inteira. O texto pequeno nela não será legível.",
+  "optionsSectionReport": "Comunicar um problema",
+  "optionsReport": "Diga-nos o que correu mal",
+  "optionsReportDesc": "Abre o formulário de comunicação em nikatru.com num novo separador, com apenas a versão do FullShot, o idioma e o navegador preenchidos.",
+  "optionsReportBtn": "Abrir o formulário"
 }

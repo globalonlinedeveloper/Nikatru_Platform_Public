@@ -414,5 +414,9 @@
   "optionsDeleteAllDesc": "Xoá mọi ảnh chụp trong lịch sử và mọi thứ do các lần chụp bị gián đoạn để lại. Cài đặt của bạn vẫn giữ nguyên.",
   "optionsDeleteAllConfirm": "Xoá mọi thứ FullShot đã lưu trên thiết bị này?\n\nẢnh chụp trong lịch sử: $COUNT$\nPhần sót lại từ các lần chụp bị gián đoạn: $LEFTOVER$\nDung lượng được giải phóng: $SIZE$\n\nCài đặt của bạn không bị ảnh hưởng. Không thể hoàn tác.",
   "optionsDeleteAllDone": "Đã xoá. FullShot hiện không lưu ảnh chụp nào trên thiết bị này.",
-  "errStorageFull": "Không còn chỗ để lưu lần chụp này. Hãy xoá bớt vài ảnh chụp trong lịch sử rồi thử lại."
+  "errStorageFull": "Không còn chỗ để lưu lần chụp này. Hãy xoá bớt vài ảnh chụp trong lịch sử rồi thử lại.",
+  "optionsSectionReport": "Báo cáo sự cố",
+  "optionsReport": "Cho chúng tôi biết điều gì đã xảy ra",
+  "optionsReportDesc": "Mở biểu mẫu báo cáo trên nikatru.com trong thẻ mới, chỉ điền sẵn phiên bản FullShot, ngôn ngữ và trình duyệt.",
+  "optionsReportBtn": "Mở biểu mẫu báo cáo"
 }

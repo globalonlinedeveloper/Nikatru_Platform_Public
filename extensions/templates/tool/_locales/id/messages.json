@@ -439,6 +439,18 @@
     "message": "Membuat berkas kecil yang menggambarkan keadaan ekstensi ini. Anda melihat persis isinya sebelum disimpan, dan tidak ada yang dikirim ke mana pun.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Kirim laporan ke dukungan",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Membuka formulir laporan di nikatru.com di tab baru, hanya dengan data ekstensi ini yang terisi: nama, versi, bahasa, dan browser.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Buka formulir laporan",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Siapkan laporan",
     "description": "en: Prepare a report"

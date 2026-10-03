@@ -439,6 +439,18 @@
     "message": "Vytvoří malý soubor popisující stav tohoto rozšíření. Ještě před uložením přesně vidíte, co v něm je, a nikam se nic neodesílá.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Odeslat hlášení podpoře",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Otevře formulář pro hlášení na nikatru.com v nové kartě, kde jsou vyplněny jen údaje tohoto rozšíření: název, verze, jazyk a prohlížeč.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Otevřít formulář",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Připravit hlášení",
     "description": "en: Prepare a report"

@@ -423,5 +423,9 @@
   "optionsDeleteAllDesc": "Entfernt jeden Screenshot in Ihrem Verlauf und alles, was unterbrochene Aufnahmen hinterlassen haben. Ihre Einstellungen bleiben unverändert.",
   "optionsDeleteAllConfirm": "Alles löschen, was FullShot auf diesem Gerät gespeichert hat?\n\nScreenshots in Ihrem Verlauf: $COUNT$\nReste unterbrochener Aufnahmen: $LEFTOVER$\nDadurch frei werdender Speicher: $SIZE$\n\nIhre Einstellungen sind nicht betroffen. Dies kann nicht rückgängig gemacht werden.",
   "optionsDeleteAllDone": "Gelöscht. FullShot speichert jetzt keine Screenshots mehr auf diesem Gerät.",
-  "errStorageFull": "Es ist kein Speicherplatz mehr vorhanden, um diese Aufnahme zu speichern. Löschen Sie einige Screenshots aus Ihrem Verlauf und versuchen Sie es erneut."
+  "errStorageFull": "Es ist kein Speicherplatz mehr vorhanden, um diese Aufnahme zu speichern. Löschen Sie einige Screenshots aus Ihrem Verlauf und versuchen Sie es erneut.",
+  "optionsSectionReport": "Problem melden",
+  "optionsReport": "Sagen Sie uns, was schiefgelaufen ist",
+  "optionsReportDesc": "Öffnet das Meldeformular auf nikatru.com in einem neuen Tab, in dem nur die FullShot-Version, die Sprache und der Browser ausgefüllt sind.",
+  "optionsReportBtn": "Meldeformular öffnen"
 }

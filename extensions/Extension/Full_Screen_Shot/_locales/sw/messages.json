@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Huondoa kila picha ya skrini kwenye historia yako na kila kilichoachwa na unasaji uliokatizwa. Mipangilio yako inabaki kama ilivyo."
   },
+  "optionsSectionReport": {
+    "message": "Ripoti tatizo"
+  },
+  "optionsReport": {
+    "message": "Tuambie kilichoharibika"
+  },
+  "optionsReportDesc": {
+    "message": "Hufungua fomu ya ripoti kwenye nikatru.com katika kichupo kipya, ikiwa na toleo la FullShot, lugha na kivinjari pekee vilivyojazwa."
+  },
+  "optionsReportBtn": {
+    "message": "Fungua fomu ya ripoti"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Ufute kila kitu ambacho FullShot imehifadhi kwenye kifaa hiki?\n\nPicha za skrini kwenye historia yako: $COUNT$\nMabaki ya unasaji uliokatizwa: $LEFTOVER$\nNafasi itakayopatikana: $SIZE$\n\nMipangilio yako haiathiriki. Hatua hii haiwezi kutenduliwa.",
     "placeholders": {

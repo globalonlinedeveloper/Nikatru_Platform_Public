@@ -287,6 +287,11 @@ The markup that references these keys is tagged `PLACEHOLDER(tool-name)` in
 text there — it is the English fallback, which the applier overwrites at boot —
 but the tags mark the spots to read once so you can see where each key lands.
 
+`PLACEHOLDER(id)` in `pages/options.js` is the tool id the "Send a report to
+support" button puts in the nikatru.com report link (`lib/report-link.js`):
+set it to `tool.json`'s `id`. The link refuses a value that is not an id's
+shape, so a stale `skeleton` is sent as `skeleton`, never as anything else.
+
 The length limits are **enforced against every one of the 55 catalogues**, not
 against the `__MSG_` placeholder — measuring `__MSG_appDescription__` is 22
 characters and passes trivially, which is what happens to a length check the day

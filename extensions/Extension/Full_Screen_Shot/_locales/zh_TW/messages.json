@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "移除歷史記錄中的所有螢幕擷圖，以及中斷的擷取留下的一切。你的設定維持不變。"
   },
+  "optionsSectionReport": {
+    "message": "回報問題"
+  },
+  "optionsReport": {
+    "message": "告訴我們發生了什麼問題"
+  },
+  "optionsReportDesc": {
+    "message": "在新分頁中開啟 nikatru.com 上的回報表單，只預先填入 FullShot 的版本、語言和瀏覽器。"
+  },
+  "optionsReportBtn": {
+    "message": "開啟回報表單"
+  },
   "optionsDeleteAllConfirm": {
     "message": "要刪除 FullShot 在本裝置上儲存的所有內容嗎？\n\n歷史記錄中的螢幕擷圖：$COUNT$\n中斷擷取的殘留：$LEFTOVER$\n可釋出的空間：$SIZE$\n\n你的設定不受影響。此操作無法復原。",
     "placeholders": {

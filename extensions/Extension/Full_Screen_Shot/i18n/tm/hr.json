@@ -432,5 +432,9 @@
   "optionsDeleteAllDesc": "Uklanja sve snimke zaslona iz povijesti i sve što su ostavila prekinuta snimanja. Vaše postavke ostaju kakve jesu.",
   "optionsDeleteAllConfirm": "Obrisati sve što je FullShot pohranio na ovom uređaju?\n\nSnimke zaslona u povijesti: $COUNT$\nOstaci prekinutih snimanja: $LEFTOVER$\nProstor koji se oslobađa: $SIZE$\n\nVaše postavke time nisu obuhvaćene. Ovo se ne može poništiti.",
   "optionsDeleteAllDone": "Obrisano. FullShot sada na ovom uređaju ne pohranjuje nijednu snimku zaslona.",
-  "errStorageFull": "Više nema mjesta za pohranu ovog snimanja. Obrišite nekoliko snimaka zaslona iz povijesti pa pokušajte ponovno."
+  "errStorageFull": "Više nema mjesta za pohranu ovog snimanja. Obrišite nekoliko snimaka zaslona iz povijesti pa pokušajte ponovno.",
+  "optionsSectionReport": "Prijavi problem",
+  "optionsReport": "Recite nam što je pošlo po zlu",
+  "optionsReportDesc": "Otvara obrazac za prijavu na nikatru.com u novoj kartici, u kojem su ispunjeni samo verzija FullShota, jezik i preglednik.",
+  "optionsReportBtn": "Otvori obrazac"
 }

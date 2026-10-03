@@ -439,6 +439,18 @@
     "message": "Tạo một tệp nhỏ mô tả trạng thái của tiện ích này. Bạn thấy chính xác những gì trong đó trước khi lưu, và không có gì được gửi đi đâu cả.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Gửi báo cáo đến bộ phận hỗ trợ",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Mở biểu mẫu báo cáo trên nikatru.com trong thẻ mới, chỉ điền sẵn thông tin của tiện ích này: tên, phiên bản, ngôn ngữ và trình duyệt.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Mở biểu mẫu báo cáo",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Chuẩn bị báo cáo",
     "description": "en: Prepare a report"

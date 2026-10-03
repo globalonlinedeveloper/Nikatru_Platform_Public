@@ -300,6 +300,22 @@
       <button class="btn danger" id="deleteAllBtn" type="button" data-i18n="optionsDeleteAll">Delete everything</button>
     </div>
   </div>
+
+  <!-- REPORT A PROBLEM (lane feedback-intake). Opens the report form on
+       nikatru.com in a new tab with FullShot's OWN facts filled in — its
+       version, the UI language and the coarse browser — and nothing about any
+       page (vendor/core/report-link.js builds the link; scripts/policy-check.mjs
+       gate 10 runs it on a probe page and fails the build if any of it leaks).
+       FullShot makes no request for this: the form is the site's. -->
+  <div class="section">
+    <h2 data-i18n="optionsSectionReport">Report a problem</h2>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsReport">Tell us what went wrong</b>
+        <small id="reportDesc" data-i18n="optionsReportDesc">Opens the report form on nikatru.com in a new tab, with only FullShot's version, language and browser filled in.</small>
+      </div>
+      <button class="btn" id="reportBtn" type="button" aria-describedby="reportDesc" data-i18n="optionsReportBtn">Open the report form</button>
+    </div>
+  </div>
 </main>
 
 <!-- role="status" is what turns this pill into an announcement. It only fires
@@ -320,6 +336,7 @@
      database directly, because blobs cannot travel over runtime.sendMessage —
      only the DECISIONS about live captures are the worker's. -->
 <script src="db.js"></script>
+<script src="../vendor/core/report-link.js"></script>
 <script src="common.js"></script>
 <script src="options.js"></script>
 </body>

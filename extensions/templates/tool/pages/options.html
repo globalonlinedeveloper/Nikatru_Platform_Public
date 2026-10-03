@@ -186,6 +186,17 @@
       <button class="btn" id="reportBtn" type="button"
               aria-describedby="reportBtn-desc" data-i18n="optReportButton">Prepare a report</button>
     </div>
+    <!-- The second path SENDS, but not from here: it opens nikatru.com's report
+         form in a new tab with only lib/report-link.js's closed list filled in
+         (never the browsed page), and the person sends the form themselves. -->
+    <div class="opt">
+      <div class="text">
+        <b id="reportSendBtn-label" data-i18n="optReportSendTitle">Send a report to support</b>
+        <small id="reportSendBtn-desc" data-i18n="optReportSendDesc">Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser.</small>
+      </div>
+      <button class="btn" id="reportSendBtn" type="button"
+              aria-describedby="reportSendBtn-desc" data-i18n="optReportSendButton">Open the report form</button>
+    </div>
   </div>
 
   <div class="section">
@@ -211,6 +222,7 @@
 
 <script src="../lib/settings.js"></script>
 <script src="../lib/storage.js"></script>
+<script src="../lib/report-link.js"></script>
 <script src="common.js"></script>
 <script src="options.js"></script>
 </body>

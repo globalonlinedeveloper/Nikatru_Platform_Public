@@ -439,6 +439,18 @@
     "message": "Maakt een klein bestand dat de toestand van deze extensie beschrijft. Je ziet precies wat erin staat voordat het wordt opgeslagen, en er wordt niets ergens naartoe gestuurd.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Een melding naar support sturen",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Opent het meldformulier op nikatru.com in een nieuw tabblad, waarin alleen de gegevens van deze extensie zijn ingevuld: naam, versie, taal en browser.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Meldformulier openen",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Een rapport voorbereiden",
     "description": "en: Prepare a report"

@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Removes every screenshot in your History, and everything left behind by interrupted captures. Your settings stay as they are."
   },
+  "optionsSectionReport": {
+    "message": "Report a problem"
+  },
+  "optionsReport": {
+    "message": "Tell us what went wrong"
+  },
+  "optionsReportDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only FullShot's version, language and browser filled in."
+  },
+  "optionsReportBtn": {
+    "message": "Open the report form"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Delete everything FullShot has stored on this device?\n\nScreenshots in your History: $COUNT$\nLeftovers from interrupted captures: $LEFTOVER$\nSpace this frees: $SIZE$\n\nYour settings are not affected. This cannot be undone.",
     "placeholders": {

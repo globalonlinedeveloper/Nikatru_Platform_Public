@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "همهٔ تصاویر تاریخچه و هر چه ضبط‌های نیمه‌کاره بر جای گذاشته‌اند را حذف می‌کند. تنظیمات شما دست‌نخورده می‌ماند."
   },
+  "optionsSectionReport": {
+    "message": "گزارش مشکل"
+  },
+  "optionsReport": {
+    "message": "به ما بگویید چه مشکلی پیش آمد"
+  },
+  "optionsReportDesc": {
+    "message": "فرم گزارش را در nikatru.com در یک برگه جدید باز می‌کند و فقط نسخه FullShot، زبان و مرورگر در آن پر شده است."
+  },
+  "optionsReportBtn": {
+    "message": "باز کردن فرم گزارش"
+  },
   "optionsDeleteAllConfirm": {
     "message": "همهٔ آنچه FullShot روی این دستگاه ذخیره کرده حذف شود؟\n\nتصاویر در تاریخچهٔ شما: $COUNT$\nباقی‌ماندهٔ ضبط‌های نیمه‌کاره: $LEFTOVER$\nفضایی که آزاد می‌شود: $SIZE$\n\nتنظیمات شما تحت تأثیر قرار نمی‌گیرد. این کار بازگشت‌پذیر نیست.",
     "placeholders": {

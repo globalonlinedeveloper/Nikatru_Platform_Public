@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "يزيل كل لقطة في سجلك وكل ما خلّفته عمليات الالتقاط المنقطعة. تبقى إعداداتك كما هي."
   },
+  "optionsSectionReport": {
+    "message": "الإبلاغ عن مشكلة"
+  },
+  "optionsReport": {
+    "message": "أخبرنا بما حدث من خطأ"
+  },
+  "optionsReportDesc": {
+    "message": "يفتح نموذج الإبلاغ على nikatru.com في علامة تبويب جديدة، مع ملء إصدار FullShot واللغة والمتصفح فقط."
+  },
+  "optionsReportBtn": {
+    "message": "فتح نموذج الإبلاغ"
+  },
   "optionsDeleteAllConfirm": {
     "message": "هل تريد حذف كل ما خزّنه FullShot على هذا الجهاز؟\n\nاللقطات في سجلك: $COUNT$\nبقايا عمليات الالتقاط المنقطعة: $LEFTOVER$\nالمساحة التي ستتحرر: $SIZE$\n\nلن تتأثر إعداداتك. لا يمكن التراجع عن هذا.",
     "placeholders": {

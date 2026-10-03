@@ -55,6 +55,7 @@
     $('clearBtn').addEventListener('click', clearAll);
     $('resetBtn').addEventListener('click', resetSettings);
     $('reportBtn').addEventListener('click', prepareReport);
+    $('reportSendBtn').addEventListener('click', openReportForm);
     $('grantBtn').addEventListener('click', grantSiteAccess);
     $('revokeBtn').addEventListener('click', revokeSiteAccess);
     /* Re-read on every change, from whichever direction. The grant can also be
@@ -328,6 +329,20 @@
     await renderFields();
     await skApplyTheme();
     skToast(done && done.ok ? 'toastReset' : 'toastResetFailed');
+  }
+
+  /* REPORT A PROBLEM, SENT — through the site's form, never from here. The
+     link carries lib/report-link.js's closed list (tool id, version, UI locale,
+     coarse platform) and nothing about any page; policy-check gate 10 holds
+     that. The extension makes no request: the browser opens a tab. */
+  function openReportForm() {
+    const url = SKREPORT.link({
+      app: 'skeleton',                                // PLACEHOLDER(id) — tool.json id
+      version: chrome.runtime.getManifest().version,
+      uiLocale: skUiLocale(),
+      userAgent: navigator.userAgent
+    });
+    chrome.tabs.create({ url });
   }
 
   /* REPORT A PROBLEM — build, SHOW, then write. In that order.

@@ -432,5 +432,9 @@
   "optionsDeleteAllDesc": "Noņem visus ekrānuzņēmumus no jūsu vēstures un visu, ko atstājušas pārtrauktās tveršanas. Jūsu iestatījumi paliek nemainīgi.",
   "optionsDeleteAllConfirm": "Vai dzēst visu, ko FullShot saglabājis šajā ierīcē?\n\nEkrānuzņēmumi jūsu vēsturē: $COUNT$\nPārtrauktu tveršanu atliekas: $LEFTOVER$\nAtbrīvotā vieta: $SIZE$\n\nJūsu iestatījumus tas neietekmē. To nevar atsaukt.",
   "optionsDeleteAllDone": "Izdzēsts. FullShot šajā ierīcē vairs neglabā nevienu ekrānuzņēmumu.",
-  "errStorageFull": "Vairs nav vietas, kur saglabāt šo tveršanu. Izdzēsiet dažus ekrānuzņēmumus no vēstures un mēģiniet vēlreiz."
+  "errStorageFull": "Vairs nav vietas, kur saglabāt šo tveršanu. Izdzēsiet dažus ekrānuzņēmumus no vēstures un mēģiniet vēlreiz.",
+  "optionsSectionReport": "Ziņot par problēmu",
+  "optionsReport": "Pastāstiet, kas nogāja greizi",
+  "optionsReportDesc": "Jaunā cilnē atver nikatru.com ziņošanas veidlapu, kurā aizpildīta tikai FullShot versija, valoda un pārlūks.",
+  "optionsReportBtn": "Atvērt ziņošanas veidlapu"
 }

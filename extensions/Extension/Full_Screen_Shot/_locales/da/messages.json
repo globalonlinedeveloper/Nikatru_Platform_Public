@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Fjerner alle skærmbilleder i din historik og alt, hvad afbrudte optagelser har efterladt. Dine indstillinger forbliver, som de er."
   },
+  "optionsSectionReport": {
+    "message": "Rapportér et problem"
+  },
+  "optionsReport": {
+    "message": "Fortæl os, hvad der gik galt"
+  },
+  "optionsReportDesc": {
+    "message": "Åbner rapportformularen på nikatru.com i en ny fane, hvor kun FullShots version, sprog og browser er udfyldt."
+  },
+  "optionsReportBtn": {
+    "message": "Åbn rapportformularen"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Vil du slette alt, hvad FullShot har gemt på denne enhed?\n\nSkærmbilleder i din historik: $COUNT$\nRester fra afbrudte optagelser: $LEFTOVER$\nPlads, det frigør: $SIZE$\n\nDine indstillinger påvirkes ikke. Dette kan ikke fortrydes.",
     "placeholders": {

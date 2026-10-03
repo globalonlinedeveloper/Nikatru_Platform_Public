@@ -432,5 +432,9 @@
   "optionsDeleteAllDesc": "Elimină toate capturile din istoricul tău și tot ce au lăsat în urmă capturile întrerupte. Setările tale rămân așa cum sunt.",
   "optionsDeleteAllConfirm": "Ștergi tot ce a stocat FullShot pe acest dispozitiv?\n\nCapturi în istoricul tău: $COUNT$\nRămășițe de la capturi întrerupte: $LEFTOVER$\nSpațiul eliberat: $SIZE$\n\nSetările tale nu sunt afectate. Această acțiune nu poate fi anulată.",
   "optionsDeleteAllDone": "Șters. FullShot nu mai stochează nicio captură pe acest dispozitiv.",
-  "errStorageFull": "Nu mai există spațiu pentru a stoca această captură. Șterge câteva capturi din istoric, apoi încearcă din nou."
+  "errStorageFull": "Nu mai există spațiu pentru a stoca această captură. Șterge câteva capturi din istoric, apoi încearcă din nou.",
+  "optionsSectionReport": "Raportează o problemă",
+  "optionsReport": "Spune-ne ce nu a mers",
+  "optionsReportDesc": "Deschide formularul de raportare de pe nikatru.com într-o filă nouă, cu doar versiunea FullShot, limba și browserul completate.",
+  "optionsReportBtn": "Deschide formularul"
 }

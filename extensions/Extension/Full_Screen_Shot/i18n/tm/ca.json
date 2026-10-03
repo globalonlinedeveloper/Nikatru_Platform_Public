@@ -432,5 +432,9 @@
   "optionsDeleteAllDesc": "Elimina totes les captures de l’historial i tot allò que hagin deixat les captures interrompudes. La vostra configuració es manté tal com és.",
   "optionsDeleteAllConfirm": "Voleu esborrar tot el que el FullShot ha desat en aquest dispositiu?\n\nCaptures a l’historial: $COUNT$\nRestes de captures interrompudes: $LEFTOVER$\nEspai que s’allibera: $SIZE$\n\nLa vostra configuració no es veu afectada. Això no es pot desfer.",
   "optionsDeleteAllDone": "Esborrat. El FullShot ja no desa cap captura en aquest dispositiu.",
-  "errStorageFull": "No queda espai per desar aquesta captura. Esborreu algunes captures de l’historial i torneu-ho a provar."
+  "errStorageFull": "No queda espai per desar aquesta captura. Esborreu algunes captures de l’historial i torneu-ho a provar.",
+  "optionsSectionReport": "Informa d'un problema",
+  "optionsReport": "Explica'ns què ha fallat",
+  "optionsReportDesc": "Obre el formulari d'informe de nikatru.com en una pestanya nova, amb només la versió de FullShot, l'idioma i el navegador emplenats.",
+  "optionsReportBtn": "Obre el formulari"
 }

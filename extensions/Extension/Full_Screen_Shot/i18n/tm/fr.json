@@ -432,5 +432,9 @@
   "optionsDeleteAllDesc": "Supprime toutes les captures de votre historique ainsi que tout ce qu’ont laissé les captures interrompues. Vos réglages restent tels quels.",
   "optionsDeleteAllConfirm": "Supprimer tout ce que FullShot a stocké sur cet appareil ?\n\nCaptures dans votre historique : $COUNT$\nRésidus de captures interrompues : $LEFTOVER$\nEspace ainsi libéré : $SIZE$\n\nVos réglages ne sont pas concernés. Cette action est irréversible.",
   "optionsDeleteAllDone": "Supprimé. FullShot ne stocke plus aucune capture sur cet appareil.",
-  "errStorageFull": "Il n’y a plus de place pour enregistrer cette capture. Supprimez des captures de votre historique, puis réessayez."
+  "errStorageFull": "Il n’y a plus de place pour enregistrer cette capture. Supprimez des captures de votre historique, puis réessayez.",
+  "optionsSectionReport": "Signaler un problème",
+  "optionsReport": "Dites-nous ce qui n'a pas fonctionné",
+  "optionsReportDesc": "Ouvre le formulaire de signalement de nikatru.com dans un nouvel onglet, avec seulement la version de FullShot, la langue et le navigateur renseignés.",
+  "optionsReportBtn": "Ouvrir le formulaire"
 }

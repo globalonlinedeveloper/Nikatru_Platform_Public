@@ -439,6 +439,18 @@
     "message": "Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Send a report to support",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Open the report form",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Prepare a report",
     "description": "en: Prepare a report"

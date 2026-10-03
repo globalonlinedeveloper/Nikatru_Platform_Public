@@ -414,5 +414,9 @@
   "optionsDeleteAllDesc": "Membuang setiap tangkapan skrin dalam sejarah anda dan semua yang ditinggalkan oleh tangkapan yang terputus. Tetapan anda kekal seperti sedia ada.",
   "optionsDeleteAllConfirm": "Padam semua yang disimpan FullShot pada peranti ini?\n\nTangkapan skrin dalam sejarah anda: $COUNT$\nSisa daripada tangkapan yang terputus: $LEFTOVER$\nRuang yang dilapangkan: $SIZE$\n\nTetapan anda tidak terjejas. Tindakan ini tidak boleh dibatalkan.",
   "optionsDeleteAllDone": "Dipadam. FullShot kini tidak menyimpan sebarang tangkapan skrin pada peranti ini.",
-  "errStorageFull": "Tiada ruang lagi untuk menyimpan tangkapan ini. Padamkan beberapa tangkapan skrin daripada sejarah anda, kemudian cuba lagi."
+  "errStorageFull": "Tiada ruang lagi untuk menyimpan tangkapan ini. Padamkan beberapa tangkapan skrin daripada sejarah anda, kemudian cuba lagi.",
+  "optionsSectionReport": "Laporkan masalah",
+  "optionsReport": "Beritahu kami apa yang tidak kena",
+  "optionsReportDesc": "Membuka borang laporan di nikatru.com dalam tab baharu, dengan hanya versi FullShot, bahasa dan pelayar yang diisi.",
+  "optionsReportBtn": "Buka borang laporan"
 }

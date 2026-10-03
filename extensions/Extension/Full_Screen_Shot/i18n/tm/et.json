@@ -423,5 +423,9 @@
   "optionsDeleteAllDesc": "Eemaldab kõik ekraanipildid sinu ajaloost ja kõik, mille katkenud jäädvustused on maha jätnud. Sinu seaded jäävad samaks.",
   "optionsDeleteAllConfirm": "Kas kustutada kõik, mille FullShot on sellesse seadmesse salvestanud?\n\nEkraanipilte sinu ajaloos: $COUNT$\nKatkenud jäädvustuste jäänuseid: $LEFTOVER$\nVabanev ruum: $SIZE$\n\nSinu seadeid see ei mõjuta. Seda ei saa tagasi võtta.",
   "optionsDeleteAllDone": "Kustutatud. FullShot ei hoia selles seadmes enam ühtegi ekraanipilti.",
-  "errStorageFull": "Selle jäädvustuse salvestamiseks pole enam ruumi. Kustuta ajaloost mõni ekraanipilt ja proovi uuesti."
+  "errStorageFull": "Selle jäädvustuse salvestamiseks pole enam ruumi. Kustuta ajaloost mõni ekraanipilt ja proovi uuesti.",
+  "optionsSectionReport": "Teata probleemist",
+  "optionsReport": "Kirjutage meile, mis läks valesti",
+  "optionsReportDesc": "Avab nikatru.com-i teatamisvormi uuel vahekaardil, kuhu on täidetud ainult FullShoti versioon, keel ja brauser.",
+  "optionsReportBtn": "Ava teatamisvorm"
 }

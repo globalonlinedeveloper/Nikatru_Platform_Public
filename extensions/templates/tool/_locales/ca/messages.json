@@ -439,6 +439,18 @@
     "message": "Crea un fitxer petit que descriu l’estat d’aquesta extensió. Veus exactament què conté abans que es desi, i no s’envia res enlloc.",
     "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
   },
+  "optReportSendTitle": {
+    "message": "Envia un informe al suport",
+    "description": "en: Send a report to support"
+  },
+  "optReportSendDesc": {
+    "message": "Obre el formulari d'informe de nikatru.com en una pestanya nova, amb només les dades d'aquesta extensió: nom, versió, idioma i navegador.",
+    "description": "en: Opens the report form on nikatru.com in a new tab, with only this extension's own facts filled in: its name, version, language and browser."
+  },
+  "optReportSendButton": {
+    "message": "Obre el formulari",
+    "description": "en: Open the report form"
+  },
   "optReportButton": {
     "message": "Prepara un informe",
     "description": "en: Prepare a report"

@@ -605,6 +605,18 @@
   "optionsDeleteAllDesc": {
     "message": "Eltávolítja az előzményekben lévő összes képernyőképet, és mindent, amit a megszakadt rögzítések hagytak hátra. A beállításai változatlanok maradnak."
   },
+  "optionsSectionReport": {
+    "message": "Probléma bejelentése"
+  },
+  "optionsReport": {
+    "message": "Mondja el, mi romlott el"
+  },
+  "optionsReportDesc": {
+    "message": "Új lapon megnyitja a nikatru.com bejelentőűrlapját, amelyben csak a FullShot verziója, a nyelv és a böngésző van kitöltve."
+  },
+  "optionsReportBtn": {
+    "message": "Bejelentőűrlap megnyitása"
+  },
   "optionsDeleteAllConfirm": {
     "message": "Törli mindazt, amit a FullShot ezen az eszközön tárol?\n\nKépernyőképek az előzményekben: $COUNT$\nMegszakadt rögzítések maradványai: $LEFTOVER$\nEzzel felszabaduló hely: $SIZE$\n\nA beállításait ez nem érinti. A művelet nem vonható vissza.",
     "placeholders": {
