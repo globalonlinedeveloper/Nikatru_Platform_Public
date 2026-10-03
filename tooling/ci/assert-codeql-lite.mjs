@@ -30,8 +30,9 @@
 //                                `.exec`/`.match`/`.search`) and holding a host on a common
 //                                TLD or a `//`, or tested against a URL-named value — with
 //                                neither `^` nor `$`; or `^a|b` / `a|b$`, an anchor that
-//                                binds to one alternative while no other alternative carries
-//                                one (`^`, `$`, `\b`, `(^|\/)`). Not in a test file (CodeQL
+//                                binds to one alternative while no other alternative anchors
+//                                that same end itself (`^`/`\b`/`(^|\/)` at a start, `$`/`\b`
+//                                at an end — CodeQL is per direction). Not in a test file (CodeQL
 //                                leaves tests out of this rule) and not an assertion's pattern.
 //   js/incomplete-hostname-regexp   an UNESCAPED `.` inside a host on a common TLD in a
 //                                regex literal or a `new RegExp('…')` string.
@@ -518,8 +519,11 @@ function urlShaped(blanked) {
 const URLISH_REGEX = new RegExp(`${HOST_IN_REGEX.source}|\\\\\\/\\\\\\/`, 'i');
 /** A tested value whose name says it holds a URL, a host or an origin. */
 export const URL_SUBJECT = /(?:url|uri|href|host|origin|domain|referr?er|redirect|location|endpoint|callback|link)/i;
-/** Any anchor or pseudo-anchor in a (class-blanked) alternative: ^ $ \b \B or a lookbehind. */
-const HAS_ANCHOR = /(?<!\\)[\^$]|\\[bB]|\(\?<[=!]/;
+/** An alternative that anchors its own START (`^`, `\b`, `(^|\/)`, `(?:^|…)`, a lookbehind), or its own
+ *  END (`$`, `\b`, `(\/|$)`). CodeQL's precedence check is per direction: a `$` on the last alternative
+ *  is excused only by another alternative's own END anchor — `(?:^|\/)x\/|y$` is flagged (alert 617). */
+const LEADING_ANCHOR = /^(?:\(\?:|\()*(?:\^|\\[bB]|\(\?<[=!])/;
+const TRAILING_ANCHOR = /(?:(?<!\\)\$|\\[bB])\)*$/;
 
 /**
  * One regex source's own shape findings: [{ rule, message }]. `use` is how the regex is
@@ -543,10 +547,11 @@ export function regexFindings(source, use = 'other', { urlSubject = false, testF
     const first = startAnchored(alts[0]);
     const last = endAnchored(alts[alts.length - 1]);
     // `^a|b$` is the trim idiom, anchored at both ends on purpose; only a ONE-sided anchor
-    // misleads, and only when no OTHER alternative carries an anchor of its own
-    // (`(^|\/)x(\/|$)|\.md$`, `\bload\b|^\s*more`, `REPLACE|\.example$|^$` are deliberate)
+    // misleads, and only when no OTHER alternative anchors that same end of its own
+    // (`(^|\/)x(\/|$)|\.md$`, `\bload\b|^\s*more$`, `REPLACE|\.example$|^$` are deliberate)
     const others = first ? alts.slice(1) : alts.slice(0, -1);
-    if (validates && first !== last && !others.some((a) => HAS_ANCHOR.test(a))) {
+    const own = first ? LEADING_ANCHOR : TRAILING_ANCHOR;
+    if (validates && first !== last && !others.some((a) => own.test(a))) {
       out.push({ rule: RULES.anchor, message: `the regex /${source}/ anchors only ${first ? 'its first' : 'its last'} alternative: '|' binds looser than '^'/'$' — group the alternatives, ^(?:a|b)$` });
     }
     return out;
@@ -634,7 +639,7 @@ const FS_USE = new Set(['readFile', 'readFileSync', 'writeFile', 'writeFileSync'
 const TMP_SINK = new Set(['writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'createWriteStream']);
 
 /** A test file, as CodeQL's anchor query leaves them out: a test/tests/__tests__ directory, or *.test.* / *.spec.*. */
-export const TEST_FILE = /(?:^|\/)(?:test|tests|__tests__)\/|\.(?:test|spec)\.[^/]+$/i;
+export const TEST_FILE = /(?:(?:^|\/)(?:test|tests|__tests__)\/.*|\.(?:test|spec)\.[^/]+)$/i;
 const EXITS = new Set(['return', 'throw', 'break', 'continue']);
 
 /**

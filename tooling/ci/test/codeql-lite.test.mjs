@@ -17,7 +17,7 @@ import path, { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { analyse, applyAllows, changedLines, dangerousOpener, parseArgs, RULES, toRepoRel, tokenize, TokenizeError, unquoteGitPath, CODE_FILE, CODEQL_CONFIG_REL } from '../assert-codeql-lite.mjs';
+import { analyse, applyAllows, changedLines, dangerousOpener, parseArgs, RULES, toRepoRel, tokenize, TokenizeError, unquoteGitPath, CODE_FILE, TEST_FILE, CODEQL_CONFIG_REL } from '../assert-codeql-lite.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -123,14 +123,29 @@ describe('review item 1a — file-system-race: an `if (check)` that falls throug
 });
 
 describe('review item 1b/3 — missing-regexp-anchor: only a URL/host validator, and never one whose other alternatives anchor themselves', () => {
-  test('green: the seven alternations main carried, each with another alternative anchored (capture.js, package.node.js, verify-*.node.js, skeleton-sim, assert-signing-inputs-pinned.mjs)', () => {
+  test('green: the alternations main carried, each with another alternative anchoring the same end (capture.js, package.node.js, verify-*.node.js, assert-signing-inputs-pinned.mjs)', () => {
     for (const re of [
       '/\\b(load|show)\\s+(more|older)\\b|\\b(more|older)\\s+(comments|replies)\\b|^\\s*(more)/i',
       '/(^|\\/)(node_modules|test|publish|\\.[^/]*)(\\/|$)|DELETE-ME|\\.md$|\\.zip$/',
       '/REPLACE|\\.example$|^$/',
-      '/<all_urls>|^\\*:\\/\\/\\*\\/|^\\*:\\/\\/\\*$/',
       '/^subosito\\/flutter-action$|(?:^|\\/)setup-[A-Za-z0-9_.-]+$|install/i',
     ]) assert.deepEqual(rulesOf(`const ok = ${re}.test(url);`), [], re);
+  });
+
+  test('green: skeleton-sim.node.js:4119 is in a test/ directory — out of the anchor rule, as CodeQL leaves it', () => {
+    const src = 'export const wide = (url) => /<all_urls>|^\\*:\\/\\/\\*\\/|^\\*:\\/\\/\\*$/.test(url);';
+    assert.deepEqual(analyse(src).map((x) => x.rule), [RULES.anchor], 'red control: outside a test, no other alternative ENDS anchored');
+    assert.deepEqual(analyse(src, { testFile: true }), []);
+  });
+
+  test('red: CodeQL is per DIRECTION — a leading `(?:^|\\/)` does not excuse a `$` on the last alternative (alert 617, on this very guard)', () => {
+    assert.deepEqual(rulesOf("const t = /(?:^|\\/)(?:test|tests)\\/|\\.(?:test|spec)\\.[^/]+$/i.test(url);"), [RULES.anchor]);
+    assert.deepEqual(rulesOf("const t = /(?:(?:^|\\/)(?:test|tests)\\/.*|\\.(?:test|spec)\\.[^/]+)$/i.test(url);"), [], 'the grouped fix');
+  });
+
+  test('TEST_FILE: a test directory anywhere, or a *.test.* / *.spec.* name — and nothing else', () => {
+    for (const f of ['test/a.mjs', 'tooling/ci/test/x.mjs', 'a/__tests__/b.ts', 'a/b.test.mjs', 'c.spec.TS']) assert.ok(TEST_FILE.test(f), f);
+    for (const f of ['tooling/ci/latest/x.mjs', 'contest.mjs', 'a/tests.mjs', 'a/test.mjs']) assert.ok(!TEST_FILE.test(f), f);
   });
 
   test('green: #1176 refund.mjs:210, a PATH check — no URL in the regex, no URL in the tested name', () => {
