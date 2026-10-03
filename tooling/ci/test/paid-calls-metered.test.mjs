@@ -90,6 +90,41 @@ describe('assert-paid-calls-metered', () => {
     assert.match(r.stderr, /P2 gate anchor .*reserveOrRefuse.* is gone from services\/a\/adapter\.ts/);
   });
 
+  // P2b (review 2026-10-03): the anchor alone survived `return 'paid';` as the body.
+  const PLAN_GATE = {
+    file: 'services/a/meter.ts',
+    anchor: 'export async function planOf(',
+    why: 'the plan check',
+    requires: ["return paid ? 'paid' : 'free';"],
+    forbid: ["return 'paid'"],
+  };
+  const PLAN_BODY = "export async function planOf(a) {\n  let paid = a.receipt === 1;\n  return paid ? 'paid' : 'free';\n}\nconst beforeCall = async () => {};\n";
+
+  test('a plan check that holds its predicate is green (the control for the two below)', () => {
+    const r = run(tree({ rows: [row({ gate: [row().gate[0], PLAN_GATE] })], files: { 'services/a/meter.ts': PLAN_BODY } }));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
+  test("🔴 a plan check that answers 'paid' unconditionally exits 1 although its anchor stands", () => {
+    const body = PLAN_BODY.replace('{\n  let', "{\n  return 'paid';\n  let");
+    const r = run(tree({ rows: [row({ gate: [row().gate[0], PLAN_GATE] })], files: { 'services/a/meter.ts': body } }));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /P2 the gate at "export async function planOf\(" .* holds the forbidden "return 'paid'"/);
+  });
+
+  test('🔴 a plan check whose predicate is gone exits 1', () => {
+    const body = PLAN_BODY.replace("return paid ? 'paid' : 'free';", "return 'free';");
+    const r = run(tree({ rows: [row({ gate: [row().gate[0], PLAN_GATE] })], files: { 'services/a/meter.ts': body } }));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /no longer holds/);
+  });
+
+  test('a forbidden fragment AFTER the gated function is not its body', () => {
+    const body = `${PLAN_BODY}export function other() {\n  return 'paid';\n}\n`;
+    const r = run(tree({ rows: [row({ gate: [row().gate[0], PLAN_GATE] })], files: { 'services/a/meter.ts': body } }));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
   test('🔴 a metered row with only one gate exits 1: the plan check is not optional', () => {
     const r = run(tree({ rows: [row({ gate: [row().gate[0]] })] }));
     assert.equal(r.status, 1);

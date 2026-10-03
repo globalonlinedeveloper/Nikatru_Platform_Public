@@ -14,7 +14,10 @@
 //   P2  every `gate` anchor is a fragment its file still contains — a metered
 //       row needs at least two (the reservation and the plan check), a byok row
 //       at least one (the device key read). Deleting the reservation call from
-//       the adapter, or the plan check from the meter, exits 1;
+//       the adapter, or the plan check from the meter, exits 1. A gate may also
+//       name `requires`/`forbid` fragments of the function body its anchor
+//       opens (P2b), so a plan check rewritten to answer `'paid'` unconditionally
+//       exits 1 although its first line still stands;
 //   P3  every `ai-inference` row names its disclosure string keys — each must be
 //       a key of the named ARB — and its output marker fields — each must appear
 //       in the named file (EU AI Act Art. 50(1) and 50(2), for every future AI
@@ -84,6 +87,32 @@ function read(relPath) {
 }
 const normRel = (p) => String(p).replace(/\\/g, '/').replace(/^\.\//, '');
 
+/**
+ * P2b — A GATE THAT STANDS BUT NO LONGER GATES. An anchor on a function's first
+ * line survives a body rewritten to `return 'paid';` (review 2026-10-03). A gate may
+ * therefore name `requires` (fragments its BODY must hold: the predicate itself)
+ * and `forbid` (fragments it must not: an unconditional verdict). Both are compared
+ * with all whitespace removed, as plain text — never compiled into a pattern. The
+ * body is the anchor's line through the first line that is a lone `}` at column 0.
+ */
+function gateBodyProblems(where, g, text) {
+  const requires = Array.isArray(g.requires) ? g.requires : [];
+  const forbid = Array.isArray(g.forbid) ? g.forbid : [];
+  if (requires.length === 0 && forbid.length === 0) return [];
+  const at = text.indexOf(g.anchor);
+  const end = text.indexOf('\n}', at);
+  const squash = (t) => String(t).replace(/\s+/g, '');
+  const body = squash(text.slice(at, end === -1 ? undefined : end));
+  const out = [];
+  for (const f of requires) {
+    if (!body.includes(squash(f))) out.push(`${where} P2 the gate at ${JSON.stringify(g.anchor)} in ${normRel(g.file)} no longer holds ${JSON.stringify(f)} — ${g.why ?? 'the gate'} stands but no longer decides`);
+  }
+  for (const f of forbid) {
+    if (body.includes(squash(f))) out.push(`${where} P2 the gate at ${JSON.stringify(g.anchor)} in ${normRel(g.file)} holds the forbidden ${JSON.stringify(f)} — ${g.why ?? 'the gate'} answers without checking`);
+  }
+  return out;
+}
+
 // ── P1–P3: the rows ───────────────────────────────────────────────────────────
 const callersByHost = new Map();
 for (const [i, row] of rows.entries()) {
@@ -113,6 +142,7 @@ for (const [i, row] of rows.entries()) {
     if (text === null) problems.push(`${where} P2 gate file ${g?.file} does not exist`);
     else if (typeof g.anchor !== 'string' || g.anchor.length < 8) problems.push(`${where} P2 gate anchor in ${g.file} is missing or too short to mean anything`);
     else if (!text.includes(g.anchor)) problems.push(`${where} P2 gate anchor ${JSON.stringify(g.anchor)} is gone from ${normRel(g.file)} — ${g.why ?? 'the gate'} no longer stands there`);
+    else problems.push(...gateBodyProblems(where, g, text));
   }
 
   if (row.kind === 'ai-inference') {
