@@ -177,6 +177,11 @@ const List<List<String>> kIllustrative = <List<String>>[
   <String>['News digest', '4.50', 'News', '29'],
 ];
 
+/// The monthly budget frame 04 shows, typed into the app's own budget editor.
+/// Above the six rows' $93.47 a month, so the card reads what is LEFT rather
+/// than an overspend — an illustrative household budget, like the rows.
+const String kIllustrativeBudget = '120';
+
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
       IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -1666,6 +1671,101 @@ void main() {
     await tester.tap(find.byIcon(Icons.insights_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
+
+    /// Sets the monthly budget to [amount] ('' clears it) through the app's
+    /// own editor, opened from the Insights budget card, and waits for the
+    /// card to say so. Every control is asked the REACHABILITY question first,
+    /// for the reason the seeding walk gives.
+    Future<void> saveBudgetThroughEditor(String amount, String why) async {
+      final Finder edit = find.byKey(BudgetCard.editButton);
+      await tester.ensureVisible(edit);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(
+        edit.hitTestable(),
+        findsOneWidget,
+        reason:
+            'The budget card\'s edit button cannot be reached ($why). On '
+            'screen: ${onScreen(tester)}',
+      );
+      await tester.tap(edit);
+      final Finder field = find.byKey(BudgetEditor.amountField);
+      expect(
+        await waitFor(tester, field, timeout: const Duration(seconds: 10)),
+        isTrue,
+        reason:
+            'The budget editor did not open ($why). On screen: '
+            '${onScreen(tester)}',
+      );
+      await tester.enterText(field, amount);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      final Finder save = find.byKey(BudgetEditor.saveButton);
+      await tester.ensureVisible(save);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(
+        save.hitTestable(),
+        findsOneWidget,
+        reason:
+            'The budget editor\'s Save cannot be reached ($why), even after '
+            'ensureVisible. On screen: ${onScreen(tester)}',
+      );
+      await tester.tap(save);
+      // `_save` pops the editor on the SUCCESS arm only, so its absence is the
+      // receipt for the PUT, with the same limit the seeding receipt states.
+      expect(
+        await waitGone(
+          tester,
+          find.byType(BudgetEditor),
+          timeout: const Duration(seconds: 20),
+        ),
+        isTrue,
+        reason:
+            'The budget editor is still up 20 s after Save ($why): the write '
+            'failed or had not answered. On screen: ${onScreen(tester)}',
+      );
+      await pumpFor(tester, const Duration(seconds: 2));
+    }
+
+    // ⏱ 2026-10-03 · ONE BUDGET STATE PER FRAME, ON BOTH VIEWPORTS. The budget
+    // is the ACCOUNT's (PUT /v1/budget), and the two drives share one account,
+    // so whatever the phone drive leaves is what the tablet drive arrives to.
+    // Frame 03 shows Insights as a new user first sees it — no budget, the
+    // card's "Set a budget" — so a budget a previous drive left is cleared
+    // first, through the same editor (an empty amount is "no budget").
+    if (find
+        .byKey(BudgetCard.meter, skipOffstage: false)
+        .evaluate()
+        .isNotEmpty) {
+      await saveBudgetThroughEditor(
+        '',
+        'clearing the previous drive\'s budget',
+      );
+      expect(
+        find.byKey(BudgetCard.meter, skipOffstage: false),
+        findsNothing,
+        reason:
+            'The budget meter is still drawn after the budget was cleared, so '
+            '03-insights would not show the no-budget state the phone frame '
+            'shows. On screen: ${onScreen(tester)}',
+      );
+    }
+    // The editor walk scrolls the page to reach the card's edit button, and
+    // frame 03 is the page from its top, as it opens. Back to offset 0 the way
+    // a scroll gets there, without a drag that could overscroll into a pull.
+    final ScrollableState insightsPage = tester
+        .stateList<ScrollableState>(
+          find.descendant(
+            of: find.byType(InsightsScreen),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .firstWhere(
+          (ScrollableState s) => s.axisDirection == AxisDirection.down,
+        );
+    if (insightsPage.position.pixels != 0) {
+      insightsPage.position.jumpTo(0);
+      await pumpFor(tester, const Duration(seconds: 1));
+    }
+    expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(
       take: shutter,
       frame: '03-insights',
@@ -1675,13 +1775,40 @@ void main() {
     recordFold(tester, '03-insights');
 
     // ⏱ ST-D3 D3-3: there is no Budget tab. The budget lives on Insights
-    // (ADR 077 §A), so frame 04 is the budget EDITOR opened from the Insights
-    // budget card — the one surface that sets a budget, as the app draws it.
-    // The frame keeps its name: the listing's order and file names do not move.
-    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
-    await tester.tap(find.byKey(BudgetCard.editButton));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.byType(BudgetEditor), findsWidgets);
+    // (ADR 077 §A).
+    //
+    // ⏱ 2026-10-03 · FRAME 04 IS THE BUDGET IN USE, NOT ITS EDITOR. It used to
+    // photograph the editor sheet, and run 37117009797 — the first drive to
+    // reach it — failed both viewports on the fold check: at 360x640 the sheet
+    // is taller than the screen, so its Save button was cut by the frame edge,
+    // and at 900x1600 the bottom of the frame was the modal scrim. So the drive
+    // now SETS a budget through that editor, the way a user does, and frame 04
+    // is the card it produces — the meter, what is left, the category bars
+    // below it — scrolled to the top of the page where the page is taller
+    // than the window. The frame keeps its name: the listing's order, the site
+    // copy's `from` (tooling/site-shots.json) and the file names do not move.
+    await saveBudgetThroughEditor(kIllustrativeBudget, 'setting the budget');
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(BudgetCard.meter, skipOffstage: false),
+        timeout: const Duration(seconds: 10),
+      ),
+      isTrue,
+      reason:
+          'A budget of $kIllustrativeBudget was saved and the Insights budget '
+          'card drew no meter, so 04-budget would photograph "Set a budget" '
+          'again. On screen: ${onScreen(tester)}',
+    );
+    // The card to the top of the window, a little below its edge, where the
+    // page is taller than the window (phone); a no-op where it is not (tablet:
+    // the whole page fits, and the frame is the page with the budget in use).
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(const Key('insights.budget'))),
+      alignment: 0.03,
+    );
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(take: shutter, frame: '04-budget', forbidden: forbidden);
     markFrame('04-budget');
     recordFold(tester, '04-budget');
