@@ -344,4 +344,10 @@ describe('the chassis bridge is dart-format clean', () => {
     assert.ok(out.includes('  String reacceptTermsNoteHeading(\n    String document,\n    String version,\n    String date,\n  ) => _chassis.reacceptTermsNoteHeading(document, version, date);\n'));
     for (const line of out.split('\n')) assert.ok(line.length <= 80, `over 80: ${line}`);
   });
+  test('one parameter per line whose closing line overflows also breaks after =>', () => {
+    const k = 'reacceptTermsNoteHeadingLonger';
+    const out = body({ [k]: 'x', [`@${k}`]: { placeholders: ph('documentTitle', 'version', 'dateText') } });
+    assert.ok(out.includes(`  String ${k}(\n    String documentTitle,\n    String version,\n    String dateText,\n  ) =>\n      _chassis.${k}(documentTitle, version, dateText);\n`));
+    for (const line of out.split('\n')) assert.ok(line.length <= 80, `over 80: ${line}`);
+  });
 });
