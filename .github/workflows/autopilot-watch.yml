@@ -1,0 +1,86 @@
+name: Autopilot watch
+
+# The lane watch, the run ledger and E2E-after-deploy, on GitHub in both modes
+# (row O-WATCH-RUNS-ON-THE-LAPTOP). Every decision is tooling/autopilot/ledger.mjs,
+# unit-tested in tooling/ci/test/autopilot-ledger.test.mjs; tooling/autopilot/watch.mjs
+# reads GitHub and makes the writes. The design is docs/autopilot/contract.md. Only
+# `# why:` lines live here, and docs/ci/README.md carries the rules every workflow obeys.
+
+on:
+  # why: the clock is the floor; the workflow_run wakes below only refresh sooner.
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  # zizmor: ignore[dangerous-triggers]
+  # why: CI on main is where a web deploy completes (Deploy web and Deploy workers
+  # are workflow_call workflows that run INSIDE CI, so CI's completion is theirs),
+  # and E2E live on main proves it. MAIN ONLY, and not Land: every PR's CI and every
+  # Land pass would wake this ~25-35 times an hour against the repo's shared 1,000
+  # GITHUB_TOKEN requests an hour (review of #1171, finding 4); the board refreshes
+  # on the clock. Safe here: no expression reads the triggering run, the checkout is
+  # main, and the only code run is watch.mjs from main.
+  workflow_run:
+    workflows: [CI, E2E live]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # why: one pass at a time, never cancelled in flight (docs/ci/README.md §2): a pass
+  # cancelled between its read and its edit leaves a run that concludes `cancelled`,
+  # which no alarm sees. GitHub keeps at most one pending pass behind it.
+  group: autopilot-watch
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  watch:
+    name: Laptop state, PR board, run ledger
+    # why: main's own copy only; a dispatch from a branch would run that branch's code with write scopes.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # why: the checkout of main, and the laptop heartbeat (ref refs/lead/heartbeat, not a branch).
+      contents: read
+      # why: the ci-gate check-runs on each open PR's head.
+      checks: read
+      # why: the open pull requests.
+      pull-requests: read
+      # why: the run ledger reads runs and jobs.
+      actions: read
+      # why: the one `laptop-off` issue and the one `Autopilot ledger` issue (edited, never commented).
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: ./.github/actions/setup-node
+      - name: One watch pass
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tooling/autopilot/watch.mjs
+
+  e2e-after-deploy:
+    name: E2E after a web deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # why: the checkout of main.
+      contents: read
+      # why: the ONLY write: dispatching e2e.yml on main when a deployed head is not E2E-proven.
+      actions: write
+      # why: an open `e2e-hold` issue stops the dispatch.
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: ./.github/actions/setup-node
+      - name: Dispatch E2E live when the deployed head is not proven
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tooling/autopilot/watch.mjs --e2e
