@@ -540,7 +540,7 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish.
-const String kPrivacyPolicyVersion = '2026-09-26';
+const String kPrivacyPolicyVersion = '2026-10-02';
 
 /// 🔒 The Terms-of-Service version the sign-up clickwrap accepts.
 ///
@@ -1189,6 +1189,12 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   return SupabaseAuthRepository(
     requestServerDeletion: () =>
         requestAccountDeletion(ref.read(platformRestClientProvider)),
+    // ⏱ 2026-10-02 · AB-A4-01 — log-out-all and a new password end the access
+    // tokens at the Workers too (assert-session-revocation limb 3 holds it).
+    revokeAtWorkers: (String accessToken) => requestWorkerSessionRevocation(
+      ref.read(platformRestClientProvider),
+      accessToken: accessToken,
+    ),
     // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL — ONE URL
     // for the whole portfolio — so a stamped app's users would land, invisibly,
     // in a DIFFERENT app. ⏱ 2026-09-23 — one derivation for all five

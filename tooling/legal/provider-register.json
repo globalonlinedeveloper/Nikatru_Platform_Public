@@ -330,7 +330,9 @@
       "what": "The network address a request came from, in a form that still identifies the connection. Personal data under GDPR and India's DPDP. ⚠️ GlitchTip's `scrub_ip_addresses` flag ANONYMISES (IPv4 /24, IPv6 /64) and then STORES — an anonymised prefix is still this category, which is exactly why the flag reading `True` hid the breach for weeks.",
       "tells": [
         "ip address",
-        "ip addresses"
+        "ip addresses",
+        "network address",
+        "network addresses"
       ]
     },
     "ip_fingerprint": {
@@ -929,7 +931,7 @@
       "status": "wired-not-live",
       "requiredWhen": {
         "kind": "always",
-        "_why": "Parent ruling 2026-09-25 (SUPABASE_KIND = always): the identity server every app signs in against. Until the Phase 5 cutover both Workers still point SUPABASE_URL at the hosted project (P4-2); at the cutover this becomes `never`, with a why citing P4-3."
+        "_why": "⏱ 2026-10-02 · rv2-business 003. Since the 2026-09-27 switch both Workers point SUPABASE_URL at the self-hosted identity stack on Box C (services/*/wrangler.jsonc), so hosted Supabase is no longer the server any app signs in against. It stays `always` because the hosted project (Cross_Platform_Auth, ap-south-1) still exists as the cutover's rollback and still holds the account and session records from before the switch (8 sessions, each with an address, read counts-only on 2026-10-02). It becomes `never` when that project is retired (O-PHASE6-HOSTED-LEFTOVERS)."
       },
       "reachableAt": null,
       "tells": [
@@ -949,7 +951,13 @@
         "Named in no page. privacy.html's third-party section lists stores, Cloudflare and 'a merchant of",
         "record' and does not mention an identity provider. Carried as the `identity-provider-unnamed`",
         "gap: it becomes a disclosure duty the day an app actually offers accounts, and that day is a",
-        "declared trigger in tooling/legal/duty-matrix.json rather than a memory."
+        "declared trigger in tooling/legal/duty-matrix.json rather than a memory.",
+        "",
+        "⏱ 2026-10-02 — NOT THE IDENTITY SERVER ANY MORE (rv2-business 003, O-PRIVACY-YAML-IDENTITY-PROCESSOR). Both notices",
+        "described hosted Supabase as the service that stores account credentials and sign-in sessions after the switch to",
+        "Box C. They now say the sign-in service is one we run ourselves on Hostinger, and that Supabase holds a fallback copy",
+        "of the records from before 27 September 2026 until it is retired. The role stays `identity`: that copy is of",
+        "identity records."
       ]
     },
     {
@@ -998,7 +1006,8 @@
         "sign in with google"
       ],
       "namedIn": [
-        "privacy.html"
+        "privacy.html",
+        "subscriptiontracker/privacy.html"
       ],
       "privateRecord": null,
       "notes": [
@@ -1016,7 +1025,9 @@
         "subscriptiontracker/privacy.html is NOT in `namedIn`: while the flag is off no text may claim that",
         "Subscription Tracker offers Google sign-in, so its Name row names Settings and Sign in with Apple only.",
         "Add the page back in the change that turns Google on.",
-        "⏱ 2026-09-26: ON. `AuthProviders.configured` says google: true, flipped with the live project in one window."
+        "⏱ 2026-09-26: ON. `AuthProviders.configured` says google: true, flipped with the live project in one window.",
+        "⏱ 2026-10-02 (O-SIGN-IN-PROVIDERS-UNDISCLOSED): the app notice is back in `namedIn`, as the note above asked of the",
+        "change that turned Google on; its Name row names Sign in with Google beside Sign in with Apple."
       ]
     },
     {
@@ -1037,11 +1048,13 @@
       ],
       "privateRecord": "Private/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
       "receives": [
-        "crash_report"
+        "crash_report",
+        "email_address",
+        "account_identifier"
       ],
-      "receivesBasis": "🔴 THIS ROW IS WHY THE SINK-DISCLOSURE LIMB EXISTS. Until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it, because the only personal-data store outside Cloudflare appears in no inventory here. Fixed at the sink and verified BY OBSERVATION, not by reading a setting (Private/pre-minimal-2026-09-08:archive/2026-09-05/session-notes.md §17 — the old `knowledge/` prefix merged into `Private/` in the 2026-08-15 flatten; §17 is unmoved): two layers, because either alone is a false fix. (1) The sink refuses — 12 IP keys added to GlitchTip's `sensitive_keys`, which is what catches a CLIENT-SUPPLIED address; tested with 203.0.113.45. (2) Nothing is collected — nginx blanks the 11 client-IP headers in python_ipware's precedence tuple, so `get_client_ip` falls through to the Docker gateway and returns None. Probed after: no `user` object at all on a fresh event; the negative control against the pre-change config returned the address unmodified, so the assertion can fail. The 18 back-catalogue events holding a real address were redacted in place, non-destructively.",
+      "receivesBasis": "⏱ 2026-10-02 · SYN-P2 / O-PRIVACY-YAML-IDENTITY-PROCESSOR. TWO machines on this vendor hold personal data. Box B runs the self-hosted GlitchTip (`crash_report`). Box C runs the self-hosted identity stack (GoTrue, since the 2026-09-27 switch), whose auth.users and auth.identities hold every account's `email_address` and `account_identifier` (the user id every app row keys on). Until 2026-10-02 this row declared `crash_report` alone, and assert-sink-disclosure passed green over a sink holding every account (rv2-business 003). BOX B, AS BEFORE: until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it. Fixed at the sink and verified by observation (the 12 IP keys in GlitchTip's sensitive fields, and the eleven-header strip in the nginx hop in front of it); tooling/ci/assert-glitchtip-no-ip.mjs holds the client half and its --live leg reads the sink.",
       "transits": {
-        "ip_address": "An ingest request necessarily arrives from the device's address; that is TCP, not a choice. Nothing writes it — see `receivesBasis`. ⚠️ AND THIS IS EXACTLY THE DECLARATION A REPO-RESIDENT GUARD CANNOT CHECK. If somebody re-enables IP storage on the live GlitchTip without editing this line, every guard in this repository stays green. Only a probe against the live GlitchTip API can close that. ⏱ CORRECTED 2026-09-16 — this sentence said no such probe exists; one does since PR #778 (O-CRASH-EVENT-IP-DROP): `node tooling/ci/assert-glitchtip-no-ip.mjs --live` posts a subject event (no user, spoofed client-IP headers, plus the real CF-Connecting-IP the edge adds) and a negative control through the public glitchtip.nikatru.com edge, then reads both back through the GlitchTip API. It is an ATTENDED, on-demand laptop duty (duty.laptop.glitchtip-no-ip-live in tooling/ops/register.json), never a CI gate, because the compose file lives at /opt/glitchtip on the box and is in no tree CI can read — so nothing runs the live leg automatically. tooling/ci/assert-sink-disclosure.mjs names that probe for this row and exits 2 if the probe, its --live leg or the duty row disappears; it checks the probe's shape on every push and cannot run it."
+        "ip_address": "⏱ 2026-10-02 · SYN-P2. BOX C: GoTrue writes the forwarded client address into auth.sessions.ip on every sign-in and refresh, and into auth.audit_log_entries.ip_address; a BEFORE INSERT OR UPDATE trigger empties both on write (auth.mfa_challenges.ip_address is EXEMPT from that, because GoTrue v2.189.0 compares it while a challenge is pending, mfa.go:584/:774, before it writes verified_at; MFA stays on, and a pending sign-in verification holds the address until a BEFORE UPDATE trigger blanks it on the write that sets verified_at, or nikatru_privacy.mfa_challenge_ip_sweep() blanks it once the challenge is past GoTrue's 300 s expiry, run daily by identity-log-retention.sh, so at most 300 s plus a day; review 1 of #1140 finding 3, ruling on review 2 item 1) — docs/platform/supabase/sql/identity-address-null-on-write.sql, applied 2026-10-01T20:00Z and read back (a fresh sign-in and refresh left 0 of 1 sessions with an address). tooling/ci/assert-app-yaml.mjs limb 10 holds that file to tooling/legal/identity-address-columns.json. What remains, and the notice says so: (1) the request logs of GoTrue and envoy record the address for 7 days, then docs/platform/supabase/boxc/identity-log-retention.sh deletes them (daily, 04:10 IST); (2) a session opened before 2026-10-02 keeps the address it was opened from until its next refresh (3 of 3 live sessions on 2026-10-02; ADR 059 lock 6 sets no server-side session expiry, so no date bounds an unused one); (3) the identity dumps taken before 2026-10-02 hold those addresses, and their off-box copies are never pruned. BOX B: an ingest request necessarily arrives from the device's address; that is TCP, not a choice, and nothing writes it. ⚠️ BOTH HALVES ARE DECLARATIONS A REPO-RESIDENT GUARD CANNOT OBSERVE: a trigger dropped on the box, or IP storage re-enabled in GlitchTip, leaves every guard here green. The probes are the trigger file's READ-BACKs (READ-BACK 3: no verified or expired challenge holds an address) and `node tooling/ci/assert-glitchtip-no-ip.mjs --live` (duty.laptop.glitchtip-no-ip-live in tooling/ops/register.json)."
       },
       "notes": [
         "Crash reports go to a GlitchTip instance we run ourselves on a Hostinger VPS (Box B).",
@@ -1072,7 +1085,11 @@
         "listed `oracle-cloud` as the infrastructure vendor of the identity machine and omitted this row, the LIVE crash sink,",
         "under a self-hosted rule applied to one vendor only (HANDOFF-stores REVIEW #12). The declaration now lists both, the",
         "notice was re-rendered, and `namedIn` carries subscriptiontracker/privacy.html so assert-policy-claims limb (b) re-reads",
-        "that page for `hostinger` on every run."
+        "that page for `hostinger` on every run.",
+        "",
+        "⏱ 2026-10-02 — BOX C IS ON THIS VENDOR TOO, AND THE ROW SAID ONLY \"crash reports\". The identity stack moved from Box A",
+        "(Oracle) to Box C (Hostinger) on 2026-09-24 and took the sign-in traffic on 2026-09-27; `receives` now names what its",
+        "database holds, and `transits.ip_address` what it sees and empties (SYN-P2, rv2-business 002 and 003)."
       ]
     },
     {
@@ -1183,7 +1200,50 @@
         "TRANSACTIONAL ONLY. The privacy sentence names sign-in and account-verification messages and claims",
         "no marketing channel, because there is none: ConsentPurpose.marketingEmail is collection-only, with",
         "no sender and no list ([ADR 040] decision 5). Describing a channel we do not operate would be a",
-        "promise to keep true for nothing."
+        "promise to keep true for nothing.",
+        "",
+        "⏱ 2026-10-02 (SYN-P1): privacy.html now names the renewal reminder emails beside the sign-in and verification",
+        "messages; the app notice already did (privacy.yaml, 2026-09-28)."
+      ]
+    },
+    {
+      "id": "google-workspace",
+      "name": "Google (Google Workspace and Google Drive)",
+      "role": "infrastructure",
+      "status": "live",
+      "requiredWhen": {
+        "kind": "always",
+        "_why": "Every app's users write to support@nikatru.com (a Google Workspace mailbox), and every app's data is in the backups stored on Google Drive. Nothing an app declares can make either untrue."
+      },
+      "reachableAt": null,
+      "tells": [
+        "google workspace",
+        "google drive"
+      ],
+      "namedIn": [
+        "privacy.html",
+        "subscriptiontracker/privacy.html"
+      ],
+      "privateRecord": "nikatru/vendors/google.md — the Workspace account, the mailbox and the Drive that holds the backups.",
+      "receives": [
+        "email_address",
+        "user_content",
+        "account_identifier",
+        "usage_event",
+        "install_identifier",
+        "consent_record",
+        "entitlement_record",
+        "crash_report"
+      ],
+      "receivesBasis": "⏱ 2026-10-02 · SYN-P1, rv2-business 001 (the skeptic CONFIRMED all four limbs). (1) The Workspace mailbox support@nikatru.com receives what people write to support and their `email_address` (services/platform/src/lib/report-notify.ts sends to it too). (2) Google Drive holds the backups: the D1 and KV exports (every D1 personal-data category: account ids, usage events, install ids, consent records, entitlements, the subscriptions people enter), the restic set from Box B and the identity dumps from Box C, through an rclone crypt remote (ADR 060), and the GlitchTip dumps (`crash_report`; whether those are encrypted is unsettled, rv2-business §8). Declared as received, not as transit: Google stores them.",
+      "transits": {
+        "ip_address": "The identity dumps taken on Box C before 2026-10-02 contain the address each sign-in session was opened from (see the hostinger row), inside the encrypted backup set, and the off-box copies are never pruned. Nothing written since then carries one. Declared here, not in `receives`, because no backup is a record kept of a person's address; the notices state this exception in their own words."
+      },
+      "notes": [
+        "⏱ 2026-10-02 — FOUND, NOT SCHEDULED (SYN-P1). Google held the support mailbox and the backups, and appeared in no",
+        "notice and no register row: the `resend` row's warning again — the guards check the list against the pages, never",
+        "the list against reality. Distinct from `sign-in-with-google` (the user's own account provider for an optional",
+        "sign-in) and `google-play` (a store): this row is Google acting as our processor."
       ]
     },
     {

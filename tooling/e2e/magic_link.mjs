@@ -25,6 +25,18 @@ import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-ori
  *  today, 56 characters; the range leaves room for another digest). */
 export const TOKEN_HASH_SHAPE = /^[0-9a-f]{40,128}$/;
 
+/**
+ * ⏱ 2026-10-02 — Cloudflare's origin-fault answers (520-529): the request was
+ * lost between the edge and the identity server, and the server never saw it.
+ * Measured 2026-10-01 15:00:51Z: `POST /admin/generate_link` answered 520 after
+ * 12.9 s with no line in Box C's GoTrue or envoy log, and main's E2E went red on
+ * it. The user is a throwaway and a second mint replaces the first token, so the
+ * mint is asked ONCE more on one of these, and says so in the log.
+ */
+export const ORIGIN_FAULT = (status) => status >= 520 && status <= 529;
+/** The pause before the one retry. */
+export const MINT_RETRY_DELAY_MS = 2_000;
+
 /** Thrown for every way the mint can fail, with the message a caller prints. */
 export class MagicLinkRefused extends Error {
   constructor(message) {
@@ -47,7 +59,14 @@ export class MagicLinkRefused extends Error {
  * hex digest can reach that file (CodeQL js/http-to-file-access, answered in
  * code, as tooling/e2e/backend.mjs answers #467).
  */
-export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl = fetch }) {
+export async function mintMagicLinkTokenHash({
+  url,
+  serviceKey,
+  email,
+  fetchImpl = fetch,
+  log = (line) => console.error(line),
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
     if (typeof v !== 'string' || v === '') throw new MagicLinkRefused(`cannot mint a magic-link token: ${name} is empty`);
   }
@@ -62,15 +81,24 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
     if (!(e instanceof CredentialOriginRefused)) throw e;
     throw new MagicLinkRefused(`cannot mint a magic-link token: ${e.message}`);
   }
-  const res = await fetchImpl(`${origin}/auth/v1/admin/generate_link`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-    },
-    body: JSON.stringify({ type: 'magiclink', email }),
-  });
+  const mint = () =>
+    fetchImpl(`${origin}/auth/v1/admin/generate_link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ type: 'magiclink', email }),
+    });
+  let res = await mint();
+  if (ORIGIN_FAULT(res.status)) {
+    // Nothing from the response, and never the key or the address: the status is the fact.
+    log(`generate_link answered HTTP ${res.status}, an origin fault (the request was lost before the identity server); retrying once`);
+    await res.body?.cancel().catch(() => {});
+    await sleep(MINT_RETRY_DELAY_MS);
+    res = await mint();
+  }
   if (!res.ok) {
     throw new MagicLinkRefused(`generate_link failed: HTTP ${res.status}\n${await res.text()}`);
   }
