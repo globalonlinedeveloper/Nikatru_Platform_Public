@@ -175,13 +175,13 @@ jobs:
         env:
           NIKATRU_TEST_NOW: ${{ matrix.instant }}
           NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
-        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/ci/test/*.test.mjs"
+        run: node --import ./tooling/scripts/test-clock.mjs --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/ci/test/*.test.mjs"
       - name: The pipeline's suites, on another day
         if: ${{ !cancelled() }}
         env:
           NIKATRU_TEST_NOW: ${{ matrix.instant }}
           NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
-        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
+        run: node --import ./tooling/scripts/test-clock.mjs --import "$SPAWN_CEILING" --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
 
   dart:
     # why: `melos run test` is the workspace gate's own command, so every Dart
