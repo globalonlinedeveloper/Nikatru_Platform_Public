@@ -49,6 +49,10 @@
 //           back from the live project) + `CLOCK_SKEW_SECONDS`. Shorter, and a
 //           record expires while a token it refuses is still inside its `exp`;
 //           the constant carries `@ceiling none`, so nothing else holds it.
+//   limb 3  THE CLIENT CALLS IT (2026-10-02, AB-A4-01). A Dart sender of
+//           POST /v1/sessions/revoke-all exists under packages/*/lib, and every
+//           app and brick `SupabaseAuthRepository(` passes `revokeAtWorkers:`
+//           wired to it. See the limb for why.
 //
 // Exit codes: 0 green · 1 a finding · 2 COVERAGE LOST (no carrier found in a
 // root that must have one, or a limb-2 input could not be read) — "did not
@@ -277,6 +281,91 @@ if (ttl !== jwtExp + skew) {
   );
 }
 
+// ── limb 3: the CLIENT calls revoke-all — a Worker route nobody calls is a list nobody writes ─
+// ⏱ 2026-10-02 · AB-A4-01, O-LOGOUT-ALL-NEVER-REACHES-WORKER-REVOCATION. Limbs 1
+// and 2 grade the Workers that READ the list; for a week nothing WROTE it. "Log
+// out of all devices" and a password reset ended GoTrue's refresh tokens and
+// never called POST /v1/sessions/revoke-all, so another device's access token
+// kept working at both Workers for up to an hour while this guard stayed green.
+//   (a) a sender: a non-test Dart file under packages/*/lib whose CODE carries
+//       the route's path, exactly as tooling/platform-register.json names
+//       `sessions-revoke-all`, as a string literal (the literal
+//       assert-platform-register's rename check keys on too);
+//   (b) every app and brick construction of `SupabaseAuthRepository(` passes
+//       `revokeAtWorkers:` wired to that sender's function, which the adapter
+//       calls after GoTrue's global sign-out (review 1 of #1140: refresh tokens
+//       die first, so no device is issued a token after the watermark) and
+//       after a new password.
+// No construction found anywhere is COVERAGE LOST: (b) would be true of nothing.
+const PLATFORM_REGISTER = 'tooling/platform-register.json';
+const REVOKE_ALL_ID = 'sessions-revoke-all';
+let revokeAllPath = null;
+try {
+  const reg = JSON.parse(readFileSync(join(ROOT, PLATFORM_REGISTER), 'utf8'));
+  const routes = Object.values(reg).flatMap((v) => (Array.isArray(v) ? v : []));
+  revokeAllPath = routes.find((r) => r?.id === REVOKE_ALL_ID)?.path ?? null;
+} catch {
+  revokeAllPath = null;
+}
+if (typeof revokeAllPath !== 'string' || !revokeAllPath.startsWith('/v1/')) {
+  coverageLost([
+    `limb 3 could not read the path of route "${REVOKE_ALL_ID}" from ${PLATFORM_REGISTER}.`,
+    'Without it no client caller can be looked for, and "the client calls revoke-all" would be unchecked.',
+  ]);
+}
+const isDartTest = (rel) => /(?:^|\/)test\//.test(rel) || /_test\.dart$/.test(rel);
+const dartFiles = async (pattern) => {
+  const out = [];
+  for await (const match of boundedGlob(pattern, { cwd: ROOT })) {
+    const rel = toPosix(match);
+    if (rel.split('/').some((seg) => EXCLUDED_SEGMENTS.has(seg)) || isDartTest(rel)) continue;
+    out.push(rel);
+  }
+  return out.sort();
+};
+const dartCode = (rel) => stripSourceComments(readFileSync(join(ROOT, rel), 'utf8'), '.dart');
+const pathLiteral = new RegExp(String.raw`['"]${revokeAllPath.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}['"]`);
+const senders = (await dartFiles('packages/*/lib/**/*.dart')).filter((rel) => pathLiteral.test(dartCode(rel)));
+const senderFns = new Set();
+for (const rel of senders) {
+  for (const m of dartCode(rel).matchAll(/Future<void>\s+([A-Za-z_]\w*)\s*\(/g)) senderFns.add(m[1]);
+}
+if (senders.length === 0) {
+  problems.push(
+    `no Dart file under packages/*/lib sends ${revokeAllPath} (a '${revokeAllPath}' literal in code): "Log out of all devices" and a ` +
+      'password reset end refresh tokens only, and every Worker keeps admitting the other devices\' access tokens for up to an hour.',
+  );
+}
+const constructions = [];
+for (const rel of [
+  ...(await dartFiles('apps/*/lib/**/*.dart')),
+  ...(await dartFiles('tooling/bricks/**/lib/**/*.dart')),
+]) {
+  const code = dartCode(rel);
+  if (/\bSupabaseAuthRepository\s*\(/.test(code)) constructions.push({ rel, code });
+}
+if (constructions.length === 0) {
+  coverageLost([
+    'limb 3 found no `SupabaseAuthRepository(` construction under apps/*/lib or tooling/bricks/**/lib.',
+    'Every app with accounts builds one; finding none means the walk missed them, and "every app wires',
+    'revokeAtWorkers" would be true of nothing.',
+  ]);
+}
+for (const { rel, code } of constructions) {
+  const wired = code.match(/\brevokeAtWorkers\s*:\s*\([^)]*\)\s*=>\s*([A-Za-z_]\w*)\s*\(/);
+  if (!wired) {
+    problems.push(
+      `${rel}: builds SupabaseAuthRepository without \`revokeAtWorkers:\`, so its "Log out of all devices" and password ` +
+        `reset never call ${revokeAllPath} and another device's access token keeps working at every Worker for up to an hour.`,
+    );
+  } else if (!senderFns.has(wired[1])) {
+    problems.push(
+      `${rel}: \`revokeAtWorkers:\` calls ${wired[1]}(), which is not a function in a file that sends ${revokeAllPath} ` +
+        `(senders: ${[...senderFns].join(', ') || 'none'}).`,
+    );
+  }
+}
+
 if (problems.length) {
   console.error(`✗ assert-session-revocation: ${problems.length} finding(s).`);
   for (const p of problems) console.error(`  · ${p}`);
@@ -286,5 +375,6 @@ console.log(
   `✓ assert-session-revocation: ${carriers.length} carrier(s) (${liveCarriers.length} live, ${templateCarriers.length} template) ` +
     `bind ${BINDING}; ${verifiers.length} verifier(s) import and call revocationRefusal ` +
     `(${verifiers.join(', ')}); ${KIT_BOUNDARIES.length} kit boundary(ies) and ${directCallers.length} direct verifier caller(s) ` +
-    `call sessionRevoked; REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}.`,
+    `call sessionRevoked; REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}; ` +
+    `${revokeAllPath} is sent by ${senders.join(', ')} and wired into ${constructions.length} SupabaseAuthRepository construction(s).`,
 );

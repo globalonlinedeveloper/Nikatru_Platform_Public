@@ -1173,6 +1173,10 @@
   "@reauthMessage": {
     "description": "Body of the re-authentication dialog on a rooted device."
   },
+  "authSessionsNotRevoked": "Your new password is set, but your other devices could not be signed out. Use Log out of all devices in Settings.",
+  "@authSessionsNotRevoked": {
+    "description": "AB-A4-01. Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for the sessions_not_revoked refusal: after a password reset the password WAS changed, but the platform Worker could not be told to refuse the other devices' sign-ins. Names the Settings control that finishes it."
+  },
   "devicesTitle": "Your devices",
   "@devicesTitle": {
     "description": "SE-03 · Settings section heading: the devices signed in to this account."

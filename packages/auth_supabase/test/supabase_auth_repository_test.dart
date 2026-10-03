@@ -1333,6 +1333,221 @@ void main() {
       expect(g.resendCaptchaTokens, <String?>[null]);
     });
   });
+
+  // ⏱ 2026-10-02 · AB-A4-01 — GoTrue's global sign-out and a new password end
+  // REFRESH tokens only; the access token another device holds kept working at
+  // both Workers for up to an hour, because nothing called the Workers'
+  // POST /v1/sessions/revoke-all. The adapter now does, through
+  // `revokeAtWorkers`, and these pin the order and the failure.
+  // ⏱ 2026-10-02 · review 1 of #1140 — GoTrue FIRST, then the Workers, with
+  // the token held before GoTrue's call; and a Worker failure after GoTrue
+  // says what is true.
+  group('AB-A4-01 · GoTrue first, then the Workers, and a failure is said', () {
+    final DateTime now = DateTime.utc(2026, 8, 1, 12);
+    sb.Session live() =>
+        _session('live', expiry: now.add(const Duration(hours: 1)));
+
+    test('🔴 log out of all devices: GoTrue\'s global sign-out BEFORE revoke-all, '
+        'which carries the token this device held', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(session: live(), onSignOut: () => order.add('gotrue'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['gotrue', 'workers:live'],
+          reason: 'revoke-all first left a window: a device refreshing between the two '
+              'was issued a token after the watermark, admitted for an hour');
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+    });
+
+    test('🔴 an expired token is refreshed BEFORE GoTrue, and the REFRESHED one is sent', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('stale', expiry: now.subtract(const Duration(minutes: 5))),
+        onSignOut: () => order.add('gotrue'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['gotrue', 'workers:refreshed-1']);
+    });
+
+    // ⏱ 2026-10-02 · review 2 of #1140, finding 2 — the held token must
+    // outlive GoTrue's /logout (retried inside 30 s) and BOTH Worker attempts
+    // (15 s connect + 20 s receive each). The Worker answers an expired token
+    // with the same 401 as a revoked one, and requestWorkerSessionRevocation
+    // reads a 401 to its RETRY as "done".
+    test('🔴 a token expiring MID-FLOW is never reported as done: under 5 minutes left, '
+        'it is refreshed before GoTrue', () async {
+      DateTime clock = now;
+      final List<String> worker = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        // 60 s left: outside refreshSkew (30 s), inside the flow (~100 s).
+        session: _session('short', expiry: now.add(const Duration(seconds: 60))),
+        refreshedExpiry: now.add(const Duration(hours: 1)),
+        onSignOut: () => clock = clock.add(const Duration(seconds: 30)),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => clock,
+        // The real Worker and requestWorkerSessionRevocation: the first
+        // attempt never connects (15 s), the retry lands 35 s after that; a
+        // 401 to the retry is read as done, whether the token was revoked by
+        // the lost first attempt or had simply expired.
+        revokeAtWorkers: (String token) async {
+          clock = clock.add(const Duration(seconds: 15 + 35));
+          final int exp = _expOf(token);
+          worker.add(exp * 1000 > clock.millisecondsSinceEpoch
+              ? 'revoked:${_label(token)}'
+              : 'expired-401-read-as-done:${_label(token)}');
+        },
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(worker, <String>['revoked:refreshed-1'],
+          reason: 'a token that expires before the retry lands is answered 401, which the retry '
+              'reads as done; the user is told nothing while every other device stays signed in');
+      expect(g.refreshCalls, 1);
+    });
+
+    test('a token with more than 5 minutes left is sent as it is, with no refresh', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('six', expiry: now.add(const Duration(minutes: 6))),
+        onSignOut: () => order.add('gotrue'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['gotrue', 'workers:six']);
+      expect(g.refreshCalls, 0);
+      expect(SupabaseAuthRepository.globalSignOutTokenLife, const Duration(minutes: 5));
+    });
+
+    test('🔴 the Workers cannot be told AFTER GoTrue: GoTrue IS signed out, and the '
+        'refusal says so, never "could not reach … still signed in"', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        // What requestWorkerSessionRevocation throws for a 200 d1Pending, or a
+        // 401 to its first attempt: the server answered, and it is final.
+        revokeAtWorkers: (String token) async => throw StateError('d1_pending'),
+      );
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.message, 'message', contains('signed out on every device'))
+            .having((core.AuthFailure e) => e.message, 'message', isNot(contains('still signed in')))
+            .having((core.AuthFailure e) => e.code, 'code', core.AuthFailure.othersNotRevoked)),
+      );
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global],
+          reason: 'GoTrue\'s global sign-out runs whatever the Workers answer');
+      expect(auth.currentUser, isNull);
+    });
+
+    test('🔴 a lost response the request retried to a 401 (done) ends signed out, with no refusal', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      int calls = 0;
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        // requestWorkerSessionRevocation returns normally for that case
+        // (packages/api_client session_revocation_request_test.dart).
+        revokeAtWorkers: (String token) async => calls++,
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(calls, 1);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+      expect(auth.currentUser, isNull);
+    });
+
+    test('GoTrue\'s global sign-out fails: the Workers are NOT told, and it is said', () async {
+      int calls = 0;
+      final _FakeGoTrue g = _FakeGoTrue(session: live(), signOutFailure: true);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => calls++,
+      );
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.message, 'message', contains('did not finish'))),
+      );
+      expect(calls, 0, reason: 'nothing proves the refresh tokens are dead, so a watermark would re-open the window');
+    });
+
+    test('the ordinary Log out never calls the Workers', () async {
+      int calls = 0;
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => calls++,
+      );
+
+      await auth.signOut();
+
+      expect(calls, 0);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.local]);
+    });
+
+    test('🔴 a new password: revoke-all after the password is set, then THIS session is refreshed', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        revokeAtWorkers: (String token) async =>
+            order.add('workers:${_label(token)}:${g.passwordsSet.length}:${g.refreshCalls}'),
+      );
+
+      await auth.updatePassword(newPassword: 'correct-horse-battery');
+
+      expect(order, <String>['workers:live:1:0'], reason: 'told after the password is set and before the refresh');
+      expect(g.refreshCalls, 1, reason: 'revoke-all refuses this device\'s token too; the refreshed one passes');
+    });
+
+    test('🔴 a new password and the Workers cannot be told: the session is STILL refreshed, '
+        'and the refusal SAYS the password is set', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        revokeAtWorkers: (String token) async => throw StateError('d1_pending'),
+      );
+
+      await expectLater(
+        auth.updatePassword(newPassword: 'correct-horse-battery'),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.code, 'code', SupabaseAuthRepository.sessionsNotRevokedCode)
+            .having((core.AuthFailure e) => e.message, 'message', contains('new password is set'))),
+      );
+      expect(g.passwordsSet, <String>['correct-horse-battery']);
+      expect(g.refreshCalls, 1,
+          reason: 'a d1Pending answer wrote the record that refuses this device\'s token; '
+              'without the refresh, the advice "Log out of all devices" would meet a 401');
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1352,12 +1567,18 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.refreshFailure,
     this.hold,
     this.updateUserError,
+    this.onSignOut,
     this.signOutFailure = false,
     this.signUpError,
     this.signInError,
     this.resetError,
     this.resendError,
+    this.refreshedExpiry,
   }) : super(autoRefreshToken: false);
+
+  /// The expiry of the session a refresh issues; null keeps the default,
+  /// issued ALREADY STALE (see [refreshSession]).
+  final DateTime? refreshedExpiry;
 
   /// What `signUp` throws instead of succeeding — ⏱ 2026-09-24, so the wrap
   /// of the vendor type on the sign-up path is observable at all.
@@ -1387,6 +1608,9 @@ class _FakeGoTrue extends sb.GoTrueClient {
   /// What `updateUser` throws instead of succeeding — the SERVER's refusal
   /// (a weak password, a reused one), which the seam has to remap.
   final sb.AuthException? updateUserError;
+
+  /// Called first in [signOut], so a test can see what ran before it.
+  final void Function()? onSignOut;
 
   int refreshCalls = 0;
   int signOutCalls = 0;
@@ -1514,7 +1738,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     // observable: a cached future would replay refreshed-1 forever.
     session = _session(
       'refreshed-$refreshCalls',
-      expiry: DateTime.utc(2026, 8, 1, 11),
+      expiry: refreshedExpiry ?? DateTime.utc(2026, 8, 1, 11),
     );
     return sb.AuthResponse(session: session);
   }
@@ -1526,6 +1750,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
 
   @override
   Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
+    onSignOut?.call();
     signOutCalls++;
     signOutScopes.add(scope);
     session = null;
@@ -1575,6 +1800,14 @@ class _FakeGoTrue extends sb.GoTrueClient {
     session = _session('signed-up');
     return sb.AuthResponse(session: session);
   }
+}
+
+/// The `exp` claim (epoch seconds) of a token produced by [_session].
+int _expOf(String jwt) {
+  final Object? payload = jsonDecode(
+    utf8.decode(base64Url.decode(base64Url.normalize(jwt.split('.')[1]))),
+  );
+  return (payload as Map<String, dynamic>)['exp'] as int;
 }
 
 /// Reads the marker back out of a token produced by [_session].
