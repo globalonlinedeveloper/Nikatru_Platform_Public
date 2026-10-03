@@ -172,12 +172,18 @@ export function run(opts) {
   // C7 cost
   const privDir = opts.private ?? process.env.NIKATRU_PRIVATE_DIR ?? join(dirname(root), 'Nikatru_Platform_Private');
   const idPath = join(privDir, IDENTITY_REL);
-  // One read, no existsSync first (CodeQL js/file-system-race): a missing file is LOST.
+  // One read, no existsSync first (CodeQL js/file-system-race). EVERY read error is
+  // LOST — absent (CI cannot read Private), a permission, a directory: the cost was
+  // not looked at, which is not a finding (#1148 rethrew all but ENOENT, exit 1).
   let idText = null;
-  try { idText = readFileSync(idPath, 'utf8'); } catch (e) {
-    if (e?.code !== 'ENOENT' && e?.code !== 'ENOTDIR') throw e;
+  let readErr = null;
+  try { idText = readFileSync(idPath, 'utf8'); } catch (e) { readErr = e; }
+  if (idText === null) {
+    const code = readErr?.code ?? 'unknown error';
+    add(7, 'cost', 'LOST', code === 'ENOENT' || code === 'ENOTDIR'
+      ? `Private ${IDENTITY_REL} is not readable here (CI cannot read Private): the delta is not known`
+      : `Private ${IDENTITY_REL} could not be read (${code}): the delta is not known`);
   }
-  if (idText === null) add(7, 'cost', 'LOST', `Private ${IDENTITY_REL} is not readable here (CI cannot read Private): the delta is not known`);
   else {
     let identity;
     try { identity = JSON.parse(idText); } catch (e) { identity = null; add(7, 'cost', 'LOST', `Private ${IDENTITY_REL} could not be parsed (${e.message})`); }
