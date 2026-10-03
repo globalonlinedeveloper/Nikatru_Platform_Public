@@ -322,6 +322,7 @@ describe('required-providers — the real register (positive control)', () => {
       'apple-app-store',
       'cloudflare',
       'google-play',
+      'google-workspace',
       'hostinger',
       'oracle-cloud',
       'paddle',

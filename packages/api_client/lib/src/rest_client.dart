@@ -98,6 +98,17 @@ class RestClient {
   /// The base URL every request is sent to.
   String get baseUrl => _dio.options.baseUrl;
 
+  /// A client on this one's base URL and transport that sends [token] as its
+  /// bearer, and nothing else of this one: no token provider, no
+  /// [onUnauthorized] (⏱ 2026-10-02 · review 1 of #1140). For a call that must
+  /// carry a token the app no longer holds: revoke-all runs after GoTrue's
+  /// global sign-out (`requestWorkerSessionRevocation`).
+  RestClient bearing(String token) => RestClient(
+    baseUrl: baseUrl,
+    tokenProvider: () async => token,
+    httpClient: Dio()..httpClientAdapter = _dio.httpClientAdapter,
+  );
+
   /// Points every LATER request at [baseUrl], in place.
   ///
   /// 🔴 WHY A CLIENT IS MOVED AND NOT REBUILT (HO-10). An app learns its API
