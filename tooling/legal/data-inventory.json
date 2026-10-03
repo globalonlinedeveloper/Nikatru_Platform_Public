@@ -251,7 +251,7 @@
         "reason": "The row is the person's: their balance and their consent. Erasing the account leaves nothing for it to describe."
       },
       "writtenBy": [
-        "services/platform/migrations/0027_ai_meter.sql",
+        "services/platform/migrations/0028_ai_meter.sql",
         "services/platform/src/lib/ai/meter.ts"
       ],
       "disclosure": {
@@ -275,7 +275,7 @@
         "reason": "Every row names the person's account. When the account is erased the ledger has nobody left to explain a balance to."
       },
       "writtenBy": [
-        "services/platform/migrations/0027_ai_meter.sql",
+        "services/platform/migrations/0028_ai_meter.sql",
         "services/platform/src/lib/ai/meter.ts"
       ],
       "disclosure": {
@@ -299,7 +299,7 @@
         "reason": "The row is the person's request. When the account is erased the request has nobody left to answer to."
       },
       "writtenBy": [
-        "services/platform/migrations/0028_refund_requests.sql",
+        "services/platform/migrations/0029_refund_requests.sql",
         "services/platform/src/routes/refund.ts"
       ],
       "disclosure": {

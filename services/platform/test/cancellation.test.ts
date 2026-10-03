@@ -183,7 +183,7 @@ describe('[5]M-9 · cancelling is a real server call, and it tells the truth', (
     expect(rows[0].app_id).toBe('subscriptiontracker');
     expect(rows[0].environment).toBe('live');
     expect(rows[0].provider).toBe('paddle');
-    // The cancel executor acts only on `backlog = 0` (migration 0029: the column's
+    // The cancel executor acts only on `backlog = 0` (migration 0030: the column's
     // default, 1, marks the rows that predate it), so the route writes 0.
     expect(rows[0].backlog).toBe(0);
     expect(rows[0].provider_subscription_id).toBe('sub_123');

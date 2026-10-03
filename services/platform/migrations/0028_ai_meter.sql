@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0027_ai_meter.sql — THE AI METER: WHO HAS PAID FOR HOW MANY AI CALLS, AND WHAT
+-- 0028_ai_meter.sql — THE AI METER: WHO HAS PAID FOR HOW MANY AI CALLS, AND WHAT
 -- EVERY CALL COST (train-st-ai-customer-pays, T17, AI-01).
 --
 -- Applies to the SHARED platform_db (services/platform is the sole applier):

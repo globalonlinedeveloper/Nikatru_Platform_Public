@@ -4816,7 +4816,7 @@
       "keepWhy": "It is the balance the customer paid for and the record of their AI opt-in; a timer would delete credits that were bought. The row carries `user_id`, so it leaves with the account via the derived erasure sweep — a different mechanism from retention.",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0027_ai_meter.sql",
+        "anchor": "services/platform/migrations/0028_ai_meter.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
@@ -4838,7 +4838,7 @@
       "keepWhy": "It explains a customer's credit balance and is what the global daily spend circuit-breaker sums; a pack grant row is the idempotency key that stops a replayed purchase webhook crediting twice, so expiring it would let a replay credit again. The row carries `user_id`, so it leaves with the account via the derived erasure sweep.",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0027_ai_meter.sql",
+        "anchor": "services/platform/migrations/0028_ai_meter.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
@@ -4860,7 +4860,7 @@
       "keepWhy": "It is the money event a dispute or an audit asks about, and the unique (provider, purchase_ref) row is what stops a payment being refunded twice — expiring it would let a later request refund the same charge again. The row carries `user_id`, so it leaves with the account via the derived erasure sweep — a different mechanism from retention.",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0028_refund_requests.sql",
+        "anchor": "services/platform/migrations/0029_refund_requests.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

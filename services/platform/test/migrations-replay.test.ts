@@ -194,7 +194,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       .rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .map((r) => String(r.name));
     expect(tables).toEqual([
-      // ⏱ 2026-10-02 · migration 0027 — the AI meter (T17): credits and opt-in, and the call ledger.
+      // ⏱ 2026-10-02 · migration 0028 — the AI meter (T17): credits and opt-in, and the call ledger.
       'ai_accounts',
       'ai_ledger',
       // 0012 — the Apple refresh token a deletion revoked with
@@ -247,7 +247,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       // ⏱ 2026-09-24 · migration 0016 — one token row per (subject, provider)
       // (O-GOOGLE-SIGN-IN-NOT-BUILT). 0012's table above stays until a later drop.
       'provider_tokens',
-      // ⏱ 2026-10-02 · migration 0028 — in-window refund requests (refund-finish).
+      // ⏱ 2026-10-02 · migration 0029 — in-window refund requests (refund-finish).
       'refund_requests',
       // ⏱ 2026-09-28 · migration 0020 — renewal reminders (ST-R1/ST-R2).
       'reminder_feed',

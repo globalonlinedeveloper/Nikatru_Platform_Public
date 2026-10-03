@@ -17,10 +17,10 @@
 //   · bounded: MAX_CANCEL_RETRIES_PER_RUN rows a run, oldest first;
 //   · a row with no provider or no subscription reference is a human's (it is
 //     never selected), and a STORE row is never recorded (the route answers 409);
-//   · tolerant: before migration 0029 has run, the SELECT names columns that do
+//   · tolerant: before migration 0030 has run, the SELECT names columns that do
 //     not exist; that is caught, logged, and nothing is done;
 //   · 🔴 NOT THE OLD BACKLOG (review 2026-10-03): a row that existed when
-//     migration 0029 ran reads `backlog = 1` (the column's default) — recorded
+//     migration 0030 ran reads `backlog = 1` (the column's default) — recorded
 //     before this executor existed, so a person, not the first night's run,
 //     decides it. routes/cancellation.ts writes 0. A backlog row is never
 //     selected; the run COUNTS it (`backlog` in the report, and a log line), so
@@ -70,7 +70,7 @@ export interface ExecutorReport {
   executed: number;
   failed: number;
   alerted: number;
-  /** Unexecuted rows recorded before the executor (0029 `backlog = 1`): skipped, a person's. */
+  /** Unexecuted rows recorded before the executor (0030 `backlog = 1`): skipped, a person's. */
   backlog?: number;
   skipped?: string;
 }
@@ -103,7 +103,7 @@ export async function executeQueuedCancels(
           .all<QueuedRow>()
       ).results ?? [];
   } catch (err) {
-    console.error(`[cancel-executor] queue unreadable (migration 0029 not applied?): ${err instanceof Error ? err.message : 'error'}`);
+    console.error(`[cancel-executor] queue unreadable (migration 0030 not applied?): ${err instanceof Error ? err.message : 'error'}`);
     return { ...report, skipped: 'queue_unreadable' };
   }
 

@@ -9,8 +9,8 @@
 //   · a failing rail retries with a backoff (not before next_attempt_at), and
 //     after CANCEL_ALERT_AFTER_ATTEMPTS failures pages the owner ONCE;
 //   · a row with no subscription reference is a human's and is never selected;
-//   · before migration 0029, the queue is unreadable and nothing is done;
-//   · the backlog unexecuted when 0029 ran is never acted on: skipped, counted.
+//   · before migration 0030, the queue is unreadable and nothing is done;
+//   · the backlog unexecuted when 0030 ran is never acted on: skipped, counted.
 // The account-deletion half ("deleting an account with an active Paddle
 // subscription produces exactly one cancel") is test/account-billing.test.ts.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANCEL_ALERT_AFTER_ATTEMPTS, executeQueuedCancels, nextAttemptAt } from '../src/lib/mor/cancel-executor';
 import type { Env } from '../src/types';
 import { PLATFORM_MIGRATIONS, RealDb, realPlatformDb } from './harness';
-import cancelAttempts0029 from '../migrations/0029_cancel_attempts.sql?raw';
+import cancelAttempts0030 from '../migrations/0030_cancel_attempts.sql?raw';
 
 const LIVE_KEY = `pdl_live_apikey_${'x'.repeat(24)}`;
 const EFFECTIVE = '2026-10-29T00:00:00.000Z';
@@ -42,8 +42,8 @@ const ok = () =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-/** A row the route recorded (`backlog = 0`), or, with `backlog: 'pre-0029'`, one written before 0029 (no column yet). */
-function queue(db: RealDb, id: string, o: { sub?: string | null; requestedAt?: string; backlog?: 'pre-0029' } = {}) {
+/** A row the route recorded (`backlog = 0`), or, with `backlog: 'pre-0030'`, one written before 0030 (no column yet). */
+function queue(db: RealDb, id: string, o: { sub?: string | null; requestedAt?: string; backlog?: 'pre-0030' } = {}) {
   db.db
     .prepare(
       `INSERT INTO cancellation_requests (request_id, user_id, app_id, environment, provider, provider_subscription_id, requested_at, executed_at, not_executed_reason${o.backlog === undefined ? ', backlog' : ''})
@@ -103,19 +103,19 @@ describe('the cancel executor', () => {
     expect(await executeQueuedCancels(env(db), '2026-10-02T06:00:00.000Z')).toMatchObject({ tried: 0 });
   });
 
-  it('before migration 0029 the queue is unreadable, and nothing is done', async () => {
+  it('before migration 0030 the queue is unreadable, and nothing is done', async () => {
     answer = ok;
     const db = new RealDb(PLATFORM_MIGRATIONS.filter((m) => !m.includes('ADD COLUMN next_attempt_at')));
-    queue(db, 'r-5', { backlog: 'pre-0029' });
+    queue(db, 'r-5', { backlog: 'pre-0030' });
     expect(await executeQueuedCancels(env(db), '2026-10-02T06:00:00.000Z')).toMatchObject({ tried: 0, skipped: 'queue_unreadable' });
     expect(calls).toHaveLength(0);
   });
 
-  it('🔴 the backlog recorded before 0029 is skipped and reported on the first night; a later request is carried out', async () => {
+  it('🔴 the backlog recorded before 0030 is skipped and reported on the first night; a later request is carried out', async () => {
     answer = ok;
-    const db = new RealDb(PLATFORM_MIGRATIONS.filter((m) => m !== cancelAttempts0029));
-    queue(db, 'r-old', { backlog: 'pre-0029' });
-    db.db.exec(cancelAttempts0029); // the deploy: the executor's cutoff
+    const db = new RealDb(PLATFORM_MIGRATIONS.filter((m) => m !== cancelAttempts0030));
+    queue(db, 'r-old', { backlog: 'pre-0030' });
+    db.db.exec(cancelAttempts0030); // the deploy: the executor's cutoff
     queue(db, 'r-new', { requestedAt: '2026-10-02T00:00:00.000Z' });
     const r = await executeQueuedCancels(env(db), '2026-10-02T06:00:00.000Z');
     expect(r).toMatchObject({ tried: 1, executed: 1, backlog: 1 });
