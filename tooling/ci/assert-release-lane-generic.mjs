@@ -657,6 +657,18 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'round the workflow landed.',
   ],
   [
+    'regen-gradle-verify.yml',
+    "regenerates one app's Gradle dependency verification metadata on the Linux runner for a dispatched " +
+      'branch and app, dispatch-only, read-only and with no secrets, and uploads the file as an artifact; it ' +
+      'pushes nothing and ships nothing. Its app is a dispatch INPUT, checked to be an app id with an ' +
+      "android/ Gradle project on that ref, so any app's project is taken the same way and R-1 would carry " +
+      'it in the denominator as a permanent empty-set pass, the reason already written out for ' +
+      'update-goldens.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.regen-gradle-verify.yml` in tooling/ops/register.json. What holds its output correct is ' +
+      'ci.yml android-artifacts, which builds with Gradle verification on against the committed file on the ' +
+      'pull request that carries it. Classified 2026-10-03, the round the workflow landed.',
+  ],
+  [
     'rollback.yml',
     'an attended, dispatch-only RE-PROMOTION: it puts back a Pages deployment or Worker version a ledger ' +
       'Deployment already recorded. It builds no app, produces no release artifact and names no app id: the ' +
