@@ -168,9 +168,12 @@ collects:
       the app exists to hold, so it lives as long as the account does and goes
       with it. If you create a private calendar link, the same names, amounts
       and renewal dates are shown to whichever calendar you give that link to,
-      until you turn the link off.
+      until you turn the link off. If you choose to report a problem, what you
+      write, and a screenshot only if you attach one (with text fields and
+      private details blurred on your device first), is kept for 90 days and
+      then deleted.
     source: apps/subscriptiontracker/store/android-play/data-safety.json
-    asOf: "2026-09-28"
+    asOf: "2026-10-03"
 
   - category: App info and performance
     type: Crash logs
@@ -198,9 +201,11 @@ collects:
     basis: >-
       Performance and error diagnostics on the same rail as the crash reports,
       bounded by the same retention and carrying nothing that identifies a
-      connection.
+      connection. A problem report you send carries the diagnostics shown to
+      you before you send it (app version, platform, device type, language and
+      recent error codes; logs only if you tick that box), kept 90 days.
     source: apps/subscriptiontracker/store/android-play/data-safety.json
-    asOf: "2026-09-05"
+    asOf: "2026-10-03"
 
   - category: App info and performance
     type: Other app performance data

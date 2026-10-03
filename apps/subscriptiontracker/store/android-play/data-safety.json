@@ -1310,13 +1310,17 @@
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
-        "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
-      ],
+  "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
+  "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+  "packages/feedback/lib/src/report_page.dart",
+  "services/feedback/src/routes/feedback.ts"
+],
       "inventoryRows": [
-        "table:subscriptiontracker_db.subscriptions"
-      ],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:700). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
+  "table:subscriptiontracker_db.subscriptions",
+  "table:platform_db.feedback_reports",
+  "r2:nikatru-feedback"
+],
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:700). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS. ⏱ 2026-10-03 · lane feedback-intake: \"Report a problem\" (Settings > Help, packages/feedback) is a SECOND source of this type, and it is OPTIONAL — the person chooses to send it. It carries what they typed (description and steps, PII-masked by the Worker before storage) and, only if they switch it on, one screenshot of the app with every text field and every Sensitive widget painted over on the device before it is sent. Under backend-live both are stored by services/feedback (platform_db.feedback_reports and the private bucket nikatru-feedback) for 90 days; under demo the transport is UnavailableFeedbackTransport and nothing is transmitted. The row stays `required: true` for the subscription name above; the report is never a condition of using the app. The screenshot is declared HERE, not under Photos and videos: it is a picture of this app's own screen that the person chose to attach, never an image from their photo library, and the app requests no media permission (see clientAbsence on that row)."
     },
     {
       "category": "App activity",
@@ -1418,11 +1422,14 @@
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
-        "packages/telemetry/lib/src/telemetry_bootstrap.dart",
-        "packages/telemetry/lib/src/telemetry_config.dart"
-      ],
-      "inventoryRows": [],
-      "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. 📌 THE CONTENTS ARE NO LONGER A 'WHATEVER IT CONTAINS' — this used to end by saying the identifier half was `null` under Device or other IDs and written up in `unresolved`. Both were settled on 2026-08-04 by reading the pinned SDK (see `resolved` and `crashSdkSurface`). sentry-android 8.51.0 DeviceInfoUtil.collectDeviceInformation sets manufacturer, brand, family, model, modelId, archs, chipset, orientation, simulator, screen width/height/density/dpi, boot time, timezone, locale, processor count/frequency and total memory — every one of which is diagnostic data leaving the device, so this answer stays `true`. The one field that is an IDENTIFIER rather than a characteristic is `device.id`, and it is now declared under Device or other IDs (true in both postures) rather than kept as an open question."
+  "packages/telemetry/lib/src/telemetry_bootstrap.dart",
+  "packages/telemetry/lib/src/telemetry_config.dart",
+  "packages/feedback/lib/src/report.dart"
+],
+      "inventoryRows": [
+  "table:platform_db.feedback_reports"
+],
+      "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. 📌 THE CONTENTS ARE NO LONGER A 'WHATEVER IT CONTAINS' — this used to end by saying the identifier half was `null` under Device or other IDs and written up in `unresolved`. Both were settled on 2026-08-04 by reading the pinned SDK (see `resolved` and `crashSdkSurface`). sentry-android 8.51.0 DeviceInfoUtil.collectDeviceInformation sets manufacturer, brand, family, model, modelId, archs, chipset, orientation, simulator, screen width/height/density/dpi, boot time, timezone, locale, processor count/frequency and total memory — every one of which is diagnostic data leaving the device, so this answer stays `true`. The one field that is an IDENTIFIER rather than a characteristic is `device.id`, and it is now declared under Device or other IDs (true in both postures) rather than kept as an open question. ⏱ 2026-10-03 · lane feedback-intake: a \"Report a problem\" report also carries diagnostics the person sees in its preview before sending (app version, build, channel, platform, device CLASS, locale, text scale, theme, recent error CODES, the last crash's event id where crash reporting is on, and scrubbed log lines only if they tick that box), stored with the report in platform_db.feedback_reports for 90 days. No device model or identifier: the Worker refuses any key it does not know."
     },
     {
       "category": "App info and performance",
@@ -1939,6 +1946,13 @@
       "cloudflare_turnstile": {
         "introduces": [],
         "why": "Renders the Cloudflare Turnstile challenge that self-hosted GoTrue requires on signup, password sign-in, recover and resend. On Android it draws the challenge in an embedded web view (flutter_inappwebview), because Turnstile needs a DOM and a native app has none. INTRODUCES NOTHING, and that is a reading rather than an assumption: the challenge is served by Cloudflare from challenges.cloudflare.com and returns a single opaque token, which this app forwards to its own auth server and never stores. No identifier of ours is sent to it, nothing is written to disk, and the plugin's own Apple manifest declares NSPrivacyTracking false with every array empty - the same binary, audited on the platform that makes vendors say so in writing. WHAT A LATER READER SHOULD CHECK RATHER THAN INHERIT: Cloudflare sets its own cookie inside that web view for bot scoring, and Play counts what the APP collects, not what an embedded third party does for its own anti-abuse. If the Play answer key ever grows a row for embedded third-party content, this entry is the one to revisit."
+      },
+      "nikatru_feedback": {
+        "introduces": [
+          "Other user-generated content",
+          "Diagnostics"
+        ],
+        "why": "First-party. \"Report a problem\" (lane feedback-intake): the page, its on-device screenshot redaction and its outbox. It transmits only what the person sends, through packages/api_client DioFeedbackTransport, and declares no plugin."
       }
     }
   }

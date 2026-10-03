@@ -174,14 +174,14 @@
 <p>The first-party events rail, consented per purpose and append-only, so a grant for analytics is never evidence of a grant for anything else. Swept at four hundred days by the events retention job.</p>
 <p class="meta">Read from <code>services/platform/migrations/0007_events_rollup.sql</code> on 2026-09-05.</p>
 <h3>App activity — Other user-generated content</h3>
-<p>The names, amounts and renewal dates a person enters. This is the content the app exists to hold, so it lives as long as the account does and goes with it. If you create a private calendar link, the same names, amounts and renewal dates are shown to whichever calendar you give that link to, until you turn the link off.</p>
-<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-28.</p>
+<p>The names, amounts and renewal dates a person enters. This is the content the app exists to hold, so it lives as long as the account does and goes with it. If you create a private calendar link, the same names, amounts and renewal dates are shown to whichever calendar you give that link to, until you turn the link off. If you choose to report a problem, what you write, and a screenshot only if you attach one (with text fields and private details blurred on your device first), is kept for 90 days and then deleted.</p>
+<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-10-03.</p>
 <h3>App info and performance — Crash logs</h3>
 <p>Crash reports reach the self-hosted GlitchTip in Mumbai, whose event retention is bounded rather than indefinite. The software is ours and no analytics company receives them; the machine it runs on is rented from Hostinger, which is listed below as infrastructure under the same rule that lists the vendor of the identity machine.</p>
 <p class="meta">Read from <code>tooling/legal/provider-register.json</code> on 2026-09-11.</p>
 <h3>App info and performance — Diagnostics</h3>
-<p>Performance and error diagnostics on the same rail as the crash reports, bounded by the same retention and carrying nothing that identifies a connection.</p>
-<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
+<p>Performance and error diagnostics on the same rail as the crash reports, bounded by the same retention and carrying nothing that identifies a connection. A problem report you send carries the diagnostics shown to you before you send it (app version, platform, device type, language and recent error codes; logs only if you tick that box), kept 90 days.</p>
+<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-10-03.</p>
 <h3>App info and performance — Other app performance data</h3>
 <p>Timing and resource measurements emitted by the same instrumentation as the diagnostics row above; they are one stream answered as three rows because the Play console asks three questions.</p>
 <p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
