@@ -75,8 +75,8 @@ export const STAMP_PATHS = ['apps/probe', 'apps/probeapi', 'services/probe-api',
  *      apps-data, landing-payload, auth-mail, well-known, personal-site.
  *      discovery is git-dated and not run in write mode.
  *    · tooling/kit/stamp-shared.mjs: catalog/bundles.json, the mail transport,
- *      the e2e leg register. tooling/ci/tag-owner.mjs --write: the two
- *      tag-triggered release lanes. The channel register: post_gen reads it, and
+ *      the e2e leg register. tooling/ci/tag-owner.mjs --write: the
+ *      tag-triggered release lanes, asked of tag-owner below. The channel register: post_gen reads it, and
  *      the pre-2026-10-03 restore named it, so it stays in the set.
  *  A writer that joins the stamp and is not listed here is LEFT on disk and
  *  named by restore; preflight's tree-clean leg then fails on it. Add it here. */
@@ -101,9 +101,22 @@ export const STAMP_WRITES = Object.freeze([
   'tooling/channel-register.json',
   'tooling/mail-transport.json',
   'tooling/e2e-leg-register.json',
-  '.github/workflows/build-platforms.yml',
-  '.github/workflows/extensions.yml',
+  // The release lanes tag-owner.mjs --write rewrites, asked of tag-owner itself
+  // rather than typed here. When it cannot derive them (d.lost), none are in the
+  // set, and a rewrite there is left on disk and named: loud, never reverted blind.
+  ...(await tagLanes(REPO)),
 ]);
+
+/** Imported lazily: preflight's fixture suites copy this file without
+ *  tag-owner.mjs, and there the set simply holds no lane (see above). */
+async function tagLanes(root) {
+  try {
+    const { derive } = await import('../ci/tag-owner.mjs');
+    return [...derive(root).lanes.keys()];
+  } catch {
+    return [];
+  }
+}
 
 /** Is git path `rel` in the write set `writes`? */
 export function inWriteSet(rel, writes = STAMP_WRITES) {

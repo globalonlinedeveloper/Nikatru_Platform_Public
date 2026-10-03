@@ -197,23 +197,23 @@ describe('stamp-sandbox — the tree after a throwaway stamp is the tree before 
     assert.match(r.out, /not by it: notes\/person\.md/);
   });
 
-  for (const p of ['apps/probe', 'apps/probeapi']) {
-    test(`🔴 a leftover ${p}/ from an earlier run REFUSES the stamp, names the path and a MOVE, and touches nothing (review fc4d5cab nit 2)`, () => {
-      put(root, `${p}/keep.txt`, 'an earlier run\n');
-      const before = status(root);
-      let ran = false;
-      const r = stampLeg({ root, runner: () => { ran = true; return { code: 0, out: '' }; } });
-      assert.equal(r.code, 1);
-      assert.equal(ran, false, 'mason ran over a leftover');
-      assert.match(r.out, /REFUSED, nothing was stamped/);
-      assert.ok(r.out.includes(`${p} exists from an earlier stamp`), r.out);
-      assert.match(r.out, /mkdir -p "[^"]*stamped" && mv "/, 'the fix named is a move to the temp dir');
-      assert.doesNotMatch(r.out, /\brm\b/);
-      assert.equal(readFileSync(join(root, `${p}/keep.txt`), 'utf8'), 'an earlier run\n');
-      assert.equal(status(root), before);
-      assert.throws(() => snapshotTree(root), StampLeftover);
-    });
-  }
+  const refusesLeftover = (p) => {
+    put(root, `${p}/keep.txt`, 'an earlier run\n');
+    const before = status(root);
+    let ran = false;
+    const r = stampLeg({ root, runner: () => { ran = true; return { code: 0, out: '' }; } });
+    assert.equal(r.code, 1);
+    assert.equal(ran, false, 'mason ran over a leftover');
+    assert.match(r.out, /REFUSED, nothing was stamped/);
+    assert.ok(r.out.includes(`${p} exists from an earlier stamp`), r.out);
+    assert.match(r.out, /mkdir -p "[^"]*stamped" && mv "/, 'the fix named is a move to the temp dir');
+    assert.doesNotMatch(r.out, /\brm\b/);
+    assert.equal(readFileSync(join(root, `${p}/keep.txt`), 'utf8'), 'an earlier run\n');
+    assert.equal(status(root), before);
+    assert.throws(() => snapshotTree(root), StampLeftover);
+  };
+  test('🔴 a leftover apps/probe/ from an earlier run REFUSES the stamp, names the path and a MOVE, and touches nothing (review fc4d5cab nit 2)', () => refusesLeftover('apps/probe'));
+  test('🔴 a leftover apps/probeapi/ (another stamp path) refuses the same way', () => refusesLeftover('apps/probeapi'));
 
   test('🔴 a tree that cannot be snapshotted stamps NOTHING (COVERAGE LOST), rather than stamping what it cannot put back', () => {
     const notRepo = mkdtempSync(join(tmpdir(), 'stamp-sandbox-norepo-'));
@@ -275,30 +275,27 @@ describe('stamp-sandbox — a snapshot is checked before restore acts on it (rev
     rmSync(dir, { recursive: true, force: true });
   });
 
-  const tampered = {
-    "a path with '..' that leaves the root": (snap) => { snap.files['../escaped.txt'] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; },
-    'an absolute path': (snap) => { snap.files[join(dir, 'abs.txt')] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; },
-    'a write-set entry that is not in STAMP_WRITES': (snap) => { snap.writes.push('notes/'); },
-    "a write-set entry with '..'": (snap) => { snap.writes.push('../'); },
-    'a root that is a subdirectory, not the git top-level': (snap) => { snap.root = join(snap.root, 'catalog'); },
-    'a root that is not a git repository': (snap) => { snap.root = dir; },
+  const refuses = (mutate) => {
+    const snapFile = join(dir, 'snap.json');
+    const snap = snapshotTree(root);
+    mutate(snap);
+    writeFileSync(snapFile, JSON.stringify(snap));
+    fakeStamp(root);
+    const stamped = status(root);
+    const r = spawnSync(process.execPath, [SANDBOX, 'restore', snapFile], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /refused/);
+    assert.equal(status(root), stamped, 'a refused restore changed the tree');
+    assert.equal(existsSync(join(root, '..', 'escaped.txt')), false);
+    assert.throws(() => restoreTree(snap), SnapshotRefused);
   };
-  for (const [what, mutate] of Object.entries(tampered)) {
-    test(`🔴 the CLI restore refuses ${what} with exit 2 and writes nothing`, () => {
-      const snapFile = join(dir, 'snap.json');
-      const snap = snapshotTree(root);
-      mutate(snap);
-      writeFileSync(snapFile, JSON.stringify(snap));
-      fakeStamp(root);
-      const stamped = status(root);
-      const r = spawnSync(process.execPath, [SANDBOX, 'restore', snapFile], { encoding: 'utf8' });
-      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
-      assert.match(r.stderr, /refused/);
-      assert.equal(status(root), stamped, 'a refused restore changed the tree');
-      assert.equal(existsSync(join(root, '..', 'escaped.txt')), false);
-      assert.throws(() => restoreTree(snap), SnapshotRefused);
-    });
-  }
+
+  test(`🔴 the CLI restore refuses a path with '..' that leaves the root with exit 2 and writes nothing`, () => refuses((snap) => { snap.files['../escaped.txt'] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; }));
+  test(`🔴 the CLI restore refuses an absolute path with exit 2 and writes nothing`, () => refuses((snap) => { snap.files[join(dir, 'abs.txt')] = { xy: '??', bytes: Buffer.from('x').toString('base64') }; }));
+  test(`🔴 the CLI restore refuses a write-set entry that is not in STAMP_WRITES with exit 2 and writes nothing`, () => refuses((snap) => { snap.writes.push('notes/'); }));
+  test(`🔴 the CLI restore refuses a write-set entry with '..' with exit 2 and writes nothing`, () => refuses((snap) => { snap.writes.push('../'); }));
+  test(`🔴 the CLI restore refuses a root that is a subdirectory, not the git top-level with exit 2 and writes nothing`, () => refuses((snap) => { snap.root = join(snap.root, 'catalog'); }));
+  test(`🔴 the CLI restore refuses a root that is not a git repository with exit 2 and writes nothing`, () => refuses((snap) => { snap.root = dir; }));
 
   test('GREEN CONTROL: the same snapshot, untampered, validates and restores', () => {
     const before = status(root);
