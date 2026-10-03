@@ -1652,12 +1652,13 @@ jobs:
         run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
       # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
       # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
-      # reads services/, so the Worker lanes below see the tree they saw before.
+      # reads services/, so the Worker lanes below see the tree they saw before: by an EXIT trap, so a red plan
+      # check removes it too (fix-brick-stamp-outside-repo), and gitignored in case the shell itself dies.
       - name: A scratch service stamps from the Worker template, and the plan reads it as a service
         run: |
+          trap 'rm -rf services/probesvc-api' EXIT
           node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
           node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
-          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
