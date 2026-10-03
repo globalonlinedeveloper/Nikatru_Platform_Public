@@ -25,8 +25,8 @@
 // THE VERDICT. A `serious` or `critical` violation fails the scan UNLESS a row
 // of tooling/a11y/exceptions.json names it: the same rule (`axe`), on the same
 // page (`pages`, repo-relative, or "*"). The statement page is generated from
-// the same register, so the published claim and the scan's tolerance cannot
-// drift apart. A register row that no violation used is reported STALE and
+// the same register, and tooling/ci/assert-a11y-statement.mjs holds the page's
+// gaps equal to the register's rows. A register row that no violation used is reported STALE and
 // fails too, so a fixed gap must leave the register (and the statement) in the
 // same change. `moderate` and `minor` findings print and never fail.
 //
