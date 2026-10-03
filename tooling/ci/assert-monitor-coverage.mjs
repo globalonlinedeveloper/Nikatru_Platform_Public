@@ -24,6 +24,12 @@
 //     A site's own canonical URL is the one place it names the host it is
 //     served from; the directory name is not that (`sites/nikatru` ⇒
 //     nikatru.com is a guess, and a guess is how a register goes stale).
+//   · edgeWorkerZoneRoutes — ⏱ 2026-10-01 (PB-12) — the host of every
+//     `edgeWorkers[].zoneRoutes[].pattern` in tooling/platform-register.json.
+//     A zone route puts a Worker of this repository in front of a hostname, so
+//     the hostname answers through code this tree deploys. auth-api.nikatru.com
+//     was routed that way by edge-shield and had a live monitor (17) and NO row
+//     here, because none of the three sources above could name it.
 // Adding a route to a wrangler config therefore acquires a monitoring
 // obligation the moment it merges, rather than when somebody remembers this
 // file exists. That is the half a hand-typed list can never have.
@@ -176,7 +182,9 @@ const APPS_DIR = 'apps';
  *  A count would be weaker than that: five honest rows are fine and one
  *  unexplained row is not, which is exactly what (b) grades and what no
  *  number could. */
-const DERIVED_SOURCES = ['workerCustomDomains', 'appCatalogue', 'siteCanonicals'];
+const DERIVED_SOURCES = ['workerCustomDomains', 'appCatalogue', 'siteCanonicals', 'edgeWorkerZoneRoutes'];
+/** ⏱ 2026-10-01 (PB-12) — where `edgeWorkerZoneRoutes` is read from. */
+const PLATFORM_REGISTER = 'tooling/platform-register.json';
 
 let failed = false;
 const fail = (m) => { console.error(`FAIL ${m}`); failed = true; };
@@ -329,6 +337,36 @@ for (const e of listDir(rel(SITES), { withFileTypes: true })) {
   if (canonical) add('siteCanonicals', hostOf(canonical));
 }
 
+// 4 · ⏱ 2026-10-01 (PB-12) — the hosts an EDGE Worker's zone routes front. The
+//     host is the pattern up to its first `/`. A wildcard host names no one
+//     hostname a monitor could watch, so it FAILS rather than being skipped:
+//     skipping it would let a route in front of a whole subdomain space go
+//     undeclared with this guard green.
+const platformRegisterText = readIf(PLATFORM_REGISTER);
+if (platformRegisterText === null) {
+  coverageLost(`${PLATFORM_REGISTER} does not exist; the edge-Worker half of the derivation ran over nothing.`);
+}
+let platformRegister;
+try {
+  platformRegister = JSON.parse(platformRegisterText);
+} catch (err) {
+  coverageLost(`${PLATFORM_REGISTER} is not valid JSON (${err.message}).`);
+}
+for (const w of Array.isArray(platformRegister?.edgeWorkers) ? platformRegister.edgeWorkers : []) {
+  for (const route of Array.isArray(w?.zoneRoutes) ? w.zoneRoutes : []) {
+    if (typeof route?.pattern !== 'string') continue;
+    const host = route.pattern.split('/')[0].trim().toLowerCase();
+    if (host.includes('*')) {
+      fail(
+        `${PLATFORM_REGISTER} edge Worker ${JSON.stringify(w.name ?? '?')} routes the wildcard host ${JSON.stringify(host)}. ` +
+          'A wildcard names no hostname a monitor can watch, so nothing here can say it is covered — route named hosts.',
+      );
+      continue;
+    }
+    if (host !== '') add('edgeWorkerZoneRoutes', host);
+  }
+}
+
 for (const source of DERIVED_SOURCES) {
   if (perSource.get(source).size === 0) {
     coverageLost(
@@ -439,6 +477,15 @@ for (const [h, row] of [...byHost.entries()].sort()) {
   if (typeof m.name !== 'string' || m.name === '') missing.push('name');
   if (typeof m.type !== 'string' || m.type === '') missing.push('type');
   if (typeof m.verifiedOn !== 'string' || !ISO_DATE.test(m.verifiedOn)) missing.push('verifiedOn (YYYY-MM-DD)');
+  // ⏱ 2026-10-01 (PB-23) — a recorded `confirmationThreshold` is a MEASURED fact
+  // like `intervalSeconds`, so it carries its own date: tooling/ops/verify-monitors.mjs
+  // compares it live, and an undated number is a claim nobody can age.
+  if (m.confirmationThreshold !== undefined) {
+    if (!Number.isInteger(m.confirmationThreshold) || m.confirmationThreshold < 1) missing.push('confirmationThreshold as a whole number ≥ 1');
+    if (typeof m.confirmationThresholdVerifiedOn !== 'string' || !ISO_DATE.test(m.confirmationThresholdVerifiedOn)) {
+      missing.push('confirmationThresholdVerifiedOn (YYYY-MM-DD) beside its confirmationThreshold');
+    }
+  }
   if (missing.length) {
     fail(
       `${h} claims a monitor but the claim is incomplete: no ${missing.join(', no ')}. ` +
@@ -544,6 +591,9 @@ if (register?.observability?.decidedOn == null) {
   console.log('     glitchtip.nikatru.com, runs inside GlitchTip on ONE box — Box B, the Hostinger box,');
   console.log('     since 2026-09-02 — and so does the alert path. The machine changed that day; the COUNT');
   console.log('     did not, so E-9b is exactly as open as it was on 2026-08-03.');
+  // ⏱ 2026-10-01 (PB-02/PB-24) — the DELIVERY half, appended rather than rewritten.
+  console.log('     ⏱ 2026-10-01: ONE page no longer leaves from that box — the platform Worker mails a Box B');
+  console.log('     outage itself (tooling/ops/alarm-chains.json → ownerPage). Detection by GlitchTip has not moved.');
   console.log('     Owner must fund/accept an off-box checker or record the SPOF as accepted, with a date and a');
   console.log('     name (monitor-register.json → observability.decidedOn / decidedBy).');
 }

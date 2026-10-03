@@ -210,6 +210,9 @@
 //         produces, or a cycle through another host — prints with its path
 //         instead of blocking. SELF, SELF-GATED and SECOND LAP were three
 //         instances of this one rule. `unitNeedsHosts`, `routeLiveVerdicts`.
+//         ⏱ 2026-10-01 — and DEPLOY-RECOVERED is a fourth (PB-04): a duty that
+//         grades a post-gate deploy's output cannot block the gate feeding
+//         that deploy. `servedUnitsOf`.
 //  INV5 — NO WAIVER. No flag, no environment variable of this guard's own, no
 //         register date and no caller-supplied argument turns a verdict off. The
 //         host is the workflow ref GitHub sets, the event is the event GitHub sets
@@ -3567,32 +3570,46 @@ function jobsOfRun(repo, runId, cache) {
   return cache.get(runId);
 }
 
+/** The unit scan's loop over one page of runs, newest first. `jobsFor(runId)` is the
+ *  job-list read — injected so a test can COUNT the reads: a run that predates every
+ *  call of the unit must cost none (⏱ 2026-10-02, review of #1115, finding 2: the skip
+ *  had no red control, and dropping it re-reads 30 runs' job lists and times the step
+ *  out on a new call unit). */
+export async function scanUnitRuns(q, runs, all, wf, jobsFor) {
+  const days = unitScheduleWeekdays(q, wf);
+  const entries = [];
+  for (const run of runs) {
+    if (runOutsideScheduleDays(run, days)) {
+      entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
+      continue;
+    }
+    if (runPredatesUnitCalls(q, run, wf)) continue; // not in the unit's history, so its job list is never fetched
+    const c = unitConclusion(q, run, await jobsFor(run.id), wf, supersededBy(run, all ?? runs));
+    entries.push({ run, c });
+    if (c.verdict === 'success') break;
+  }
+  return entries;
+}
+
 async function scanUnit(q, repo, wf, cache, filters, what, sinceMs = null) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
   let { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
-  const days = unitScheduleWeekdays(q, wf);
-  const entries = [];
   // ⏱ 2026-10-03 · OPS-WATCH 37080147071. One page was the whole read: 100 runs of
   // ops-watch.yml on main are ~81h, the window of a 7d duty is 252h, so a weekly
   // unit's success fell off the page within four days of its slot. With no success
   // yet and `sinceMs` (the row's window start) not reached, the scan reads the next
   // OLDER page — `deeperUnitPage`, `olderUnitPage` (file end) — up to UNIT_WINDOW_PAGES.
   const { event, status } = splitRunFilters(filters);
+  const entries = [];
   let pages = 1;
   let short = null;
-  scan: for (;;) {
-    for (const run of runs) {
-      if (pages > 1 && Number.isFinite(sinceMs) && Date.parse(run.created_at) < sinceMs) continue; // older than the window: cannot make it fresh
-      if (runOutsideScheduleDays(run, days)) {
-        entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
-        continue;
-      }
-      if (runPredatesUnitCalls(q, run, wf)) continue; // not in the unit's history, so its job list is never fetched
-      const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf, supersededBy(run, all ?? runs));
-      entries.push({ run, c });
-      if (c.verdict === 'success') break scan;
-    }
+  for (;;) {
+    // older than the window: cannot make it fresh, so a deeper page's run before `sinceMs` is not read
+    const page = pages > 1 && Number.isFinite(sinceMs) ? runs.filter((run) => !(Date.parse(run.created_at) < sinceMs)) : runs;
+    const found = await scanUnitRuns(q, page, all, wf, (runId) => jobsOfRun(repo, runId, cache));
+    entries.push(...found);
+    if (found.at(-1)?.c.verdict === 'success') break;
     const next = deeperUnitPage({ pageFull, gapBelow, all: all ?? runs, sinceMs, pages, listing: Array.isArray(all) });
     if (!next.read) { short = next.short; break; }
     const older = olderUnitPage(await ghJson(olderUnitPagePath(repo, q.workflow, q.headBranch, next.boundary)), { branch: q.headBranch, boundary: next.boundary, what });
@@ -3896,6 +3913,9 @@ export function dispatchableWorkflows(root, gateWorkflow = gateTopology(root).ga
 //                  register that slips past can still never freeze.
 //   · SELF-GATED — the row's workflow runs `assert-gate-passed.mjs`, and H
 //                  produces the check that script waits for.
+//   · DEPLOY-RECOVERED (⏱ 2026-10-01, PB-04) — the row's workflow grades what a
+//                  post-gate job of H ships, so its fix reaches production only
+//                  after H passes. `servedUnitsOf` carries the conditions.
 // and one composed edge: an enforcing host blocks on every other red verdict.
 // If H is reachable from the row, the verdict PRINTS in H, with the path, and
 // blocks everywhere else. `SELF` was an OWN HOST edge, SELF-GATED is itself, and
@@ -4612,10 +4632,76 @@ export function unitNeedsGuard(wf, unit, topology = null) {
   return null;
 }
 
+// ── ⏱ 2026-10-01 · THE THIRD DERIVED EDGE: DEPLOY-RECOVERED (PB-04) ─────────
+// Row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY. On main's push run ci.yml grades
+// the live register, so a red PRODUCTION duty — e2e.yml, which drives the
+// served apps against the live Worker — failed `ci-gate`, which skipped
+// `deploy-web` and `deploy-workers`: the post-gate jobs that would have shipped
+// that duty's own fix. Measured 2026-09-28, CI 36409128416; the class had closed
+// twice before. Neither existing edge saw it: e2e.yml is not a guard host and
+// does not run assert-gate-passed.mjs, yet its remedy is just as unreachable
+// from ci.yml — the fix reaches production only through a job that runs after
+// the gate passes.
+//
+// THE EDGE, and every condition is checked against the workflow tree:
+//   · the testing workflow DECLARES the units it grades, as the workflow-level
+//     env `NIKATRU_GRADES_SERVED_UNITS` (space-separated job ids);
+//   · EVERY named unit is a post-gate job of the gate workflow
+//     (`postGateAdmission`, the same derivation RED SINCE admits by) — a name
+//     that is not one grants nothing and prints why;
+//   · the testing workflow declares `workflow_dispatch`, so once the deploy has
+//     landed one dispatched green run clears the verdict with no merge;
+//   · it is not the gate workflow, not a guard host and not self-gated — those
+//     have their own edges, and a declaration may not widen them.
+// It reaches ONE host: the gate workflow. ops-watch.yml still blocks and pages
+// on the same verdict (INV2 holds everywhere but the derived edge), and a red
+// duty on any unit that is not a declared served one still blocks the push.
+// Like the other two, it is printed with its reason on every run.
+export const SERVED_UNITS_ENV = 'NIKATRU_GRADES_SERVED_UNITS';
+
+/** PURE. The workflow-level `env:` value of `name` in a parsed workflow, or null.
+ *  Read off the comment-stripped lines above `jobs:` by the same indent walk the
+ *  one parser uses for `on:`; a job's own `env:` is never read. */
+export function workflowEnvValue(wf, name) {
+  const lines = (wf?.lines ?? []).slice(0, wf?.jobsAt ?? wf?.lines?.length ?? 0);
+  const at = lines.findIndex((l) => /^env:\s*$/.test(String(l.text)));
+  if (at === -1) return null;
+  for (const l of lines.slice(at + 1)) {
+    const t = String(l.text);
+    if (t.trim() === '') continue;
+    if (/^\S/.test(t)) break;
+    const m = t.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    if (m && m[1] === name) return m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return null;
+}
+
+/** PURE. The DEPLOY-RECOVERED derivation for one workflow file: `{ units, refused }`.
+ *  `units` are the declared served units that hold every condition above; a
+ *  non-empty `refused` names why nothing (or less) was granted. Never an edge on
+ *  a missing answer: no topology, no gate job, an unparsed file — no units. */
+export function servedUnitsOf(file, topology, parsedByFile) {
+  const wf = parsedByFile?.get?.(file) ?? null;
+  const declared = wf ? workflowEnvValue(wf, SERVED_UNITS_ENV) : null;
+  if (!nonEmpty(declared)) return { units: [], refused: [] };
+  const refused = [];
+  const postGate = postGateAdmission(parsedByFile, topology);
+  if (!postGate) refused.push(`the gate workflow's post-gate jobs could not be derived (topology: ${topology?.gateWorkflow ?? 'UNKNOWN'})`);
+  if (file === topology?.gateWorkflow) refused.push(`${file} IS the gate workflow`);
+  if (topology?.guardHosts?.has(file)) refused.push(`${file} runs ${GUARD_SCRIPT_REL} (an OWN HOST question, not this one)`);
+  if (topology?.selfGated?.has(file)) refused.push(`${file} runs ${GATE_SCRIPT_REL} (a SELF-GATED question, not this one)`);
+  if (!workflowEvents(wf).has('workflow_dispatch')) refused.push(`${file} declares no \`workflow_dispatch\`, so nothing re-runs it after the deploy lands`);
+  const names = declared.split(/\s+/).filter(Boolean);
+  const off = postGate ? names.filter((n) => !postGate.jobs.has(n)) : names;
+  if (off.length) refused.push(`${off.join(' · ')} ${off.length === 1 ? 'is not a' : 'are not'} post-gate job${off.length === 1 ? '' : 's'} of ${topology?.gateWorkflow ?? 'the gate workflow'}`);
+  return refused.length ? { units: [], refused } : { units: names, refused };
+}
+
 /** PURE. The hosts this row's RECOVERY needs to be green: `[{ host, why }]`.
- *  Exactly the two derived edges in the header above — OWN HOST and SELF-GATED —
- *  and nothing a caller or a register field can add. An unparsed workflow adds
- *  no OWN HOST edge: fail-closed means blocking, never a guessed exemption. */
+ *  Exactly the three derived edges in the header above — OWN HOST, SELF-GATED
+ *  and DEPLOY-RECOVERED — and nothing a caller or a register field can add. An
+ *  unparsed workflow adds no OWN HOST edge: fail-closed means blocking, never a
+ *  guessed exemption. */
 export function unitNeedsHosts(row, topology, parsedByFile) {
   const q = row?.mechanism?.recordQuery;
   const file = nonEmpty(q?.workflow) ? String(q.workflow) : null;
@@ -4639,6 +4725,17 @@ export function unitNeedsHosts(row, topology, parsedByFile) {
         `SELF-GATED — ${WORKFLOW_DIR_REL}/${file} runs ${GATE_SCRIPT_REL}, which refuses while \`${topology.gateName}\` ` +
         `is red, and ${topology.gateWorkflow} produces \`${topology.gateName}\`; the dispatch that would clear this verdict ` +
         'aborts on the red this verdict would produce. Its remedy is UNREACHABLE from that host',
+    });
+  }
+  const served = servedUnitsOf(file, topology, parsedByFile);
+  if (served.units.length && topology.gateWorkflow) {
+    out.push({
+      host: topology.gateWorkflow,
+      why:
+        `DEPLOY-RECOVERED — ${WORKFLOW_DIR_REL}/${file} grades what ${topology.gateWorkflow}'s post-gate job(s) ` +
+        `${served.units.join(' · ')} ship (its \`${SERVED_UNITS_ENV}\`, each checked to be a post-gate job), and those run only ` +
+        `after \`${topology.gateName}\` passes on the push; blocking here would skip the deploy of this verdict's own fix ` +
+        '(PB-04, CI 36409128416). It still BLOCKS in every other enforcing host, and ops-watch pages on it',
     });
   }
   return out;
@@ -6244,6 +6341,19 @@ async function main() {
       `GUARD HOSTS (they run \`${GUARD_SCRIPT_REL}\`, so this guard helps produce their conclusion): ` +
       `${[...(topology?.guardHosts ?? [])].sort().join(' · ') || 'NONE DERIVED'} · THIS RUN'S HOST: ${policy.host ?? 'none resolved'}`,
   );
+  // ⏱ 2026-10-01 (PB-04) — every DEPLOY-RECOVERED declaration, granted or
+  // refused, on every run: an exemption nobody can see is a waiver.
+  for (const [file] of [...parsedByFile.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const s = servedUnitsOf(file, topology, parsedByFile);
+    if (s.units.length) {
+      console.log(
+        `⬜  [INV4] DEPLOY-RECOVERED: ${file} grades ${topology.gateWorkflow}'s post-gate ${s.units.join(' · ')}, so its red verdict ` +
+          `PRINTS in ${topology.gateWorkflow} and blocks everywhere else (ops-watch pages on it).`,
+      );
+    } else if (s.refused.length) {
+      console.log(`⬜  [INV4] DEPLOY-RECOVERED REFUSED for ${file} — it still BLOCKS everywhere: ${s.refused.join('; ')}.`);
+    }
+  }
   for (const l of topology?.why ?? []) {
     console.log(
       `⬜  [INV4] 🔴 GATE TOPOLOGY INCOMPLETE · ${l}. Nothing is exempted on an incomplete derivation: every live ` +

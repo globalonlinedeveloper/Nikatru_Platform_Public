@@ -471,7 +471,7 @@
     },
     "tooling/ci/assert-artifact-size.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-01",
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/assert-auth-callbacks.mjs": {
@@ -1542,6 +1542,11 @@
         "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-main-rows.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-mechanism-claims.mjs": {
       "catches": 1,
       "firstSeen": "2026-09-16",
@@ -2075,6 +2080,11 @@
           "signature": "secret-scan:canary-coverage"
         }
       ]
+    },
+    "tooling/ci/assert-paid-calls-metered.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-03",
+      "evidence": []
     },
     "tooling/ci/assert-palette-consistent.mjs": {
       "catches": 3,
@@ -3352,7 +3362,7 @@
     },
     "tooling/ci/gen-release-carries.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-01",
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/guard-test-shards.mjs": {
@@ -3432,7 +3442,7 @@
     },
     "tooling/ci/r2-durable-copy.mjs": {
       "catches": 0,
-      "firstSeen": "2026-10-01",
+      "firstSeen": "2026-10-03",
       "evidence": []
     },
     "tooling/ci/read-identity.mjs": {
@@ -3589,6 +3599,11 @@
     "tooling/ci/tree-walk.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/update-exit.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ci/verify-provenance.mjs": {
@@ -3751,6 +3766,11 @@
       "firstSeen": "2026-10-01",
       "evidence": []
     },
+    "tooling/ops/check-cloudflare-usage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-code-scanning-age.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",
@@ -3834,6 +3854,11 @@
     "tooling/ops/check-wildcard-dns.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ops/check-worker-versions.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/create-glitchtip-release.mjs": {
@@ -4061,6 +4086,11 @@
     "tooling/scripts/spawn-ceiling.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/scripts/test-clock.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/sites/gen-auth-mail.mjs": {

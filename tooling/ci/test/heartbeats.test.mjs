@@ -58,6 +58,8 @@ import {
   deriveWatchedJobs,
   judgeDeclaredOnMain,
   firstOnMainMs,
+  detailToken,
+  cappedTargets,
 } from '../../ops/check-heartbeats.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -933,5 +935,137 @@ describe('watchedJobsDeclaredAt is judged against the first MAIN commit', () => 
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
     assert.match(r.stdout, /ok {2}reminder_mail: declared 2026-09-28T11:33:25\.000Z/);
     assert.match(r.stdout, /ok {2}\d+ watched-since instant\(s\) owe no slot/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED — A RETENTION JOB THAT
+// KEEPS FALLING BEHIND IS RED. The sweep and the reminder ledger prune deleted at
+// most 1,000 rows a store a night and printed `capped=1`; every row read ok=1, so
+// past ~1,000 expired rows a day a declared period silently stopped being kept.
+// The register's `cappedNightsRed` names the token each job prints, and the
+// reader reds a target whose newest `nights` rows all carry it above 0. CP1-CP3
+// run through the REAL register, so deleting the rule from it reds them.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-heartbeats — a store capped night after night is RED', () => {
+  const RULE = { token: 'capped', nights: 3 };
+  const night = (d, detail, over = {}) => row({ job: 'retention_sweep', target: '(portfolio)', ran_at: `2026-08-0${d}T06:40:00Z`, detail, ...over });
+
+  test('detailToken reads `name=<n>` and never the same name inside a longer token', () => {
+    assert.equal(detailToken('stores=10 declared=3 deleted=2000 capped=2 passes=50', 'capped'), 2);
+    assert.equal(detailToken('sent=0 pruned=20000 prune_capped=1', 'capped'), null);
+    assert.equal(detailToken('sent=0 pruned=20000 prune_capped=1', 'prune_capped'), 1);
+    assert.equal(detailToken('capped=0', 'capped'), 0);
+    assert.equal(detailToken('', 'capped'), null);
+  });
+
+  test('🔴 three capped runs in a row are RED, though every row says ok=1', () => {
+    const rows = [night(2, 'capped=1'), night(1, 'capped=2'), row({ ...night(1, 'capped=1'), ran_at: '2026-07-31T06:40:00Z' })];
+    const v = evaluateJob('retention_sweep', rows, '40 6 * * *', NOW, null, RULE);
+    assert.equal(v.ok, false);
+    assert.equal(v.kind, 'capped');
+    assert.match(v.reason, /target \(portfolio\) carried `capped=` above 0 on each of its newest 3 runs/);
+  });
+
+  test('two capped runs are a catch-up, not an alarm; a capped=0 run breaks the streak', () => {
+    const two = [night(2, 'capped=1'), night(1, 'capped=1')];
+    assert.equal(evaluateJob('retention_sweep', two, '40 6 * * *', NOW, null, RULE).ok, true);
+    const broken = [night(2, 'capped=1'), night(1, 'capped=0'), row({ ...night(1, 'capped=1'), ran_at: '2026-07-31T06:40:00Z' })];
+    assert.equal(evaluateJob('retention_sweep', broken, '40 6 * * *', NOW, null, RULE).ok, true);
+  });
+
+  test('a job with no rule is never graded on the token — money_rederive prints `capped=` too', () => {
+    const rows = [1, 2, 3].map((d) => night(d, 'candidates=150 capped=1'));
+    assert.equal(evaluateJob('money_rederive', rows, '40 6 * * *', NOW, null, null).ok, true);
+  });
+
+  test('cappedTargets judges each target on its own rows', () => {
+    const rows = [
+      ...[1, 2, 3].map((d) => row({ target: 'a', ran_at: `2026-08-0${d}T06:10:00Z`, detail: 'pruned=20000 prune_capped=1' })),
+      ...[1, 2, 3].map((d) => row({ target: 'b', ran_at: `2026-08-0${d}T06:10:00Z`, detail: 'pruned=1 prune_capped=0' })),
+    ];
+    assert.deepEqual(cappedTargets(rows, 'prune_capped', 3), ['a']);
+  });
+
+  function capRepo(mutate) {
+    const root = join(TMP, `cp${seq++}`);
+    mkdirSync(join(root, 'services/svc/src'), { recursive: true });
+    mkdirSync(join(root, 'tooling/ops'), { recursive: true });
+    const state = {
+      source: "export const SWEEP_JOB = 'sweep_job';\nawait recordHeartbeat(env, rows, SWEEP_JOB);\nconst d = `capped=${capped}`;\n",
+      row: {
+        id: 'duty.cron',
+        kind: 'duty',
+        cadence: '1d',
+        watchedJobs: { sweep_job: ['0 6 * * *'] },
+        watchedJobsDeclaredAt: { sweep_job: '2026-08-01T00:00:00Z' },
+        cappedNightsRed: { nights: 3, tokens: { sweep_job: 'capped' } },
+        mechanism: { substrate: 'cloudflare-cron', anchor: 'services/svc/wrangler.jsonc' },
+      },
+    };
+    mutate(state);
+    writeFileSync(
+      join(root, 'services/svc/wrangler.jsonc'),
+      JSON.stringify({ name: 'svc', d1_databases: [{ binding: 'DB', database_id: 'abc', migrations_dir: 'm' }], triggers: { crons: ['0 6 * * *'] } }),
+    );
+    writeFileSync(join(root, 'services/svc/src/scheduled.ts'), state.source);
+    writeFileSync(join(root, 'tooling/ops/register.json'), JSON.stringify({ rows: [state.row] }));
+    return root;
+  }
+
+  test('the rule travels with its job out of the derivation', () => {
+    const { jobs, problems } = deriveWatchedJobs(capRepo(() => {}));
+    assert.deepEqual(problems, []);
+    assert.deepEqual(jobs[0].capped, { token: 'capped', nights: 3 });
+  });
+
+  test('🔴 a rule over an unwatched job, or a token the source never writes, is COVERAGE LOST', () => {
+    const unwatched = deriveWatchedJobs(capRepo((s) => { s.row.cappedNightsRed.tokens = { other_job: 'capped' }; }));
+    assert.match(unwatched.problems.join(' '), /COVERAGE LOST — duty\.cron\.cappedNightsRed names job "other_job"/);
+    const unwritten = deriveWatchedJobs(capRepo((s) => { s.row.cappedNightsRed.tokens = { sweep_job: 'stuck' }; }));
+    assert.match(unwritten.problems.join(' '), /COVERAGE LOST — duty\.cron\.cappedNightsRed reads token `stuck=`/);
+    const shape = deriveWatchedJobs(capRepo((s) => { s.row.cappedNightsRed.nights = 0; }));
+    assert.match(shape.problems.join(' '), /COVERAGE LOST — duty\.cron\.cappedNightsRed must be/);
+  });
+
+  // ── through the REAL register and the REAL Worker source ──────────────────
+  const fixture = (rows) => {
+    const p = join(TMP, `cpf${seq++}.json`);
+    writeFileSync(p, JSON.stringify(rows));
+    return p;
+  };
+  const run = (rowsFile) =>
+    spawnSync(process.execPath, [READER, '--rows-file', rowsFile, '--now', '2026-08-04T09:00:00Z'], { cwd: REPO, encoding: 'utf8' });
+  const REAL = deriveWatchedJobs(REPO).jobs;
+  // Fresh for every watched job at 09:00 (the hourly job's owed slot is 06:15).
+  const healthyAt = (job, day, detail = '') => row({ job, ran_at: `2026-08-0${day}T08:15:00Z`, detail });
+  const healthy = () => Object.fromEntries(REAL.map((j) => [j.job, [healthyAt(j.job, 4)]]));
+
+  test('CP1 — the real register declares the rule for retention_sweep and reminder_mail', () => {
+    assert.deepEqual(REAL.find((j) => j.job === 'retention_sweep')?.capped, { token: 'capped', nights: 3 });
+    assert.deepEqual(REAL.find((j) => j.job === 'reminder_mail')?.capped, { token: 'prune_capped', nights: 3 });
+  });
+
+  test('🔴 CP2 — three consecutive capped retention_sweep heartbeats exit 1; two exit 0', () => {
+    const three = healthy();
+    three.retention_sweep = [2, 3, 4].map((d) => healthyAt('retention_sweep', d, `stores=10 declared=4 deleted=50000 capped=1 passes=50`));
+    const r = run(fixture(three));
+    assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stderr, /retention_sweep: target t carried `capped=` above 0 on each of its newest 3 runs/);
+    const two = healthy();
+    two.retention_sweep = [
+      healthyAt('retention_sweep', 2, 'stores=10 declared=4 deleted=900 capped=0 passes=4'),
+      ...[3, 4].map((d) => healthyAt('retention_sweep', d, 'stores=10 declared=4 deleted=50000 capped=1 passes=50')),
+    ];
+    const g = run(fixture(two));
+    assert.equal(g.status, 0, `${g.stdout}\n${g.stderr}`);
+  });
+
+  test('🔴 CP3 — three consecutive prune_capped reminder_mail heartbeats exit 1', () => {
+    const rows = healthy();
+    rows.reminder_mail = [2, 3, 4].map((d) => healthyAt('reminder_mail', d, 'nothing due: opted_in=0 due=0 pruned=20000 prune_capped=1'));
+    const r = run(fixture(rows));
+    assert.equal(r.status, 1, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stderr, /reminder_mail: target t carried `prune_capped=` above 0/);
   });
 });

@@ -1327,7 +1327,7 @@ describe('--store-lanes: every armed row\'s submission workflow has a green dry 
     const pr = runStore(file, AFTER, 'pull_request');
     assert.equal(pr.status, 0, pr.stdout + pr.stderr);
     assert.match(pr.stdout, /⬜  store lane submit-snap\.yml .* is not fresh/);
-    assert.match(pr.stdout, /PRINTED, NOT FAILED, on a pull_request run: a stale rehearsal is not this PR's doing\. Owner O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)/);
+    assert.match(pr.stdout, /PRINTED, NOT FAILED, on a pull_request run: a stale rehearsal is not this PR's doing\. Owner O-STORE-DRY-RUNS-HAVE-NO-CADENCE/); // disclosed: (absent from open.json until the next Private pass records it)
     assert.equal(runStore(file, AFTER, 'push').status, 1);
   });
 

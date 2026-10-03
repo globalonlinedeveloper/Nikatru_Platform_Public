@@ -999,7 +999,7 @@ export function gradeRunHistory(read, nowMs) {
 // Offline: `--store-lanes --store-runs-file <json> --now <iso>`, where the JSON
 // maps each workflow FILE NAME to a fixture in anchored-run-read's shapes.
 export const STORE_LANE_DEADLINE = '2026-10-21';
-export const STORE_LANE_OWNER = 'O-STORE-DRY-RUNS-HAVE-NO-CADENCE (absent from open.json until the next Private pass records it)';
+export const STORE_LANE_OWNER = 'O-STORE-DRY-RUNS-HAVE-NO-CADENCE'; // disclosed: (absent from open.json until the next Private pass records it)
 
 /** PURE. Does a stale store lane FAIL this run? Only from the deadline, and never on a pull request. */
 export const storeLaneGates = (nowMs, event) => nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`) && event !== 'pull_request';

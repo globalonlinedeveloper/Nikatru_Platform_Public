@@ -688,6 +688,56 @@
       "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One guarded UPDATE by an authenticated account."
     },
     {
+      "id": "ai-status",
+      "method": "GET",
+      "path": "/v1/ai/status",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ai.ts",
+      "purpose": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays). What paid AI the signed-in user has for one app: the switch, the plan (a trial is not a paid plan), the pack credits and monthly allowance left, and whether the CURRENT AI disclosure is acknowledged. No content.",
+      "unconsumedReason": "NO CLIENT YET, A STATE: the app's AI screens (Import hub AI candidates, Settings › AI) land with each feature's measured model; until then every AI call answers 503 ai_unavailable, so nothing in a released build has a reason to ask.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One D1 read by (user_id, app_id) plus the shared entitlement read."
+    },
+    {
+      "id": "ai-consent",
+      "method": "POST",
+      "path": "/v1/ai/consent",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ai.ts",
+      "purpose": "⏱ 2026-10-02 · T17 · EU AI Act Art. 50(1). The explicit opt-in to the CURRENT AI disclosure (it names the processor, says results are AI-generated and can be wrong, and that nothing is saved unreviewed). Only the current version is recorded (409 stale_disclosure otherwise); no AI call is possible without it.",
+      "unconsumedReason": "NO CLIENT YET, A STATE: the chassis AiDisclosureDialog exists (packages/chassis_screens/lib/ai/ai_disclosure.dart); the app screen that shows it before the first call lands with the measured model.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One idempotent upsert of the caller's own row."
+    },
+    {
+      "id": "ai-import",
+      "method": "POST",
+      "path": "/v1/ai/import",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ai.ts",
+      "purpose": "⏱ 2026-10-02 · T17 (AI-03, IM-10). A pasted text or one image in, candidate rows out, each marked `source: ai_import` with provenance; never saved, and the body is persisted nowhere. METERED: the meter (src/lib/ai/meter.ts) reserves one PAID credit before the model is called, under a per-user daily cap and a global daily USD circuit-breaker, with a kill switch.",
+      "unconsumedReason": "NO CLIENT YET, A STATE: the model is null until measured (tooling/ports/ai.json), so the route answers 503 ai_unavailable; the Import hub's AI entry lands with it.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Its spend is bounded by the meter itself — one paid credit a call, PER_USER_DAILY_CALLS a day, AI_DAILY_USD_CAP across everyone — enforced by a conditional D1 write, not a binding that could be missing."
+    },
+    {
+      "id": "ai-review",
+      "method": "POST",
+      "path": "/v1/ai/review",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ai.ts",
+      "purpose": "⏱ 2026-10-02 · T17 (AI-04). The user's own list in, keep / review / cancel suggestions out, advisory only, each `generated_by: ai` with provenance. Metered exactly like import.",
+      "unconsumedReason": "NO CLIENT YET, A STATE: as ai-import — no model, no input cap, so every call answers 503 until measured.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded by the same meter as ai-import."
+    },
+    {
+      "id": "plan-refund",
+      "method": "POST",
+      "path": "/v1/plan/refund",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/refund.ts",
+      "purpose": "⏱ 2026-10-02 · refund-finish (MF-5). The in-window refund sites/nikatru/refund.html promises: 30 days from the charge, the full amount, no reason. Mounted behind app.use('/v1/plan/*', platformAuth); the purchase comes from the session's own entitlement row; Idempotency-Key required; one refund per payment (refund_requests, migration 0026). Through the payments port's `refund` where the rail declares it, else recorded for the manual tool (202); a store purchase answers 409 with the store's own refund page.",
+      "unconsumedReason": "NO CLIENT YET, A STATE: no rail that sells today declares `refund` (Paddle and Razorpay are refunded by tooling/ops/refund.mjs), so the in-app \"request a refund\" button lands with the first rail that does.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. At most one refund per payment by a UNIQUE index; a repeat answers the stored record."
+    },
+    {
       "id": "plan-cancel",
       "method": "POST",
       "path": "/v1/plan/cancel",
@@ -1264,7 +1314,7 @@
         "answers 429 with Retry-After over a cap, or 503 for the refresh grant (LEAD RULING SHIELD-R2); it reads no",
         "client address (SHIELD-R3), and the per-IP limit on the credential paths is the zone's own rate-limiting",
         "rule, tooling/edge-ratelimit-rule.json. It serves the GoTrue JWKS from the edge cache for 300 s, and passes",
-        "everything else to the tunnel origin unchanged with one added response header, `x-nikatru-shield: 1`,",
+        "everything else to the tunnel origin unchanged with one added response header, `x-nikatru-shield: <RELEASE>` (the deployed commit SHA; `1` for a version deployed without one — ⏱ 2026-10-02, a refusal carries it too),",
         "which tooling/ops/check-edge-shield.mjs reads from ops-watch to prove it is still in path."
       ],
       "name": "edge-shield",

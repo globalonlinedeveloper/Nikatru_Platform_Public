@@ -1146,7 +1146,7 @@ for (const wf of workflows) {
             problems.push(
               `${wf.rel}: job "${job.name}" records a production submission at ${lineAt(wf, l.n)} without \`--artifact\`. ` +
                 'The ledger would name the commit and not the bytes the store received; `--artifact <file> --build-number <n>` makes record-deployment.mjs hash ' +
-                'that file into the Deployment payload ({name, sha256, size, buildNumber}). O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST (absent from open.json until the next Private pass records it)',
+                'that file into the Deployment payload ({name, sha256, size, buildNumber}). O-STORE-SUBMISSION-RECORD-HAS-NO-DIGEST', // disclosed: (absent from open.json until the next Private pass records it)
             );
           }
         }

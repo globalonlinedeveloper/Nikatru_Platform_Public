@@ -1,0 +1,8 @@
+{
+  "$comment": [
+    "Every third-party file a packaged extension ships, with where it came from. READ BY scripts/policy-check.mjs gate 9 (O-EXTENSION-THIRD-PARTY-FILES-UNGATED, rv2-security-015).",
+    "A packaged file named *.min.{js,mjs,cjs,css}, or carrying an @license / @preserve tag, or an SPDX-License-Identifier other than the house licence (PolyForm-Shield-1.0.0) or, under vendor/core/ only, core/core.json's own, fails the gate unless it is listed here.",
+    "One entry per file: { \"path\": \"Extension/<Tool_Dir>/<file>\" (relative to this directory), \"upstream\": \"https://...\", \"version\": \"...\", \"spdx\": \"...\", \"sha256\": \"<64 lowercase hex>\" }. The sha256 is of the bytes that ship (node scripts/sha256.mjs <file>), so a library upgraded in place under a stale entry fails too, and an entry naming a file the package does not select is a record of nothing and fails."
+  ],
+  "files": []
+}

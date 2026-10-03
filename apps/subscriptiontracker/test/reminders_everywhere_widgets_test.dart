@@ -167,7 +167,9 @@ void main() {
     late RecordingSeam seam;
 
     Future<void> pump(WidgetTester tester) async {
-      final DateTime t = DateTime.now();
+      // The same clock the screen reads (`nowProvider`'s default), so a
+      // time-travel run moves both (test/support/test_clock.dart).
+      final DateTime t = wallClock();
       final Subscription sub = Subscription(
         id: 'netflix',
         name: 'Netflix',

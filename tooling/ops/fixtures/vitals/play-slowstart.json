@@ -1,0 +1,30 @@
+{
+  "rows": [
+    {
+      "aggregationPeriod": "DAILY",
+      "startTime": {
+        "year": 2026,
+        "month": 9,
+        "day": 29,
+        "timeZone": {
+          "id": "America/Los_Angeles"
+        }
+      },
+      "dimensions": [],
+      "metrics": [
+        {
+          "metric": "slowStartRate28dUserWeighted",
+          "decimalValue": {
+            "value": "0.021"
+          }
+        },
+        {
+          "metric": "distinctUsers",
+          "decimalValue": {
+            "value": "1520"
+          }
+        }
+      ]
+    }
+  ]
+}

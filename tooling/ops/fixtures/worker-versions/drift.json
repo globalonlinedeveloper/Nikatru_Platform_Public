@@ -1,0 +1,14 @@
+{
+  "_why": "RED CONTROL for tooling/ops/check-worker-versions.mjs --fixture: the platform ledger's newest record names a commit the live /v1/health build is not. Exit 1.",
+  "ledger": {
+    "platform": { "id": 101, "sha": "1111111111111111111111111111111111111111", "payload": { "worker_version_id": "00000000-0000-4000-8000-000000000001" } },
+    "subscriptiontracker-api": { "id": 102, "sha": "2222222222222222222222222222222222222222", "payload": { "worker_version_id": null } },
+    "edge-shield": { "id": 103, "sha": "3333333333333333333333333333333333333333", "payload": { "worker_version_id": "00000000-0000-4000-8000-000000000003" } }
+  },
+  "health": {
+    "platform": "ffffffffffffffffffffffffffffffffffffffff",
+    "subscriptiontracker-api": "2222222222222222222222222222222222222222"
+  },
+  "shieldHeader": "1",
+  "cloudflare": { "edge-shield": "00000000-0000-4000-8000-000000000003" }
+}

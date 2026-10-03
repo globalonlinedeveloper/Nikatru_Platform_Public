@@ -13,6 +13,9 @@
 // nowhere, and reading it as DONE printed "no price-book entry is owed" for a
 // product whose price nobody has decided. Free is a declaration —
 // `apps.<id>.paywall.offerings: []` — and only a declaration is DONE.
+// ⏱ 2026-10-02 · the stamp now DOES write `apps.<id>`, with its `update_url`
+// alone (tooling/kit/snap-update-row.mjs, [10]D-8), so a row with no `paywall`
+// key is read exactly as an absent one: it declares nothing about the price.
 import { readJsonAt } from './tree.mjs';
 
 export const name = 'price row';
@@ -23,10 +26,14 @@ export function read(root, id) {
   const r = readJsonAt(root, REGISTER_REL);
   if (!r.ok) return { lost: `${r.why}, so neither the served offerings nor the price book can be read` };
   const row = r.value?.apps?.[id];
-  if (row === undefined || row === null) {
+  const declared = row !== undefined && row !== null && typeof row === 'object' && Object.prototype.hasOwnProperty.call(row, 'paywall');
+  if (!declared) {
     return {
       state: 'NEXT',
-      detail: `${REGISTER_REL} has no apps.${id} row: it would be served the defaults, and whether it is free or sold is undecided`,
+      detail:
+        row === undefined || row === null
+          ? `${REGISTER_REL} has no apps.${id} row: it would be served the defaults, and whether it is free or sold is undecided`
+          : `${REGISTER_REL} apps.${id} declares no \`paywall\`: it would be served the defaults, and whether it is free or sold is undecided`,
       command: `write apps.${id} (features, paywall) in ${REGISTER_REL} — \`"paywall": {"enabled": false, "offerings": []}\` declares it free; ` +
         `each offering it sells also needs prices.apps.${id}.<product_id>, then: node tooling/catalog/render-rail-prices.mjs`,
       guard,

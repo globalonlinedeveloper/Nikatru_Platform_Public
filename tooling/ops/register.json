@@ -1008,7 +1008,7 @@
     {
       "id": "duty.platform-cron",
       "kind": "duty",
-      "what": "The one consolidated Cloudflare cron for the whole portfolio: Supabase keep-alive + the per-app renewals fan-out, 06:00 UTC.",
+      "what": "The one consolidated Cloudflare cron for the whole portfolio: Supabase keep-alive + the per-app renewals fan-out, 06:00 UTC. ⏱ 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): the heavy limbs left 06:00 for their own triggers, each its own invocation — reminder_mail 06:10, money_rederive 06:20, erasure_retry 06:30, events_rollup + retention_sweep 06:40 UTC (`watchedJobs`).",
       "detector": "tooling/ops/check-heartbeats.mjs, run by .github/workflows/ops-watch.yml — deliberately a DIFFERENT provider from the thing it watches.",
       "response": "Open or refresh the durable ops-watch issue; the keep-alive failing means the shared auth project is drifting toward its ~7-day idle pause, which takes sign-in down portfolio-wide. ⏱ APPENDED 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY, 2/2) — `ops_stuck_runs` ALSO PAGES, through a monitor this row files and does not grade. GlitchTip Heartbeat monitor 42 'Platform Worker stuck-runs (hourly)', project `ops`, interval 5400 s, confirmationThreshold 1, created 2026-09-25T02:21:27Z, is beaten by `opsStuckRunsJob` (services/platform/src/scheduled.ts) through the Worker secret OPS_STUCK_RUNS_HEARTBEAT_URL, and only after a scan that ran cleanly, left no stuck run unhandled and read every active run on one page. DOWN MEANS ONE OF TWO CAUSES: the hourly firing stopped, or a stuck run is unhandled. Read the newest `ops_stuck_runs` row's `detail` in cron_heartbeat first: `FINDING: N run(s) past 120m: <run ids>` is the second cause and names the runs to cancel (by hand while OPS_WATCHDOG_CANCEL_STUCK is off); ok=0 means the check itself did not run cleanly; no row since the last `:15` is the first cause. The Worker's `[cron] ops stuck-runs: heartbeat WITHHELD: <why>` log line names why a beat was held; a fresh `none stuck` row under a Down monitor means the BEAT is broken (the secret went missing, or the POST failed; both are logged without the URL), not the check. Evidence, proven by its first record and not by installation (ci-27): monitor 42's first Up check at 2026-09-25T03:15:15.798Z and the next at 2026-09-25T04:15:16.074Z, read back with a GET of its checks at 2026-09-25T04:54:09Z (the API returns no check id, so the time is the citation); the Down check at 02:46:54Z is the no-beat-yet state between creation and the first `:15`. Corroborated on the D1 side: the newest `ops_stuck_runs` row at 2026-09-25T03:15:15.110Z, ok=1, which ops-watch run 36093365693 (job 'Every declared duty is fresh', 04:11:29Z) printed as recorded. 🔴 PAGE-ONLY, DELIBERATELY (D7): no row carries a `recordQuery.reader: glitchtip-heartbeat` for monitor 42. A graded monitor would turn every stuck run older than 5400 s into a red ops-watch, and assert-ops-register.mjs lets a red ops-watch.yml turn `ci-gate` red on every branch — an unrelated hung runner would then freeze the merge queue that has to land its fix. Liveness is graded here instead, by check-heartbeats.mjs over this row's `watchedJobs.ops_stuck_runs`; the monitor and its secret are live configuration outside this repository, like monitors 37 and 40.",
       "cadence": "1d",
@@ -1046,7 +1046,7 @@
         "🔴 `money_rederive` KEEPS THE NIGHTLY CRON, added 2026-09-10. It re-derives stored provider",
         "notifications whose derivation never concluded (refused, or threw) — the backstop behind the",
         "money route's 503-so-the-rail-re-delivers path, for whatever outlives Paddle's 3-day retry",
-        "window. Bounded by age (30 d) and count (200/run); every outcome is printed in its heartbeat",
+        "window. Bounded by age (30 d) and count (150/run; 200 until 2026-10-01); every outcome is printed in its heartbeat",
         "detail, and a candidate that is refused again is a printed count, not a red row.",
         "",
         "🔴 `ops_watchdog` KEEPS THE DISPATCHER GRID and `boxa_reachability` the nightly cron, added 2026-09-18",
@@ -1054,6 +1054,12 @@
         "An ops_watchdog row is ok=1 when the check READ its subject; findings (a red main, a stuck run, a monitor",
         "down) travel in detail, never as ok=0, or a red main would freeze the queue that must merge its fix.",
         "Not-configured limbs (no GLITCHTIP_TOKEN / BOXA_REACH_URLS) ARE ok=0: set them before this deploys.",
+        "",
+        "⏱ 2026-10-01 (PB-02): `boxb_reachability` and `boxa_reachability` MOVED TO THE DISPATCHER GRID. A target",
+        "ok=0 on two consecutive firings mails the owner straight from the Worker (services/platform/src/lib/owner-page.ts,",
+        "recipient is the entity support inbox, through the mail port; tooling/ops/alarm-chains.json `ownerPage`), the one page that does not leave from Box B; two",
+        "firings is 12 h on the grid where it was 24-48 h nightly. ops_watchdog gained the `ops-watch-freshness` target",
+        "(PB-10): main's newest completed ops-watch run older than 6 h is a FINDING row and the same direct page.",
         "",
         "🔴 `ops_stuck_runs` KEEPS ITS OWN HOURLY CRON `15 * * * *`, added 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY):",
         "the stuck-run check, moved OFF the 6-hourly dispatcher grid, because a run stuck for hours froze the queue",
@@ -1065,7 +1071,17 @@
         "🔴 `provider_token_backfill` KEEPS THE NIGHTLY CRON, added 2026-09-30 (review round 2, security: provider refresh",
         "tokens were plain text in D1 and in every R2 backup). It encrypts the provider_tokens rows stored before migration",
         "0023 and empties the retired 0012 copies while the plain-text read window is open, then keeps running as the",
-        "invariant: ok=0 whenever a token row holds no ciphertext, or TOKEN_ENC_KEY_V1 is absent or malformed."
+        "invariant: ok=0 whenever a token row holds no ciphertext, or TOKEN_ENC_KEY_V1 is absent or malformed.",
+        "",
+        "⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED — FOUR JOBS LEFT THE 06:00 CRON FOR THEIR OWN.",
+        "`0 6 * * *` ran fourteen limbs in ONE invocation, sharing one D1 statement budget, while each limb's cap",
+        "was checked as if it ran alone: a money or erasure backlog could starve the census, the rollup, the sweep and",
+        "their heartbeats, and this reader would see it only as a stale row. Now `reminder_mail` keeps `10 6 * * *`,",
+        "`money_rederive` `20 6 * * *`, `erasure_retry` `30 6 * * *`, and `events_rollup` + `retention_sweep` share",
+        "`40 6 * * *`, each its own invocation (services/platform/src/scheduled.ts SPLIT_FIRINGS). The job NAMES did",
+        "not change, so watchedJobsDeclaredAt keeps their original instants: each was owed a slot every night before",
+        "and still is. services/platform/test/scheduled-crons.test.ts sums JOB_STATEMENT_BUDGET over the jobs each",
+        "cron runs, read from THIS map, against tooling/ceilings.json d1.queriesPerInvocation."
       ],
       "watchedJobs": {
         "supabase_keepalive": [
@@ -1084,34 +1100,42 @@
           "0 6 * * *"
         ],
         "events_rollup": [
-          "0 6 * * *"
+          "40 6 * * *"
         ],
         "retention_sweep": [
-          "0 6 * * *"
+          "40 6 * * *"
         ],
         "cancellation_drain": [
           "0 6 * * *"
         ],
         "money_rederive": [
-          "0 6 * * *"
+          "20 6 * * *"
         ],
         "erasure_retry": [
-          "0 6 * * *"
+          "30 6 * * *"
         ],
         "github_dispatch": [
           "0 0 * * *",
+          "17 3 * * *",
           "0 6 * * *",
           "0 12 * * *",
           "0 18 * * *"
         ],
         "boxb_reachability": [
-          "0 6 * * *"
+          "0 0 * * *",
+          "0 6 * * *",
+          "0 12 * * *",
+          "0 18 * * *"
         ],
         "boxa_reachability": [
-          "0 6 * * *"
+          "0 0 * * *",
+          "0 6 * * *",
+          "0 12 * * *",
+          "0 18 * * *"
         ],
         "ops_watchdog": [
           "0 0 * * *",
+          "17 3 * * *",
           "0 6 * * *",
           "0 12 * * *",
           "0 18 * * *"
@@ -1120,7 +1144,7 @@
           "15 * * * *"
         ],
         "reminder_mail": [
-          "0 6 * * *"
+          "10 6 * * *"
         ],
         "provider_token_backfill": [
           "0 6 * * *"
@@ -1153,6 +1177,31 @@
         "that job name — `git log --format=\"%h %cd\" -S\"\\\"<job>\\\"\" -- tooling/ops/register.json | tail -1`, run 2026-09-11 —",
         "which is no later than the job joining watchedJobs, so it can only shorten a wait, never lengthen one. The reader",
         "refuses an instant in the FUTURE (a date kept ahead would be a waiver) and a job missing from this map."
+      ],
+      "cappedNightsRed": {
+        "nights": 3,
+        "tokens": {
+          "retention_sweep": "capped",
+          "reminder_mail": "prune_capped"
+        }
+      },
+      "_cappedNightsRedWhy": [
+        "⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED (folds O-RETENTION-SWEEP-CAP-OUTPACED-BY-INGEST).",
+        "A RETENTION JOB THAT FALLS BEHIND IS RED, NOT A PRINTED NUMBER. The sweep deleted at most 1,000 rows per",
+        "store per night and the reminder ledger prune the same, so past ~1,000 expired rows a day a declared",
+        "period (400 days for `events`, the one the privacy notice states) silently stopped being true while every",
+        "row read ok=1 and `capped=1` was only printed. Both now repeat a full pass inside a per-run statement",
+        "budget (MAX_SWEEP_STATEMENTS_PER_RUN, MAX_PRUNE_PASSES_PER_RUN), so the token means something sharper:",
+        "`capped=N` (retention_sweep) counts the stores still FULL when the budget ran out, `prune_capped=1`",
+        "(reminder_mail) the ledger still full. A run with the token at 0 cleared every expired row it may delete,",
+        "so the oldest sweepable row is inside its period.",
+        "",
+        "tooling/ops/check-heartbeats.mjs reads `tokens` and turns a job RED when a target's newest `nights` rows",
+        "ALL carry its token above 0. THE SLACK, STATED: a store red under this rule has held rows past its period",
+        "on `nights` consecutive nightly reads, so its oldest row is at least `nights` - 1 days past the period.",
+        "Three, because one capped night is a catch-up working as designed and two can be a single bad day's",
+        "ingest. The reader refuses (COVERAGE LOST) a token job this row does not watch and a token the Worker's",
+        "source never writes, the same self-check it makes on job names."
       ],
       "mechanism": {
         "substrate": "cloudflare-cron",
@@ -1188,7 +1237,7 @@
     {
       "id": "duty.platform-cron-beat",
       "kind": "duty",
-      "what": "The platform Worker's off-Cloudflare heartbeat: every firing of services/platform's crons (00:00, 02:30, 06:00, 12:00 and 18:00 UTC, services/platform/wrangler.jsonc) ends in `platformCronBeat` (services/platform/src/scheduled.ts), which POSTs the GlitchTip Heartbeat URL held in the Worker secret PLATFORM_CRON_HEARTBEAT_URL — AFTER the firing's own limbs have returned, so a beat claims the timer fired and its work ran to the end. It is the half of O-GITHUB-SCHEDULER that does not live on GitHub: duty.platform-cron's only other absence watcher is check-heartbeats.mjs on ops-watch.yml, which runs on GitHub's scheduler (measured 10.1% on time) and is itself dispatched by this same Worker. ⏱ APPENDED 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY, C5): the sixth cron, the hourly `15 * * * *` stuck-run firing, does NOT beat this URL — it returns before `platformCronBeat` and beats its own OPS_STUCK_RUNS_HEARTBEAT_URL, so this monitor still speaks for the five crons above and no others.",
+      "what": "The platform Worker's off-Cloudflare heartbeat: every firing of services/platform's crons (00:00, 02:30, 06:00, 12:00 and 18:00 UTC, and since 2026-10-01 the four split firings at 06:10, 06:20, 06:30 and 06:40, services/platform/wrangler.jsonc) ends in `platformCronBeat` (services/platform/src/scheduled.ts), which POSTs the GlitchTip Heartbeat URL held in the Worker secret PLATFORM_CRON_HEARTBEAT_URL — AFTER the firing's own limbs have returned, so a beat claims the timer fired and its work ran to the end. It is the half of O-GITHUB-SCHEDULER that does not live on GitHub: duty.platform-cron's only other absence watcher is check-heartbeats.mjs on ops-watch.yml, which runs on GitHub's scheduler (measured 10.1% on time) and is itself dispatched by this same Worker. ⏱ APPENDED 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY, C5): the sixth cron, the hourly `15 * * * *` stuck-run firing, does NOT beat this URL — it returns before `platformCronBeat` and beats its own OPS_STUCK_RUNS_HEARTBEAT_URL, so this monitor still speaks for the five crons above and no others. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): the four split firings beat this URL too, each after its own limb returns, so a split limb that throws past its own catch withholds a beat. They sit within 40 minutes of the 06:00 firing, so they do not stand in for a missed 00:00, 12:00 or 18:00 grid firing.",
       "detector": "GlitchTip heartbeat monitor 37 'Platform Worker cron', project `ops` (\"2\"), interval 32400 s, confirmationThreshold 1, created 2026-09-15T00:47:27Z on the owner's word (2026-09-14, \"Yes, create and set both\"). A firing that does not run, a limb that throws past its catch, an unset or wrong secret and a Worker that no longer deploys all read as the same silence.",
       "response": "Read the platform Worker's logs for the last firing (`[cron]` lines: \"PLATFORM_CRON_HEARTBEAT_URL is not set\" means the secret went missing; a non-2xx or transport failure is logged without the URL), then the `cron_heartbeat` rows duty.platform-cron reads. A silent monitor with fresh cron_heartbeat rows means the BEAT is broken, not the cron.",
       "cadence": "6h",
@@ -1794,7 +1843,7 @@
         "anchor": ".github/workflows/ops-watch.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue",
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 6 h and a direct owner page (services/platform/src/lib/owner-page.ts)",
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
@@ -1813,12 +1862,12 @@
           "headBranch": "main"
         }
       },
-      "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03. ✅ PARTLY ANSWERED 2026-09-03, AND THE PART THAT MOVED IS THE TRIGGER, NOT THE EVIDENCE. services/platform/src/scheduled.ts now dispatches this workflow from the Cloudflare cron as well (GITHUB_DISPATCH_TARGETS), so it no longer depends on GitHub's scheduler to RUN — which is the half that froze this repository for ~18h on 2026-08-10 and ~46h on 2026-09-02. ⚠️ BUT THIS ROW STILL READS `event=schedule`, and it must until the timer claim moves, because a dispatched run arrives as `event=workflow_dispatch` and that is INDISTINGUISHABLE FROM A HAND-PRESS: accepting it here would make freshness green on somebody being awake, the exact failure assert-platform-proof-fresh.mjs names in its own header (\"counting manual runs is what let a never-firing cron look healthy\"). So the 12 `schedule:` slots STAY, and services/platform/test/github-dispatch.test.ts fails the build if a dispatched workflow that any row still reads this way loses them. ⬜ WHAT CLOSES IT PROPERLY: the timer claim comes from the `cron_heartbeat` row the dispatcher writes (a record only the timer can write), and this reader drops to OUTCOME only — newest successful run with an explicit `head_branch === main`, because the `event=schedule` filter is ALSO what silently guaranteed the branch.",
+      "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03. ✅ PARTLY ANSWERED 2026-09-03, AND THE PART THAT MOVED IS THE TRIGGER, NOT THE EVIDENCE. services/platform/src/scheduled.ts now dispatches this workflow from the Cloudflare cron as well (GITHUB_DISPATCH_TARGETS), so it no longer depends on GitHub's scheduler to RUN — which is the half that froze this repository for ~18h on 2026-08-10 and ~46h on 2026-09-02. ⚠️ BUT THIS ROW STILL READS `event=schedule`, and it must until the timer claim moves, because a dispatched run arrives as `event=workflow_dispatch` and that is INDISTINGUISHABLE FROM A HAND-PRESS: accepting it here would make freshness green on somebody being awake, the exact failure assert-platform-proof-fresh.mjs names in its own header (\"counting manual runs is what let a never-firing cron look healthy\"). So the 12 `schedule:` slots STAY, and services/platform/test/github-dispatch.test.ts fails the build if a dispatched workflow that any row still reads this way loses them. ⬜ WHAT CLOSES IT PROPERLY: the timer claim comes from the `cron_heartbeat` row the dispatcher writes (a record only the timer can write), and this reader drops to OUTCOME only — newest successful run with an explicit `head_branch === main`, because the `event=schedule` filter is ALSO what silently guaranteed the branch. ⏱ 2026-10-01 (PB-10, O-OPS-WATCH-GRADES-ITS-OWN-FRESHNESS) — ANSWERED, appended rather than rewritten: `mechanism.readBy` now names services/platform/src/ops-watchdog.ts, which grades the age of main's newest completed ops-watch run on every 6-hourly Cloudflare firing (ceiling 6 h) and pages the owner itself, off GitHub and off Box B. OWNER_QUEUE S-8 retires for this duty with no GlitchTip console step; [14]O-10 now counts this row as read.",
       "absenceWatcher": {
         "substrate": "(none)",
         "what": "NOTHING. This is the row [14]O-4 was written from, and it is the only row in the register whose own guard already prints the sentence on every single run.",
         "ownerGated": true,
-        "gap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE — and it is a strictly worse gap than the two rows above, because this workflow IS the absence watcher for duty.platform-cron. Its FAILING is loud (the alert job opens the durable issue THIS ROW declares in mechanism.record, matched on title and never on number; observed 2026-08-04, and again 2026-08-12 run 31584600130). Its silently ceasing to run is not: GitHub disables scheduled workflows in inactive public repositories, and unlike build-platforms.yml and e2e.yml there is no push-triggered reader holding this cadence at all — see this row's own freshnessGap, which the [14]O-10 limb has been printing since 2026-08-03. Closing it needs an absence signal hosted on a second provider, and the mechanism is already proven twice in this portfolio: an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN (the laptop chain's monitor 6, and the Oracle box's monitor 16 at 3h against an hourly post). Both halves of that need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. The declaration is what this increment can build; the monitor is not."
+        "gap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE — and it is a strictly worse gap than the two rows above, because this workflow IS the absence watcher for duty.platform-cron. Its FAILING is loud (the alert job opens the durable issue THIS ROW declares in mechanism.record, matched on title and never on number; observed 2026-08-04, and again 2026-08-12 run 31584600130). Its silently ceasing to run is not: GitHub disables scheduled workflows in inactive public repositories, and unlike build-platforms.yml and e2e.yml there is no push-triggered reader holding this cadence at all — see this row's own freshnessGap, which the [14]O-10 limb has been printing since 2026-08-03. Closing it needs an absence signal hosted on a second provider, and the mechanism is already proven twice in this portfolio: an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN (the laptop chain's monitor 6, and the Oracle box's monitor 16 at 3h against an hourly post). Both halves of that need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. The declaration is what this increment can build; the monitor is not. ⏱ 2026-10-01 (PB-10) — A WATCHER ON A SECOND PROVIDER NOW EXISTS, and it is not a GlitchTip monitor: the platform Worker's `ops-watch-freshness` limb (services/platform/src/ops-watchdog.ts) on Cloudflare, paging by Resend directly (tooling/ops/alarm-chains.json `ownerPage`). `substrate` stays `(none)` and `ownerGated` true until its first forced page is OBSERVED and recorded — a watcher nobody has watched deliver is a declaration, which is the line this row has always drawn."
       },
       "accessProviders": [
         "github",
@@ -2404,6 +2453,49 @@
       ],
       "source": "unverified",
       "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run has been observed, and the draft that wrote it could not run Flutter. Verified before the push, by mutation of the real tree: with the workflow absent, assert-ops-register.mjs's checkNamedLanes limb names tooling/ci/assert-mutation-proofs.mjs; with the workflow and without this row, its both-directions limb names the file. NOT VERIFIED: the executed half's wall time on a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-10-01 in the same commit as .github/workflows/time-travel.yml, because assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions. At 2026-10-01 00:00Z services/platform/test/fx.test.ts, which read the wall clock against a fixed `asOf`, went red on EVERY pull request for hours (#1101), and the sweep that pinned it found two more fuses of the same shape (money.test.ts at 2027-01-01, receipts.test.ts at 2027-09-01) by READING. The lead's decision: run every suite with the clock moved forward, weekly, so the next fuse fires in this run and not on a Tuesday. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope), for the reason that class exists: a fuse this run finds drains only by MERGING its fix, and main's run can go green only after that merge, so a verdict that froze ci-gate would freeze the one merge that clears it — the ci-18 deadlock shape. The brief that ordered this workflow says a red run PAGES and that it is not a PR check.",
+      "id": "duty.freshness.time-travel",
+      "kind": "duty",
+      "what": "Every test suite, run on a LATER DAY: the three Worker suites (from tooling/ci/worker-set.mjs), the stamped brick Worker, tooling/ci/test and tooling/content_pipeline/test, and the Dart workspace (`melos run test`), each at now+400 days and at the next 31 Dec 23:59Z and 1 Jan 00:00Z, with NIKATRU_TEST_NOW set to the instant. The Worker suites read it through services/_shared/test/test-clock.ts (every Worker's vitest setupFiles); node, children included, through tooling/scripts/test-clock.mjs in NODE_OPTIONS; the app's Flutter suite through apps/subscriptiontracker/test/flutter_test_config.dart, which moves the `wallClock` seam behind `nowProvider`. Saturdays 05:10 UTC.",
+      "detector": "The run's own conclusion: any leg red is a test that passes today and fails on that day — a date fuse, or a test that reads two clocks — and the leg's name carries the instant. A COVERAGE LOST is a leg that did not run its suite: an unparseable NIKATRU_TEST_NOW refuses at startup (all three halves throw rather than run on today), and test-clock.test.ts T1 / test_clock_test.dart refuse a suite that stopped loading the clock.",
+      "response": "Re-run the red leg's suite locally with NIKATRU_TEST_NOW set to the instant in the leg's name (Workers: `npm test` in the Worker; tooling: also NODE_OPTIONS=--import=<repo>/tooling/scripts/test-clock.mjs; Dart: from the workspace, `melos run test`). PIN THE TEST'S CLOCK — `vi.useFakeTimers({ toFake: ['Date'] })` + `vi.setSystemTime(...)` as #1101 did, or a `nowProvider` override in Dart — never widen a date literal to push the fuse out. Prove the fix on its branch with a workflow_dispatch of time-travel.yml with `instant` set to that day before merging. Never delete a leg to clear the red.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/time-travel.yml",
+        "record": "GitHub Actions run history for time-travel.yml, filtered to event = schedule",
+        "failingValue": "no scheduled success inside the window [7d x 1.5 = 252h], or a newest failure newer than the newest success. A red leg fails the run, so a fuse nobody pins ages this row exactly as a stopped timer does.",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "time-travel.yml",
+          "unit": "run",
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-12T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.mutation-proofs.yml's (TRAPS ci-18): a run history does not exist until the file is on the default branch, so the row and its record cannot both be true on the day of the merge. ⏱ 2026-10-02 (club apply-platform, held for review before landing): drafted as 2026-10-07 for a merge on or before Saturday 2026-10-03 05:10 UTC. A merge after that has its first slot on Saturday 2026-10-10, and 2026-10-14 is more than this row's own [7d x 1.5 = 252h] window from 2026-10-02, which the schema limb refuses. 2026-10-12T00:00Z serves both: ~43h of scheduler lateness after the 2026-10-10 slot, ~237h from 2026-10-02 07:30 UTC. ⚠️ IF THIS MERGES AFTER 2026-10-10 05:10 UTC the first slot is 2026-10-17, so this date must move in the same pull request. No owner step stands before the first slot: every job needs only `contents: read` under its own token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is a person proving one instant green on a branch, not the cadence. `headBranch: main` is stated rather than left implied. `unit: run` because every job of the workflow performs this one duty and no other row reads it."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ THE WATCHER IS ON THE PROVIDER IT WATCHES — the same circularity as every other workflow row here. It DOES catch a schedule GitHub disables in an inactive public repository, because the [14]O-3 limb reads this record. It does NOT catch GitHub Actions ceasing to run this repository's jobs at all. Closing it needs a heartbeat on a second provider: OWNER_QUEUE S-8."
+      },
+      "freshnessGap": "🔴 NO DEDICATED IN-TREE FRESHNESS READER for the 7d cadence, the same choice as duty.workflow.mutation-proofs.yml. What reads the EFFECT on every push is the shared suite itself: services/_shared/test/test-clock.test.ts T1 refuses a Worker vitest.config.ts that stopped loading the clock, and tooling/ci/test/test-clock.test.mjs C7 refuses a workflow that stopped passing NIKATRU_TEST_NOW and the preload to the tooling suite. WEEKLY because a fuse is found ~400 days before it fires; the cost is stated: ONE missed or red Saturday puts this row past its 252h window — in ops-watch.yml only (liveVerdictScope). Declared 2026-10-01.",
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run has been observed. Verified before the push in a draft sandbox (node 22, Flutter 3.47.5): the three Worker suites green unshifted and at 2027-11-05, 2026-12-31T23:59Z and 2027-01-01T00:00Z; with #1101's money.test.ts pin reverted in a scratch commit, `npm test` in services/platform red with exactly #1101's 4 cases at 2027-01-01T00:00Z and at now+400d and green at 2026-12-31T23:59Z. NOT VERIFIED: the tooling and Dart legs' wall time on a GitHub-hosted runner, and the stamped brick leg end to end (mason was not run in the draft). The first scheduled run is that measurement; flip this row to `verified` on its evidence.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "freshness, not correctness: a fuse this run finds fires on a FUTURE day, drains only by merging its pin, and main's run turns green only after that merge; a frozen ci-gate would stop exactly that merge (#1101, time travel)"
+      }
     },
     {
       "_whyThisRowExists": "APPENDED 2026-09-25 for O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so .github/workflows/rollback.yml and this row land together.",
@@ -4555,7 +4647,7 @@
         "failingValue": "rows older than the declared period — once a period exists",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half is BUILT AND DORMANT as of 2026-08-11 (see `deletingJob`), so this row no longer waits on new code, only on a number"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, deliberately: assert-ops-register.mjs demands a `deletingJob` the moment `rule` becomes `period`, and a requirement that needs new code on the day the owner acts is a requirement that gets half-met. While `EVENTS_RETENTION_DAYS` is null the job prepares NO statement and its heartbeat detail reads `declared=0 … INERT`; with a number it deletes rows whose `server_ts` is older than that many days, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent. Both branches are held by services/platform/test/retention-sweep.test.ts.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, deliberately: assert-ops-register.mjs demands a `deletingJob` the moment `rule` becomes `period`, and a requirement that needs new code on the day the owner acts is a requirement that gets half-met. While `EVENTS_RETENTION_DAYS` is null the job prepares NO statement and its heartbeat detail reads `declared=0 … INERT`; with a number it deletes rows whose `server_ts` is older than that many days, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run), filtered and idempotent. Both branches are held by services/platform/test/retention-sweep.test.ts.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -4678,7 +4770,7 @@
         "failingValue": "a payload older than the declared period — once a period exists",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half only) — the sweep half is BUILT AND DORMANT as of 2026-08-11, see `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, for the reason assert-ops-register.mjs states: a declared period that nothing enforces is retention as a policy sentence. While `PROVIDER_NOTIFICATIONS_RETENTION_DAYS` is null the job prepares NO statement; with a number it deletes rows whose `received_at` is older than that many days, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent. ⚠️ THE SWEEP IS RETENTION, NOT ERASURE, AND IT DOES NOT CLOSE THE OTHER HALF OF THIS ROW: it deletes by AGE, so the fact that this table carries no `user_id` and sits outside the account-deletion sweep is untouched by it. Both branches are held by services/platform/test/retention-sweep.test.ts.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, for the reason assert-ops-register.mjs states: a declared period that nothing enforces is retention as a policy sentence. While `PROVIDER_NOTIFICATIONS_RETENTION_DAYS` is null the job prepares NO statement; with a number it deletes rows whose `received_at` is older than that many days, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run), filtered and idempotent. ⚠️ THE SWEEP IS RETENTION, NOT ERASURE, AND IT DOES NOT CLOSE THE OTHER HALF OF THIS ROW: it deletes by AGE, so the fact that this table carries no `user_id` and sits outside the account-deletion sweep is untouched by it. Both branches are held by services/platform/test/retention-sweep.test.ts.",
       "ownerGated": true,
       "ownerGap": "✅ CLOSED 2026-08-12 by [ADR 045] — the period is 730 days and is declared in `periodDays` above and in services/platform/src/scheduled.ts. 📌 THIS FIELD PREVIOUSLY READ 'OWNER DECISION OUTSTANDING' AND WAS LEFT UNCHANGED WHEN THE NUMBER WAS LOCKED, so the register was still asking the owner for a decision they had already made. Retained rather than deleted because the sequence is the record: the row was undeclared, it was decided, and the gap text is what has to be closed by hand when that happens."
     },
@@ -4699,6 +4791,72 @@
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0004_money_rail.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.ai_accounts",
+      "store": "d1:platform_db:ai_accounts",
+      "what": "A user's paid AI credits, monthly allowance used and AI opt-in (T17).",
+      "rule": "keep",
+      "keepWhy": "It is the balance the customer paid for and the record of their AI opt-in; a timer would delete credits that were bought. The row carries `user_id`, so it leaves with the account via the derived erasure sweep — a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0027_ai_meter.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.ai_ledger",
+      "store": "d1:platform_db:ai_ledger",
+      "what": "One row per paid AI call (tokens and USD) and per verified pack purchase (T17).",
+      "rule": "keep",
+      "keepWhy": "It explains a customer's credit balance and is what the global daily spend circuit-breaker sums; a pack grant row is the idempotency key that stops a replayed purchase webhook crediting twice, so expiring it would let a replay credit again. The row carries `user_id`, so it leaves with the account via the derived erasure sweep.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0027_ai_meter.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.refund_requests",
+      "store": "d1:platform_db:refund_requests",
+      "what": "Every in-window refund a user asked for and what became of it (refund-finish, MF-5).",
+      "rule": "keep",
+      "keepWhy": "It is the money event a dispute or an audit asks about, and the unique (provider, purchase_ref) row is what stops a payment being refunded twice — expiring it would let a later request refund the same charge again. The row carries `user_id`, so it leaves with the account via the derived erasure sweep — a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0028_refund_requests.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
@@ -4964,7 +5122,7 @@
         "failingValue": "a row whose `signed_up_at` is older than 400 days",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `signups` limb deletes rows whose `signed_up_at` is older than SIGNUPS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent, on age alone because nothing is derived from the table. Held by services/platform/test/retention-sweep.test.ts.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `signups` limb deletes rows whose `signed_up_at` is older than SIGNUPS_RETENTION_DAYS, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run), filtered and idempotent, on age alone because nothing is derived from the table. Held by services/platform/test/retention-sweep.test.ts.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -4988,7 +5146,7 @@
         "failingValue": "a row whose `created_at` is older than 400 days",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `content_reports` limb deletes rows whose `created_at` is older than CONTENT_REPORTS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP), on age alone because nothing is derived from the table. Held by services/platform/test/report.test.ts.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `content_reports` limb deletes rows whose `created_at` is older than CONTENT_REPORTS_RETENTION_DAYS, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run), on age alone because nothing is derived from the table. Held by services/platform/test/report.test.ts.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -5012,7 +5170,7 @@
         "failingValue": "a row whose `expires_at` is more than 1 day in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_codes` limb deletes rows whose `expires_at` is older than EXT_CODES_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps an UNEXPIRED code through the sweep.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_codes` limb deletes rows whose `expires_at` is older than EXT_CODES_RETENTION_DAYS, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run). Held by services/platform/test/retention-sweep.test.ts, which keeps an UNEXPIRED code through the sweep.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -5036,7 +5194,7 @@
         "failingValue": "a row whose `revoked_at` is more than 30 days in the past, or whose lifetime ended more than 30 days ago",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, and never-revoked rows whose lifetime ended more than that long ago (`extDevicesExpiredCutoffs`), at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked device used yesterday, a device revoked 29 days ago and one idle 59 days, and deletes one created 211 days ago and one idle 61 days.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, and never-revoked rows whose lifetime ended more than that long ago (`extDevicesExpiredCutoffs`), 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked device used yesterday, a device revoked 29 days ago and one idle 59 days, and deletes one created 211 days ago and one idle 61 days.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -5106,7 +5264,7 @@
         "failingValue": "a row whose `last_used_at` is more than 90 days in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_keys` limb deletes rows whose `last_used_at` is older than NATIVE_ATTEST_KEYS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a key used yesterday through the sweep.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_keys` limb deletes rows whose `last_used_at` is older than NATIVE_ATTEST_KEYS_RETENTION_DAYS, 1000 per pass (MAX_ROWS_PER_SWEEP), again while a pass is full, inside MAX_SWEEP_STATEMENTS_PER_RUN (2026-10-01; it was 1000 per run). Held by services/platform/test/retention-sweep.test.ts, which keeps a key used yesterday through the sweep.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -5198,7 +5356,7 @@
         "failingValue": "a row whose `due_on` is more than 400 days in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "reminder_mail — the nightly Cloudflare cron limb `reminderMail` in services/platform/src/scheduled.ts (work in src/lib/reminders.ts `pruneLedger`), watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. It deletes rows whose `due_on` is older than REMINDER_SENT_RETENTION_DAYS, at most 1000 per run (MAX_PRUNE_PER_RUN), and prints the count as `pruned=` in every row it writes. Held by services/platform/test/reminder-mail.test.ts, which keeps a row one day inside the period.",
+      "deletingJob": "reminder_mail — the nightly Cloudflare cron limb `reminderMail` in services/platform/src/scheduled.ts (work in src/lib/reminders.ts `pruneLedger`), watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. It deletes rows whose `due_on` is older than REMINDER_SENT_RETENTION_DAYS, 1000 per pass (MAX_PRUNE_PER_RUN), again while a pass is full, at most MAX_PRUNE_PASSES_PER_RUN passes (2026-10-01; it was 1000 per run), and prints the count as `pruned=` in every row it writes. Held by services/platform/test/reminder-mail.test.ts, which keeps a row one day inside the period.",
       "accessProviders": [
         "cloudflare"
       ],

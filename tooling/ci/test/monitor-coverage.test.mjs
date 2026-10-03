@@ -145,6 +145,12 @@ const SITE_HTML = (host) => `<!doctype html>
 
 const monitor = (id, name, type = 'Ping') => ({ id, name, type, intervalSeconds: 60, verifiedOn: '2026-08-02' });
 
+/** ⏱ 2026-10-01 (PB-12) — the fourth derived source: an edge Worker's zone routes.
+ *  The route's PATH is not part of the host; the fixture keeps one so a reader that
+ *  took the whole pattern as the hostname would derive a host no row names. */
+const PLATFORM_REGISTER = (routes = [{ pattern: 'shield.example.test/auth/v1/*', zone_name: 'example.test' }]) =>
+  JSON.stringify({ edgeWorkers: [{ name: 'edge-shield', zoneRoutes: routes }] }, null, 2);
+
 const REGISTER = () => ({
   hosts: [
     { hostname: 'main.example.test', derivedFrom: 'siteCanonicals', monitor: monitor(1, 'main') },
@@ -165,6 +171,7 @@ const REGISTER = () => ({
       monitor: null,
       gap: { why: 'nothing watches the shared ingest', action: 'create a monitor', openedOn: '2026-08-02' },
     },
+    { hostname: 'shield.example.test', derivedFrom: 'edgeWorkerZoneRoutes', monitor: monitor(7, 'shield', 'GET') },
   ],
   observability: { decidedOn: null, decidedBy: null },
 });
@@ -178,6 +185,7 @@ function makeRepo(edit = (f) => f) {
     'sites/main/index.html': SITE_HTML('main.example.test'),
     'sites/founder/index.html': SITE_HTML('founder.example.test'),
     'tooling/monitor-register.json': JSON.stringify(REGISTER(), null, 2),
+    'tooling/platform-register.json': PLATFORM_REGISTER(),
   });
   for (const [rel, body] of Object.entries(files)) {
     if (body === null) continue;
@@ -205,8 +213,71 @@ describe('assert-monitor-coverage — the deployed set is derived, not typed', (
   test('PASSES when every derived hostname has a row', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /6 deployed hostname\(s\) derived from 3 source\(s\)/);
-    assert.match(r.out, /workerCustomDomains: 2, appCatalogue: 2, siteCanonicals: 2/);
+    assert.match(r.out, /7 deployed hostname\(s\) derived from 4 source\(s\)/);
+    assert.match(r.out, /workerCustomDomains: 2, appCatalogue: 2, siteCanonicals: 2, edgeWorkerZoneRoutes: 1/);
+  });
+
+  // ⏱ 2026-10-01 (PB-12) — auth-api.nikatru.com was routed by edge-shield and watched by
+  // monitor 17 with NO row, because no source above could name it.
+  test('🔴 FAILS when an edge Worker zone route fronts a host nothing declares', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'tooling/platform-register.json': PLATFORM_REGISTER([
+        { pattern: 'shield.example.test/auth/v1/*', zone_name: 'example.test' },
+        { pattern: 'auth-api.example.test/auth/v1/*', zone_name: 'example.test' },
+      ]),
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /auth-api\.example\.test is deployed by this repository \(edgeWorkerZoneRoutes\) and has NO row/);
+  });
+
+  test('FAILS when the zone-route host\'s row is deleted — the PB-12 red, from the register side', () => {
+    const r = run(makeRepo(withRegister((reg) => { reg.hosts = reg.hosts.filter((h) => h.hostname !== 'shield.example.test'); })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /shield\.example\.test is deployed by this repository \(edgeWorkerZoneRoutes\) and has NO row/);
+  });
+
+  test('FAILS a zone route on a WILDCARD host — no one hostname a monitor could watch', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'tooling/platform-register.json': PLATFORM_REGISTER([
+        { pattern: 'shield.example.test/auth/v1/*', zone_name: 'example.test' },
+        { pattern: '*.example.test/*', zone_name: 'example.test' },
+      ]),
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /routes the wildcard host "\*\.example\.test"/);
+  });
+
+  test('COVERAGE LOST when no edge Worker declares a zone route', () => {
+    const r = run(makeRepo((f) => ({ ...f, 'tooling/platform-register.json': PLATFORM_REGISTER([]) })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the "edgeWorkerZoneRoutes" derivation yielded no hostname/);
+  });
+
+  test('COVERAGE LOST when tooling/platform-register.json is missing', () => {
+    const r = run(makeRepo((f) => ({ ...f, 'tooling/platform-register.json': null })));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/platform-register\.json does not exist/);
+  });
+
+  // ⏱ 2026-10-01 (PB-23) — a recorded threshold is a measured fact and carries its date.
+  test('FAILS a confirmationThreshold with no confirmationThresholdVerifiedOn', () => {
+    const r = run(makeRepo(withRegister((reg) => {
+      reg.hosts.find((h) => h.hostname === 'api.example.test').monitor.confirmationThreshold = 2;
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /api\.example\.test claims a monitor but the claim is incomplete: no confirmationThresholdVerifiedOn/);
+  });
+
+  test('a DATED confirmationThreshold passes', () => {
+    const r = run(makeRepo(withRegister((reg) => {
+      Object.assign(reg.hosts.find((h) => h.hostname === 'api.example.test').monitor, {
+        confirmationThreshold: 2,
+        confirmationThresholdVerifiedOn: '2026-10-01',
+      });
+    })));
+    assert.equal(r.code, 0, r.out);
   });
 
   test('FAILS when a Worker gains a custom domain nothing declares', () => {
