@@ -1037,12 +1037,12 @@ jobs:
     # why: this aggregate treats 'skipped' as not-green as well as failure and
     # cancelled. A job-level if: on any platform job would otherwise let it print
     # "All 6 platforms built" over a platform that never built.
-    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release]
+    needs: [gate, prepare, linux_web_android, windows, apple, durable_symbols, release, attest]
     if: always()
     steps:
       - name: Require every platform green
         run: |
-          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }} durable_symbols=${{ needs.durable_symbols.result }} release=${{ needs.release.result }}"
+          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }} durable_symbols=${{ needs.durable_symbols.result }} release=${{ needs.release.result }} attest=${{ needs.attest.result }}"
           # 'skipped' added by review 2026-07-31: a job-level `if:` on any
           # platform job would otherwise let this print "All 6 platforms built"
           # over a platform that never built.
@@ -1050,6 +1050,61 @@ jobs:
             echo "::error::One or more platform builds failed"; exit 1
           fi
           echo "All 6 platforms built"
+
+  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE; review of #1187, findings 2 and 3). The ONLY job that can sign:
+  # id-token and attestations write are granted here and nowhere else in this file (assert-build-provenance.mjs limb F),
+  # so no step of the long publishing job can mint an OIDC token. It attests every file of the release directory —
+  # the installers, the archives, release.json and SHA256SUMS — then reads each back with gh attestation verify,
+  # pinned to this workflow as the signer, and keeps the per-file record for 90 days. UNCONDITIONAL, like the record
+  # steps of `release`: a cron or a dispatch rehearses the tag's attestation on its untagged directory. all_platforms
+  # needs it, so a run whose files did not verify is red.
+  attest:
+    name: Attest and verify every release file (${{ matrix.app }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [prepare, release]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Take the release directory the release job described
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-${{ matrix.app }}
+          path: dist
+      - name: Attest the build provenance of every release file
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      # why: an attestation nobody verified is a claim; the verified subject digest must be the file's own sha256.
+      - name: Verify every release file's provenance
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: >
+          node tooling/ci/verify-provenance.mjs --dir dist --repo "$REPO"
+          --signer-workflow "${REPO}/.github/workflows/build-platforms.yml"
+          --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
+          --out "${RUNNER_TEMP}/provenance.json"
+      - name: Keep the per-file provenance record
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-${{ matrix.app }}
+          path: ${{ runner.temp }}/provenance.json
+          if-no-files-found: error
+          retention-days: 90
 
   # ⏱ ADDED 2026-10-01 (O-STORE-BUILD-SYMBOLS-EXPIRE-AT-90-DAYS, review AA-07). A tag's builds are the
   # ones that ship — the apps.gov.in .apk a person uploads from the Release above all — and their
@@ -1127,14 +1182,10 @@ jobs:
       - windows
       - apple
       - durable_symbols
-    # why id-token and attestations: this job ALONE signs the build-provenance attestation of every file the
-    # Release publishes (O-RELEASES-HAVE-NO-PROVENANCE); assert-build-provenance.mjs fails any other job that gains them.
     permissions:
       contents: write
       deployments: write
       actions: read
-      id-token: write
-      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -1218,29 +1269,6 @@ jobs:
             tar -czf "dist/${TAG}-${n}.tar.gz" -C "$d" .
             echo "archived  ${TAG}-${n}.tar.gz"
           done
-      # why: every file the Release publishes gets a signed SLSA build-provenance attestation, AFTER it is staged and
-      # BEFORE it is described, so release.json can name the attestation and SHA256SUMS can name release.json
-      # (O-RELEASES-HAVE-NO-PROVENANCE). UNCONDITIONAL, like the record steps below: a cron or a dispatch rehearses
-      # the tag's attestation on its untagged dist. assert-build-provenance.mjs holds this order and this path.
-      - name: Attest the build provenance of every file this release publishes
-        id: attest
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: dist/*
-      # why: an attestation nobody verified is a claim; this reads every file back with gh attestation verify, pinned
-      # to this workflow as the signer, and checks the verified subject digest is the file's own sha256.
-      - name: Verify every file's provenance before the release is described
-        timeout-minutes: 10
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
-          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
-        run: >
-          node tooling/ci/verify-provenance.mjs --dir dist --repo "$REPO"
-          --signer-workflow "${REPO}/.github/workflows/build-platforms.yml"
-          --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
-          --out "${RUNNER_TEMP}/provenance.json"
       # why: BEFORE the manifest, never after. SHA256SUMS has to NAME release.json
       # or the one file that describes the release is the one file nobody can
       # verify — and `sha256sum -c` would still print ok, because it only checks
@@ -1286,8 +1314,7 @@ jobs:
             --released-at "$RELEASED_AT" \
             --version "${RELEASE_LINE}.${RUN_NUMBER}" \
             --build "$RUN_NUMBER" \
-            --stamps stamps \
-            --provenance "${RUNNER_TEMP}/provenance.json"
+            --stamps stamps
       - name: Write the checksum manifest, naming the gated commit
         env:
           APP: ${{ matrix.app }}
@@ -1323,6 +1350,16 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: warn
           retention-days: 90
+      # why: the attest job below signs EVERY file of this directory, release.json and SHA256SUMS included, so it
+      # takes the directory as it stands after both are written (O-RELEASES-HAVE-NO-PROVENANCE). Named
+      # release-dist-<app>, never <app>-…, for the reason the record upload below gives.
+      - name: Hand the attest job the release directory, release.json and SHA256SUMS included
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-${{ matrix.app }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
       # why: BEFORE the publish, and on EVERY run (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). The record
       # step below reads the same command after `gh release create`; a refusal there came after the publish.
       # Bare, so its exit is the step's; the untagged dist of a cron or a dispatch rehearses the tag's.

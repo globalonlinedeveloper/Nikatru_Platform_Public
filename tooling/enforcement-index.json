@@ -3586,8 +3586,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#release",
-      ".github/workflows/extensions.yml#release"
+      ".github/workflows/build-platforms.yml#attest",
+      ".github/workflows/extensions.yml#attest"
     ],
     "kind": "guard",
     "ref": "tooling/ci/verify-provenance.mjs",

@@ -670,9 +670,6 @@ function laneContext() {
       'github.ref_name': 'fullshot-v1.0.0',
       'steps.tag.outputs.id': 'fullshot',
       'steps.tag.outputs.version': '1.0.0',
-      // ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE): a real release run, so the lane takes its
-      // --provenance path; extensions.yml's dry-run rehearsal is the only run that drops it.
-      'inputs.dry_run': 'false',
     },
   };
 }
@@ -858,19 +855,6 @@ function gradeInvocation(wfRoot, inv, ctx) {
       writeStamp(join(stamps, `${app}-v1.0.0-app-release.aab`), { channel: row?.id ?? null, file: 'app-release.aab', body: 'fixture bytes' });
       emitArgs[stampsAt + 1] = stamps;
     }
-    // ⏱ 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE) — `--provenance <file>` is what the lane's verify step
-    // (tooling/ci/verify-provenance.mjs) wrote. Swapped the same way, for a record naming the fixture by
-    // its own sha256, so the emitter's provenance join runs over the lane's real arguments.
-    const provenanceAt = args.indexOf('--provenance', scriptAt + 1);
-    if (provenanceAt !== -1 && args[provenanceAt + 1] !== undefined && !args[provenanceAt + 1].startsWith('--')) {
-      const rec = join(tmp, 'provenance.json');
-      writeFileSync(rec, JSON.stringify({
-        schema: 'nikatru.provenance/1', repo: 'nikatru/platform', signerWorkflow: `nikatru/platform/${inv.wf.rel}`,
-        attestationId: '1', attestationUrl: 'https://github.com/nikatru/platform/attestations/1',
-        files: { [fixture]: { sha256: sha256('fixture bytes') } },
-      }));
-      emitArgs[provenanceAt + 1] = rec;
-    }
     const emit = spawnSync(process.execPath, emitArgs, { cwd, encoding: 'utf8' });
     if (emit.status !== 0) return fail(`the emitter, given the lane's arguments, exited ${emit.status}:\n${emit.stdout}${emit.stderr}`, { app, surface });
     const seal = spawnSync(process.execPath, [emitter, '--write', dir, '--app', app, '--tag', value('--tag'), '--sha', value('--sha'), '--run-url', value('--run-url')], { cwd, encoding: 'utf8' });
@@ -965,7 +949,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
   test('C3 RED — an extension lane that types a MAJOR.MINOR floor is refused at the emit, naming where the floor comes from', () => {
     // Re-anchored 2026-09-24 (EXT-3): the extension lane no longer passes the flag,
     // so the mutation ADDS one to the emit step's --version line.
-    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION" \\\n', '            --version "$VERSION" --min-supported "1.0" \\\n');
+    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION"\n', '            --version "$VERSION" --min-supported "1.0"\n');
     const { problems } = gradeEveryEmitter(root);
     const joined = problems.join('\n');
     assert.match(joined, /--min-supported is refused on the "extension" surface/, joined);
@@ -1131,7 +1115,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
 
   test('C13 RED — the extension lane with `--min-supported "$VERSION"` re-added is refused on a four-part store tag', () => {
     // The closes of O-EXTENSION-MINSUPPORTED-FOUR-PART-TAG, as the lane runs it.
-    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION" \\\n', '            --version "$VERSION" --min-supported "$VERSION" \\\n');
+    const root = mutatedWorkflows('extensions.yml', '            --version "$VERSION"\n', '            --version "$VERSION" --min-supported "$VERSION"\n');
     const inv = emitInvocations(root);
     assert.equal(inv.length, 1);
     const ctx = laneContext();
@@ -1153,7 +1137,7 @@ describe('every --emit-release-json a workflow runs emits a record the schema ac
   });
 
   test('C12 RED — the app lane with its `--stamps` dropped is refused, not described from the extensions', () => {
-    const root = mutatedWorkflows('build-platforms.yml', '            --build "$RUN_NUMBER" \\\n            --stamps stamps \\\n', '            --build "$RUN_NUMBER" \\\n');
+    const root = mutatedWorkflows('build-platforms.yml', '            --build "$RUN_NUMBER" \\\n            --stamps stamps\n', '            --build "$RUN_NUMBER"\n');
     const inv = emitInvocations(root);
     assert.equal(inv.length, 1);
     const g = gradeInvocation(root, inv[0], laneContext());

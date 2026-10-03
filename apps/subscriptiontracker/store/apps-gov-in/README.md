@@ -103,8 +103,8 @@ marked `OWNER FILLS`. The file to upload is the CI artifact
 ## Proving where the uploaded `.apk` came from
 
 The `.apk` a GitHub Release attaches for this channel carries a build-provenance
-attestation, signed by the release run and verified by it before the release was
-described (`tooling/ci/verify-provenance.mjs`). Anyone, apps.gov.in's
+attestation, signed and then verified by the release run's attest-only job
+(`tooling/ci/verify-provenance.mjs`). Anyone, apps.gov.in's
 reviewers included, can check the uploaded file with
 `gh attestation verify <file>.apk --repo <owner>/<repo>`. The steps are in
 `docs/release/verify-a-download.md`.

@@ -1109,8 +1109,9 @@ jobs:
       actions: read          # read-only, and it buys the ci-conclusion check
       pull-requests: read    # read-only: the merged PR's head SHA, where the per-tool legs ran
       deployments: write     # the [10]D-9 ledger row is written by the step below.
-      id-token: write        # this job ALONE signs the build provenance of every release file (O-RELEASES-HAVE-NO-PROVENANCE)
-      attestations: write    # and stores it; assert-build-provenance.mjs fails any other job that gains either
+    # why: the attest job names the artifact this job hands it by the tool id the tag step resolves.
+    outputs:
+      tool: ${{ steps.tag.outputs.id }}
     steps:
       # why: the owner's word is checked BEFORE anything is built, so a dispatch that cannot
       # publish says so in its first step rather than after 40 minutes of gates.
@@ -1534,35 +1535,6 @@ jobs:
           fi
           echo "SHA256SUMS.txt: $listed digest line(s) for ${#zips[@]} zip(s) in dist."
 
-      # why: every file the Release publishes gets a signed SLSA build-provenance attestation, AFTER the zips and
-      # SHA256SUMS.txt exist and BEFORE release.json describes them (O-RELEASES-HAVE-NO-PROVENANCE).
-      # assert-build-provenance.mjs holds the order. The dry-run guard: an attestation leaves the run (GitHub's
-      # attestation store and the public Sigstore log), so a dispatch rehearsal skips it, as it skips every step
-      # that hands anything out (assert-publish-steps-guarded.mjs); a tag push and a confirmed dispatch attest.
-      - name: Attest the build provenance of every file this release publishes
-        if: inputs.dry_run != true
-        id: attest
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: extensions/dist/*
-
-      # why: read back with gh attestation verify, pinned to this workflow as the signer; the verified subject
-      # digest must be the file's own sha256.
-      - name: Verify every file's provenance before the release is described
-        if: inputs.dry_run != true
-        working-directory: .
-        timeout-minutes: 10
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
-          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
-        run: >
-          node tooling/ci/verify-provenance.mjs --dir extensions/dist --repo "$REPO"
-          --signer-workflow "${REPO}/.github/workflows/extensions.yml"
-          --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
-          --out "${RUNNER_TEMP}/provenance.json"
-
       - name: Release notes from CHANGELOG
         run: |
           node scripts/changelog-section.mjs \
@@ -1597,20 +1569,14 @@ jobs:
           NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           TOOL: ${{ steps.tag.outputs.id }}
           VERSION: ${{ steps.tag.outputs.version }}
-          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
-          # why: a dry-run rehearsal attested nothing (the two steps above), so it describes without the record;
-          # every other run REQUIRES it, and the emitter refuses a file the verify step did not name.
-          provenance=(--provenance "${RUNNER_TEMP}/provenance.json")
-          if [ "$DRY_RUN" = true ]; then provenance=(); fi
           node tooling/ci/release-manifest.mjs --emit-release-json extensions/dist \
             --app "$TOOL" --tag "${TOOL}-v${VERSION}" --sha "$GITHUB_SHA" \
             --run-url "$RUN_URL" --notes-url "$NOTES_URL" \
             --released-at "$RELEASED_AT" \
-            --version "$VERSION" \
-            "${provenance[@]}"
+            --version "$VERSION"
 
       - name: The integrity record the platform requires of every release
         working-directory: .
@@ -1629,6 +1595,18 @@ jobs:
       - name: Grade the release record against the bytes beside it
         working-directory: .
         run: node tooling/ci/assert-release-json.mjs --dir extensions/dist
+
+      # why: the attest job signs EVERY file of this directory, release.json and both checksum files included, so
+      # it takes the directory as it stands after all are written (O-RELEASES-HAVE-NO-PROVENANCE). The dry-run
+      # guard: a rehearsal attests nothing (an attestation leaves the run), so it hands nothing over.
+      - name: Hand the attest job the release directory, release.json and the checksum files included
+        if: inputs.dry_run != true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-${{ steps.tag.outputs.id }}
+          path: extensions/dist
+          if-no-files-found: error
+          retention-days: 7
 
       - name: The register must be able to name where this ships
         if: github.event_name == 'push'
@@ -1711,6 +1689,60 @@ jobs:
   # checksum-verified -- never a fresh pack, so the store receives the bytes the rehearsal graded
   # and the Release published. The release job stays unbound: a tag push and a rehearsal never
   # wait for a reviewer. Store secrets stay repository secrets, named on the steps that use them.
+  # ⏱ ADDED 2026-10-03 (O-RELEASES-HAVE-NO-PROVENANCE; review of #1187, findings 2 and 3). The ONLY job in this file
+  # that can sign: id-token and attestations write are granted here alone (assert-build-provenance.mjs limb F), so
+  # no step of the release job — npm ci, the pack scripts — can mint an OIDC token. It attests every release file,
+  # release.json and both checksum files included, reads each back with gh attestation verify pinned to this
+  # workflow as the signer, and keeps the per-file record for 90 days. A dry-run rehearsal attests nothing: an
+  # attestation leaves the run (GitHub's store, the public Sigstore log), the rule assert-publish-steps-guarded.mjs
+  # holds the release job to. extensions-lane-accounting grades its result.
+  attest:
+    name: Attest and verify every release file
+    needs: release
+    if: inputs.dry_run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Take the release directory the release job described
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-${{ needs.release.outputs.tool }}
+          path: extensions/dist
+      - name: Attest the build provenance of every release file
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: extensions/dist/*
+      # why: an attestation nobody verified is a claim; the verified subject digest must be the file's own sha256.
+      - name: Verify every release file's provenance
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: >
+          node tooling/ci/verify-provenance.mjs --dir extensions/dist --repo "$REPO"
+          --signer-workflow "${REPO}/.github/workflows/extensions.yml"
+          --attestation-id "$ATTESTATION_ID" --attestation-url "$ATTESTATION_URL"
+          --out "${RUNNER_TEMP}/provenance.json"
+      - name: Keep the per-file provenance record
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-${{ needs.release.outputs.tool }}
+          path: ${{ runner.temp }}/provenance.json
+          if-no-files-found: error
+          retention-days: 90
+
   store-publish:
     name: Store publish — the owner's word, on the tag's released bytes
     needs: release
@@ -2145,6 +2177,7 @@ jobs:
       - e2e-suite
       - e2e-branded
       - release
+      - attest
       - store-publish
       - cws-token-keepalive
       - store-key-keepalive
@@ -2162,6 +2195,7 @@ jobs:
           E2E: ${{ needs.e2e-suite.result }}
           BRANDED: ${{ needs.e2e-branded.result }}
           RELEASE: ${{ needs.release.result }}
+          ATTEST: ${{ needs.attest.result }}
           STORE: ${{ needs.store-publish.result }}
           KEEPALIVE: ${{ needs.cws-token-keepalive.result }}
           STORE_KEEPALIVE: ${{ needs.store-key-keepalive.result }}
@@ -2185,7 +2219,7 @@ jobs:
           # So the guards are not trusted: the lane is derived here, separately,
           # from the event, and the results are required to match it.
           echo "event=$EVENT ref=$REF action=${ACTION:-none} label=${LABEL:-none} lane_input=${LANE:-none}"
-          echo "ci=$CI e2e=$E2E e2e-branded=$BRANDED release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE store-key-keepalive=$STORE_KEEPALIVE"
+          echo "ci=$CI e2e=$E2E e2e-branded=$BRANDED release=$RELEASE attest=$ATTEST store-publish=$STORE keepalive=$KEEPALIVE store-key-keepalive=$STORE_KEEPALIVE"
 
           # ⏱ 2026-09-24: the CI lane left this file for extensions-ci.yml, which ci.yml
           # calls on every pull request and push to main. Here it runs only on a dispatch
@@ -2231,6 +2265,20 @@ jobs:
             expect e2e-branded "$BRANDED" "$([ "$want" = e2e ] && echo yes || echo no)"
             expect release     "$RELEASE" "$([ "$want" = release ] && echo yes || echo no)"
           }
+
+          # The attest job is NOT a lane: it runs after every successful release job but a dry-run rehearsal's
+          # (O-RELEASES-HAVE-NO-PROVENANCE). That release must see it succeed; every other event must leave it SKIPPED.
+          if [ "$RELEASE" = success ] && [ "${DRY_RUN:-}" != true ]; then
+            case "$ATTEST" in
+              success) ;;
+              *) echo "::error::'attest' came out '$ATTEST' after a successful release job. A release whose files were not attested and verified is not done."; fail=1 ;;
+            esac
+          else
+            case "$ATTEST" in
+              skipped) ;;
+              *) echo "::error::'attest' came out '$ATTEST' with no release to attest (release=$RELEASE, dry_run=${DRY_RUN:-}). A signing job running outside a release is a guard that is too wide."; fail=1 ;;
+            esac
+          fi
 
           # The store-publish job is NOT a lane either: it runs only after a successful release
           # job on a publishing dispatch (a workflow_dispatch on a tag, lane=release, dry_run

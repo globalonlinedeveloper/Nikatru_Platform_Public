@@ -1,7 +1,6 @@
-// build-provenance.test.mjs — every release file is attested and verified before it is described
-// (O-RELEASES-HAVE-NO-PROVENANCE): tooling/ci/assert-build-provenance.mjs (the static half),
-// tooling/ci/verify-provenance.mjs (the verify wrapper, against a stubbed `gh`), and
-// tooling/ci/release-manifest.mjs --emit-release-json --provenance (the record).
+// build-provenance.test.mjs — every release file is attested and verified by an attest-only job
+// (O-RELEASES-HAVE-NO-PROVENANCE): tooling/ci/assert-build-provenance.mjs (the static half) and
+// tooling/ci/verify-provenance.mjs (the verify wrapper, against a stubbed `gh`).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -17,26 +16,45 @@ import { parseWorkflow } from '../workflow-scan.mjs';
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling/ci/assert-build-provenance.mjs');
 const WRAPPER = join(REPO, 'tooling/ci/verify-provenance.mjs');
-const EMITTER = join(REPO, 'tooling/ci/release-manifest.mjs');
 const PIN = 'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8';
+const UP = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+const DOWN = 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c';
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const run = (file, args) => spawnSync(process.execPath, [file, ...args], { encoding: 'utf8', cwd: REPO });
 const tmp = (p) => mkdtempSync(join(tmpdir(), p));
 
 // ── the static guard ────────────────────────────────────────────────────────
-const RELEASE_JOB = ({ grants = '      id-token: write\n      attestations: write\n', attest = true, verify = true, provenance = true, attestAfter = false, uses = PIN } = {}) => {
-  const attestStep = `      - name: Attest\n        id: attest\n        uses: ${uses}\n        with:\n          subject-path: dist/*\n`;
-  const verifyStep = '      - name: Verify\n        run: node tooling/ci/verify-provenance.mjs --dir dist --repo o/r\n';
-  const emitStep = `      - name: Describe\n        run: >\n          node tooling/ci/release-manifest.mjs --emit-release-json dist\n          --app x${provenance ? '\n          --provenance p.json' : ''}\n`;
+/** The release job: describe, --write, then hand the directory over (or not, or too early). */
+const RELEASE_JOB = ({ handOver = 'after', releaseGrants = '' } = {}) => {
+  const up = `      - name: Hand over\n        uses: ${UP}\n        with:\n          name: release-dist-\${{ matrix.app }}\n          path: dist\n`;
   return [
     '  release:',
     '    runs-on: ubuntu-24.04',
     '    permissions:',
     '      contents: write',
+    releaseGrants.replace(/\n$/, ''),
+    '    steps:',
+    (handOver === 'before' ? up : '') +
+      '      - name: Describe\n        run: >\n          node tooling/ci/release-manifest.mjs --emit-release-json dist\n          --app x\n' +
+      '      - name: Checksums\n        run: >\n          node tooling/ci/release-manifest.mjs --write dist\n          --app x\n' +
+      (handOver === 'after' ? up : '') +
+      '      - name: Publish\n        run: gh release create "$T" $assets',
+  ].filter((l) => l !== '').join('\n');
+};
+/** The attest-only job that needs it. */
+const ATTEST_JOB = ({ grants = '      id-token: write\n      attestations: write\n', needs = 'release', attest = true, verify = true, verifyFirst = false, uses = PIN, into = 'dist', subject = 'dist/*' } = {}) => {
+  const att = `      - name: Attest\n        id: attest\n        uses: ${uses}\n        with:\n          subject-path: ${subject}\n`;
+  const ver = `      - name: Verify\n        run: node tooling/ci/verify-provenance.mjs --dir ${into} --repo o/r\n`;
+  return [
+    '  attest:',
+    `    needs: [${needs}]`,
+    '    runs-on: ubuntu-24.04',
+    '    permissions:',
+    '      contents: read',
     grants.replace(/\n$/, ''),
     '    steps:',
-    (attest && !attestAfter ? attestStep : '') + (verify ? verifyStep : '') + emitStep + (attest && attestAfter ? attestStep : '') +
-      '      - name: Publish\n        run: gh release create "$T" $assets',
+    `      - name: Take it\n        uses: ${DOWN}\n        with:\n          name: release-dist-\${{ matrix.app }}\n          path: ${into}\n` +
+      (verify && verifyFirst ? ver : '') + (attest ? att : '') + (verify && !verifyFirst ? ver : ''),
   ].filter((l) => l !== '').join('\n');
 };
 function grade(...jobs) {
@@ -49,32 +67,40 @@ function grade(...jobs) {
 }
 const limbs = (r) => r.findings.map((f) => f.slice(0, 1)).sort().join('');
 
-describe('assert-build-provenance.mjs — a release job attests, verifies and records; nothing else can sign', () => {
-  test('GREEN CONTROL — attest, verify, describe with --provenance, both scopes granted: no finding', () => {
-    const r = grade(RELEASE_JOB());
+describe('assert-build-provenance.mjs — an attest-only job signs and verifies every release file; nothing else can sign', () => {
+  test('GREEN CONTROL — the release job hands its whole directory over after --write; the attest job attests and verifies it', () => {
+    const r = grade(RELEASE_JOB(), ATTEST_JOB());
     assert.deepEqual(r.findings, []);
     assert.equal(r.releaseJobs.length, 1);
   });
-  test('A RED — no attest step before the describe', () => assert.match(limbs(grade(RELEASE_JOB({ attest: false }))), /A/));
-  test('A RED — the attest step comes AFTER the describe', () => assert.match(limbs(grade(RELEASE_JOB({ attestAfter: true }))), /A/));
-  test('A RED — the attest action pinned by a tag, not a SHA', () => assert.match(limbs(grade(RELEASE_JOB({ uses: 'actions/attest-build-provenance@v4' }))), /A/));
-  test('B RED — no verify step between the attest and the describe', () => assert.equal(limbs(grade(RELEASE_JOB({ verify: false }))), 'B'));
-  test('C RED — the describe passes no --provenance', () => assert.equal(limbs(grade(RELEASE_JOB({ provenance: false }))), 'C'));
-  test('D RED — the release job grants no id-token: write', () => {
-    assert.equal(limbs(grade(RELEASE_JOB({ grants: '      attestations: write\n' }))), 'D');
+  test('C RED — the directory is handed over BEFORE --write, so release.json and SHA256SUMS are not in what is signed', () => {
+    assert.match(limbs(grade(RELEASE_JOB({ handOver: 'before' }), ATTEST_JOB())), /C/);
+  });
+  test('C RED — the release job hands nothing over', () => assert.match(limbs(grade(RELEASE_JOB({ handOver: 'none' }), ATTEST_JOB())), /C/));
+  test('A RED — no job attests the directory', () => assert.match(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ attest: false, verify: false, grants: '' }))), /^A+$/));
+  test('A RED — the attest job does not need the release job', () => assert.match(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ needs: 'other' }), '  other:\n    runs-on: x\n    steps:\n      - run: echo')), /A/));
+  test('A RED — the attest step signs another path than the download', () => assert.match(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ subject: 'elsewhere/*' }))), /A/));
+  test('A RED — the attest action pinned by a tag, not a SHA', () => assert.match(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ uses: 'actions/attest-build-provenance@v4' }))), /A/));
+  test('B RED — no verify after the attest', () => assert.equal(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ verify: false }))), 'B'));
+  test('B RED — the verify runs BEFORE the attest', () => assert.equal(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ verifyFirst: true }))), 'B'));
+  test('D RED — the attest job grants no id-token: write', () => {
+    assert.equal(limbs(grade(RELEASE_JOB(), ATTEST_JOB({ grants: '      attestations: write\n' }))), 'D');
+  });
+  test('F RED — the RELEASE job holds id-token: write (the review\'s finding 3)', () => {
+    const r = grade(RELEASE_JOB({ releaseGrants: '      id-token: write\n' }), ATTEST_JOB());
+    assert.equal(limbs(r), 'F');
+    assert.match(r.findings[0], /rel\.yml#release: grants `id-token: write` and attests nothing/);
   });
   test('E RED — a job publishes a Release and describes nothing', () => {
-    const r = grade(RELEASE_JOB(), '  other:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: gh release create v1 a.zip');
-    assert.equal(limbs(r), 'E');
+    assert.equal(limbs(grade(RELEASE_JOB(), ATTEST_JOB(), '  other:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: gh release create v1 a.zip')), 'E');
   });
   test('F RED — ANOTHER job gains id-token: write and attests nothing', () => {
-    const r = grade(RELEASE_JOB(), '  build:\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo hi');
+    const r = grade(RELEASE_JOB(), ATTEST_JOB(), '  build:\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo hi');
     assert.equal(limbs(r), 'F');
     assert.match(r.findings[0], /rel\.yml#build: grants `id-token: write` and attests nothing/);
   });
   test('F RED — a workflow-level id-token: write reaches every job', () => {
-    const r = grade('permissions:\n  contents: read\n  id-token: write', RELEASE_JOB());
-    assert.equal(limbs(r), 'F');
+    assert.equal(limbs(grade('permissions:\n  contents: read\n  id-token: write', RELEASE_JOB(), ATTEST_JOB())), 'F');
   });
   test('the REAL tree is clean, and grades both release lanes', () => {
     const r = run(GUARD, []);
@@ -186,50 +212,3 @@ describe('verify-provenance.mjs — every release file verifies, and as its own 
   });
 });
 
-// ── release.json records the attestation per artefact ───────────────────────
-describe('release-manifest.mjs --emit-release-json --provenance', () => {
-  const emit = (dir, extra) =>
-    run(EMITTER, [
-      '--emit-release-json', dir, '--app', 'fullshot', '--tag', 'fullshot-v1.0.0',
-      '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
-      '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.0', '--repo-root', REPO, ...extra,
-    ]);
-  const record = (files) => ({ schema: 'nikatru.provenance/1', repo: 'o/r', signerWorkflow: 'o/r/.github/workflows/extensions.yml', attestationId: '77', attestationUrl: 'https://github.com/o/r/attestations/77', files });
-
-  test('GREEN — each artefact carries the attestation the verify step recorded for its bytes', () => {
-    const dir = tmp('provenance-emit-');
-    const work = tmp('provenance-rec-');
-    writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes');
-    writeFileSync(join(work, 'p.json'), JSON.stringify(record({ 'fullshot-chromium.zip': { sha256: sha256('chromium bytes') } })));
-    const r = emit(dir, ['--provenance', join(work, 'p.json')]);
-    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    const rel = JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8'));
-    assert.deepEqual(rel.artefacts[0].provenance, { attestationId: '77', attestationUrl: 'https://github.com/o/r/attestations/77' });
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(work, { recursive: true, force: true });
-  });
-  test('RED — a file the verify step did not name is refused, and no release.json is written', () => {
-    const dir = tmp('provenance-emit-');
-    const work = tmp('provenance-rec-');
-    writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes');
-    writeFileSync(join(dir, 'fullshot-firefox.zip'), 'firefox bytes');
-    writeFileSync(join(work, 'p.json'), JSON.stringify(record({ 'fullshot-chromium.zip': { sha256: sha256('chromium bytes') } })));
-    const r = emit(dir, ['--provenance', join(work, 'p.json')]);
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /fullshot-firefox\.zip carries no verified build provenance/);
-    assert.equal(existsSync(join(dir, 'release.json')), false);
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(work, { recursive: true, force: true });
-  });
-  test('RED — a file changed after it was verified (another sha256) is refused', () => {
-    const dir = tmp('provenance-emit-');
-    const work = tmp('provenance-rec-');
-    writeFileSync(join(dir, 'fullshot-chromium.zip'), 'chromium bytes, swapped');
-    writeFileSync(join(work, 'p.json'), JSON.stringify(record({ 'fullshot-chromium.zip': { sha256: sha256('chromium bytes') } })));
-    const r = emit(dir, ['--provenance', join(work, 'p.json')]);
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /it was verified as sha256/);
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(work, { recursive: true, force: true });
-  });
-});

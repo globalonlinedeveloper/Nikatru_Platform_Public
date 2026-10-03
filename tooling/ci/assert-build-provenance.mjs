@@ -8,35 +8,43 @@
 // to the workflow, commit and run that built it: SHA256SUMS proves the bytes
 // match a list, and whoever can change a file can change the list beside it.
 //
-// THE SUBJECT IS DERIVED, never listed: a RELEASE JOB is a job that runs
-// `release-manifest.mjs --emit-release-json <dir>` — the one step that describes
-// what a Release carries. `<dir>` is what that job publishes. Each one must:
-//   A  run actions/attest-build-provenance (or actions/attest), SHA-pinned, with
-//      `subject-path: <dir>/*`, BEFORE the describe step — so every file the
-//      record names was attested, whatever its format;
-//   B  run tooling/ci/verify-provenance.mjs `--dir <dir>` after the attest and
-//      before the describe — an attestation nobody verified is a claim;
-//   C  pass `--provenance` to the describe step, so release.json records the
-//      attestation per artefact (the emitter refuses a file the verify did not name);
-//   D  grant `id-token: write` and `attestations: write` at job level.
+// THE SUBJECT IS DERIVED, never listed: a RELEASE JOB R is a job that runs
+// `release-manifest.mjs --emit-release-json <D>` — the one step that describes what
+// a Release carries; <D> is the directory it publishes. ⏱ 2026-10-03 (review of
+// #1187, findings 2 and 3) the signing moved OUT of R into an attest-only job, so
+// no step of a long publishing job can mint an OIDC token, and release.json and
+// SHA256SUMS are attested like every other release file. For each R:
+//   C  R uploads <D> (actions/upload-artifact, `path: <D>`) AFTER its
+//      `release-manifest.mjs --write <D>` step — so the directory handed on holds
+//      release.json and SHA256SUMS, not only the installers;
+//   A  a job J of the same workflow `needs` R, downloads that artifact (its `name:`
+//      equal, `${{ … }}` read as a wildcard) into <P>, and then runs
+//      actions/attest-build-provenance (or actions/attest), SHA-pinned, with
+//      `subject-path: <P>/*`;
+//   B  J runs tooling/ci/verify-provenance.mjs `--dir <P>` after the attest — an
+//      attestation nobody verified is a claim;
+//   D  J grants `id-token: write` and `attestations: write` at job level.
 // And across every workflow:
 //   E  a job that runs `gh release create` is a release job (a Release published by
 //      a job that describes nothing carries files nobody attested);
 //   F  no job that attests nothing grants `id-token: write` or `attestations: write`,
-//      and no workflow grants either at workflow level (that reaches every job).
+//      and no workflow grants either at workflow level (that reaches every job) —
+//      R included.
 //
-// ⚠️ THE `if:` OF THESE STEPS IS NOT GRADED. extensions.yml skips the attest and
-// the verify on a dispatch rehearsal (`inputs.dry_run != true`, which
-// assert-publish-steps-guarded.mjs requires of every step that hands anything out
-// of the run) and drops --provenance there by an explicit DRY_RUN branch; on every
-// other run the emitter refuses a file the verify step did not name.
+// ⚠️ THE `if:` OF THESE STEPS AND JOBS IS NOT GRADED. extensions.yml skips the
+// hand-over and the attest job on a dispatch rehearsal (`inputs.dry_run != true`,
+// the rule assert-publish-steps-guarded.mjs holds for anything that leaves the run);
+// extensions-lane-accounting requires the attest job to SUCCEED after every other
+// successful release. The attestation is made after a tag's Release is published,
+// so a release whose files did not verify is a RED run (all_platforms needs the job
+// in build-platforms.yml), not an unpublished one.
 //
 // RECORDED FAILING CASES (tooling/ci/test/build-provenance.test.mjs, and the real
-// tree mutated by hand on 2026-10-03): the attest step deleted from
-// build-platforms.yml `release` → exit 1 (F, A); `id-token: write` added to
-// build-platforms.yml `apple` → exit 1 (F); `--provenance` dropped from
-// extensions.yml's describe step → exit 1 (C); its verify step pointed at another
-// directory → exit 1 (B). The unmutated tree → exit 0.
+// tree mutated by hand on 2026-10-03, each restored): build-platforms.yml's attest
+// job deleted → exit 1 (A); `id-token: write` added back to build-platforms.yml
+// `release` → exit 1 (F); extensions.yml's hand-over moved before `--write`
+// → exit 1 (C); the attest job's verify pointed at another directory → exit 1 (B).
+// The unmutated tree → exit 0.
 //
 // Usage: node tooling/ci/assert-build-provenance.mjs [--root <dir>]
 // Exit 0 = clean. 1 = a finding. 2 = COVERAGE LOST (no workflow parsed, or no
@@ -81,7 +89,25 @@ export function jobSteps(job) {
         subjectPaths.push(m[2].trim().replace(/^['"]|['"]$/g, ''));
       }
     }
-    return { n: s.n, text, uses, subjectPaths };
+    const withKeys = {};
+    const flow = s.lines.map((l) => l.match(/^\s+with:\s*\{(.*)\}\s*$/)?.[1]).find(Boolean);
+    if (flow) {
+      for (const kv of flow.split(',')) {
+        const m = kv.match(/^\s*([a-z-]+)\s*:\s*(.*?)\s*$/);
+        if (m) withKeys[m[1]] = m[2];
+      }
+    }
+    const at = s.lines.findIndex((l) => /^\s+with:\s*$/.test(l));
+    if (at !== -1) {
+      const indent = s.lines[at].search(/\S/);
+      for (const l of s.lines.slice(at + 1)) {
+        if (l.trim() === '') continue;
+        if (l.search(/\S/) <= indent) break;
+        const m = l.match(/^\s+([a-z-]+):\s*(\S.*?)\s*$/);
+        if (m) withKeys[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+      }
+    }
+    return { n: s.n, text, uses, subjectPaths, with: withKeys };
   });
 }
 
@@ -125,6 +151,11 @@ export function workflowGrants(wf) {
   return at === -1 ? new Map() : grantsBelow(head, at, 0);
 }
 
+const unslash = (s) => String(s ?? '').replace(/^['"]|['"]$/g, '').replace(/\/$/, '');
+/** An artifact name with every `${{ … }}` read as a wildcard, for comparing an upload with a download. */
+const artifactShape = (s) => unslash(s).replace(/\$\{\{[^}]*\}\}/g, '*');
+const usesAction = (s, name) => s.uses !== null && s.uses.split('@')[0] === name;
+
 /** PURE. `{ findings, releaseJobs }` over parsed workflows. */
 export function gradeProvenance(workflows) {
   const findings = [];
@@ -133,52 +164,75 @@ export function gradeProvenance(workflows) {
     const wg = workflowGrants(wf);
     for (const s of SIGNING_SCOPES) {
       if (wg.get(s) === 'write') {
-        findings.push(`F  ${wf.rel}: grants \`${s}: write\` at WORKFLOW level, which reaches every job in it. Grant it on the release job alone.`);
+        findings.push(`F  ${wf.rel}: grants \`${s}: write\` at WORKFLOW level, which reaches every job in it. Grant it on the attest job alone.`);
       }
     }
+    const steps = new Map([...wf.jobs.values()].map((j) => [j.name, jobSteps(j)]));
     for (const job of wf.jobs.values()) {
       const where = `${wf.rel}#${job.name}`;
-      const steps = jobSteps(job);
+      const js = steps.get(job.name);
       const grants = jobGrants(job);
-      const attests = steps.filter((s) => s.uses !== null && /^actions\/attest(?:-build-provenance)?@/.test(s.uses));
-      const emits = steps.filter((s) => EMIT.test(s.text));
-      const publishes = steps.some((s) => /\bgh\s+release\s+create\b/.test(s.text));
+      const attests = js.filter((s) => s.uses !== null && /^actions\/attest(?:-build-provenance)?@/.test(s.uses));
       for (const a of attests) {
         if (!ATTEST_USES.test(a.uses)) findings.push(`A  ${where}:${a.n} uses ${a.uses}, which is not pinned to a 40-hex commit SHA.`);
       }
       if (attests.length === 0) {
         for (const s of SIGNING_SCOPES) {
           if (grants.get(s) === 'write') {
-            findings.push(`F  ${where}: grants \`${s}: write\` and attests nothing. Only a release job that attests may hold it (an OIDC token signs as this repository).`);
+            findings.push(`F  ${where}: grants \`${s}: write\` and attests nothing. Only the attest job may hold it (an OIDC token signs as this repository).`);
           }
         }
       }
-      if (publishes && emits.length === 0) {
+      const emits = js.filter((s) => EMIT.test(s.text));
+      if (js.some((s) => /\bgh\s+release\s+create\b/.test(s.text)) && emits.length === 0) {
         findings.push(`E  ${where}: runs \`gh release create\` and describes nothing with release-manifest.mjs --emit-release-json, so the files it publishes carry no attested record.`);
       }
       for (const e of emits) {
-        const dir = e.text.match(EMIT)[1].replace(/^['"]|['"]$/g, '').replace(/\/$/, '');
+        const dir = unslash(e.text.match(EMIT)[1]);
         releaseJobs.push(`${where} (${dir})`);
-        const at = steps.indexOf(e);
-        const attest = attests.find((a) => steps.indexOf(a) < at && a.subjectPaths.some((p) => p === `${dir}/*` || p === `${dir}/**`));
-        if (!attest) {
-          findings.push(`A  ${where}:${e.n} describes ${dir}/ with no actions/attest-build-provenance step BEFORE it whose subject-path is \`${dir}/*\`: the files release.json names were never attested.`);
+        const writeAt = js.findIndex((s) => /release-manifest\.mjs\s+--write\s+/.test(s.text) &&dirArgAfter(s.text, '--write') === dir);
+        const handOver = js.find((s, i) => i > writeAt && usesAction(s, 'actions/upload-artifact') && unslash(s.with.path) === dir);
+        if (writeAt === -1 || !handOver) {
+          findings.push(`C  ${where}:${e.n} describes ${dir}/ and uploads no artifact with \`path: ${dir}\` after its \`release-manifest.mjs --write ${dir}\` step, so the attest job cannot sign release.json and SHA256SUMS with the rest.`);
+          continue;
         }
-        const from = attest ? steps.indexOf(attest) : -1;
-        const verified = steps.some((s, i) => i > from && i < at && VERIFY.test(s.text) && dirArgOf(s.text) === dir);
-        if (!verified) {
-          findings.push(`B  ${where}:${e.n} describes ${dir}/ and no step between the attest and the describe runs tooling/ci/verify-provenance.mjs --dir ${dir}: an attestation nobody verified is a claim.`);
+        const shape = artifactShape(handOver.with.name);
+        let signed = false;
+        for (const other of wf.jobs.values()) {
+          if (!other.needs.includes(job.name)) continue;
+          const os = steps.get(other.name);
+          const down = os.findIndex((s) => usesAction(s, 'actions/download-artifact') && artifactShape(s.with.name) === shape);
+          if (down === -1) continue;
+          const into = unslash(os[down].with.path);
+          const at = os.findIndex((s, i) => i > down && s.uses !== null && /^actions\/attest(?:-build-provenance)?@/.test(s.uses) && s.subjectPaths.some((p) => p === `${into}/*` || p === `${into}/**`));
+          const owhere = `${wf.rel}#${other.name}`;
+          if (at === -1) {
+            findings.push(`A  ${owhere} downloads ${where}'s release directory into ${into}/ and attests no \`subject-path: ${into}/*\` after it.`);
+            continue;
+          }
+          signed = true;
+          if (!os.some((s, i) => i > at && VERIFY.test(s.text) && dirArgOf(s.text) === into)) {
+            findings.push(`B  ${owhere} attests ${into}/ and no step after it runs tooling/ci/verify-provenance.mjs --dir ${into}: an attestation nobody verified is a claim.`);
+          }
+          const og = jobGrants(other);
+          for (const s of SIGNING_SCOPES) {
+            if (og.get(s) !== 'write') findings.push(`D  ${owhere}: attests a release and does not grant \`${s}: write\`, so it cannot sign.`);
+          }
         }
-        if (!/--provenance\b/.test(e.text)) {
-          findings.push(`C  ${where}:${e.n} describes ${dir}/ without --provenance, so release.json names no attestation for any artefact.`);
-        }
-        for (const s of SIGNING_SCOPES) {
-          if (grants.get(s) !== 'write') findings.push(`D  ${where}: describes a release and does not grant \`${s}: write\`, so it cannot attest.`);
+        if (!signed) {
+          findings.push(`A  ${where}:${e.n} describes ${dir}/ and no job that needs it downloads that directory and attests it (actions/attest-build-provenance, \`subject-path: <dir>/*\`): its files were never attested.`);
         }
       }
     }
   }
   return { findings, releaseJobs };
+}
+
+/** PURE. The token after `flag`, unquoted, or null. */
+function dirArgAfter(text, flag) {
+  const words = text.split(/\s+/);
+  const i = words.indexOf(flag);
+  return i === -1 || i + 1 >= words.length ? null : unslash(words[i + 1]);
 }
 
 function main(argv) {
@@ -200,7 +254,7 @@ function main(argv) {
     console.error(`\nassert-build-provenance: FAILED (${findings.length} finding(s))`);
     return 1;
   }
-  console.log('ok   each attests its release directory, verifies it, and records the attestation in release.json; no other job can sign');
+  console.log('ok   each hands its whole release directory to an attest-only job that signs and verifies every file; no other job can sign');
   return 0;
 }
 

@@ -615,7 +615,7 @@ The tree uses **4** third-party actions and **11** GitHub-owned ones, read from 
 | `actions/cache/restore` | GitHub | `ci.yml` |
 | `actions/cache/save` | GitHub | `ci.yml` |
 | `actions/checkout` | GitHub | `apple-expiry-write.yml`, `autopilot-watch.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `land.yml`, `lane-workers.yml`, `main-healthy.yml`, `migrate-platform-db.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `regen-gradle-verify.yml`, `review-gate.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
-| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
+| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `extensions.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
 | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `regen-gradle-verify.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
 | `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `regen-gradle-verify.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
@@ -909,7 +909,7 @@ naming the job it belonged to and the line it sat above.
 |---|---|---|---|---|
 | none | `.github/workflows/apple-expiry-write.yml` | Apple signing expiry write | `workflow_dispatch` | 1 |
 | none | `.github/workflows/autopilot-watch.yml` | Autopilot watch | `schedule`, `workflow_run`, `workflow_dispatch` | 2 |
-| [`build-platforms.md`](build-platforms.md) | `.github/workflows/build-platforms.yml` | Build apps | `workflow_dispatch`, `push`, `schedule` | 8 |
+| [`build-platforms.md`](build-platforms.md) | `.github/workflows/build-platforms.yml` | Build apps | `workflow_dispatch`, `push`, `schedule` | 9 |
 | this page | `.github/workflows/ci.yml` | CI | `push`, `workflow_dispatch`, `pull_request` | 44 |
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 3 |
@@ -917,7 +917,7 @@ naming the job it belonged to and the line it sat above.
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 5 |
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 29 |
-| [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 12 |
+| [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 13 |
 | [`land.md`](land.md) | `.github/workflows/land.yml` | Land | `schedule`, `workflow_run`, `pull_request_target`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 5 |
 | [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main health status (posts CI's verdict) | `workflow_run` | 1 |
