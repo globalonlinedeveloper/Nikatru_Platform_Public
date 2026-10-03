@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // capture-backend.mjs — the backend a store capture drives, computed from the
-// two Workers' wrangler.jsonc files, and the refusals that keep a capture off
-// production.
+// registered Workers' wrangler.jsonc files, and the refusals that keep a capture
+// off production.
 //
 // Row O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS, first line: "Captures run
 // against a non-production endpoint". Until this module the capture lane took
@@ -18,14 +18,16 @@
 // capture harness refuses to run a build that can reach an API unpinned.
 //
 // What this module refuses, each with a named limb:
-//   · sandboxBackend() — a Worker config with no `env.sandbox`; an `env.sandbox`
+//   · sandboxBackend() — over EVERY Worker the register names (CAPTURE_WORKERS,
+//     the serving Worker and each app Worker; ⏱ 2026-10-01, was a two-entry
+//     literal): a Worker config with no `env.sandbox`; an `env.sandbox`
 //     that does not declare `routes: []`, `workers_dev: true` and
 //     `triggers.crons: []` explicitly (wrangler INHERITS those three keys from
 //     the top level, so an absent one binds the production custom domain or a
 //     production cron to the sandbox script); a sandbox script name equal to a
 //     top-level script name (a `--env sandbox` deploy would replace production);
-//     a sandbox D1, KV or ratelimit id that is empty or equal to any top-level
-//     id in either config; and, for an app Worker (`<app>-api`), whatever
+//     a sandbox D1, KV, ratelimit, R2 or service-binding id that is empty or
+//     equal to any top-level id in any config; and, for an app Worker (`<app>-api`), whatever
 //     tooling/e2e/backend.mjs refuses for `backendOf(<app>, { env: 'sandbox' })`
 //     (limb `backend`): an `env.sandbox` without binding APP_DB or PLATFORM_DB,
 //     or an APP_DB another app's sandbox also binds. A capture's purge resolves
@@ -45,9 +47,9 @@
 // capture signs in a throwaway user there, and only the two Workers move.
 //
 // CLI:  node tooling/store/capture-backend.mjs --print-host <worker>
-// prints the sandbox origin of `platform` or `subscriptiontracker-api`, for
-// deploy-sandbox.yml's smoke and the capture jobs' health preflight, so neither
-// workflow spells a host out. Exit 0 printed; 1 refused; 2 a usage error.
+// prints the sandbox origin of any Worker CAPTURE_WORKERS names (`platform`, or an
+// app Worker such as `subscriptiontracker-api`), for deploy-sandbox.yml's smoke and
+// the capture jobs' health preflight, so neither workflow spells a host out. Exit 0 printed; 1 refused; 2 a usage error.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -58,13 +60,46 @@ import { backendOf, BackendRefused } from '../e2e/backend.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
 
-/** The two Workers a capture binary reaches. Both are routed: the board a
- *  capture photographs is written by subscriptiontracker-api, and the consent
- *  answer and analytics go to platform. */
-export const CAPTURE_WORKERS = Object.freeze({
-  platform: 'services/platform/wrangler.jsonc',
-  'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
-});
+/** Where the Worker set is declared: tooling/ci/worker-set.mjs's register. */
+export const REGISTER_REL = 'tooling/platform-register.json';
+
+/**
+ * `{ <worker name>: <config path> }` for the register's serving Worker and every
+ * `appWorkers` row, in that order. Never an `edgeWorkers` row: an edge Worker has
+ * no sandbox and no API a capture reaches.
+ *
+ * ⏱ 2026-10-01 · rv2-services-011 (row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV). This was
+ * a literal naming platform and subscriptiontracker-api, so app #2's Worker was in
+ * no sandbox refusal here, and deploy-sandbox.yml's smoke (`--print-host <worker>`
+ * for each leg) answered a usage error for it. Read off the register instead, the
+ * same rows worker-set.mjs builds the deploy matrices from, so every registered
+ * app Worker is held to the sandbox refusals below from the day it is provisioned.
+ */
+export function captureWorkersOf(register) {
+  const out = {};
+  const add = (row) => {
+    if (typeof row?.name === 'string' && row.name && typeof row?.config === 'string' && row.config) {
+      out[row.name] = row.config.replace(/\\/g, '/');
+    }
+  };
+  add(register?.servingWorker);
+  for (const w of Array.isArray(register?.appWorkers) ? register.appWorkers : []) add(w);
+  return out;
+}
+
+const readRegister = () => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, REGISTER_REL), 'utf8'));
+  } catch {
+    return null;
+  }
+};
+
+/** The Workers a capture binary's backend is computed from: the serving Worker
+ *  (consent and analytics) and every app Worker (the board a capture photographs
+ *  is written by its app's own). An unreadable register yields `{}`, which
+ *  sandboxBackend() refuses as `unreadable`, never as an empty backend. */
+export const CAPTURE_WORKERS = Object.freeze(captureWorkersOf(readRegister()));
 
 /** The account's workers.dev subdomain. A sandbox script has no custom domain
  *  (`routes: []`), so this is the only place it answers. */
@@ -105,12 +140,18 @@ export class CaptureBackendRefused extends Error {
 
 const defaultRead = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
-/** Binding → id for every D1, KV and ratelimit a config block declares. */
+/** Binding → id for every D1, KV, ratelimit, R2 bucket and service binding a
+ *  config block declares. ⏱ 2026-10-01 (rv2-services-022): R2 and services joined
+ *  when the platform's sandbox twinned BACKUPS_R2 and its erasure service binding,
+ *  so a sandbox bound to the production bucket, or to the production Worker by
+ *  service binding, is refused as `id-reuse` like a production database is. */
 function idsOf(block) {
   const ids = {};
   for (const d of block?.d1_databases ?? []) ids[`d1:${d.binding}`] = d.database_id;
   for (const k of block?.kv_namespaces ?? []) ids[`kv:${k.binding}`] = k.id;
   for (const r of block?.ratelimits ?? []) ids[`ratelimit:${r.name}`] = r.namespace_id;
+  for (const b of block?.r2_buckets ?? []) ids[`r2:${b.binding}`] = b.bucket_name;
+  for (const v of block?.services ?? []) ids[`service:${v.binding}`] = v.service;
   return ids;
 }
 
@@ -123,9 +164,15 @@ const workersDevOrigin = (script) => `https://${script}.${WORKERS_DEV_SUBDOMAIN}
  * sandboxIds, productionIds, supabaseUrl }`. Throws CaptureBackendRefused on
  * any of the refusals in the header.
  */
-export function sandboxBackend({ read = defaultRead } = {}) {
+export function sandboxBackend({ read = defaultRead, workers = CAPTURE_WORKERS } = {}) {
+  if (!Object.hasOwn(workers, 'platform')) {
+    throw new CaptureBackendRefused(
+      'unreadable',
+      `${REGISTER_REL} names no serving Worker \`platform\` (or could not be read), so no capture backend can be computed.`,
+    );
+  }
   const parsed = [];
-  for (const [worker, rel] of Object.entries(CAPTURE_WORKERS)) {
+  for (const [worker, rel] of Object.entries(workers)) {
     let cfg;
     try {
       cfg = parseJsonc(read(rel));
@@ -200,7 +247,7 @@ export function sandboxBackend({ read = defaultRead } = {}) {
           appIds:
             read === defaultRead
               ? undefined
-              : Object.keys(CAPTURE_WORKERS)
+              : Object.keys(workers)
                   .filter((w) => w.endsWith('-api'))
                   .map((w) => w.slice(0, -'-api'.length)),
         });
@@ -225,7 +272,7 @@ export function sandboxBackend({ read = defaultRead } = {}) {
   return backend;
 }
 
-/** Every top-level D1 database id across both configs — what a capture purge
+/** Every top-level D1 database id across the configs — what a capture purge
  *  must never be pointed at. */
 export function productionD1Ids(backend) {
   const ids = new Set();

@@ -11,8 +11,16 @@ This file is normative and stands alone: later trains read the standard from her
 
 The first subjects, at their honest levels: `tooling/ports/payments.json` (both halves — `RailInbound`, which is
 [ADR 004]'s `MoRWebhookVerifier`, and `RailOutbound` — at L3 since port-pay-core), `tooling/ports/auth.json` (Dart
-`AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each claiming L2 with target L3; every
-other vendor is placed in `tooling/ports/_non-port.json`. Payments also carries its CLIENT half (`client`: the Dart
+`AuthRepository`) and `tooling/ports/telemetry.json`, each claiming L2 with target L3; every other vendor is placed in
+`tooling/ports/_non-port.json`. Since port-telemetry, `telemetry.json` grades two interfaces apart: the Dart
+`TelemetryClient` at L3 (conformance suite `packages/telemetry/lib/testing.dart`) and the Worker half (`ErrorSink`,
+`Notifier` in `services/_shared/src/ports/telemetry.ts`) at L2. port-storage added `kv.json` (`KvStore`), `objects.json`
+(`ObjectStore`) and `ratelimit.json` (`RateLimiter`), each claiming and targeting L2: Cloudflare's KV, R2 and Rate
+Limiting bindings behind ports, with their conformance suites run against the fakes.
+port-sql added `sql.json` (`SqlDb`), claiming L2 with target L3: the D1 binding behind a D1-shaped port, its second
+engine the `node:sqlite` engine every Worker suite already ran its SQL through (`fakes/sql.ts`), one conformance suite,
+and an export dry run (`port-switch.mjs sql --export`). D1's own conformance is the credentialled live check, so its
+scenarios are listed `pending` and L3 waits on a workerd-backed run of the suite. Payments also carries its CLIENT half (`client`: the Dart
 `PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped. `tooling/ports/ai.json` (port-ai) is the first TWO-SIDED port, at L3: a server half (TS `AiProvider`:
@@ -44,6 +52,11 @@ equivalent of §4's phase 3. Backup destinations and their restore drills are `t
 A claim above the earned level fails the build. The guard prints `port · claimed · earned · target` on every run, so
 the distance to target is never hidden.
 
+**A port with a `ts` and a `dart` interface may grade each apart** (`level.byInterface`). Each half is graded over the
+adapters whose `impl.file` is in its language, its own selection (`selection.byInterface[lang]`, else the port's) and a
+conformance suite in its language; each prints its own row (`telemetry.dart`, `telemetry.ts`), and the port claims and
+earns the LOWEST half. `byInterface` must grade exactly the port's interfaces.
+
 ## 2. The registry, field by field
 
 One file per capability: `tooling/ports/<capability>.json`, validated strictly (`additionalProperties: false`
@@ -54,19 +67,20 @@ wherever the shape can hold it).
 | `$schema` | `./port.schema.json`. |
 | `port` | The capability; equals the file name. |
 | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
+| `level.byInterface` | Optional `{ts?, dart?}`, each `{claimed, target}`: each interface graded over its own adapters (by impl.file language); the port claims and earns the lowest. |
 | `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
+| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake, or a `draft` whose vendor is not chosen yet (e.g. `objects.json`'s `s3`, the S3-API exit). Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not, unless the vendor's `_non-port.json` row names what is left (`remaining`, beside `until`) — Cloudflare backs `kv`, `objects` and `ratelimit`. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
 | `adapters[].half` | Optional, for a two-sided port: `server` (a Worker adapter on OUR credential) or `client` (an app adapter on the USER's own credential). |
-| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
+| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`; for an unbuilt `draft`, `{}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
 | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
 | `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null; `models` — for a port billed per token, each model's price per million tokens (input, output, cache read, cache write) with `asOf`, `source` and `verify`, and its refusal-fallback chain (`fallbacks`), every model of which limb 1 requires priced in the same `models`. |
-| `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
+| `adapters[].conformance` | `{file, kind?}` — the adapter's test that **calls** the suite's runner; null until it exists. `kind: live` marks a credentialled check against the vendor's real service instead (e.g. `sql.json`'s `d1`): it calls no runner, never counts toward L3, and the scenarios it cannot run are listed in `conformance.pending`. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
@@ -79,6 +93,7 @@ wherever the shape can hold it).
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
 | `selection.canary` | Reserved; null. |
+| `selection.byInterface` | Optional `{ts?, dart?}`, each a whole selection (`by`, `source`, `default`, `canary`) for that interface's adapters. |
 | `generated` | `true` once code reads a **rendered** table instead of a hand array. The render tool is `tooling/ports/render.mjs [--check]` (port-pay-core); assert-ports limb 3 runs its check on every build, so a hand edit of a rendered table fails whether or not `generated` is claimed yet. |
 | `handTables[]` | `{file, anchor, until, why}` — a declared, printed waiver for a hand-written table (or a pre-port import) that the port will replace. The anchor must still exist. |
 | `conformance.suite` | `{file, runner}` or null. |
@@ -91,7 +106,9 @@ wherever the shape can hold it).
 | `_why` | Prose: the honest state and its reasons. |
 
 `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
-`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`.
+`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`. One vendor may
+be the adapter of **several** ports (one adapter per port — Cloudflare is `kv`, `objects` and `ratelimit`); such a vendor
+keeps a row only for what is LEFT, naming those surfaces in `remaining` beside `until` (limb 8).
 
 ### The rules
 
@@ -101,12 +118,23 @@ wherever the shape can hold it).
   private-key blocks, long high-entropy tokens and e-mail addresses).
 - **A `fake` is never in `live`** — neither in its `environments` nor as `selection.default.live`.
 - **A `pending` case names its row**, prints on every run, and blocks L3 for that adapter.
+- **A vendor is placed once**: in ONE port (as the vendor of any number of its adapters — a port's ts and dart halves
+  may share one) or in one `_non-port.json` row. A `draft` adapter places nothing: its vendor must be placed elsewhere
+  (typically the `_non-port` row of the train that ports it first), and the pairing prints on every run.
 
 ## 3. Conventions
 
 ### TypeScript ports (Workers)
 
 - The port lives in `services/_shared/src/ports/<port>.ts`: types and pure helpers only, **no vendor import**.
+- **A binding that already satisfies its port structurally is not wrapped.** Its adapter is the identity function in
+  `services/_shared/src/ports/adapters/<vendor>.ts` — the compile-time proof that the binding IS the port — and every
+  `Env` declares the binding as the PORT type. Outside a composition root, a `types.ts` and `services/_shared/src/ports/`,
+  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`, `D1Database` and
+  its D1 types) — limb 9.
+- **Request geography is `requestGeo(req)`** (`services/_shared/src/geo.ts`), the one reader of `request.cf` — limb 10.
+  It is used only where it was used (the edge-ceiling key, the events row, the request log): never to choose a payment
+  rail, and never `country` for money.
 - Capability verbs, never vendor nouns. **Outcomes, never throws across the port:**
   `{ ok: true, ... } | { ok: false, kind: 'refused' | 'unavailable' | 'invalid' | 'timeout', retryable, detail }`.
 - Capabilities are declared; secrets are named; **a missing secret fails closed** on money and auth.
@@ -200,9 +228,14 @@ Where one of these appears as a vendor in a register, `_non-port.json` carries i
 `node tooling/ci/assert-ports.mjs` — exit 0 green, 1 a finding, 2 coverage lost; the first line names the deciding limb.
 Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 literals ·
 10 client (a port's Dart half: each adapter's conformance test CALLS its seam's runner; every class in `packages/*/lib`
-implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`).
+implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`) ·
+11 monitor-api (no `tooling/ops` script outside `tooling/ops/monitor-api/` calls GlitchTip's uptime-monitor API itself;
+declared exceptions print) · 12 bindings (no `services/*/src` module outside a composition root, a `types.ts` or
+`services/_shared/src/ports/` names a Cloudflare binding type) · 13 geo (only `services/_shared/src/geo.ts` reads `.cf`);
+limbs 12 and 13 are COVERAGE LOST when their pattern no longer matches its own permitted home.
 Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`. Limb 8 places a vendor once per port: mail's
-Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port.
+Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port, and a `draft` adapter whose vendor another port
+already places (telemetry's `mail` notifier, resend) is not a second placement: the pairing prints.
 
 `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
 one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
@@ -211,7 +244,14 @@ verification, C11 streams and their secret names, **C12 the suppression-list exp
 names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceilings.json` (LOST while it records none). Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
 For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
-`purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+`purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line. For `telemetry` it adds C9 `plan`: the
+DSN of every app build per channel (compile time, so an app release each) and of every Worker (a redeploy), the symbol and
+source-map uploaders to re-run, the monitors to recreate from `tooling/monitor-register.json`, the owner-alert routes and
+the cost delta. For `sql` it takes `--export <file>`: ONE nightly D1 export (gzipped JSON lines,
+`services/platform/src/backup/`), given locally and never fetched. Its C9 replays the migrations of the database it names
+into a `node:sqlite` file and compares the table list and the row counts (`tooling/ops/sql-export-replay.mjs`); each
+mismatch is a FAIL, and no `--export` is LOST. E.g. `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env
+sandbox --export platform_db.jsonl.gz`.
 A port with `features` (ai) takes a MODEL as `--to` as well as an adapter, and adds C15 the target's model prices, C16
 each feature's tokens per call × price, input priced as cache writes (LOST while a feature has no model or no tokens —
 never a guess), and C17 the MINIMUM credit-pack price per unit per selling channel: at least 4× the cost (owner lock,

@@ -154,6 +154,30 @@ jobs:
           fi
           exit "$code"
 
+      # why (2026-10-01, PB-27): Box B and Box C config is applied over SSH and
+      # re-vendored by hand, and nothing compared the two. Each box's cron posts
+      # the hashes of its live compose, override and tunnel config to the
+      # platform Worker (box-scoped secret, then D1); this READS that table and
+      # compares it with tooling/ops/box-config-vendored.json. CI never SSHes in.
+      # why: a STEP in this job, for the reason the name-clearance step below gives.
+      - name: Each box's live config is the vendored config
+        if: ${{ !cancelled() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-box-config-drift.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            # NO BACKTICKS ANYWHERE IN THESE STRINGS (see the step above).
+            echo "::error title=Box config drift is UNKNOWN — nothing was compared::The box_config_manifest table could not be read, or tooling/ops/box-config-vendored.json carries an entry with no vendored hash. NOTHING was judged, and that is never a pass. The step log names what could not be read."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A box's live config is not the vendored config, or the box stopped reporting::A hash differs, a declared file is missing or undeclared, or a box has not posted inside its window. The step log names the box and the file. Re-vendor the live file (and refresh the register) or put the vendored file back on the box; the box cron is tooling/ops/boxes/post-config-manifest.sh."
+          fi
+          exit "$code"
+
       # why: the 30-day ceiling on apps/*/name-clearance.json, read DAILY and OFF
       # the pull-request path. ci.yml runs this guard without `--execute` on
       # purpose: every record shares a birthday, and a gate that refuses every

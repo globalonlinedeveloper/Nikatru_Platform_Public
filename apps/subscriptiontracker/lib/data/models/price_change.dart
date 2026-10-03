@@ -1,5 +1,7 @@
 import 'package:nikatru_core/nikatru_core.dart' show Money;
 
+import 'subscription.dart' show Subscription;
+
 /// One price edit on a subscription — a row of the API's `price_change`
 /// table, served as `price_history` on `GET /v1/subscriptions/:id` (0005,
 /// ST-I4) and, until train ST-detail-stop, read by nothing in this app (DE-05).
@@ -33,16 +35,18 @@ class PriceChange {
     to: _side(j, 'new', fallbackCurrencyCode),
   );
 
-  /// `<side>_price_minor` when it is an int, else the decimal `<side>_price`;
-  /// `<side>_currency`, else [fallback] — the same preference order as
-  /// `Subscription.readPrice`, for the same reason.
+  /// `<side>_price_minor` when it is an int that IS the decimal `<side>_price`
+  /// (or there is no decimal), else the decimal; `<side>_currency`, else
+  /// [fallback] — `Subscription.readPrice`'s rule, for the same reason (a
+  /// pre-#1174 row holds a KRW or BHD amount at two minor digits).
   static Money _side(Map<String, dynamic> j, String side, String fallback) {
     final Object? rawCode = j['${side}_currency'];
     final String code = rawCode is String && rawCode.length == 3
         ? rawCode.toUpperCase()
         : fallback;
     final Object? minor = j['${side}_price_minor'];
-    if (minor is int) return Money(minor, code);
-    return Money.fromMajorUnits((j['${side}_price'] as num?) ?? 0, code);
+    final Object? major = j['${side}_price'];
+    if (minor is int) return Subscription.exactOrDecimal(minor, major, code);
+    return Money.fromMajorUnits((major as num?) ?? 0, code);
   }
 }

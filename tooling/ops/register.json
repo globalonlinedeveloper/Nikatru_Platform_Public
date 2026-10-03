@@ -5026,6 +5026,28 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.platform_db.box_config_manifest",
+      "kind": "retention",
+      "store": "d1:platform_db:box_config_manifest",
+      "what": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each live config file the box's cron reports (tooling/ops/boxes/post-config-manifest.sh) and the server's time of the post. Written by POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts); read by tooling/ops/check-box-config-drift.mjs in ops-watch. No user data.",
+      "rule": "keep",
+      "keepWhy": "At most one row per box (PRIMARY KEY box, a closed set of two the route enforces), replaced whole on every post, so the table cannot outgrow the box count. Its freshness is the drift reader's STALE limb (`maxPostAgeHours` in tooling/ops/box-config-vendored.json), not a timer here; deleting a row by age would read as a box that stopped reporting.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0025_box_config_manifest.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.platform_db.native_attest_counters",
       "kind": "retention",
       "store": "d1:platform_db:native_attest_counters",

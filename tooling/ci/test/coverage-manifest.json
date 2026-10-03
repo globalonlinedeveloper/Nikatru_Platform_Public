@@ -176,6 +176,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "box-config-drift.test.mjs":
+    19,
+
   "boxes.test.mjs":
     50,
 
@@ -222,7 +225,7 @@
     28,
 
   "capture-backend.test.mjs":
-    12,
+    15,
 
   "capture-fallback-fonts.test.mjs":
     12,
@@ -320,6 +323,9 @@
   "credential-origin.test.mjs":
     33,
 
+  "currency-table.test.mjs":
+    4,
+
   "d1-bindings.test.mjs":
     9,
 
@@ -330,7 +336,7 @@
     12,
 
   "d1-sql-inventory.test.mjs":
-    57,
+    59,
 
   "darwin-inputs.test.mjs":
     13,
@@ -414,7 +420,7 @@
     38,
 
   "ensure-monitors.test.mjs":
-    24,
+    26,
 
   "entitlement-contract.test.mjs":
     104,
@@ -629,6 +635,9 @@
   "migration-numbers.test.mjs":
     8,
 
+  "migration-prefix-index.test.mjs":
+    12,
+
   "modal-detection.test.mjs":
     44,
 
@@ -759,7 +768,7 @@
     91,
 
   "platform-register.test.mjs":
-    107,
+    120,
 
   "play-declarations.test.mjs":
     186,
@@ -780,10 +789,10 @@
     16,
 
   "port-switch.test.mjs":
-    46,
+    55,
 
   "ports.test.mjs":
-    79,
+    110,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -837,7 +846,7 @@
     12,
 
   "provision-backend.test.mjs":
-    28,
+    34,
 
   "pseudonymity-firewall.test.mjs":
     17,
@@ -946,6 +955,9 @@
 
   "sandbox-service-role.test.mjs":
     5,
+
+  "sandbox-twins.test.mjs":
+    18,
 
   "scan-dependencies.test.mjs":
     25,
@@ -1197,10 +1209,10 @@
     24,
 
   "worker-set.test.mjs":
-    37,
+    40,
 
   "worker-shared-modules.test.mjs":
-    13,
+    17,
 
   "workflow-hardening.test.mjs":
     17,

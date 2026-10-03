@@ -64,6 +64,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
 import { firstRow, nowIso, run } from './d1';
+import { jsonBody } from './json-body';
 
 export const IDEMPOTENCY_HEADER = 'Idempotency-Key';
 
@@ -150,7 +151,13 @@ async function sha256Hex(text: string): Promise<string> {
  * never starts with a bare name, so no body of one route hashes like another's.
  */
 function requestHash(c: Context<AppEnv>, scope: IdempotentScope, body: unknown): Promise<string> {
-  if (scope === CREATE_SCOPE) return sha256Hex(canonical(body));
+  // 🔴 BY NAME, NOT BY OBJECT IDENTITY (review of #1121, nit 1). `scope ===
+  // CREATE_SCOPE` sent an equal literal `{ name: 'create' }` down the prefixed
+  // branch, so a route mounted with one would hash every create differently and
+  // production's existing claims would answer 422 to their own retries. The
+  // name is what namespaces the derived id too (`idempotentRowId`), so it is the
+  // one thing that may decide the hash.
+  if (scope.name === CREATE_SCOPE.name) return sha256Hex(canonical(body));
   return sha256Hex(`${scope.name}\n${scope.target?.(c) ?? ''}\n${canonical(body)}`);
 }
 
@@ -188,12 +195,10 @@ export function idempotentCreate(
         400,
       );
     }
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return next(); // the handler answers invalid_json; nothing is claimed
-    }
+    // Read through lib/json-body.ts: the route's `boundedJson` already read the body
+    // under its cap and answered a malformed one (invalid_json, nothing
+    // claimed), so this hashes exactly the value the handler will validate.
+    const body = jsonBody(c);
     const userId = c.get('userId');
     const db = c.env.APP_DB;
     const bodyHash = await requestHash(c, scope, body);
